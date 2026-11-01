@@ -164,6 +164,45 @@ func TestScopedReaderCannotCrossSourceBoundaries(t *testing.T) {
 	}
 }
 
+func TestReaderSocketScopedKeyCannotFallBackAfterRevocation(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "alpha", "private")
+	source(t, s, "beta", "private")
+	for _, id := range []string{"alpha", "beta"} {
+		if _, err := s.put(id, "guide.md", "# "+id, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(key string, required bool, sourceID string) int {
+		r := httptest.NewRequest("GET", "/api/v1/articles?source_id="+sourceID+"&path=guide.md", nil)
+		if key != "" {
+			r.Header.Set("Authorization", "Bearer "+key)
+		}
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, ReaderLocal: true, ReaderKeyRequired: required}).ServeHTTP(out, r)
+		return out.Code
+	}
+	if call("", false, "beta") != 200 || call("", true, "beta") != 404 {
+		t.Fatal("socket key requirement failed")
+	}
+	if call(key, true, "alpha") != 200 || call(key, true, "beta") != 404 {
+		t.Fatal("socket scope not applied")
+	}
+	if call(strings.Repeat("0", 64), false, "beta") != 404 {
+		t.Fatal("invalid explicit key fell back to socket access")
+	}
+	if err := s.revokeAccessKey("agent"); err != nil {
+		t.Fatal(err)
+	}
+	if call(key, true, "alpha") != 404 || call(key, false, "alpha") != 404 {
+		t.Fatal("revoked key fell back to socket access")
+	}
+}
+
 func TestAccessKeyCreationRejectsInvalidScope(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "alpha", "private")

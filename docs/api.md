@@ -66,6 +66,10 @@ never the key or hash. Scoped keys are ignored on the public listener and cannot
 write, access history or use owner-only endpoints. Existing shared reader and
 Unix socket credentials still grant all private sources until separately changed.
 Key issuance upgrades the store to version 4, which older servers refuse to open.
+The Unix reader socket remains implicitly trusted by default; use
+`--reader-socket-require-key` and configure scoped bearer keys before relying on
+per-agent restrictions. An invalid or revoked bearer on that socket does not
+fall back to implicit legacy access.
 
 Program article paths must start with `docs/`. Absolute paths, traversal, hidden
 components, backslashes and non-Markdown paths are refused. Paths are logical

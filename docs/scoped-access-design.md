@@ -17,7 +17,13 @@ have not yet been provisioned to the four agents. Use MCP
 `--reader-key-file /path/to/private-key` to expose only the four read tools;
 the file must be owned by the process user and inaccessible to group/other.
 Server authorization remains the enforcement boundary. The legacy reader
-socket grants all sources and is not restricted by scoped keys.
+socket grants all sources by default to clients without a bearer key. Start
+VEDA with `--reader-socket-require-key` to require scoped credentials on that
+socket, and pass both `--reader-socket` and `--reader-key-file` to MCP. An
+explicitly supplied invalid or revoked key never falls back to legacy implicit
+socket access. The Linux root-only import path remains separate. This does not
+isolate agents sharing an OS account: shell or filesystem access under that
+account may allow an agent to read its other keys.
 
 The scoped-key store uses format version 4 so older binaries refuse it;
 coordinate this migration with the version-3 GitHub-source-move branch before

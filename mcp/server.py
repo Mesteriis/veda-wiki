@@ -33,11 +33,23 @@ class Client:
         self.key_file = Path(key_file) if key_file else None
         self.socket_path = Path(socket_path) if socket_path else None
         self.read_only = self.socket_path is not None or read_only
-        if self.socket_path is not None and (not self.socket_path.is_absolute() or key_file):
+        if self.socket_path is not None and (not self.socket_path.is_absolute() or (key_file and not read_only)):
             raise ValueError("Invalid read-only socket configuration")
         if self.socket_path is None and self.key_file is None:
             raise ValueError("A key file is required")
         self.opener = build_opener(ProxyHandler({}), NoRedirect())
+
+    def _read_key(self):
+        fd = os.open(self.key_file, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "r") as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) & 0o077):
+                raise ValueError("Key must be an owner-only regular file")
+            token = stream.read(65)
+        if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
+            raise ValueError("Invalid key")
+        return token
 
     def request(self, method, route, body=None):
         if self.socket_path is not None:
@@ -54,7 +66,10 @@ class Client:
             connection = UnixConnection("localhost", timeout=15)
             try:
                 data = None if body is None else json.dumps(body).encode()
-                connection.request(method, route, body=data, headers={"Content-Type": "application/json"})
+                headers = {"Content-Type": "application/json"}
+                if self.key_file is not None:
+                    headers["Authorization"] = "Bearer " + self._read_key()
+                connection.request(method, route, body=data, headers=headers)
                 response = connection.getresponse()
                 payload = response.read(2_000_001)
                 if response.status >= 300:
@@ -64,15 +79,7 @@ class Client:
                 return json.loads(payload)
             finally:
                 connection.close()
-        fd = os.open(self.key_file, os.O_RDONLY | os.O_NOFOLLOW)
-        with os.fdopen(fd, "r") as stream:
-            info = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
-                    or stat.S_IMODE(info.st_mode) & 0o077):
-                raise ValueError("Key must be an owner-only regular file")
-            token = stream.read(65)
-        if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
-            raise ValueError("Invalid key")
+        token = self._read_key()
         data = None if body is None else json.dumps(body).encode()
         req = Request(self.base + route, data=data, method=method,
                       headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
@@ -233,11 +240,13 @@ def make_server(client):
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:8080")
-    credentials = parser.add_mutually_exclusive_group(required=True)
+    credentials = parser.add_mutually_exclusive_group()
     credentials.add_argument("--key-file")
     credentials.add_argument("--reader-key-file")
-    credentials.add_argument("--reader-socket")
+    parser.add_argument("--reader-socket")
     args = parser.parse_args()
+    if not (args.key_file or args.reader_key_file or args.reader_socket) or (args.key_file and args.reader_socket):
+        parser.error("choose a key file or a reader socket, optionally with a reader key")
     server = make_server(Client(args.url, args.key_file or args.reader_key_file, args.reader_socket, read_only=args.reader_key_file is not None))
     async with stdio_server() as (read, write):
         await server.run(read, write, InitializationOptions(

@@ -79,6 +79,7 @@ type Wiki struct {
 	Token             string
 	ReaderToken       string
 	ReaderLocal       bool
+	ReaderKeyRequired bool
 	LocalImportSource string
 	Sessions          *readerSessions
 	Sync              *SyncManager
@@ -197,7 +198,8 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	if w.Store != nil {
 		owner := w.authorized(r)
-		reader := (w.readerAuthorized(r) || (!w.Public && (w.ReaderLocal || w.Sessions.valid(r)))) && r.Method == "GET"
+		implicitLocal := w.ReaderLocal && !w.ReaderKeyRequired && r.Header.Get("Authorization") == ""
+		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || w.Sessions.valid(r)))) && r.Method == "GET"
 		if !w.Public && !owner && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			scoped, valid, err := w.Store.scopedView(token, time.Now())

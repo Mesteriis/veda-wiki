@@ -17,7 +17,6 @@ func TestLocalReaderDoesNotGrantWritesOrAdministration(t *testing.T) {
 	w := Wiki{Store: s, ReaderLocal: true}
 	call := func(method, path, body string, public bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
-		r.Header.Set("Authorization", "Bearer arbitrary")
 		rec := httptest.NewRecorder()
 		w.Public = public
 		w.ServeHTTP(rec, r)

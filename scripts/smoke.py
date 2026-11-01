@@ -24,10 +24,13 @@ def free_port():
         return s.getsockname()[1]
 
 
-def start(data, private_port, public_port):
-    process = subprocess.Popen([
+def start(data, private_port, public_port, require_socket_key=False):
+    args = [
         str(ROOT / "veda"), "--data", str(data), "--listen", f"127.0.0.1:{private_port}",
-        "--public-listen", f"127.0.0.1:{public_port}", "--reader-socket", str(data / "reader.sock")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        "--public-listen", f"127.0.0.1:{public_port}", "--reader-socket", str(data / "reader.sock")]
+    if require_socket_key:
+        args.append("--reader-socket-require-key")
+    process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(100):
         if process.poll() is not None:
             raise RuntimeError("Go server exited")
@@ -186,7 +189,19 @@ async def main():
                             assert denied.isError
                             ctx = await scoped.call_tool("veda_context", {"source_id": "closed", "path": "README.md"})
                             assert not ctx.isError
-                            owner_post("/api/v1/access-keys/revoke", {"id": "agent-test"})
+                            scoped_socket_params = StdioServerParameters(command=sys.executable, args=[
+                                str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock"),
+                                "--reader-key-file", str(scoped_path)])
+                            async with stdio_client(scoped_socket_params) as (key_in, key_out):
+                                async with ClientSession(key_in, key_out) as keyed_socket:
+                                    await keyed_socket.initialize()
+                                    allowed = await keyed_socket.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                                    assert not allowed.isError
+                                    denied = await keyed_socket.call_tool("veda_read", {"source_id": "copy", "path": "copied.md"})
+                                    assert denied.isError
+                                    owner_post("/api/v1/access-keys/revoke", {"id": "agent-test"})
+                                    revoked_socket = await keyed_socket.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                                    assert revoked_socket.isError
                             revoked = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert revoked.isError
                     socket_params = StdioServerParameters(command=sys.executable, args=[
@@ -206,11 +221,35 @@ async def main():
                             assert refused.isError
                     process.terminate()
                     process.wait(timeout=10)
-                    process = start(data, private_port, public_port)
+                    process = start(data, private_port, public_port, require_socket_key=True)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
                     after_restart = await call("veda_context", {"source_id": "imported", "path": "README.md"})
                     assert after_restart["source_status"]["last_import_observed_at"] is None
+                    async with stdio_client(socket_params) as (socket_in, socket_out):
+                        async with ClientSession(socket_in, socket_out) as socket_reader:
+                            await socket_reader.initialize()
+                            denied = await socket_reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                            assert denied.isError
+                    issued = owner_post("/api/v1/access-keys", {"id": "required-test", "sources": ["closed"],
+                        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+                    required_path = data / "required.key"
+                    fd = os.open(required_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "w") as stream:
+                        stream.write(issued["key"])
+                    required_params = StdioServerParameters(command=sys.executable, args=[
+                        str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock"),
+                        "--reader-key-file", str(required_path)])
+                    async with stdio_client(required_params) as (key_in, key_out):
+                        async with ClientSession(key_in, key_out) as keyed_socket:
+                            await keyed_socket.initialize()
+                            allowed = await keyed_socket.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                            assert not allowed.isError
+                            denied = await keyed_socket.call_tool("veda_read", {"source_id": "copy", "path": "copied.md"})
+                            assert denied.isError
+                            owner_post("/api/v1/access-keys/revoke", {"id": "required-test"})
+                            revoked = await keyed_socket.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                            assert revoked.isError
             print("PASS: owner MCP; scoped MCP read and revocation; context; import; conflicts; public isolation; copy; move; translation; reader socket; restart")
         finally:
             process.terminate()

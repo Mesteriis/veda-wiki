@@ -35,6 +35,7 @@ func main() {
 	hosts := flag.String("allowed-hosts", "localhost,127.0.0.1,::1", "Allowed HTTP Host names")
 	localImportSource := flag.String("local-import-source", "", "Allow Linux root on the reader socket to import this existing private local source")
 	readerSocket := flag.String("reader-socket", "", "Optional private Unix socket for read-only local clients")
+	readerKeyRequired := flag.Bool("reader-socket-require-key", false, "Require a scoped key on the private reader socket")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flag.String("tls-key", "", "TLS private key for the private listener")
 	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
@@ -43,6 +44,9 @@ func main() {
 	translationProtocol := flag.String("translation-protocol", "ollama", "Local translation protocol: ollama or mlx")
 	translationInterval := flag.Duration("translation-interval", time.Minute, "Local translation check interval (5s to 1h)")
 	flag.Parse()
+	if *readerKeyRequired && *readerSocket == "" {
+		log.Fatal("reader socket key requirement needs a reader socket")
+	}
 	if (*translationURL == "") != (*translationModel == "") || (*translationProtocol != "ollama" && *translationProtocol != "mlx") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
 		log.Fatal("invalid local translation configuration")
 	}
@@ -126,6 +130,7 @@ func main() {
 			handler.ReaderToken = ""
 			handler.Sessions = nil
 			handler.ReaderLocal = true
+			handler.ReaderKeyRequired = *readerKeyRequired
 			handler.LocalImportSource = *localImportSource
 		}
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
