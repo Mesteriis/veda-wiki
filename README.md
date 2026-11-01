@@ -37,7 +37,7 @@ and waits up to ten seconds for active requests and workers before exiting.
 An incomplete shutdown is logged as an error; durable outbox jobs are recovered
 on the next start.
 
-The browser can sign in with the separate reader key to view private content;
+The browser can sign in with the separate reader key or a source-scoped key to view private content;
 it cannot edit articles. See [browser access](docs/browser-access.md). Authenticated
 REST and MCP remain the writing paths. Do not expose the loopback service remotely until HTTPS and a suitable
 authentication boundary are configured. Host validation remains mandatory.

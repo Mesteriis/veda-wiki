@@ -116,6 +116,10 @@ func (s *Store) accessScopeLocked(token string, now time.Time) []string {
 		return nil
 	}
 	sum := sha256.Sum256([]byte(token))
+	return s.accessScopeHashLocked(sum, now)
+}
+
+func (s *Store) accessScopeHashLocked(sum [32]byte, now time.Time) []string {
 	for _, key := range s.db.AccessKeys {
 		hash, err := hex.DecodeString(key.Hash)
 		expires, expiryErr := time.Parse(time.RFC3339Nano, key.Expires)
@@ -126,13 +130,29 @@ func (s *Store) accessScopeLocked(token string, now time.Time) []string {
 	return nil
 }
 
+func (s *Store) validScopeHash(hash [32]byte, now time.Time) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.accessScopeHashLocked(hash, now) != nil
+}
+
 // Build an immutable request-local snapshot under the same lock as key
 // verification. Every existing reader surface then operates only on that
 // snapshot; no caller-provided source selector can widen it.
 func (s *Store) scopedView(token string, now time.Time) (*Store, bool, error) {
+	if len(token) != 64 {
+		return nil, false, nil
+	}
+	if _, err := hex.DecodeString(token); err != nil {
+		return nil, false, nil
+	}
+	return s.scopedViewHash(sha256.Sum256([]byte(token)), now)
+}
+
+func (s *Store) scopedViewHash(hash [32]byte, now time.Time) (*Store, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	scope := s.accessScopeLocked(token, now)
+	scope := s.accessScopeHashLocked(hash, now)
 	if scope == nil {
 		return nil, false, nil
 	}

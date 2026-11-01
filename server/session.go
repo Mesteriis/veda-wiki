@@ -19,6 +19,7 @@ const adminSessionCookie = "veda_admin_session"
 type readerSessions struct {
 	mu       sync.Mutex
 	active   map[[32]byte]time.Time
+	scoped   map[[32]byte][32]byte
 	attempts []time.Time
 }
 
@@ -65,9 +66,32 @@ func (s *readerSessions) validCookie(r *http.Request, name string) bool {
 	expiry, ok := s.active[hash]
 	if !ok || !expiry.After(time.Now()) {
 		delete(s.active, hash)
+		delete(s.scoped, hash)
 		return false
 	}
-	return true
+	_, scoped := s.scoped[hash]
+	return !scoped
+}
+
+func (s *readerSessions) scopedCookie(r *http.Request) ([32]byte, bool) {
+	if s == nil || !secureBrowserRequest(r) {
+		return [32]byte{}, false
+	}
+	c, err := r.Cookie(sessionCookie)
+	if err != nil || len(c.Value) != 64 {
+		return [32]byte{}, false
+	}
+	hash := sha256.Sum256([]byte(c.Value))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	expiry, ok := s.active[hash]
+	if !ok || !expiry.After(time.Now()) {
+		delete(s.active, hash)
+		delete(s.scoped, hash)
+		return [32]byte{}, false
+	}
+	scope, ok := s.scoped[hash]
+	return scope, ok
 }
 func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 	sessions, cookie, token, prefix := w.Sessions, sessionCookie, w.ReaderToken, "/api/session/"
@@ -79,7 +103,13 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == prefix+"status" {
-		jsonResponse(rw, 200, map[string]bool{"authenticated": sessions.validCookie(r, cookie)})
+		valid := sessions.validCookie(r, cookie)
+		if !valid && prefix == "/api/session/" && w.Store != nil {
+			if hash, ok := sessions.scopedCookie(r); ok {
+				valid = w.Store.validScopeHash(hash, time.Now())
+			}
+		}
+		jsonResponse(rw, 200, map[string]bool{"authenticated": valid})
 		return
 	}
 	if r.Method != "POST" {
@@ -95,6 +125,7 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 			hash := sha256.Sum256([]byte(c.Value))
 			sessions.mu.Lock()
 			delete(sessions.active, hash)
+			delete(sessions.scoped, hash)
 			sessions.mu.Unlock()
 		}
 		http.SetCookie(rw, &http.Cookie{Name: cookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
@@ -127,7 +158,14 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sessions.attempts = append(sessions.attempts, now)
-	if token == "" || subtle.ConstantTimeCompare([]byte(in.Key), []byte(token)) != 1 {
+	fullAccess := token != "" && subtle.ConstantTimeCompare([]byte(in.Key), []byte(token)) == 1
+	var scopedHash [32]byte
+	scopedAccess := false
+	if !fullAccess && prefix == "/api/session/" && w.Store != nil && w.Store.accessScope(in.Key, now) != nil {
+		scopedHash = sha256.Sum256([]byte(in.Key))
+		scopedAccess = true
+	}
+	if !fullAccess && !scopedAccess {
 		sessions.mu.Unlock()
 		jsonResponse(rw, 403, map[string]string{"error": "access denied"})
 		return
@@ -135,6 +173,7 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 	for h, expiry := range sessions.active {
 		if !expiry.After(now) {
 			delete(sessions.active, h)
+			delete(sessions.scoped, h)
 		}
 	}
 	if len(sessions.active) >= 100 {
@@ -154,6 +193,12 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 		sessions.active = map[[32]byte]time.Time{}
 	}
 	sessions.active[hash] = now.Add(8 * time.Hour)
+	if scopedAccess {
+		if sessions.scoped == nil {
+			sessions.scoped = map[[32]byte][32]byte{}
+		}
+		sessions.scoped[hash] = scopedHash
+	}
 	sessions.mu.Unlock()
 	http.SetCookie(rw, &http.Cookie{Name: cookie, Value: value, Path: "/", MaxAge: 8 * 60 * 60, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
 	jsonResponse(rw, 200, map[string]bool{"authenticated": true})

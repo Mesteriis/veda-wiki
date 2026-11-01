@@ -1,9 +1,11 @@
 # Private browser reading
 
-Use the profile button to sign in with the separately generated `reader.key`.
-This is a shared credential granting current content of all private sources; it
-does not grant writing or administration. It is not a user account or a
-per-source permission system. Keep the key private and never put it in a URL.
+Use the profile button to sign in with the separately generated `reader.key`,
+or with a source-scoped reader key created through the owner API. The shared
+key grants current content of all private sources. A scoped key grants current
+content only from its explicitly authorized sources; its validity and scope are
+checked on every request. Neither grants writing or administration. Keep keys
+private and never put them in URLs.
 
 Login is allowed only over a direct HTTPS connection to the private listener,
 or HTTP on loopback from the local machine. For direct HTTPS configure both
@@ -29,6 +31,7 @@ is revoked on logout or restart. The reader-only Unix socket does not expose
 administration; a separately configured local bridge may forward the limited
 administration routes. The interface offers no article
 editing. Browser session and administration POST endpoints accept only
-same-origin requests. This is an initial
-single shared reader mechanism; account provisioning, independent revocation,
-per-source permissions, and multi-user administration remain future work.
+same-origin requests. This is an initial key-based reader mechanism, not a
+multi-user account system. Revoking or expiring a scoped key prevents subsequent
+private reads with its sessions; requests already in progress may finish. User
+accounts, teams, and multi-user administration remain future work.

@@ -205,6 +205,18 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		owner := w.authorized(r)
 		implicitLocal := w.ReaderLocal && !w.ReaderKeyRequired && r.Header.Get("Authorization") == ""
 		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || w.Sessions.valid(r)))) && r.Method == "GET"
+		if !w.Public && !owner && !reader && r.Method == "GET" {
+			if hash, ok := w.Sessions.scopedCookie(r); ok {
+				scoped, valid, err := w.Store.scopedViewHash(hash, time.Now())
+				if err != nil {
+					http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				if valid {
+					w.Store, reader = scoped, true
+				}
+			}
+		}
 		if !w.Public && !owner && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			scoped, valid, err := w.Store.scopedView(token, time.Now())
