@@ -413,6 +413,10 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	source, exists := m.store.db.Sources[c.ID]
 	m.store.mu.RUnlock()
 	matchingVisibility := exists && (source.Visibility == "private") == c.Private
+	if !exists && c.State == "skipped" && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
+		m.store.connectionStatus(c.ID, "skipped", "verified", "", &info)
+		return
+	}
 	if matchingVisibility && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
 		m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
 		return
@@ -426,7 +430,13 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	// publication decisions from the verified repository snapshot.
 	batch, e := m.remoteBatch(ctx, c, head, token, tree)
 	if errors.Is(e, ErrNoDocs) {
-		m.store.connectionStatus(c.ID, "skipped", "verified", "", &info)
+		if !exists {
+			if err := m.store.recordSkippedRepository(c, head, tree.SHA); err != nil && !errors.Is(err, ErrConflict) {
+				fail(err)
+			}
+		} else {
+			_ = m.store.connectionStatus(c.ID, "skipped", "verified", "", &info)
+		}
 		return
 	}
 	if e != nil {

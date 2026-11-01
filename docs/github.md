@@ -5,6 +5,10 @@ one repository and branch, and either anonymous access or an explicitly
 registered account. Anonymous connections are read-only. The server verifies
 repository identity, visibility and branch before connecting. A wiki has root
 `veda.yaml`; otherwise only `docs/` is imported. Missing `docs/` is skipped.
+For a skipped repository with no local source, VEDA remembers the checked Git
+head. An unchanged head avoids downloading the tree again, but repository
+visibility and the branch head are still checked on each sync. A new commit or
+a visibility change triggers a fresh tree inspection.
 
 For a public repository, start VEDA and connect it without credentials:
 
