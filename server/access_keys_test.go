@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -176,5 +177,49 @@ func TestAccessKeyCreationRejectsInvalidScope(t *testing.T) {
 	}
 	if s.db.Version != 1 || len(s.db.AccessKeys) != 0 {
 		t.Fatal("invalid request mutated store")
+	}
+}
+
+func TestGitHubSourceMovePreservesVersion4AndAccessKeys(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	connectFixture(t, s, f, true)
+	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil || move.State != "waiting_source_delete" {
+		t.Fatal("move did not start", err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil || reopened.db.Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
+		t.Fatal("move downgraded or lost scoped access", err)
+	}
+}
+
+func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	manager := connectFixture(t, s, f, true)
+	_, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil || s.db.Version != 3 {
+		t.Fatal("version 3 move not created", err)
+	}
+	key, err := s.createAccessKey("agent", []string{"local"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil || reopened.db.Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
+		t.Fatal("version upgrade lost access", err)
+	}
+	manager = newSyncManager(reopened, f.client())
+	manager.Once(context.Background())
+	manager.Once(context.Background())
+	if reopened.moves()[0].State != "complete" || len(reopened.accessScope(key, time.Now())) != 1 {
+		t.Fatal("move or access lost after upgrade")
 	}
 }

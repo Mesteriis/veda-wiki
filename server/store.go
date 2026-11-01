@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 4) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -236,6 +236,13 @@ func openStore(dir string) (*Store, error) {
 		if _, e := hex.DecodeString(id); e != nil {
 			return nil, errors.New("invalid stored move")
 		}
+		if m.SourceConnectionID == "" {
+			if m.SourceRepositoryID != 0 || m.SourceBranch != "" {
+				return nil, errors.New("invalid move source identity")
+			}
+		} else if s.db.Version < 3 || !identifier.MatchString(m.SourceConnectionID) || m.SourceRepositoryID < 1 || !validBranch(m.SourceBranch) {
+			return nil, errors.New("invalid move source identity")
+		}
 		if m.DestinationConnectionID == "" {
 			if m.DestinationRepositoryID != 0 || m.DestinationBranch != "" {
 				return nil, errors.New("invalid move destination identity")
@@ -245,6 +252,14 @@ func openStore(dir string) (*Store, error) {
 		}
 		switch m.State {
 		case "waiting_destination", "complete", "source_changed", "destination_changed", "cancelled":
+		case "waiting_source_delete":
+			if m.SourceConnectionID == "" || s.db.Version < 3 {
+				return nil, errors.New("invalid move state")
+			}
+		case "deleting_source":
+			if m.SourceConnectionID == "" || s.db.Version < 3 || !commitID.MatchString(m.PreparedDeletion) {
+				return nil, errors.New("invalid prepared deletion")
+			}
 		default:
 			return nil, errors.New("invalid move state")
 		}
@@ -381,6 +396,9 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 		return Revision{}, ErrInvalid
 	}
 	key := sourceID + "/" + p
+	if moveDeletionLocks(s.db, sourceID, p) {
+		return Revision{}, ErrConflict
+	}
 	article := s.db.Articles[key]
 	if len(article.Versions) != expected {
 		return Revision{}, ErrConflict

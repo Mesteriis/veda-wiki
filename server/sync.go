@@ -127,6 +127,9 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 	}
 	m.store.mu.Lock()
 	defer m.store.mu.Unlock()
+	if moveDeletionLocksConnection(m.store.db, c.ID) {
+		return c, ErrConflict
+	}
 	current, ok := m.store.db.Connections[c.ID]
 	if !ok || current.ConfigRevision != *in.Expected {
 		return c, ErrConflict
@@ -401,12 +404,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	m.store.mu.RUnlock()
 	matchingVisibility := exists && (source.Visibility == "private") == c.Private
 	if matchingVisibility && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
-		if e = m.pushPending(ctx, c, head, c.TreeSHA, token); e != nil {
-			m.store.connectionStatus(c.ID, "error", "verified", errorCode(e), &info)
-			return
-		}
-		state, code := m.store.sourceSyncState(c.ID)
-		m.store.connectionStatus(c.ID, state, "verified", code, &info)
+		m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
 		return
 	}
 	tree, e := m.github.tree(ctx, c.Repository, head, token)
@@ -433,12 +431,153 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		fail(e)
 		return
 	}
-	if e = m.pushPending(ctx, c, head, tree.SHA, token); e != nil {
-		m.store.connectionStatus(c.ID, "error", "verified", errorCode(e), &info)
+	m.syncWrites(ctx, c, head, tree.SHA, token, info)
+}
+
+func (m *SyncManager) syncWrites(ctx context.Context, c GitHubConnection, head, treeSHA, token string, info repositoryInfo) {
+	attempted, moveErr := m.deletePendingMove(ctx, c, head, token)
+	if attempted {
+		if moveErr != nil {
+			m.store.connectionStatus(c.ID, "error", "verified", errorCode(moveErr), &info)
+		}
+		return
+	}
+	if err := m.pushPending(ctx, c, head, treeSHA, token); err != nil {
+		m.store.connectionStatus(c.ID, "error", "verified", errorCode(err), &info)
+		return
+	}
+	if moveErr != nil {
+		m.store.connectionStatus(c.ID, "error", "verified", errorCode(moveErr), &info)
 		return
 	}
 	state, code := m.store.sourceSyncState(c.ID)
 	m.store.connectionStatus(c.ID, state, "verified", code, &info)
+}
+
+// Serialize local mutations with the remote ref update. Once prepared, the
+// stored commit keeps both articles locked until a complete pull resolves it.
+func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection, head, token string) (bool, error) {
+	var firstErr error
+	for _, move := range m.store.moves() {
+		if move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
+			continue
+		}
+		attempted, err := m.deleteMove(ctx, c, head, token, move)
+		if err == nil && attempted {
+			return true, nil
+		}
+		if err == nil {
+			continue
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		// A request with an uncertain outcome may have advanced this branch.
+		// Pull again before attempting another deletion using the same head.
+		m.store.mu.RLock()
+		current := m.store.db.Moves[move.ID]
+		m.store.mu.RUnlock()
+		if current.State == "deleting_source" {
+			return true, err
+		}
+	}
+	return false, firstErr
+}
+
+func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, token string, candidate Move) (bool, error) {
+	var destinationRevision int
+	if candidate.DestinationConnectionID != "" {
+		m.store.mu.RLock()
+		destination, ok := m.store.db.Connections[candidate.DestinationConnectionID]
+		target, targetOK := m.store.db.Articles[candidate.DestinationID+"/"+candidate.DestinationPath]
+		m.store.mu.RUnlock()
+		if !ok || !targetOK || len(target.Versions) != 1 || destination.Paused || destination.RepositoryID != candidate.DestinationRepositoryID || destination.Branch != candidate.DestinationBranch {
+			return true, ErrConflict
+		}
+		destinationRevision = destination.ConfigRevision
+		secret, _, err := m.store.secret(destination.AccountID)
+		if err != nil {
+			return true, err
+		}
+		destinationToken, err := m.github.token(ctx, secret, destination.Repository, false)
+		if err != nil {
+			return true, err
+		}
+		info, err := m.github.repository(ctx, destination.Repository, destinationToken)
+		if err != nil {
+			return true, err
+		}
+		if info.ID != destination.RepositoryID || *info.Private != destination.Private {
+			return true, ErrConflict
+		}
+		destinationHead, err := m.github.head(ctx, destination.Repository, destination.Branch, destinationToken)
+		if err != nil {
+			return true, err
+		}
+		destinationTree, err := m.github.tree(ctx, destination.Repository, destinationHead, destinationToken)
+		if err != nil {
+			return true, err
+		}
+		if _, err = verifiedTreeFile(destinationTree, candidate.DestinationPath, target.Versions[0].Text); err != nil {
+			return true, err
+		}
+	}
+	tree, err := m.github.tree(ctx, c.Repository, head, token)
+	if err != nil {
+		return true, err
+	}
+	m.store.mu.Lock()
+	defer m.store.mu.Unlock()
+	current, ok := m.store.db.Connections[c.ID]
+	if !ok || current.Paused || !current.Write || current.ConfigRevision != c.ConfigRevision || current.RepositoryID != c.RepositoryID || current.Branch != c.Branch {
+		return true, ErrConflict
+	}
+	if candidate.DestinationConnectionID != "" {
+		destination, ok := m.store.db.Connections[candidate.DestinationConnectionID]
+		if !ok || destination.Paused || destination.ConfigRevision != destinationRevision {
+			return true, ErrConflict
+		}
+	}
+	for _, move := range m.store.db.Moves {
+		if move.ID != candidate.ID || move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
+			continue
+		}
+		// Re-evaluate the complete local invariants immediately before preparing.
+		db := m.store.clone()
+		reconcileMoves(&db)
+		move = db.Moves[move.ID]
+		if move.State != "waiting_source_delete" && move.State != "deleting_source" {
+			return true, m.store.commit(db)
+		}
+		original := db.Articles[move.SourceID+"/"+move.SourcePath]
+		previousState := move.State
+		prepared := false
+		prepare := func(commit string) error {
+			move.State, move.PreparedDeletion = "deleting_source", commit
+			db.Moves[move.ID] = move
+			if err := m.store.commit(db); err != nil {
+				return err
+			}
+			prepared = true
+			return nil
+		}
+		_, err := m.github.remove(ctx, c.Repository, c.Branch, head, tree, move.SourcePath, original.Versions[move.SourceRevision-1].Text, token, prepare)
+		var remote *remoteError
+		// A definitive rejection of the first ref update cannot have changed the
+		// branch. Do not clear an earlier uncertain attempt on a later rejection.
+		if prepared && previousState == "waiting_source_delete" && errors.As(err, &remote) && (remote.Status == 409 || remote.Status == 422) {
+			move.State, move.PreparedDeletion = "waiting_source_delete", ""
+			db.Moves[move.ID] = move
+			if commitErr := m.store.commit(db); commitErr != nil {
+				return true, commitErr
+			}
+		}
+		if err == nil {
+			m.Wake()
+		}
+		return true, err
+	}
+	return false, nil
 }
 func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head, treeSHA, token string) error {
 	for _, job := range m.store.jobs() {

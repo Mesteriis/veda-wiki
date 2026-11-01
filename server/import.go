@@ -606,6 +606,40 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	src.ImportGeneration = generation
 	result.Generation = src.ImportGeneration
 	db.Sources[src.ID] = src
+	// A prepared ref update may have succeeded even if its response was lost.
+	// Only a complete verified pull can establish that the source is absent.
+	if proof != nil && batch.Complete && batch.Withheld == 0 {
+		for id, move := range db.Moves {
+			if move.State != "deleting_source" || move.SourceConnectionID != proof.ConnectionID {
+				continue
+			}
+			if _, present := batch.Files[move.SourcePath]; present {
+				continue
+			}
+			original := db.Articles[move.SourceID+"/"+move.SourcePath]
+			if !original.Deleted {
+				continue
+			}
+			target, exists := db.Articles[move.DestinationID+"/"+move.DestinationPath]
+			destination, dstOK := db.Sources[move.DestinationID]
+			valid := exists && dstOK && !target.Deleted && len(target.Versions) == 1 && target.Versions[0].SHA == move.SHA && destination.ConnectionID == move.DestinationConnectionID
+			for _, conflict := range target.Conflicts {
+				if conflict.Resolution == "" {
+					valid = false
+				}
+			}
+			if move.DestinationConnectionID != "" {
+				connection, ok := db.Connections[move.DestinationConnectionID]
+				valid = valid && ok && connection.RepositoryID == move.DestinationRepositoryID && connection.Branch == move.DestinationBranch
+			}
+			if !valid {
+				move.State = "destination_changed"
+			} else {
+				move.State = "complete"
+			}
+			db.Moves[id] = move
+		}
+	}
 	reconcileMoves(&db)
 	if proof != nil {
 		conn := db.Connections[proof.ConnectionID]

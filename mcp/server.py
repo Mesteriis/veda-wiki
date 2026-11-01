@@ -113,7 +113,7 @@ def make_server(client):
             "limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0}}, []),
         "veda_cancel_move": ("Cancel a waiting move, preserving both copies; an already queued destination write may still finish.", {
             "id":string,"confirm_cancel":{"type":"boolean","const":True}}, ["id","confirm_cancel"]),
-        "veda_move_article": ("Move a standalone local article after explicit user instruction. Linked assets, imported or GitHub-backed sources are not supported. Source remains until connected destination is observed.", {
+        "veda_move_article": ("Move a standalone local or synchronized writable GitHub article after explicit user instruction. Local imported sources, relative dependencies and translations are not supported. Connected destinations must be observed before source deletion.", {
             "source_id":string,"source_path":string,"expected_revision":{"type":"integer","minimum":1},
             "destination_id":string,"destination_path":string,"confirm_move":{"type":"boolean","const":True},"confirm_publication":{"type":"boolean"}},
             ["source_id","source_path","expected_revision","destination_id","destination_path","confirm_move"]),

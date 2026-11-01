@@ -19,7 +19,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/api/v1/articles/translation-needed` | List program documents needing translation or publication review (owner only) |
 | POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
-| GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local source (owner only) |
+| GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |
 | GET/POST | `/api/v1/access-keys` | List scoped-key metadata or create a source-scoped read-only key (owner only) |
 | POST | `/api/v1/access-keys/revoke` | Revoke a scoped key by ID (owner only) |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
@@ -55,7 +55,7 @@ Responses include `revision`, `sha256`, `created_at` and the saved `text`.
 Creation returns 201; update returns 200. Revision mismatch returns 409;
 unavailable/unauthorized article returns 404; invalid input returns 400;
 unauthorized writes return 403; storage failures return 500. Unknown fields and
-trailing JSON are rejected. Copying retains the original. Moves are limited to standalone local sources as described below.
+trailing JSON are rejected. Copying retains the original. Move restrictions are described below.
 
 Scoped reader keys grant current read-only content only for explicitly listed
 sources. Create with an owner-authorized POST to `/api/v1/access-keys` containing
@@ -122,30 +122,46 @@ a claim that the upstream checkout or infrastructure is currently correct.
 are omitted from public-only listings where applicable. MCP `veda_context`
 returns the same status alongside scope instructions.
 
-## Move from a standalone local source
+## Move between sources
 
 `POST /api/v1/moves` takes `source_id`, `source_path`, `expected_revision`,
 `destination_id`, `destination_path`, `confirm_move: true` and optionally
-`confirm_publication`. Only manually maintained local sources without an import
-generation or GitHub connection are accepted. Markdown with relative links or
+`confirm_publication`. Manually maintained local sources and synchronized,
+writable GitHub sources are accepted; independent local imports are not.
+Markdown with relative links or
 images and articles with stored translations are refused until their dependencies
 can be moved safely. The target must be a new path in another source.
+If two source IDs refer to the same GitHub repository and branch, moving to
+the same physical path is rejected even when one source view is stale.
 
 The destination and durable move record are created in one transaction. For a
 local target, the source is tombstoned in that transaction; for a connected
 target, the source remains visible until a later pull observes the queued
-revision in the same repository and branch. An outage or write-disabled target
+revision in the same repository and branch. For a GitHub source, VEDA rechecks
+the destination and source tree, prepares a non-force deletion commit and
+waits for a complete pull to observe source removal. An outage or write-disabled target
 leaves the move waiting. If either article changes, its source identity changes,
 or a destination conflict appears, the source stays and the move reports
 `source_changed` or `destination_changed`. Source revision history remains in
 the store. Inspect `GET /api/v1/moves` or `veda_moves`; an accepted move is not
 necessarily complete. A waiting move can be cancelled through `/api/v1/moves/cancel`
-or `veda_cancel_move` with `confirm_cancel: true`. Both copies remain; an already
-queued destination write may still finish. Private-to-public publication requires separate explicit
-confirmation. Source GitHub deletion, linked assets and translations are not yet
-supported; use copy until those cases have a safe move protocol.
+or `veda_cancel_move` with `confirm_cancel: true` before source deletion is
+prepared. Both copies remain; an already queued destination write may still
+finish. Once deletion is prepared, its response can be uncertain and cancellation
+is refused until synchronization resolves it. A definitive rejection of the
+first ref update restores the cancellable waiting state; a later rejection
+cannot resolve an earlier uncertain attempt. The two remote repositories
+cannot be updated atomically; external edits may occur between checks. Local
+source revision history is retained. Private-to-public publication requires
+separate explicit confirmation. Linked assets and translations are not yet
+supported; use copy until those cases have a safe move protocol. Live
+authenticated GitHub move acceptance remains pending.
 
-Creating the first move upgrades the local store format to version 2. Older
+Creating the first local-source move upgrades the local store format to version 2;
+the first GitHub-source move upgrades it to version 3. Older
 versions of VEDA reject that store instead of silently discarding move records.
+The previous version-2 store reader was tested against a synthetic version-3
+file and refused it without changing it; an actual backup restoration has not
+been verified for this release.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.

@@ -177,8 +177,8 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Base string `json:"base_tree"`
 			Tree []struct {
-				Path string `json:"path"`
-				SHA  string `json:"sha"`
+				Path string  `json:"path"`
+				SHA  *string `json:"sha"`
 			} `json:"tree"`
 		}
 		json.NewDecoder(r.Body).Decode(&in)
@@ -192,7 +192,15 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			files[k] = v
 		}
 		for _, e := range in.Tree {
-			files[e.Path] = e.SHA
+			if e.SHA == nil {
+				if _, exists := files[e.Path]; !exists {
+					http.Error(w, "file missing", 422)
+					return
+				}
+				delete(files, e.Path)
+			} else {
+				files[e.Path] = *e.SHA
+			}
 		}
 		f.counter++
 		sha := fakeSHA(fmt.Sprint("new-tree", f.counter))
