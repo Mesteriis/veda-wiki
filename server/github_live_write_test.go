@@ -117,7 +117,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 				t.Fatal("target fixture link already exists")
 			}
 		}
-		fixtureTree := api("repos/"+targetRepo+"/git/trees", map[string]any{"base_tree": baseTree, "tree": []map[string]string{{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture}, {"path": relatedPath, "mode": "100644", "type": "blob", "content": related}}})["sha"].(string)
+		fixtureTree := api("repos/"+targetRepo+"/git/trees", map[string]any{"base_tree": baseTree, "tree": []map[string]string{{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture}}})["sha"].(string)
 		commits[1] = api("repos/"+targetRepo+"/git/commits", map[string]any{"message": "VEDA synthetic move fixture", "tree": fixtureTree, "parents": []string{baseSHA}})["sha"].(string)
 	}
 	for i, b := range branches {
@@ -216,7 +216,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		}
 	}
 	manager.Once(ctx)
-	if _, err := store.moveArticle(moveRequest{SourceID: "source", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: destinationPath, ConfirmMove: true}); err != nil {
+	if _, err := store.moveArticle(moveRequest{SourceID: "source", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: destinationPath, ConfirmMove: true, IncludeLinked: true}); err != nil {
 		t.Fatalf("move: %v", err)
 	}
 	syncFixtureSource(t, manager, "target")
@@ -260,6 +260,9 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		}
 		if i == 0 && found["guide.md"] {
 			t.Fatal("source still exists")
+		}
+		if i == 0 && !found["related.md"] {
+			t.Fatal("linked source article was removed")
 		}
 		if i == 1 && !found[destinationPath] {
 			t.Fatal("destination absent")

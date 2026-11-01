@@ -70,9 +70,10 @@ and production agent-key rollout remain outstanding. See
 [translation](translation.md) and [scoped access](scoped-access-design.md).
 
 An opt-in live acceptance test exercises a move between two branches of the
-public `Mesteriis/veda-wiki` repository using synthetic content and an image. It checks that
-the source remains until the destination has been observed, and checks the
-final remote tree and destination blob. The local test store receives a
+public `Mesteriis/veda-wiki` repository using synthetic content, images and a
+linked article. It checks that the source remains until the destination group
+has been observed, the linked source article remains, and the final remote
+tree and destination blobs match. The local test store receives a
 synthetic token; a loopback test proxy invokes the authenticated `gh` CLI,
 so it does not test VEDA's handling of a real PAT or App installation. With `gh`
 already authenticated as Mesteriis, run:
@@ -87,7 +88,8 @@ the test does not change an existing branch or use production wiki data.
 Setting `VEDA_LIVE_GITHUB_TARGET=Mesteriis/mac-tower` explicitly runs the
 same test across two repositories. The target fixture starts from the other
 repository's default branch and preserves its existing files; only the new
-branch gets synthetic metadata and the moved fixture. The two-repository test
-passed against public GitHub on 2026-11-01 via the `gh` proxy. The test refuses
+branch gets synthetic metadata and the moved fixture. On 2026-11-01 the
+two-repository test passed against public GitHub with the linked article absent
+from the target before transfer, via the `gh` proxy. The test refuses
 to create the target branch if its source tree contains GitHub Actions
 workflows, avoiding an unintended workflow run.
