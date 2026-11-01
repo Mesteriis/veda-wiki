@@ -33,6 +33,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8080", "API and viewer address")
 	public := flag.String("public-listen", "127.0.0.1:8081", "Public-only address")
 	hosts := flag.String("allowed-hosts", "localhost,127.0.0.1,::1", "Allowed HTTP Host names")
+	readerSocket := flag.String("reader-socket", "", "Optional private Unix socket for read-only local clients")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flag.String("tls-key", "", "TLS private key for the private listener")
 	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
@@ -84,29 +85,49 @@ func main() {
 		apiListener.Close()
 		log.Fatal(err)
 	}
+	var socketListener net.Listener
+	if *readerSocket != "" {
+		socketListener, err = listenReaderSocket(*readerSocket)
+		if err != nil {
+			apiListener.Close()
+			publicListener.Close()
+			log.Fatal("reader socket unavailable")
+		}
+		defer socketListener.Close()
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	manager := newSyncManager(store, newGitHubClient())
 	sessions := &readerSessions{}
 	go manager.Run(ctx, *interval)
-	errors := make(chan error, 2)
-	serve := func(l net.Listener, publicOnly bool) {
-		server := &http.Server{Handler: Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	errors := make(chan error, 3)
+	serve := func(l net.Listener, publicOnly, readerOnly bool) {
+		handler := Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}
+		if readerOnly {
+			handler.Token = ""
+			handler.ReaderToken = ""
+			handler.Sessions = nil
+			handler.ReaderLocal = true
+		}
+		server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 		go func() {
 			<-ctx.Done()
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			server.Shutdown(shutdown)
 		}()
-		if !publicOnly && *tlsCert != "" {
+		if !publicOnly && !readerOnly && *tlsCert != "" {
 			errors <- server.ServeTLS(l, *tlsCert, *tlsKey)
 		} else {
 			errors <- server.Serve(l)
 		}
 	}
 	log.Printf("VEDA listening on %s; public on %s; owner key saved to data directory (not printed)", *listen, *public)
-	go serve(publicListener, true)
-	go serve(apiListener, false)
+	go serve(publicListener, true, false)
+	go serve(apiListener, false, false)
+	if socketListener != nil {
+		go serve(socketListener, false, true)
+	}
 	if err := <-errors; err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
@@ -148,4 +169,32 @@ func loadOrCreateKey(dir, name string) ([]byte, error) {
 		return nil, ErrInvalid
 	}
 	return key, nil
+}
+
+// The parent directory must belong to the service user and be inaccessible to
+// others. Never remove an existing path, which could belong to another process.
+func listenReaderSocket(name string) (net.Listener, error) {
+	if !filepath.IsAbs(name) || filepath.Clean(name) != name {
+		return nil, ErrInvalid
+	}
+	parent, err := os.Lstat(filepath.Dir(name))
+	if err != nil || !parent.IsDir() || parent.Mode().Perm()&0077 != 0 {
+		return nil, ErrInvalid
+	}
+	stat, ok := parent.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != os.Getuid() {
+		return nil, ErrInvalid
+	}
+	if _, err = os.Lstat(name); err == nil || !os.IsNotExist(err) {
+		return nil, ErrInvalid
+	}
+	listener, err := net.Listen("unix", name)
+	if err != nil {
+		return nil, err
+	}
+	if err = os.Chmod(name, 0600); err != nil {
+		listener.Close()
+		return nil, err
+	}
+	return listener, nil
 }

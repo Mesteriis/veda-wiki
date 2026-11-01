@@ -78,6 +78,7 @@ type Wiki struct {
 	Store       *Store
 	Token       string
 	ReaderToken string
+	ReaderLocal bool
 	Sessions    *readerSessions
 	Sync        *SyncManager
 }
@@ -181,7 +182,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	if w.Store != nil {
 		owner := w.authorized(r)
-		reader := (w.readerAuthorized(r) || (!w.Public && w.Sessions.valid(r))) && r.Method == "GET"
+		reader := (w.readerAuthorized(r) || (!w.Public && (w.ReaderLocal || w.Sessions.valid(r)))) && r.Method == "GET"
 		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
 			w.api(rw, r, owner, reader)
 			return

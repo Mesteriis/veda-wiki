@@ -25,7 +25,7 @@ def free_port():
 def start(data, private_port, public_port):
     process = subprocess.Popen([
         str(ROOT / "veda"), "--data", str(data), "--listen", f"127.0.0.1:{private_port}",
-        "--public-listen", f"127.0.0.1:{public_port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        "--public-listen", f"127.0.0.1:{public_port}", "--reader-socket", str(data / "reader.sock")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(100):
         if process.poll() is not None:
             raise RuntimeError("Go server exited")
@@ -147,12 +147,23 @@ async def main():
                             assert refused.isError
                             admin = await reader.call_tool("veda_github_status", {})
                             assert admin.isError
+                    socket_params = StdioServerParameters(command=sys.executable, args=[
+                        str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock")])
+                    async with stdio_client(socket_params) as (socket_in, socket_out):
+                        async with ClientSession(socket_in, socket_out) as socket_reader:
+                            await socket_reader.initialize()
+                            names = {tool.name for tool in (await socket_reader.list_tools()).tools}
+                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context"}
+                            item = await socket_reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                            assert not item.isError and json.loads(item.content[0].text)["text"] == "# Private updated"
+                            refused = await socket_reader.call_tool("veda_write_article", {"source_id": "closed", "path": "README.md", "text": "# forbidden", "expected_revision": 2})
+                            assert refused.isError
                     process.terminate()
                     process.wait(timeout=10)
                     process = start(data, private_port, public_port)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
-            print("PASS: fifteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; translation; restart persistence")
+            print("PASS: fifteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; translation; local read-only socket; restart persistence")
         finally:
             process.terminate()
             process.wait(timeout=10)
