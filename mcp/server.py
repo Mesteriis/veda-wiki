@@ -55,8 +55,10 @@ class Client:
                 connection.request(method, route, body=data, headers={"Content-Type": "application/json"})
                 response = connection.getresponse()
                 payload = response.read(2_000_001)
-                if response.status >= 300 or len(payload) > 2_000_000:
-                    raise ValueError("VEDA request refused")
+                if response.status >= 300:
+                    raise ValueError(f"VEDA refused request (HTTP {response.status})")
+                if len(payload) > 2_000_000:
+                    raise ValueError("Response exceeds MCP limit")
                 return json.loads(payload)
             finally:
                 connection.close()

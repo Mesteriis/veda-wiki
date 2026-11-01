@@ -156,6 +156,10 @@ async def main():
                             assert names == {"veda_sources", "veda_search", "veda_read", "veda_context"}
                             item = await socket_reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not item.isError and json.loads(item.content[0].text)["text"] == "# Private updated"
+                            ctx = await socket_reader.call_tool("veda_context", {"source_id": "closed", "path": "nested/example.md"})
+                            assert not ctx.isError
+                            context = json.loads(ctx.content[0].text)
+                            assert context["instructions"][0]["path"] == "AGENTS.md" and "nested/AGENTS.md" in context["missing"]
                             refused = await socket_reader.call_tool("veda_write_article", {"source_id": "closed", "path": "README.md", "text": "# forbidden", "expected_revision": 2})
                             assert refused.isError
                     process.terminate()
