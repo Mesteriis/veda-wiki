@@ -25,7 +25,7 @@ authorization. The separate public listener is http://127.0.0.1:8081/ and
 **always** ignores owner tokens. The database starts empty.
 
 The first start creates `.veda/` (0700), `state.json` on first write and an
-`owner.key` file (0600). The key is never printed. Protect and back up this
+`owner.key` and `reader.key` files (0600). The key is never printed. Protect and back up this
 directory; never add it to Git. The process holds an exclusive writer lock.
 One process owns one data directory. There is no multi-process database support.
 
@@ -58,8 +58,10 @@ python3 -m venv .venv
 
 Register that command with your MCP client, using absolute paths appropriate to
 your checkout. stdio is the MCP transport; use `--url` to choose the loopback
-REST endpoint. This owner adapter can read and write all local sources. It is
-not a user-scoped or read-only credential. An existing private infrastructure
+REST endpoint. The owner key allows reading and writing all sources. To grant an agent only
+current-content reading, pass `--key-file .veda/reader.key` instead. The reader
+key cannot write or use administrative endpoints and is ignored by the public
+listener. It grants access to all private sources and is not user-scoped. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
 Tools: `veda_sources`, `veda_search`, `veda_read`, `veda_create_source`,

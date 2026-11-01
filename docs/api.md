@@ -1,7 +1,7 @@
 # REST API v1
 
 JSON responses. Owner requests use `Authorization: Bearer <owner-key>`.
-The default listener binds loopback. The key is generated into the private
+A separate `reader.key` bearer credential can read current private content but cannot write, read revision history, or access administration. The public listener ignores both keys. The default listener binds loopback. The key is generated into the private
 data directory and is never returned by the API. Errors do not echo credentials
 or article bodies. Do not put the key into URLs, browser storage or logs.
 

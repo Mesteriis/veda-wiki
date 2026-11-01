@@ -121,12 +121,24 @@ async def main():
                             raise AssertionError("private article disclosed")
                         except HTTPError as error:
                             assert error.code == 404
+                    reader_params = StdioServerParameters(command=sys.executable, args=[
+                        str(ROOT / "mcp/server.py"), "--url", f"http://127.0.0.1:{private_port}",
+                        "--key-file", str(data / "reader.key")])
+                    async with stdio_client(reader_params) as (reader_in, reader_out):
+                        async with ClientSession(reader_in, reader_out) as reader:
+                            await reader.initialize()
+                            result = await reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                            assert not result.isError and json.loads(result.content[0].text)["text"] == "# Private updated"
+                            refused = await reader.call_tool("veda_write_article", {"source_id": "closed", "path": "README.md", "text": "# forbidden", "expected_revision": 2})
+                            assert refused.isError
+                            admin = await reader.call_tool("veda_github_status", {})
+                            assert admin.isError
                     process.terminate()
                     process.wait(timeout=10)
                     process = start(data, private_port, public_port)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
-            print("PASS: twelve MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; restart persistence")
+            print("PASS: twelve MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; restart persistence")
         finally:
             process.terminate()
             process.wait(timeout=10)
