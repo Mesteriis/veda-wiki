@@ -171,6 +171,8 @@ The previous version-2 store reader was tested against a synthetic version-3
 file and refused it without changing it. A move with a translation upgrades the
 store to version 5; older binaries reject it rather than discard the additional
 move invariant. An older binary refused a synthetic v5 store without changing
-it. Production v5 backup and restore have not been validated.
+it. A synthetic v5 store with a translation and scoped key also passed a PBS
+backup/restore round-trip; production v5 backup and restore have not been
+validated.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.

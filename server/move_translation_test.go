@@ -76,7 +76,8 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 	if err != nil || public.Translated || public.Text != "# Original" {
 		t.Fatal("translation became public", err)
 	}
-	if _, err = s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
+	key, err := s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour))
+	if err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.dir)
@@ -85,6 +86,16 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 	}
 	if reopened.moves()[0].TranslationFingerprint != m.TranslationFingerprint {
 		t.Fatal("move fingerprint lost")
+	}
+	if len(reopened.accessScope(key, time.Now())) != 1 {
+		t.Fatal("scope lost after restart")
+	}
+	if err := reopened.revokeAccessKey("agent"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = openStore(s.dir)
+	if err != nil || reopened.db.Version != 5 || len(reopened.accessScope(key, time.Now())) != 0 {
+		t.Fatal("revocation did not survive restart", err)
 	}
 }
 
