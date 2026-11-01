@@ -113,6 +113,14 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 		if !connected || !c.Write || c.Paused || a.UpstreamHash != a.Versions[in.ExpectedRevision-1].SHA {
 			return Move{}, ErrConflict
 		}
+		// Different source IDs may point at the very same GitHub branch. A
+		// copy to the same physical path followed by deletion would erase both.
+		if dst, exists := s.db.Sources[in.DestinationID]; exists && dst.ConnectionID != "" {
+			other, connected := s.db.Connections[dst.ConnectionID]
+			if connected && c.RepositoryID == other.RepositoryID && c.Branch == other.Branch && in.SourcePath == in.DestinationPath {
+				return Move{}, ErrConflict
+			}
+		}
 	}
 	// A derived translation must not become inaccessible by silently moving only its original.
 	if a.Translation != nil {

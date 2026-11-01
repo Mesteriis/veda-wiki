@@ -103,6 +103,30 @@ func TestMoveDoesNotDeleteSourceWhenDestinationUnavailableOrChanged(t *testing.T
 	}
 }
 
+func TestMoveRejectsAliasedRepositoryAndSamePhysicalPath(t *testing.T) {
+	s, _, original, _ := connectedMoveFixtures(t)
+	// Model a stale second source view of the same repository and branch.
+	s.mu.Lock()
+	db := s.clone()
+	alias := db.Connections["two"]
+	alias.RepositoryID = db.Connections["one"].RepositoryID
+	alias.Branch = db.Connections["one"].Branch
+	db.Connections["two"] = alias
+	delete(db.Articles, "two/README.md")
+	err := s.commit(db)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "README.md", ConfirmMove: true})
+	if err != ErrConflict {
+		t.Fatalf("aliased path accepted: %v", err)
+	}
+	if original.contents()["README.md"] != "# Source" || original.writeCount() != 0 {
+		t.Fatal("original changed")
+	}
+}
+
 func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")

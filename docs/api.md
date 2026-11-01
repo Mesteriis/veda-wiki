@@ -119,6 +119,8 @@ writable GitHub sources are accepted; independent local imports are not.
 Markdown with relative links or
 images and articles with stored translations are refused until their dependencies
 can be moved safely. The target must be a new path in another source.
+If two source IDs refer to the same GitHub repository and branch, moving to
+the same physical path is rejected even when one source view is stale.
 
 The destination and durable move record are created in one transaction. For a
 local target, the source is tombstoned in that transaction; for a connected
