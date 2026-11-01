@@ -52,6 +52,10 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		return Database{}, Revision{}, ErrConflict
 	}
 	rev := a.Versions[len(a.Versions)-1]
+	assets, err := s.transferAssets(rev.Text, in.SourcePath, in.DestinationPath, source, destination)
+	if err != nil {
+		return Database{}, Revision{}, err
+	}
 	now := time.Now()
 	targetPublic := sourcePublic(s.db, destination, now)
 	sourcePublicRevision := sourcePublic(s.db, source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
@@ -73,6 +77,16 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		b.PublishedLocal = true
 	}
 	db := s.clone()
+	if len(assets) > 0 {
+		destination.Assets = make(map[string]BlobRef, len(destination.Assets)+len(assets))
+		for p, ref := range s.db.Sources[in.DestinationID].Assets {
+			destination.Assets[p] = ref
+		}
+		for p, ref := range assets {
+			destination.Assets[p] = ref
+		}
+		db.Sources[destination.ID] = destination
+	}
 	db.Articles[key] = b
 	if destination.ConnectionID != "" {
 		enqueueWrite(&db, b, copied)

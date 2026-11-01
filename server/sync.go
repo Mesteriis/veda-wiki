@@ -549,6 +549,9 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 		if move.State != "waiting_source_delete" && move.State != "deleting_source" {
 			return true, m.store.commit(db)
 		}
+		if err := m.store.verifyMoveAssets(move.Assets); err != nil {
+			return true, err
+		}
 		original := db.Articles[move.SourceID+"/"+move.SourcePath]
 		previousState := move.State
 		prepared := false

@@ -132,8 +132,10 @@ returns the same status alongside scope instructions.
 `destination_id`, `destination_path`, `confirm_move: true` and optionally
 `confirm_publication`. Manually maintained local sources and synchronized,
 writable GitHub sources are accepted; independent local imports are not.
-Markdown with relative links or images is refused until dependencies can be
-moved safely. A stored translation can be moved only to another program source;
+Relative Markdown images can be copied with the article into a standalone local
+target; existing images at the target path must have the same digest. Relative
+links to other articles, embedded HTML, and images targeting a connected GitHub
+source remain unsupported. A stored translation can be moved only to another program source;
 it is copied as a separate private draft and requires publication review even
 when the target is public. The target must be a new path in another source.
 If two source IDs refer to the same GitHub repository and branch, moving to
@@ -160,8 +162,8 @@ cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
 source revision history is retained. A change to either translation while the
 move is waiting prevents source removal. Private-to-public publication requires
-separate explicit confirmation. Linked assets and relative links are not yet
-moved; copying such Markdown alone does not copy its dependencies. Live
+separate explicit confirmation. Relative article links and delivery of images
+to GitHub are not yet supported for transfers. Live
 acceptance with credentials stored by VEDA remains pending.
 
 Creating the first local-source move upgrades the local store format to version 2;
@@ -173,6 +175,7 @@ store to version 5; older binaries reject it rather than discard the additional
 move invariant. An older binary refused a synthetic v5 store without changing
 it. A synthetic v5 store with a translation and scoped key also passed a PBS
 backup/restore round-trip; production v5 backup and restore have not been
-validated.
+validated. A move containing images upgrades the store to version 6; older
+binaries reject the store. Production v6 backup and restore are unverified.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.

@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -239,6 +239,25 @@ func openStore(dir string) (*Store, error) {
 			}
 			if _, e := hex.DecodeString(m.TranslationFingerprint); e != nil {
 				return nil, errors.New("invalid move translation fingerprint")
+			}
+		}
+		if len(m.Assets) > 2000 {
+			return nil, errors.New("too many move assets")
+		}
+		if len(m.Assets) > 0 && s.db.Version < 6 {
+			return nil, errors.New("move assets require store version 6")
+		}
+		for p, ref := range m.Assets {
+			if !safeRelative(p) || (s.db.Sources[m.DestinationID].Kind == "program" && !strings.HasPrefix(p, "docs/")) {
+				return nil, errors.New("invalid move asset path")
+			}
+			if _, e := hexKey(ref.SHA); e != nil {
+				return nil, errors.New("invalid move asset digest")
+			}
+			switch ref.MIME {
+			case "image/png", "image/jpeg", "image/webp", "image/gif":
+			default:
+				return nil, errors.New("invalid move asset type")
 			}
 		}
 		if _, e := hex.DecodeString(id); e != nil {

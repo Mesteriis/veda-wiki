@@ -2,8 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/url"
+	"os"
+	"path"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/yuin/goldmark/ast"
@@ -12,23 +16,24 @@ import (
 
 // Move records one explicit, revision-bound move; source history is retained.
 type Move struct {
-	ID                      string `json:"id"`
-	SourceID                string `json:"source_id"`
-	SourcePath              string `json:"source_path"`
-	SourceRevision          int    `json:"source_revision"`
-	SourceConnectionID      string `json:"source_connection_id,omitempty"`
-	SourceRepositoryID      int64  `json:"source_repository_id,omitempty"`
-	SourceBranch            string `json:"source_branch,omitempty"`
-	DestinationID           string `json:"destination_id"`
-	DestinationPath         string `json:"destination_path"`
-	DestinationConnectionID string `json:"destination_connection_id,omitempty"`
-	DestinationRepositoryID int64  `json:"destination_repository_id,omitempty"`
-	DestinationBranch       string `json:"destination_branch,omitempty"`
-	SHA                     string `json:"sha256"`
-	State                   string `json:"state"`
-	PreparedDeletion        string `json:"prepared_deletion,omitempty"`
-	TranslationFingerprint  string `json:"translation_fingerprint,omitempty"`
-	Created                 string `json:"created_at"`
+	ID                      string             `json:"id"`
+	SourceID                string             `json:"source_id"`
+	SourcePath              string             `json:"source_path"`
+	SourceRevision          int                `json:"source_revision"`
+	SourceConnectionID      string             `json:"source_connection_id,omitempty"`
+	SourceRepositoryID      int64              `json:"source_repository_id,omitempty"`
+	SourceBranch            string             `json:"source_branch,omitempty"`
+	DestinationID           string             `json:"destination_id"`
+	DestinationPath         string             `json:"destination_path"`
+	DestinationConnectionID string             `json:"destination_connection_id,omitempty"`
+	DestinationRepositoryID int64              `json:"destination_repository_id,omitempty"`
+	DestinationBranch       string             `json:"destination_branch,omitempty"`
+	SHA                     string             `json:"sha256"`
+	State                   string             `json:"state"`
+	PreparedDeletion        string             `json:"prepared_deletion,omitempty"`
+	TranslationFingerprint  string             `json:"translation_fingerprint,omitempty"`
+	Assets                  map[string]BlobRef `json:"assets,omitempty"`
+	Created                 string             `json:"created_at"`
 }
 
 func translationFingerprint(tr *Translation) string {
@@ -46,6 +51,51 @@ func movedTranslation(tr *Translation) *Translation {
 	copy := *tr
 	copy.PublicApproved = false
 	return &copy
+}
+
+func assetsPresent(source Source, expected map[string]BlobRef) bool {
+	for name, ref := range expected {
+		if actual, ok := source.Assets[name]; !ok || actual != ref {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) verifyAsset(ref BlobRef) error {
+	if _, err := hexKey(ref.SHA); err != nil {
+		return ErrInvalid
+	}
+	filename := path.Join(s.dir, "blobs", ref.SHA)
+	info, err := os.Lstat(filename)
+	if err != nil || !info.Mode().IsRegular() {
+		return ErrInvalid
+	}
+	file, err := os.Open(filename)
+	if err != nil {
+		return ErrNotFound
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, (4<<20)+1))
+	verified, check := imageRef(content)
+	if err != nil || check != nil || verified != ref {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
+	seen := map[BlobRef]bool{}
+	for _, ref := range assets {
+		if seen[ref] {
+			continue
+		}
+		if err := s.verifyAsset(ref); err != nil {
+			return err
+		}
+		seen[ref] = true
+	}
+	return nil
 }
 
 // A prepared deletion may have reached GitHub even when the response was lost.
@@ -78,33 +128,90 @@ type moveRequest struct {
 	ConfirmPublication bool   `json:"confirm_publication"`
 }
 
-// Relative references can depend on source-only pages/assets. Do not move them
-// until dependency copying and rewriting are implemented.
-func hasRelativeDependencies(value string) bool {
-	source := []byte(value)
-	doc := markdown.Parser().Parse(text.NewReader(source))
-	found := false
+// Resolve relative images into equivalent paths at the destination. Linked
+// articles and embedded HTML remain blocked until their dependencies can move.
+// Caller holds the store lock.
+func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target Source) (map[string]BlobRef, error) {
+	document := []byte(value)
+	doc := markdown.Parser().Parse(text.NewReader(document))
+	assets := map[string]BlobRef{}
+	verified := map[BlobRef]bool{}
+	total := int64(0)
+	var failure error
 	ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
 		var dest []byte
+		image := false
 		switch n := node.(type) {
 		case *ast.Link:
 			dest = n.Destination
 		case *ast.Image:
 			dest = n.Destination
+			image = true
+		case *ast.RawHTML, *ast.HTMLBlock:
+			failure = ErrInvalid
+			return ast.WalkStop, nil
 		default:
 			return ast.WalkContinue, nil
 		}
 		parsed, e := url.Parse(string(dest))
-		if e != nil || (parsed.Scheme == "" && parsed.Host == "" && parsed.Path != "") {
-			found = true
+		if e != nil {
+			failure = ErrInvalid
+			return ast.WalkStop, nil
+		}
+		if parsed.Scheme != "" || parsed.Host != "" || parsed.Path == "" {
+			return ast.WalkContinue, nil
+		}
+		if !image || strings.HasPrefix(parsed.Path, "/") || target.ConnectionID != "" || target.ImportGeneration != "" {
+			failure = ErrInvalid
+			return ast.WalkStop, nil
+		}
+		from := path.Clean(path.Join(path.Dir(sourcePath), parsed.Path))
+		to := path.Clean(path.Join(path.Dir(targetPath), parsed.Path))
+		if !safeRelative(from) || !safeRelative(to) || (target.Kind == "program" && !strings.HasPrefix(to, "docs/")) {
+			failure = ErrInvalid
+			return ast.WalkStop, nil
+		}
+		ref, ok := src.Assets[from]
+		if !ok {
+			failure = ErrInvalid
+			return ast.WalkStop, nil
+		}
+		if existing, ok := target.Assets[to]; ok && existing != ref {
+			failure = ErrConflict
+			return ast.WalkStop, nil
+		}
+		if existing, ok := assets[to]; ok && existing != ref {
+			failure = ErrConflict
+			return ast.WalkStop, nil
+		}
+		if !verified[ref] {
+			if _, err := hexKey(ref.SHA); err != nil {
+				failure = ErrInvalid
+				return ast.WalkStop, nil
+			}
+			info, err := os.Lstat(path.Join(s.dir, "blobs", ref.SHA))
+			if err != nil || !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > 4<<20 || total+info.Size() > 16<<20 {
+				failure = ErrInvalid
+				return ast.WalkStop, nil
+			}
+			if err := s.verifyAsset(ref); err != nil {
+				failure = err
+				return ast.WalkStop, nil
+			}
+			total += info.Size()
+			verified[ref] = true
+		}
+		assets[to] = ref
+		if len(assets) > 2000 {
+			failure = ErrInvalid
 			return ast.WalkStop, nil
 		}
 		return ast.WalkContinue, nil
 	})
-	return found
+	return assets, failure
 }
 func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if !in.ConfirmMove {
@@ -145,8 +252,9 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if a.Translation != nil && s.db.Sources[in.DestinationID].Kind != "program" {
 		return Move{}, ErrInvalid
 	}
-	if hasRelativeDependencies(a.Versions[len(a.Versions)-1].Text) {
-		return Move{}, ErrInvalid
+	assets, assetErr := s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])
+	if assetErr != nil {
+		return Move{}, assetErr
 	}
 	for _, m := range s.db.Moves {
 		if (m.State == "waiting_destination" || m.State == "waiting_source_delete" || m.State == "deleting_source") && m.SourceID == in.SourceID && m.SourcePath == in.SourcePath {
@@ -157,9 +265,12 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if e != nil {
 		return Move{}, e
 	}
-	if a.Translation != nil {
+	if a.Translation != nil && db.Version < 5 {
 		// Old binaries must refuse stores containing these new move invariants.
 		db.Version = 5
+	}
+	if len(assets) > 0 && db.Version < 6 {
+		db.Version = 6
 	}
 	id, e := randomID()
 	if e != nil {
@@ -168,7 +279,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if db.Moves == nil {
 		db.Moves = map[string]Move{}
 	}
-	m := Move{ID: id, SourceID: in.SourceID, SourcePath: in.SourcePath, SourceRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, SHA: rev.SHA, TranslationFingerprint: translationFingerprint(a.Translation), State: "waiting_destination", Created: time.Now().UTC().Format(time.RFC3339Nano)}
+	m := Move{ID: id, SourceID: in.SourceID, SourcePath: in.SourcePath, SourceRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, SHA: rev.SHA, TranslationFingerprint: translationFingerprint(a.Translation), Assets: assets, State: "waiting_destination", Created: time.Now().UTC().Format(time.RFC3339Nano)}
 	if src.ConnectionID != "" {
 		conn := db.Connections[src.ConnectionID]
 		m.SourceConnectionID, m.SourceRepositoryID, m.SourceBranch = src.ConnectionID, conn.RepositoryID, conn.Branch
@@ -247,7 +358,7 @@ func reconcileMoves(db *Database) {
 		}
 		target, exists := db.Articles[m.DestinationID+"/"+m.DestinationPath]
 		dst, dstOK := db.Sources[m.DestinationID]
-		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) {
+		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || !assetsPresent(dst, m.Assets) {
 			m.State = "destination_changed"
 			db.Moves[id] = m
 			continue

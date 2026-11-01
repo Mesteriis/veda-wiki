@@ -19,7 +19,7 @@ func programSource(t *testing.T, s *Store, id, visibility string) {
 }
 
 func TestOldBinaryRejectsTranslatedMoveStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_BINARY")
+	old := os.Getenv("VEDA_OLD_V5_BINARY")
 	if old == "" {
 		t.Skip("old binary not provided")
 	}
