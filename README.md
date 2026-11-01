@@ -29,9 +29,9 @@ The first start creates `.veda/` (0700), `state.json` on first write and an
 directory; never add it to Git. The process holds an exclusive writer lock.
 One process owns one data directory. There is no multi-process database support.
 
-The current private reading/writing path is the authenticated REST API or MCP.
-The browser has no login UI, does not receive the owner key, and cannot edit
-articles. Do not expose the loopback service remotely until HTTPS and a suitable
+The browser can sign in with the separate reader key to view private content;
+it cannot edit articles. See [browser access](docs/browser-access.md). Authenticated
+REST and MCP remain the writing paths. Do not expose the loopback service remotely until HTTPS and a suitable
 authentication boundary are configured. Host validation remains mandatory.
 
 ## API

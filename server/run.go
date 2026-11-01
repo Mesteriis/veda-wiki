@@ -33,8 +33,13 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8080", "API and viewer address")
 	public := flag.String("public-listen", "127.0.0.1:8081", "Public-only address")
 	hosts := flag.String("allowed-hosts", "localhost,127.0.0.1,::1", "Allowed HTTP Host names")
+	tlsCert := flag.String("tls-cert", "", "TLS certificate for the private listener")
+	tlsKey := flag.String("tls-key", "", "TLS private key for the private listener")
 	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
 	flag.Parse()
+	if (*tlsCert == "") != (*tlsKey == "") {
+		log.Fatal("both tls-cert and tls-key are required")
+	}
 	if *interval < 5*time.Second || *interval > time.Hour {
 		log.Fatal("invalid sync interval")
 	}
@@ -82,17 +87,22 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	manager := newSyncManager(store, newGitHubClient())
+	sessions := &readerSessions{}
 	go manager.Run(ctx, *interval)
 	errors := make(chan error, 2)
 	serve := func(l net.Listener, publicOnly bool) {
-		server := &http.Server{Handler: Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList, Sync: manager}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+		server := &http.Server{Handler: Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 		go func() {
 			<-ctx.Done()
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			server.Shutdown(shutdown)
 		}()
-		errors <- server.Serve(l)
+		if !publicOnly && *tlsCert != "" {
+			errors <- server.ServeTLS(l, *tlsCert, *tlsKey)
+		} else {
+			errors <- server.Serve(l)
+		}
 	}
 	log.Printf("VEDA listening on %s; public on %s; owner key saved to data directory (not printed)", *listen, *public)
 	go serve(publicListener, true)
