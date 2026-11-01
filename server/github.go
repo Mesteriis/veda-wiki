@@ -355,6 +355,49 @@ func (g *GitHubClient) blob(ctx context.Context, repo, sha, token string) ([]byt
 	}
 	return data, nil
 }
+
+// updateBranch uses an exact old-head precondition; REST's non-force update
+// alone also accepts a branch rewound to an ancestor of the prepared commit.
+func (g *GitHubClient) updateBranch(ctx context.Context, repo, branch, before, after, token string) error {
+	parts := strings.Split(repo, "/")
+	if len(parts) != 2 || !validBranch(branch) || !commitID.MatchString(before) || !commitID.MatchString(after) {
+		return ErrInvalid
+	}
+	var lookup struct {
+		Data struct {
+			Repository *struct {
+				ID string `json:"id"`
+			} `json:"repository"`
+		} `json:"data"`
+		Errors []json.RawMessage `json:"errors"`
+	}
+	query := `query($owner:String!, $name:String!) { repository(owner:$owner, name:$name) { id } }`
+	if err := g.call(ctx, "POST", "/graphql", token, map[string]any{"query": query, "variables": map[string]string{"owner": parts[0], "name": parts[1]}}, &lookup); err != nil {
+		return err
+	}
+	if len(lookup.Errors) != 0 || lookup.Data.Repository == nil || lookup.Data.Repository.ID == "" {
+		return &remoteError{Code: "repository_unavailable"}
+	}
+	var result struct {
+		Data struct {
+			UpdateRefs *struct {
+				ClientMutationID *string `json:"clientMutationId"`
+			} `json:"updateRefs"`
+		} `json:"data"`
+		Errors []json.RawMessage `json:"errors"`
+	}
+	mutation := `mutation($input:UpdateRefsInput!) { updateRefs(input:$input) { clientMutationId } }`
+	input := map[string]any{"repositoryId": lookup.Data.Repository.ID, "refUpdates": []map[string]any{{"name": "refs/heads/" + branch, "beforeOid": before, "afterOid": after, "force": false}}}
+	if err := g.call(ctx, "POST", "/graphql", token, map[string]any{"query": mutation, "variables": map[string]any{"input": input}}, &result); err != nil {
+		return err
+	}
+	// GraphQL may return errors alongside HTTP 200. Leave the prepared intent
+	// intact: a later complete pull must resolve an uncertain result.
+	if len(result.Errors) != 0 || result.Data.UpdateRefs == nil {
+		return &remoteError{Code: "upstream_conflict"}
+	}
+	return nil
+}
 func (g *GitHubClient) push(ctx context.Context, repo, branch, base, treeSHA, p, content, token string, prepare func(string) error) (string, error) {
 	var blob struct {
 		SHA string `json:"sha"`
@@ -384,7 +427,7 @@ func (g *GitHubClient) push(ctx context.Context, repo, branch, base, treeSHA, p,
 	if e := prepare(commit.SHA); e != nil {
 		return "", e
 	}
-	if e := g.call(ctx, "PATCH", "/repos/"+repo+"/git/refs/heads/"+url.PathEscape(branch), token, map[string]any{"sha": commit.SHA, "force": false}, &struct{}{}); e != nil {
+	if e := g.updateBranch(ctx, repo, branch, base, commit.SHA, token); e != nil {
 		return "", e
 	}
 	return commit.SHA, nil
@@ -443,7 +486,7 @@ func (g *GitHubClient) remove(ctx context.Context, repo, branch, base string, so
 	if e := prepare(commit.SHA); e != nil {
 		return "", e
 	}
-	if e := g.call(ctx, "PATCH", "/repos/"+repo+"/git/refs/heads/"+url.PathEscape(branch), token, map[string]any{"sha": commit.SHA, "force": false}, &struct{}{}); e != nil {
+	if e := g.updateBranch(ctx, repo, branch, base, commit.SHA, token); e != nil {
 		return "", e
 	}
 	return commit.SHA, nil

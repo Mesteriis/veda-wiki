@@ -142,7 +142,8 @@ The destination and durable move record are created in one transaction. For a
 local target, the source is tombstoned in that transaction; for a connected
 target, the source remains visible until a later pull observes the queued
 revision in the same repository and branch. For a GitHub source, VEDA rechecks
-the destination and source tree, prepares a non-force deletion commit and
+the destination and source tree, prepares a non-force deletion commit with an
+exact expected branch head and
 waits for a complete pull to observe source removal. An outage or write-disabled target
 leaves the move waiting. If either article changes, its source identity changes,
 or a destination conflict appears, the source stays and the move reports

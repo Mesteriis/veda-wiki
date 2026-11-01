@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,7 +18,17 @@ func connectedMoveFixtures(t *testing.T) (*Store, *SyncManager, *fakeGitHub, *fa
 	one.modify(func() { one.private = true })
 	two.modify(func() { two.name = "org/second"; two.repoID = 42; two.private = true })
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
+		second := strings.HasPrefix(r.URL.Path, "/repos/org/second")
+		if r.URL.Path == "/graphql" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "bad request", 400)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			second = bytes.Contains(body, []byte(`"name":"second"`)) || bytes.Contains(body, []byte(`fixture-node-org/second`))
+		}
+		if second {
 			two.serve(w, r)
 		} else {
 			one.serve(w, r)

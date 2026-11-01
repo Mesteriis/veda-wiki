@@ -42,12 +42,21 @@ func TestGitHubRemovePreparesBeforeNonForceUpdate(t *testing.T) {
 						return
 					}
 					jsonResponse(w, 200, map[string]string{"sha": commit})
-				case "/repos/org/repo/git/refs/heads/main":
+				case "/graphql":
+					query, _ := body["query"].(string)
+					if strings.HasPrefix(query, "query") {
+						jsonResponse(w, 200, map[string]any{"data": map[string]any{"repository": map[string]string{"id": "fixture-node"}}})
+						return
+					}
 					patched = true
-					if !prepared || body["sha"] != commit || body["force"] != false {
+					variables := body["variables"].(map[string]any)
+					input := variables["input"].(map[string]any)
+					updates := input["refUpdates"].([]any)
+					update := updates[0].(map[string]any)
+					if !prepared || input["repositoryId"] != "fixture-node" || update["beforeOid"] != base || update["afterOid"] != commit || update["name"] != "refs/heads/main" || update["force"] != false {
 						t.Error("unsafe reference update")
 					}
-					jsonResponse(w, 200, map[string]string{})
+					jsonResponse(w, 200, map[string]any{"data": map[string]any{"updateRefs": map[string]any{"clientMutationId": nil}}})
 				default:
 					t.Errorf("unexpected request %s", r.URL.Path)
 				}
@@ -116,6 +125,54 @@ func TestGitHubRemoveRejectsConcurrentBranchUpdate(t *testing.T) {
 	})
 	if err == nil || f.contents()["docs/a.md"] != "# Remote edit" || f.writeCount() != 0 {
 		t.Fatalf("concurrent edit overwritten: %v", err)
+	}
+}
+
+func TestGitHubRemoveRejectsBranchRewind(t *testing.T) {
+	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Old", "docs/other.md": "# Old other"})
+	ancestor := f.head
+	f.advance(map[string]string{"docs/a.md": "# Source", "docs/other.md": "# New other"})
+	client := f.client()
+	head, err := client.head(context.Background(), f.name, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := client.tree(context.Background(), f.name, head, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.remove(context.Background(), f.name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error {
+		f.mu.Lock()
+		f.head = ancestor
+		f.mu.Unlock()
+		return nil
+	})
+	if err == nil || f.writeCount() != 0 || f.contents()["docs/other.md"] != "# Old other" {
+		t.Fatalf("rewound branch was modified: %v", err)
+	}
+}
+
+func TestGitHubPushRejectsBranchRewind(t *testing.T) {
+	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Old"})
+	ancestor := f.head
+	f.advance(map[string]string{"docs/a.md": "# New"})
+	client := f.client()
+	head, err := client.head(context.Background(), f.name, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := client.tree(context.Background(), f.name, head, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.push(context.Background(), f.name, "main", head, tree.SHA, "docs/a.md", "# Local", "", func(string) error {
+		f.mu.Lock()
+		f.head = ancestor
+		f.mu.Unlock()
+		return nil
+	})
+	if err == nil || f.writeCount() != 0 || f.contents()["docs/a.md"] != "# Old" {
+		t.Fatalf("rewound branch was modified: %v", err)
 	}
 }
 

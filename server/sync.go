@@ -644,7 +644,7 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			return e
 		}
 		// Do not optimistically acknowledge the remote update. The next pull must
-		// observe the actual blob, which also recovers a lost PATCH response.
+		// observe the actual blob, which also recovers a lost update response.
 		m.store.setJob(job.ID, "prepared", "", "", commit)
 		m.Wake()
 		return nil // one commit per source per pass; refresh before the next write

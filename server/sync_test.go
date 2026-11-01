@@ -125,6 +125,50 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	route := strings.TrimPrefix(r.URL.Path, "/repos/"+f.name)
 	switch {
+	case r.URL.Path == "/graphql" && r.Method == "POST":
+		var request struct {
+			Query     string `json:"query"`
+			Variables struct {
+				Input struct {
+					RepositoryID string `json:"repositoryId"`
+					Updates      []struct {
+						Name   string `json:"name"`
+						Before string `json:"beforeOid"`
+						After  string `json:"afterOid"`
+						Force  bool   `json:"force"`
+					} `json:"refUpdates"`
+				} `json:"input"`
+			} `json:"variables"`
+		}
+		if json.NewDecoder(r.Body).Decode(&request) != nil {
+			http.Error(w, "invalid request", 400)
+			return
+		}
+		if strings.HasPrefix(request.Query, "query") {
+			respond(map[string]any{"data": map[string]any{"repository": map[string]string{"id": "fixture-node-" + f.name}}})
+			return
+		}
+		updates := request.Variables.Input.Updates
+		if request.Variables.Input.RepositoryID != "fixture-node-"+f.name || len(updates) != 1 {
+			http.Error(w, "invalid mutation", 400)
+			return
+		}
+		u := updates[0]
+		f.force = f.force || u.Force
+		c, ok := f.commits[u.After]
+		if f.reject || !ok || u.Name != "refs/heads/main" || u.Before != f.head || c.parent != u.Before || u.Force {
+			http.Error(w, "head changed", 422)
+			return
+		}
+		f.head = u.After
+		f.writes++
+		if f.loseResponse {
+			f.loseResponse = false
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.Close()
+			return
+		}
+		respond(map[string]any{"data": map[string]any{"updateRefs": map[string]any{"clientMutationId": nil}}})
 	case r.URL.Path == "/repos/"+f.name:
 		respond(map[string]any{"id": f.repoID, "full_name": f.name, "private": f.private, "visibility": map[bool]string{false: "public", true: "private"}[f.private], "default_branch": "main", "permissions": map[string]bool{"push": true}})
 	case route == "/git/ref/heads/main":

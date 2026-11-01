@@ -28,7 +28,10 @@ automatically guessed. There is currently no browser Connect flow.
 
 The worker polls every five minutes by default (`--sync-interval`, 5 seconds
 to 1 hour). Local writes to connected sources are committed with an outbox
-entry, and pushed as non-force commits after pulling and conflict checks.
+entry, and pushed as non-force commits after pulling and conflict checks. The
+GitHub reference update requires the exact previously observed branch head;
+an intervening branch rewind is rejected as well as an ordinary concurrent push.
+If its response is uncertain, a subsequent complete pull resolves the outbox.
 Status, retry and pause are available through the CLI and owner REST API.
 Conflicts retain both versions. The worker checks visibility before import and
 private writes; public reads fail closed if the visibility proof is older than
