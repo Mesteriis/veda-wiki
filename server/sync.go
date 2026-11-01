@@ -50,9 +50,17 @@ func (m *SyncManager) Run(ctx context.Context, interval time.Duration) {
 func (m *SyncManager) Once(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, c := range m.store.connections() {
+	for _, initial := range m.store.connections() {
 		if ctx.Err() != nil {
 			return
+		}
+		// A previous source may have put this account on rate-limit cooldown.
+		// Reload rather than using the snapshot taken before the loop.
+		m.store.mu.RLock()
+		c, exists := m.store.db.Connections[initial.ID]
+		m.store.mu.RUnlock()
+		if !exists {
+			continue
 		}
 		if c.Paused {
 			continue

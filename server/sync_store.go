@@ -462,6 +462,24 @@ func (s *Store) connectionStatusRetry(id, state, verification, code string, info
 	}
 	db := s.clone()
 	db.Connections[id] = c
+	if code == "rate_limited" {
+		for otherID, other := range db.Connections {
+			if otherID == id || other.AccountID != c.AccountID {
+				continue
+			}
+			previous, _ := time.Parse(time.RFC3339Nano, other.NextAttempt)
+			next, _ := time.Parse(time.RFC3339Nano, c.NextAttempt)
+			if previous.After(next) && other.LastError == "rate_limited" {
+				next = previous
+			}
+			other.NextAttempt = next.UTC().Format(time.RFC3339Nano)
+			other.LastError = "rate_limited"
+			if !other.Paused {
+				other.State = "error"
+			}
+			db.Connections[otherID] = other
+		}
+	}
 	if info != nil && *info.Private {
 		if src, found := db.Sources[id]; found {
 			src.Visibility = "private"
@@ -554,7 +572,9 @@ func (s *Store) pauseConnection(id string, paused bool) error {
 		c.Verification = "unknown"
 	} else {
 		c.State = "pending"
-		c.NextAttempt = ""
+		if c.LastError != "rate_limited" {
+			c.NextAttempt = ""
+		}
 	}
 	db := s.clone()
 	db.Connections[id] = c

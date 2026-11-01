@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -28,6 +30,63 @@ func TestGitHubRateLimitResponseAndDeadline(t *testing.T) {
 	now := time.Now()
 	if got := githubRetryAt(http.Header{}, now); got.Sub(now) != time.Minute {
 		t.Fatalf("missing headers should wait a minute: %v", got.Sub(now))
+	}
+}
+
+func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
+	s := testStore(t)
+	one := newFakeGitHub(t, map[string]string{"docs/a.md": "# A"})
+	two := newFakeGitHub(t, map[string]string{"docs/b.md": "# B"})
+	two.modify(func() { two.name = "org/second"; two.repoID = 42 })
+	var limited atomic.Bool
+	var secondCalls atomic.Int32
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
+			if limited.Load() {
+				secondCalls.Add(1)
+			}
+			two.serve(w, r)
+			return
+		}
+		if limited.Load() {
+			w.Header().Set("Retry-After", "300")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		one.serve(w, r)
+	}))
+	defer gateway.Close()
+	m := newSyncManager(s, &GitHubClient{base: gateway.URL, http: gateway.Client()})
+	for _, in := range []connectRequest{{ID: "one", Repository: "org/handbook"}, {ID: "two", Repository: "org/second"}} {
+		if _, err := m.connect(context.Background(), in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	limited.Store(true)
+	m.Once(context.Background())
+	if secondCalls.Load() != 0 {
+		t.Fatal("second source called GitHub during shared cooldown")
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range reopened.connections() {
+		if c.LastError != "rate_limited" {
+			t.Fatalf("missing cooldown for %s", c.ID)
+		}
+		if err := reopened.retryConnection(c.ID); err != ErrConflict {
+			t.Fatalf("manual retry of %s bypassed cooldown", c.ID)
+		}
+	}
+	if err := reopened.pauseConnection("two", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.pauseConnection("two", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.retryConnection("two"); err != ErrConflict {
+		t.Fatal("pause bypassed cooldown", err)
 	}
 }
 
