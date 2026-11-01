@@ -33,6 +33,80 @@ func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
 		t.Fatal("move history not durable", e)
 	}
 }
+
+func TestConnectedSourceMoveWaitsForRemoteDeletion(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	manager := connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil || move.State != "waiting_source_delete" {
+		t.Fatalf("move: %#v %v", move, err)
+	}
+	if _, err := s.article("handbook", "README.md", false); err != nil || f.contents()["README.md"] != "# Source" {
+		t.Fatal("source was deleted before remote deletion", err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil || reopened.db.Version != 3 || reopened.moves()[0].SourceRepositoryID != f.repoID {
+		t.Fatal("move state was not durable", err)
+	}
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Edited externally"})
+	manager.Once(context.Background())
+	if s.moves()[0].State != "source_changed" {
+		t.Fatal("upstream edit did not block deletion", s.moves())
+	}
+	if got, err := s.article("handbook", "README.md", false); err != nil || got.Versions[len(got.Versions)-1].Text != "# Edited externally" {
+		t.Fatal("upstream edit lost", err)
+	}
+}
+
+func TestConnectedSourceMoveCancellationKeepsCopies(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.cancelMove(move.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.article("handbook", "README.md", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.article("local", "copy.md", false); err != nil {
+		t.Fatal(err)
+	}
+	if f.contents()["README.md"] != "# Source" {
+		t.Fatal("remote source deleted")
+	}
+}
+
+func TestConnectedSourceMoveRejectsReadOnlyOrUnsyncedSource(t *testing.T) {
+	for _, write := range []bool{false, true} {
+		s := testStore(t)
+		source(t, s, "local", "private")
+		f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+		connectFixture(t, s, f, write)
+		if write {
+			if _, err := s.put("handbook", "README.md", "# Local edit", 1); err != nil {
+				t.Fatal(err)
+			}
+		}
+		expected := 1
+		if write {
+			expected = 2
+		}
+		_, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: expected, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+		if err != ErrConflict {
+			t.Fatalf("write=%v: expected conflict, got %v", write, err)
+		}
+		if _, err := s.article("local", "copy.md", false); err != ErrNotFound {
+			t.Fatal("unexpected destination", err)
+		}
+	}
+}
 func TestMoveWaitsForObservedRemoteDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
