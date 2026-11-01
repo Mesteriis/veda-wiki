@@ -54,6 +54,14 @@ func protectedMarkdown(value string) []string {
 			result = append(result, "image:"+string(n.Destination))
 		case *ast.AutoLink:
 			result = append(result, "autolink:"+string(n.URL(source)))
+		case *ast.RawHTML:
+			result = append(result, "html-inline:"+string(n.Segments.Value(source)))
+		case *ast.HTMLBlock:
+			value := string(n.Lines().Value(source))
+			if n.HasClosure() {
+				value += string(n.ClosureLine.Value(source))
+			}
+			result = append(result, "html-block:"+value)
 		}
 		return ast.WalkContinue, nil
 	})

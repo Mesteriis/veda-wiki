@@ -15,7 +15,10 @@ owner can read each original and submit via `POST /api/v1/articles/translation` 
 with `source_id`, `path`, `expected_revision`, `original_sha256`, `text` and
 optional `confirm_publication`. The original revision and SHA must still match;
 unresolved conflicts block submission. Code blocks, inline code, link and image
-destinations must be retained in the same order. This structural check cannot
+destinations and raw HTML fragments must be retained in the same order. HTML
+blocks are preserved in full, including any prose inside them; prose inside an
+HTML block cannot currently be translated through this submission path. This
+structural check cannot
 prove translation accuracy, preserve every kind of Markdown construct, or
 replace human review.
 

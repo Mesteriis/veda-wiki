@@ -5,6 +5,29 @@ import (
 	"testing"
 )
 
+func TestTranslationPreservesRawHTML(t *testing.T) {
+	s := testStore(t)
+	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
+		t.Fatal(e)
+	}
+	original := "# Guide\n\nSee <a href=\"https://example.org\">the guide</a>.\n\n<!-- keep this -->\n\n<div>Original block</div>\n"
+	rev, e := s.put("program", "docs/guide.md", original, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	in := translationRequest{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Руководство\n\nСмотрите <a href=\"https://example.org\">руководство</a>.\n\n<!-- keep this -->\n\n<div>Original block</div>\n"}
+	for _, change := range [][2]string{{"https://example.org", "https://other.example"}, {"keep this", "changed"}, {"Original block", "Изменено"}} {
+		broken := in
+		broken.Text = strings.Replace(in.Text, change[0], change[1], 1)
+		if _, e = s.submitTranslation(broken); e != ErrInvalid {
+			t.Fatalf("changed HTML %q accepted: %v", change[0], e)
+		}
+	}
+	if _, e = s.submitTranslation(in); e != nil {
+		t.Fatalf("preserved HTML rejected: %v", e)
+	}
+}
+
 func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 	s := testStore(t)
 	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
