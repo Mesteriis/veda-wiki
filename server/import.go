@@ -606,6 +606,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	src.ImportGeneration = generation
 	result.Generation = src.ImportGeneration
 	db.Sources[src.ID] = src
+	reconcileMoves(&db)
 	if proof != nil {
 		conn := db.Connections[proof.ConnectionID]
 		conn.LastPull = batch.Commit

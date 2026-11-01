@@ -70,6 +70,7 @@ type Database struct {
 	Accounts    map[string]GitHubAccount    `json:"github_accounts,omitempty"`
 	Connections map[string]GitHubConnection `json:"github_connections,omitempty"`
 	Outbox      map[string]SyncJob          `json:"outbox,omitempty"`
+	Moves       map[string]Move             `json:"moves,omitempty"`
 }
 
 // One server process owns the data directory. All writes are serialized and
@@ -115,7 +116,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if s.db.Version != 1 || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -126,6 +127,12 @@ func openStore(dir string) (*Store, error) {
 	}
 	if s.db.Outbox == nil {
 		s.db.Outbox = map[string]SyncJob{}
+	}
+	if s.db.Moves == nil {
+		s.db.Moves = map[string]Move{}
+	}
+	if s.db.Version == 1 && len(s.db.Moves) > 0 {
+		return nil, errors.New("move records require store version 2")
 	}
 	for id, a := range s.db.Accounts {
 		if !identifier.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !githubPart.MatchString(a.Login) || len(a.SecretRef) != 32 {
@@ -211,6 +218,28 @@ func openStore(dir string) (*Store, error) {
 			}
 		}
 	}
+	for id, m := range s.db.Moves {
+		source, srcOK := s.db.Articles[m.SourceID+"/"+m.SourcePath]
+		target, dstOK := s.db.Articles[m.DestinationID+"/"+m.DestinationPath]
+		if len(id) != 32 || id != m.ID || m.SourceID == m.DestinationID || !srcOK || !dstOK || m.SourceRevision < 1 || m.SourceRevision > len(source.Versions) || len(target.Versions) < 1 || source.Versions[m.SourceRevision-1].SHA != m.SHA || target.Versions[0].SHA != m.SHA {
+			return nil, errors.New("invalid stored move")
+		}
+		if _, e := hex.DecodeString(id); e != nil {
+			return nil, errors.New("invalid stored move")
+		}
+		if m.DestinationConnectionID == "" {
+			if m.DestinationRepositoryID != 0 || m.DestinationBranch != "" {
+				return nil, errors.New("invalid move destination identity")
+			}
+		} else if !identifier.MatchString(m.DestinationConnectionID) || m.DestinationRepositoryID < 1 || !validBranch(m.DestinationBranch) {
+			return nil, errors.New("invalid move destination identity")
+		}
+		switch m.State {
+		case "waiting_destination", "complete", "source_changed", "destination_changed", "cancelled":
+		default:
+			return nil, errors.New("invalid move state")
+		}
+	}
 	for id, j := range s.db.Outbox {
 		if j.Visibility == "" {
 			j.Visibility = "private"
@@ -286,6 +315,10 @@ func (s *Store) clone() Database {
 	for k, v := range s.db.Outbox {
 		db.Outbox[k] = v
 	}
+	db.Moves = make(map[string]Move, len(s.db.Moves))
+	for k, v := range s.db.Moves {
+		db.Moves[k] = v
+	}
 	for k, v := range s.db.Sources {
 		db.Sources[k] = v
 	}
@@ -354,6 +387,7 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 		article.PublishedLocal = false
 	}
 	db.Articles[key] = article
+	reconcileMoves(&db)
 	if src.ConnectionID != "" {
 		enqueueWrite(&db, article, rev)
 	}

@@ -100,6 +100,7 @@ func (s *Store) submitTranslation(in translationRequest) (Translation, error) {
 	a.Translation = &tr
 	db := s.clone()
 	db.Articles[key] = a
+	reconcileMoves(&db)
 	if e := s.commit(db); e != nil {
 		return Translation{}, e
 	}

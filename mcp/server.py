@@ -107,6 +107,14 @@ def make_server(client):
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "destination_id": string, "destination_path": string, "confirm_publication": {"type": "boolean"}},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
+        "veda_moves": ("List move operations and their status; owner only.", {
+            "limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0}}, []),
+        "veda_cancel_move": ("Cancel a waiting move, preserving both copies; an already queued destination write may still finish.", {
+            "id":string,"confirm_cancel":{"type":"boolean","const":True}}, ["id","confirm_cancel"]),
+        "veda_move_article": ("Move a standalone local article after explicit user instruction. Linked assets, imported or GitHub-backed sources are not supported. Source remains until connected destination is observed.", {
+            "source_id":string,"source_path":string,"expected_revision":{"type":"integer","minimum":1},
+            "destination_id":string,"destination_path":string,"confirm_move":{"type":"boolean","const":True},"confirm_publication":{"type":"boolean"}},
+            ["source_id","source_path","expected_revision","destination_id","destination_path","confirm_move"]),
         "veda_translation_needed": ("List program documentation awaiting Russian translation; originals remain in veda_read.", {
             "limit": {"type":"integer","minimum":1,"maximum":100}, "offset":{"type":"integer","minimum":0}}, []),
         "veda_translate_article": ("Submit a Russian translation of a specific original revision; preserve code and links. Public publication needs explicit approval.", {
@@ -166,6 +174,12 @@ def make_server(client):
                 result = await asyncio.to_thread(client.request, method, "/api/v1/articles", arguments)
             elif name == "veda_copy_article":
                 result = await asyncio.to_thread(client.request, "POST", "/api/v1/articles/copy", arguments)
+            elif name == "veda_moves":
+                result = await asyncio.to_thread(client.request, "GET", "/api/v1/moves?" + urlencode(arguments))
+            elif name == "veda_cancel_move":
+                result = await asyncio.to_thread(client.request, "POST", "/api/v1/moves/cancel", arguments)
+            elif name == "veda_move_article":
+                result = await asyncio.to_thread(client.request, "POST", "/api/v1/moves", arguments)
             elif name == "veda_translation_needed":
                 result = await asyncio.to_thread(client.request, "GET", "/api/v1/articles/translation-needed?" + urlencode(arguments))
             elif name == "veda_translate_article":

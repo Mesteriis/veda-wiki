@@ -19,45 +19,44 @@ type copyRequest struct {
 	ConfirmPublication bool   `json:"confirm_publication"`
 }
 
-func (s *Store) copyArticle(in copyRequest) (Revision, error) {
+// Caller holds the store mutex. The returned transaction is not yet committed.
+func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	if in.ExpectedRevision < 1 || in.SourceID == in.DestinationID {
-		return Revision{}, ErrInvalid
+		return Database{}, Revision{}, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	source, ok := s.db.Sources[in.SourceID]
 	if !ok {
-		return Revision{}, ErrNotFound
+		return Database{}, Revision{}, ErrNotFound
 	}
 	destination, ok := s.db.Sources[in.DestinationID]
 	if !ok {
-		return Revision{}, ErrNotFound
+		return Database{}, Revision{}, ErrNotFound
 	}
 	if !articlePath(in.SourcePath, source.Kind) || !articlePath(in.DestinationPath, destination.Kind) {
-		return Revision{}, ErrInvalid
+		return Database{}, Revision{}, ErrInvalid
 	}
 	a, ok := s.db.Articles[in.SourceID+"/"+in.SourcePath]
 	if !ok || a.Deleted {
-		return Revision{}, ErrNotFound
+		return Database{}, Revision{}, ErrNotFound
 	}
 	if len(a.Versions) != in.ExpectedRevision {
-		return Revision{}, ErrConflict
+		return Database{}, Revision{}, ErrConflict
 	}
 	for _, c := range a.Conflicts {
 		if c.Resolution == "" {
-			return Revision{}, ErrConflict
+			return Database{}, Revision{}, ErrConflict
 		}
 	}
 	key := in.DestinationID + "/" + in.DestinationPath
 	if _, exists := s.db.Articles[key]; exists {
-		return Revision{}, ErrConflict
+		return Database{}, Revision{}, ErrConflict
 	}
 	rev := a.Versions[len(a.Versions)-1]
 	now := time.Now()
 	targetPublic := sourcePublic(s.db, destination, now)
 	sourcePublicRevision := sourcePublic(s.db, source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
 	if targetPublic && !sourcePublicRevision && (!in.ConfirmPublication || secretContent.MatchString(rev.Text)) {
-		return Revision{}, ErrInvalid
+		return Database{}, Revision{}, ErrInvalid
 	}
 	copied := Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
 	b := Article{SourceID: in.DestinationID, Path: in.DestinationPath, Versions: []Revision{copied}, CopiedFrom: &CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}}
@@ -72,8 +71,17 @@ func (s *Store) copyArticle(in copyRequest) (Revision, error) {
 	if destination.ConnectionID != "" {
 		enqueueWrite(&db, b, copied)
 	}
-	if err := s.commit(db); err != nil {
+	return db, copied, nil
+}
+func (s *Store) copyArticle(in copyRequest) (Revision, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	db, revision, err := s.prepareCopy(in)
+	if err != nil {
 		return Revision{}, err
 	}
-	return copied, nil
+	if err = s.commit(db); err != nil {
+		return Revision{}, err
+	}
+	return revision, nil
 }

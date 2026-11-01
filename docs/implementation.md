@@ -13,7 +13,7 @@ an individual slice is not completion of the whole application.
 | Program docs/ only, no docs means skip | Originals and version-bound Russian translations stored separately; automatic translation worker pending |
 | GitHub App/account or explicit server token, repo-derived visibility | GitHub App/PAT and repository visibility implemented; live authenticated acceptance pending |
 | Background import/push, local availability during outages | Atomic import/conflicts and scheduled durable outbox implemented; live write acceptance pending |
-| Transfers between repositories with provenance and publication control | Copy and destination outbox implemented; source removal, asset transfer and complete move still pending |
+| Transfers between repositories with provenance and publication control | Revision-bound moves from standalone local sources wait for remote destination observation; GitHub source deletion and dependency transfer pending |
 | Private users/teams/agents and public browsing | Separate owner/read-only keys, local read-only socket, isolated public listener and read-only browser sessions; per-user scopes and admin Connect UI pending |
 | Agent context and the four client integrations | Context tools implemented; production clients not yet migrated to the standalone server |
 | Safe production migration, backup/rollback and restore acceptance | Current instance deliberately retained; standalone deployment/migration pending |
