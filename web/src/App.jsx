@@ -661,13 +661,23 @@ function GitHubConnect() {
     catch { setMessage("Не удалось завершить сеанс."); }
     finally { setBusy(false); }
   }
+  async function syncConnection(id) {
+    setBusy(true); setMessage("");
+    try {
+      await send("/api/admin/github/sync", { id });
+      setMessage("Синхронизация запланирована; ожидающие изменения также могут быть отправлены.");
+      refresh().catch(() => setMessage("Синхронизация запланирована, но состояние источников обновить не удалось."));
+    } catch { setMessage("Не удалось запланировать синхронизацию. Проверьте состояние источника и сеанс администратора."); }
+    finally { setBusy(false); }
+  }
   return <div className="github-connect reader-access">
     <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
     {status === false && <form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form>}
     {status === true && <>
       <form onSubmit={addAccount}><h3>Аккаунт GitHub</h3><label>Идентификатор<input name="id" required placeholder="personal" /></label><label>Способ подключения<select value={accountKind} onChange={(e) => setAccountKind(e.target.value)}><option value="app">GitHub App</option><option value="token">Токен</option></select></label>{accountKind === "app" ? <><label>App ID<input name="app_id" type="number" min="1" step="1" required /></label><label>Installation ID<input name="installation_id" type="number" min="1" step="1" required /></label><label>Приватный ключ App<textarea name="private_key" autoComplete="off" required rows="4" /></label></> : <label>Токен<input name="token" type="password" autoComplete="off" required /></label>}<button disabled={busy}>Сохранить аккаунт</button></form>
       <form onSubmit={connect}><h3>Подключить репозиторий</h3><label>Идентификатор источника<input name="id" required placeholder="handbook" /></label><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" defaultValue=""><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><button disabled={busy}>Подключить</button></form>
-      <h3>Источники</h3>{connections.length ? <ul>{connections.map((c) => <li key={c.id}>{c.id}: {c.repository} · {c.private ? "приватный" : "публичный"} · {c.state}{c.last_error ? ` (${c.last_error})` : ""}</li>)}</ul> : <p>Репозитории ещё не подключены.</p>}
+      <h3>Источники</h3>{connections.length ? <ul>{connections.map((c) => <li key={c.id}>{c.id}: {c.repository} · {c.private ? "приватный" : "публичный"} · {c.state}{c.last_error ? ` (${c.last_error})` : ""} <button type="button" disabled={busy || c.paused} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button></li>)}</ul> : <p>Репозитории ещё не подключены.</p>}
+      <p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена.</p>
       <button onClick={logout} disabled={busy}>Выйти из управления</button>
     </>}
     {message && <p role="status">{message}</p>}

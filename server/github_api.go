@@ -7,14 +7,14 @@ import (
 	"strings"
 )
 
-// Browser administration is restricted to account registration and source
-// connections. The cookie cannot authorize the owner API or article writes.
+// Browser administration is restricted to GitHub account and connection
+// management. The cookie cannot authorize the owner API or article writes.
 func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
 	if w.Public || w.Store == nil || !w.AdminSessions.validCookie(r, adminSessionCookie) {
 		http.NotFound(rw, r)
 		return
 	}
-	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" {
+	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" && r.URL.Path != "/api/admin/github/sync" {
 		http.NotFound(rw, r)
 		return
 	}

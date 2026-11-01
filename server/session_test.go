@@ -159,6 +159,27 @@ func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	if r = request("POST", "/api/admin/github/connections", `{"id":"wiki","repository":"org/handbook","account_id":"fixture","write":true}`, "http://localhost:8080", cookie, false, "127.0.0.1:1"); r.Code != 202 {
 		t.Fatal("connection", r.Code)
 	}
+	if request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://localhost:8080", readerCookie, false, "127.0.0.1:1").Code != 404 {
+		t.Fatal("reader cookie scheduled sync")
+	}
+	if request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://evil.example", cookie, false, "127.0.0.1:1").Code != 403 {
+		t.Fatal("cross-origin sync accepted")
+	}
+	if request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://localhost:8080", cookie, true, "127.0.0.1:1").Code != 404 {
+		t.Fatal("public admin sync accepted")
+	}
+	if r = request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://localhost:8080", cookie, false, "127.0.0.1:1"); r.Code != 202 {
+		t.Fatal("admin sync not scheduled", r.Code)
+	}
+	if request("POST", "/api/admin/github/sync", `{"id":"missing"}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 404 {
+		t.Fatal("unknown connection scheduled")
+	}
+	if err := store.pauseConnection("wiki", true); err != nil {
+		t.Fatal(err)
+	}
+	if request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 409 {
+		t.Fatal("paused connection scheduled")
+	}
 	if request("POST", "/api/admin/session/logout", "", "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 200 {
 		t.Fatal("logout")
 	}
