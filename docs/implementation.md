@@ -14,7 +14,7 @@ an individual slice is not completion of the whole application.
 | GitHub App/account or explicit server token, repo-derived visibility | GitHub App/PAT and repository visibility implemented; live authenticated acceptance pending |
 | Background import/push, local availability during outages | Atomic import/conflicts and scheduled durable outbox implemented; live write acceptance pending |
 | Transfers between repositories with provenance and publication control | Not implemented |
-| Private users/teams/agents and public browsing | Separate owner and read-only keys and isolated public listener; per-user scopes, browser sessions and admin Connect UI pending |
+| Private users/teams/agents and public browsing | Separate owner and read-only keys and isolated public listener; read-only browser sessions implemented; per-user scopes and admin Connect UI pending |
 | Agent context and the four client integrations | Context tools implemented; production clients not yet migrated to the standalone server |
 | Safe production migration, backup/rollback and restore acceptance | Current instance deliberately retained; standalone deployment/migration pending |
 

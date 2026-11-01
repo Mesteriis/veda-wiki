@@ -556,6 +556,44 @@ function Results({ v }) {
     </Panel>
   );
 }
+function ReaderAccess() {
+  const [status, setStatus] = useState(null);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/session/status", { signal: controller.signal })
+      .then((r) => { if (!r.ok) throw Error(); return r.json(); })
+      .then((result) => setStatus(result.authenticated))
+      .catch((e) => { if (e.name !== "AbortError") setMessage("Вход доступен на приватном адресе через HTTPS или на этом компьютере."); });
+    return () => controller.abort();
+  }, []);
+  async function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const key = new FormData(form).get("key");
+    setMessage("");
+    try {
+      const response = await fetch("/api/session/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
+      form.reset();
+      if (!response.ok) throw Error();
+      window.location.reload();
+    } catch { setMessage("Не удалось войти. Проверьте ключ и адрес подключения."); }
+  }
+  async function logout() {
+    try {
+      const response = await fetch("/api/session/logout", { method: "POST" });
+      if (!response.ok) throw Error();
+      window.location.assign("/");
+    } catch { setMessage("Не удалось завершить сеанс."); }
+  }
+  return (
+    <div className="reader-access">
+      {status === true ? <><p>Приватное чтение включено. Сеанс действует до 8 часов.</p><button onClick={logout}>Выйти</button></> : status === false ?
+        <form onSubmit={submit}><p>Введите ключ чтения, чтобы открыть приватные статьи.</p><label>Ключ чтения<input name="key" type="password" autoComplete="off" required /></label><button type="submit">Войти</button></form> : null}
+      {message && <p role="alert">{message}</p>}
+    </div>
+  );
+}
 export function App() {
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
@@ -639,7 +677,7 @@ export function App() {
             <I name="x" />
           </button>
         </div>
-        <p>{descriptions[feature]?.[1]}</p>
+        {feature === "profile" ? <ReaderAccess /> : <p>{descriptions[feature]?.[1]}</p>}
       </dialog>
     </Features.Provider>
   );
