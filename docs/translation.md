@@ -18,6 +18,13 @@ destinations must be retained in the same order. This structural check cannot
 prove translation accuracy, preserve every kind of Markdown construct, or
 replace human review.
 
+Read-only MCP clients can use `veda_prepare_translation` to return an unsaved
+proposal bound to the current original revision and SHA. It accepts program
+`docs/` articles visible to that client and rejects a stale revision. It does
+not check translation quality or Markdown structure, save the draft, or grant
+publication approval. An authorized client must submit and validate it through
+the existing translation API. The tool does not translate text by itself.
+
 A translation visible to the public requires explicit publication approval;
 credential-like text is refused. A translation saved privately cannot become
 public automatically if visibility changes: it appears as `publication_review`

@@ -14,8 +14,8 @@ reader routes, including search, context and media; writes and owner metadata
 remain unavailable. Requests already in progress may finish after revocation.
 Existing owner, shared reader and Unix socket behavior remains unchanged. Keys
 have not yet been provisioned to the four agents. Use MCP
-`--reader-key-file /path/to/private-key` to expose the four read tools and the
-non-persistent proposal preparation tool;
+`--reader-key-file /path/to/private-key` to expose the four read tools and
+non-persistent update and translation proposal preparation tools;
 the file must be owned by the process user and inaccessible to group/other.
 Server authorization remains the enforcement boundary. The legacy reader
 socket grants all sources by default to clients without a bearer key. Start
