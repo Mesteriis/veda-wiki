@@ -73,6 +73,9 @@ func (s *Store) submitTranslation(in translationRequest) (Translation, error) {
 		return Translation{}, ErrInvalid
 	}
 	key := in.SourceID + "/" + in.Path
+	if moveDeletionLocks(s.db, in.SourceID, in.Path) {
+		return Translation{}, ErrConflict
+	}
 	a, ok := s.db.Articles[key]
 	if !ok || a.Deleted {
 		return Translation{}, ErrNotFound

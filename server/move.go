@@ -25,8 +25,30 @@ type Move struct {
 	DestinationBranch       string `json:"destination_branch,omitempty"`
 	SHA                     string `json:"sha256"`
 	State                   string `json:"state"`
+	PreparedDeletion        string `json:"prepared_deletion,omitempty"`
 	Created                 string `json:"created_at"`
 }
+
+// A prepared deletion may have reached GitHub even when the response was lost.
+// Keep both local copies stable until a complete remote pull resolves it.
+func moveDeletionLocks(db Database, sourceID, p string) bool {
+	for _, m := range db.Moves {
+		if m.State == "deleting_source" && ((m.SourceID == sourceID && m.SourcePath == p) || (m.DestinationID == sourceID && m.DestinationPath == p)) {
+			return true
+		}
+	}
+	return false
+}
+
+func moveDeletionLocksConnection(db Database, id string) bool {
+	for _, m := range db.Moves {
+		if m.State == "deleting_source" && (m.SourceConnectionID == id || m.DestinationConnectionID == id) {
+			return true
+		}
+	}
+	return false
+}
+
 type moveRequest struct {
 	SourceID           string `json:"source_id"`
 	SourcePath         string `json:"source_path"`
@@ -100,7 +122,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 		return Move{}, ErrInvalid
 	}
 	for _, m := range s.db.Moves {
-		if (m.State == "waiting_destination" || m.State == "waiting_source_delete") && m.SourceID == in.SourceID && m.SourcePath == in.SourcePath {
+		if (m.State == "waiting_destination" || m.State == "waiting_source_delete" || m.State == "deleting_source") && m.SourceID == in.SourceID && m.SourcePath == in.SourcePath {
 			return Move{}, ErrConflict
 		}
 	}
@@ -164,7 +186,7 @@ func (s *Store) moves() []Move {
 // Connected destinations must be observed in GitHub before source removal.
 func reconcileMoves(db *Database) {
 	for id, m := range db.Moves {
-		if m.State != "waiting_destination" && m.State != "waiting_source_delete" {
+		if m.State != "waiting_destination" && m.State != "waiting_source_delete" && m.State != "deleting_source" {
 			continue
 		}
 		source, exists := db.Articles[m.SourceID+"/"+m.SourcePath]
@@ -230,7 +252,9 @@ func reconcileMoves(db *Database) {
 			}
 		}
 		if m.SourceConnectionID != "" {
-			m.State = "waiting_source_delete"
+			if m.State != "deleting_source" {
+				m.State = "waiting_source_delete"
+			}
 			db.Moves[id] = m
 			continue
 		}

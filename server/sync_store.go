@@ -75,6 +75,11 @@ func (s *Store) sourceSyncState(id string) (string, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	state, code := "ready", ""
+	for _, move := range s.db.Moves {
+		if move.SourceConnectionID == id && (move.State == "waiting_source_delete" || move.State == "deleting_source") {
+			state, code = "pending", "move_pending"
+		}
+	}
 	for _, a := range s.db.Articles {
 		if a.SourceID == id {
 			for _, c := range a.Conflicts {
@@ -387,6 +392,9 @@ func (s *Store) setJob(id, state, code, prepared, observed string) error {
 func (s *Store) pauseConnection(id string, paused bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if moveDeletionLocksConnection(s.db, id) {
+		return ErrConflict
+	}
 	c, ok := s.db.Connections[id]
 	if !ok {
 		return ErrNotFound

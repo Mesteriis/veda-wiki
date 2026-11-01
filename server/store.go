@@ -247,6 +247,10 @@ func openStore(dir string) (*Store, error) {
 			if m.SourceConnectionID == "" || s.db.Version < 3 {
 				return nil, errors.New("invalid move state")
 			}
+		case "deleting_source":
+			if m.SourceConnectionID == "" || s.db.Version < 3 || !commitID.MatchString(m.PreparedDeletion) {
+				return nil, errors.New("invalid prepared deletion")
+			}
 		default:
 			return nil, errors.New("invalid move state")
 		}
@@ -379,6 +383,9 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 		return Revision{}, ErrInvalid
 	}
 	key := sourceID + "/" + p
+	if moveDeletionLocks(s.db, sourceID, p) {
+		return Revision{}, ErrConflict
+	}
 	article := s.db.Articles[key]
 	if len(article.Versions) != expected {
 		return Revision{}, ErrConflict

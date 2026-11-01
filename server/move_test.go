@@ -107,6 +107,53 @@ func TestConnectedSourceMoveRejectsReadOnlyOrUnsyncedSource(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectedSourceMoveRecoversLostDeleteResponse(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source", "other.md": "# Retain"})
+	manager := connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.loseResponse = true })
+	manager.Once(context.Background())
+	if s.moves()[0].State != "deleting_source" || s.moves()[0].PreparedDeletion == "" {
+		t.Fatal("prepared delete not recorded", s.moves())
+	}
+	if _, err := s.article("handbook", "README.md", false); err != nil {
+		t.Fatal("source hidden before observation", err)
+	}
+	if _, err := s.put("local", "copy.md", "# Changed", 1); err != ErrConflict {
+		t.Fatal("destination not locked", err)
+	}
+	if err := s.cancelMove(move.ID, true); err != ErrConflict {
+		t.Fatal("uncertain deletion was cancelled", err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	manager = newSyncManager(reopened, f.client())
+	manager.Once(context.Background())
+	if reopened.moves()[0].State != "complete" {
+		t.Fatal("deletion not observed", reopened.moves())
+	}
+	if _, err := reopened.article("handbook", "README.md", false); err != ErrNotFound {
+		t.Fatal("source still present", err)
+	}
+	if got, err := reopened.article("local", "copy.md", false); err != nil || got.Versions[0].Text != "# Source" {
+		t.Fatal("destination lost", err)
+	}
+	files := f.contents()
+	if _, exists := files["README.md"]; exists || files["other.md"] != "# Retain" || f.writeCount() != 1 {
+		t.Fatal("unexpected remote changes")
+	}
+}
 func TestMoveWaitsForObservedRemoteDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")

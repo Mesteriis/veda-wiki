@@ -61,6 +61,9 @@ func (s *Store) resolveConflict(sourceID, p string, index, expected int, resolut
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := sourceID + "/" + p
+	if moveDeletionLocks(s.db, sourceID, p) {
+		return ErrConflict
+	}
 	a, ok := s.db.Articles[key]
 	if !ok {
 		return ErrNotFound
