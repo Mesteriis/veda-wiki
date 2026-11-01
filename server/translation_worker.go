@@ -12,6 +12,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 // Translation only runs against an explicitly configured numeric loopback
@@ -69,12 +72,32 @@ func (w *translationWorker) Once(ctx context.Context) {
 		if original.SHA != candidate.OriginalSHA {
 			continue
 		}
-		if len(original.Text) > 32000 {
-			log.Print("VEDA local translation skipped an oversized document; manual handling required")
+		parts, err := translationChunks(original.Text, 32000)
+		if err != nil {
+			log.Print("VEDA local translation skipped a document with an oversized section; manual handling required")
 			w.retry[key] = time.Now().Add(24 * time.Hour)
 			continue
 		}
-		translated, err := w.translate(ctx, original.Text)
+		var output strings.Builder
+		for _, part := range parts {
+			var translated string
+			translated, err = w.translate(ctx, part)
+			if err != nil {
+				break
+			}
+			if output.Len() > 0 {
+				output.WriteString("\n\n")
+			}
+			if output.Len()+len(translated) > 256000 {
+				err = errors.New("translation exceeds article limit")
+				break
+			}
+			output.WriteString(translated)
+		}
+		translated := output.String()
+		if err == nil && strings.TrimSpace(translated) == strings.TrimSpace(original.Text) {
+			err = errors.New("unchanged translation")
+		}
 		if err == nil {
 			_, err = w.store.saveTranslation(translationRequest{SourceID: candidate.SourceID, Path: candidate.Path, ExpectedRevision: candidate.Revision, OriginalSHA: candidate.OriginalSHA, Text: translated}, true)
 		}
@@ -115,8 +138,68 @@ func (w *translationWorker) translate(ctx context.Context, original string) (str
 		Done       bool   `json:"done"`
 		DoneReason string `json:"done_reason"`
 	}
-	if json.Unmarshal(data, &result) != nil || !result.Done || (result.DoneReason != "" && result.DoneReason != "stop") || len(result.Response) == 0 || len(result.Response) > 256000 || strings.TrimSpace(result.Response) == strings.TrimSpace(original) {
+	if json.Unmarshal(data, &result) != nil || !result.Done || (result.DoneReason != "" && result.DoneReason != "stop") || len(result.Response) == 0 || len(result.Response) > 256000 || (strings.Contains(result.Response, "<think>") && !strings.Contains(original, "<think>")) {
 		return "", errors.New("invalid translation response")
 	}
 	return result.Response, nil
+}
+
+// Split only before top-level ATX headings outside fenced code blocks. If a
+// section is too large, fail closed instead of splitting code or paragraphs.
+func translationChunks(original string, limit int) ([]string, error) {
+	if len(original) <= limit {
+		return []string{original}, nil
+	}
+	root := markdown.Parser().Parse(text.NewReader([]byte(original)))
+	hasHTML := false
+	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering && (node.Kind() == ast.KindHTMLBlock || node.Kind() == ast.KindRawHTML) {
+			hasHTML = true
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	if hasHTML {
+		return nil, errors.New("large HTML-containing document requires manual handling")
+	}
+	lines := strings.SplitAfter(original, "\n")
+	var chunks []string
+	var current strings.Builder
+	var fence byte
+	fenceLength := 0
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		indent := len(line) - len(trimmed)
+		if indent <= 3 && len(trimmed) >= 3 && (trimmed[0] == '`' || trimmed[0] == '~') {
+			count := 0
+			for count < len(trimmed) && trimmed[count] == trimmed[0] {
+				count++
+			}
+			if count >= 3 {
+				if fence == 0 {
+					fence, fenceLength = trimmed[0], count
+				} else if trimmed[0] == fence && count >= fenceLength && strings.TrimSpace(trimmed[count:]) == "" {
+					fence, fenceLength = 0, 0
+				}
+			}
+		}
+		if fence == 0 && indent == 0 && strings.HasPrefix(line, "#") {
+			count := 0
+			for count < len(line) && line[count] == '#' {
+				count++
+			}
+			if count <= 6 && count < len(line) && (line[count] == ' ' || line[count] == '\t') && current.Len() >= limit/2 {
+				chunks = append(chunks, current.String())
+				current.Reset()
+			}
+		}
+		current.WriteString(line)
+		if current.Len() > limit {
+			return nil, errors.New("section exceeds translation limit")
+		}
+	}
+	if current.Len() > 0 {
+		chunks = append(chunks, current.String())
+	}
+	return chunks, nil
 }

@@ -121,7 +121,7 @@ func TestLocalTranslationWorkerRejectsIncompleteAndUnchangedOutput(t *testing.T)
 		done           bool
 		reason, output string
 	}{
-		{false, "", "# Перевод"}, {true, "length", "# Перевод"}, {true, "stop", "# Original"},
+		{false, "", "# Перевод"}, {true, "length", "# Перевод"}, {true, "stop", "# Original"}, {true, "stop", "<think>analysis</think>\n# Перевод"},
 	} {
 		s := testStore(t)
 		if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
@@ -169,5 +169,49 @@ func TestOversizedDocumentDoesNotBlockOtherTranslations(t *testing.T) {
 	a, err := s.article("program", "docs/b.md", false)
 	if err != nil || a.Translation == nil || a.Translation.Text != "# Вторая" {
 		t.Fatal("shorter article blocked", err)
+	}
+}
+
+func TestLocalTranslationWorkerProcessesLongDocumentBySection(t *testing.T) {
+	s := testStore(t)
+	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	original := "# First\n\n" + strings.Repeat("hello ", 3000) + "\n\n# Second\n\n" + strings.Repeat("world ", 3000) + "\n\n```sh\necho hello\n```\n"
+	if _, err := s.put("program", "docs/long.md", original, 0); err != nil {
+		t.Fatal(err)
+	}
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			t.Error(err)
+		}
+		requests++
+		output := strings.ReplaceAll(strings.ReplaceAll(input.Prompt, "# First", "# Первый"), "# Second", "# Второй")
+		jsonResponse(w, 200, map[string]any{"done": true, "response": output})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorker(s, srv.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	a, err := s.article("program", "docs/long.md", false)
+	if err != nil || requests != 2 || a.Translation == nil || !strings.Contains(a.Translation.Text, "# Второй") || !strings.Contains(a.Translation.Text, "echo hello") {
+		t.Fatal("long document not translated safely", requests, err)
+	}
+}
+
+func TestTranslationChunksDoNotSplitInsideFencesOrHTML(t *testing.T) {
+	largeFence := "# Heading\n\n```text\n# Fake heading\n" + strings.Repeat("x", 33000) + "\n```\n"
+	if _, err := translationChunks(largeFence, 32000); err == nil {
+		t.Fatal("oversized code fence split")
+	}
+	largeHTML := "# Heading\n\n<div>\n" + strings.Repeat("x", 17000) + "\n\n# Fake heading\n" + strings.Repeat("x", 17000) + "\n</div>\n"
+	if _, err := translationChunks(largeHTML, 32000); err == nil {
+		t.Fatal("HTML-containing document split")
 	}
 }
