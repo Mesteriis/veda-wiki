@@ -404,18 +404,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	m.store.mu.RUnlock()
 	matchingVisibility := exists && (source.Visibility == "private") == c.Private
 	if matchingVisibility && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
-		if attempted, err := m.deletePendingMove(ctx, c, head, token); err != nil {
-			m.store.connectionStatus(c.ID, "error", "verified", errorCode(err), &info)
-			return
-		} else if attempted {
-			return
-		}
-		if e = m.pushPending(ctx, c, head, c.TreeSHA, token); e != nil {
-			m.store.connectionStatus(c.ID, "error", "verified", errorCode(e), &info)
-			return
-		}
-		state, code := m.store.sourceSyncState(c.ID)
-		m.store.connectionStatus(c.ID, state, "verified", code, &info)
+		m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
 		return
 	}
 	tree, e := m.github.tree(ctx, c.Repository, head, token)
@@ -442,14 +431,23 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		fail(e)
 		return
 	}
-	if attempted, err := m.deletePendingMove(ctx, c, head, token); err != nil {
-		m.store.connectionStatus(c.ID, "error", "verified", errorCode(err), &info)
-		return
-	} else if attempted {
+	m.syncWrites(ctx, c, head, tree.SHA, token, info)
+}
+
+func (m *SyncManager) syncWrites(ctx context.Context, c GitHubConnection, head, treeSHA, token string, info repositoryInfo) {
+	attempted, moveErr := m.deletePendingMove(ctx, c, head, token)
+	if attempted {
+		if moveErr != nil {
+			m.store.connectionStatus(c.ID, "error", "verified", errorCode(moveErr), &info)
+		}
 		return
 	}
-	if e = m.pushPending(ctx, c, head, tree.SHA, token); e != nil {
-		m.store.connectionStatus(c.ID, "error", "verified", errorCode(e), &info)
+	if err := m.pushPending(ctx, c, head, treeSHA, token); err != nil {
+		m.store.connectionStatus(c.ID, "error", "verified", errorCode(err), &info)
+		return
+	}
+	if moveErr != nil {
+		m.store.connectionStatus(c.ID, "error", "verified", errorCode(moveErr), &info)
 		return
 	}
 	state, code := m.store.sourceSyncState(c.ID)
@@ -460,12 +458,10 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 // stored commit keeps both articles locked until a complete pull resolves it.
 func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection, head, token string) (bool, error) {
 	var firstErr error
-	found := false
 	for _, move := range m.store.moves() {
 		if move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
 			continue
 		}
-		found = true
 		attempted, err := m.deleteMove(ctx, c, head, token, move)
 		if err == nil && attempted {
 			return true, nil
@@ -485,7 +481,7 @@ func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection,
 			return true, err
 		}
 	}
-	return found, firstErr
+	return false, firstErr
 }
 
 func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, token string, candidate Move) (bool, error) {

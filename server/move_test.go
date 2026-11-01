@@ -159,6 +159,28 @@ func TestUnavailableDestinationDoesNotBlockOtherSourceMoves(t *testing.T) {
 	}
 }
 
+func TestUnavailableMoveDestinationDoesNotBlockUnrelatedWrites(t *testing.T) {
+	s, manager, original, destination := connectedMoveFixtures(t)
+	_, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncFixtureSource(t, manager, "two")
+	syncFixtureSource(t, manager, "two")
+	if _, err := s.put("one", "other.md", "# Independent", 0); err != nil {
+		t.Fatal(err)
+	}
+	destination.modify(func() { destination.fail = true })
+	syncFixtureSource(t, manager, "one")
+	files := original.contents()
+	if files["README.md"] != "# Source" || files["other.md"] != "# Independent" {
+		t.Fatal("move outage blocked unrelated write or deleted source")
+	}
+	if s.moves()[0].State != "waiting_source_delete" {
+		t.Fatal("move unexpectedly advanced", s.moves())
+	}
+}
+
 func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
