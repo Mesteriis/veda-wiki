@@ -179,7 +179,8 @@ it. A synthetic v5 store with a translation and scoped key also passed a PBS
 backup/restore round-trip; production v5 backup and restore have not been
 validated. A move containing images to a local target upgrades the store to
 version 6; a copy or move with images to a connected target upgrades it to
-version 7. Older binaries reject these stores. Production v6/v7 backup and
-restore are unverified.
+version 7. Older binaries reject these stores. A synthetic v7 store with a
+paused image outbox passed a PBS round-trip; its restored queue then completed
+against a local fake GitHub. Production v6/v7 backup and restore are unverified.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.
