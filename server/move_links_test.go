@@ -29,7 +29,9 @@ func TestMovePreservesMatchingRelativeLink(t *testing.T) {
 	if err != nil || m.State != "complete" || m.Links["guide.md"] != rev.SHA {
 		t.Fatal("linked move", m, err)
 	}
-	if _,err:=s.createAccessKey("agent",[]string{"to"},time.Now().Add(time.Hour));err!=nil { t.Fatal(err) }
+	if _, err := s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	reopened, err := openStore(s.dir)
 	if err != nil || reopened.db.Version != 8 || reopened.moves()[0].Links["guide.md"] != rev.SHA {
 		t.Fatal("v8 restart", err)
@@ -137,6 +139,28 @@ func TestChangedRemoteLinkPreventsSourceDeletion(t *testing.T) {
 	syncFixtureSource(t, manager, "one")
 	if original.writeCount() != 0 || original.contents()["README.md"] == "" {
 		t.Fatal("source deleted after target link changed")
+	}
+}
+
+func TestChangedRemoteLinkBeforeUploadKeepsSource(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	if _, err := s.put("from", "guide.md", "# Shared", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("from", "a.md", "[Guide](guide.md)", 0); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Shared"})
+	manager := connectFixture(t, s, f, true)
+	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true}); err != nil {
+		t.Fatal(err)
+	}
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Changed"})
+	manager.Once(context.Background())
+	manager.Once(context.Background())
+	if s.db.Articles["from/a.md"].Deleted || f.contents()["b.md"] != "" || f.contents()["guide.md"] != "# Changed" {
+		t.Fatal("transfer changed data after the linked article changed")
 	}
 }
 
