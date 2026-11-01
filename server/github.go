@@ -393,8 +393,8 @@ func (g *GitHubClient) push(ctx context.Context, repo, branch, base, treeSHA, p,
 // remove creates a deletion commit only when the complete source tree contains
 // exactly the expected regular file. The caller must persist the prepared
 // commit and observe the deletion in a subsequent complete pull.
-func (g *GitHubClient) remove(ctx context.Context, repo, branch, base string, source gitTree, p, expected, token string, prepare func(string) error) (string, error) {
-	if source.Truncated || !commitID.MatchString(source.SHA) || !commitID.MatchString(base) {
+func verifiedTreeFile(source gitTree, p, expected string) (string, error) {
+	if source.Truncated || !commitID.MatchString(source.SHA) {
 		return "", ErrInvalid
 	}
 	matches := 0
@@ -411,6 +411,17 @@ func (g *GitHubClient) remove(ctx context.Context, repo, branch, base string, so
 	}
 	if matches != 1 {
 		return "", ErrConflict
+	}
+	return mode, nil
+}
+
+func (g *GitHubClient) remove(ctx context.Context, repo, branch, base string, source gitTree, p, expected, token string, prepare func(string) error) (string, error) {
+	if !commitID.MatchString(base) {
+		return "", ErrInvalid
+	}
+	mode, err := verifiedTreeFile(source, p, expected)
+	if err != nil {
+		return "", err
 	}
 	var tree struct {
 		SHA string `json:"sha"`

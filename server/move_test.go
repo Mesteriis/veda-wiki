@@ -2,8 +2,106 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+func connectedMoveFixtures(t *testing.T) (*Store, *SyncManager, *fakeGitHub, *fakeGitHub) {
+	t.Helper()
+	s := testStore(t)
+	one := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	two := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination"})
+	one.modify(func() { one.private = true })
+	two.modify(func() { two.name = "org/second"; two.repoID = 42; two.private = true })
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
+			two.serve(w, r)
+		} else {
+			one.serve(w, r)
+		}
+	}))
+	t.Cleanup(gateway.Close)
+	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	m := newSyncManager(s, client)
+	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct{ id, repo string }{{"one", "org/handbook"}, {"two", "org/second"}} {
+		if _, err := m.connect(context.Background(), connectRequest{ID: item.id, Repository: item.repo, AccountID: "operator", Write: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.Once(context.Background())
+	return s, m, one, two
+}
+
+func syncFixtureSource(t *testing.T, m *SyncManager, id string) {
+	t.Helper()
+	for _, conn := range m.store.connections() {
+		if conn.ID == id {
+			m.syncSource(context.Background(), conn)
+			return
+		}
+	}
+	t.Fatalf("missing connection %s", id)
+}
+
+func TestMoveBetweenConnectedRepositoriesWaitsForObservation(t *testing.T) {
+	s, manager, original, destination := connectedMoveFixtures(t)
+	move, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true})
+	if err != nil || move.State != "waiting_destination" {
+		t.Fatalf("move: %#v %v", move, err)
+	}
+	syncFixtureSource(t, manager, "two")
+	syncFixtureSource(t, manager, "one")
+	if original.contents()["README.md"] != "# Source" || original.writeCount() != 0 || s.moves()[0].State != "waiting_destination" {
+		t.Fatal("source deleted before destination observation")
+	}
+	syncFixtureSource(t, manager, "two")
+	if s.moves()[0].State != "waiting_source_delete" || destination.contents()["moved.md"] != "# Source" {
+		t.Fatal("destination not confirmed", s.moves())
+	}
+	syncFixtureSource(t, manager, "one")
+	if s.moves()[0].State != "deleting_source" {
+		t.Fatal("delete not prepared", s.moves())
+	}
+	syncFixtureSource(t, manager, "one")
+	if s.moves()[0].State != "complete" || original.writeCount() != 1 || destination.writeCount() != 1 {
+		t.Fatal("move not completed", s.moves())
+	}
+	if _, exists := original.contents()["README.md"]; exists {
+		t.Fatal("original still exists")
+	}
+	if destination.contents()["moved.md"] != "# Source" {
+		t.Fatal("destination lost")
+	}
+}
+
+func TestMoveDoesNotDeleteSourceWhenDestinationUnavailableOrChanged(t *testing.T) {
+	for _, outage := range []bool{true, false} {
+		s, manager, original, destination := connectedMoveFixtures(t)
+		_, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		syncFixtureSource(t, manager, "two")
+		syncFixtureSource(t, manager, "two")
+		if s.moves()[0].State != "waiting_source_delete" {
+			t.Fatal(s.moves())
+		}
+		if outage {
+			destination.modify(func() { destination.fail = true })
+		} else {
+			destination.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination", "moved.md": "# External change"})
+		}
+		syncFixtureSource(t, manager, "one")
+		if original.writeCount() != 0 || original.contents()["README.md"] != "# Source" {
+			t.Fatal("source deleted without checking destination")
+		}
+	}
+}
 
 func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
 	s := testStore(t)

@@ -459,15 +459,52 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 // Serialize local mutations with the remote ref update. Once prepared, the
 // stored commit keeps both articles locked until a complete pull resolves it.
 func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection, head, token string) (bool, error) {
-	eligible := false
+	var candidate Move
 	for _, move := range m.store.moves() {
 		if move.SourceConnectionID == c.ID && (move.State == "waiting_source_delete" || move.State == "deleting_source") {
-			eligible = true
+			candidate = move
 			break
 		}
 	}
-	if !eligible {
+	if candidate.ID == "" {
 		return false, nil
+	}
+	var destinationRevision int
+	if candidate.DestinationConnectionID != "" {
+		m.store.mu.RLock()
+		destination, ok := m.store.db.Connections[candidate.DestinationConnectionID]
+		target, targetOK := m.store.db.Articles[candidate.DestinationID+"/"+candidate.DestinationPath]
+		m.store.mu.RUnlock()
+		if !ok || !targetOK || len(target.Versions) != 1 || destination.Paused || destination.RepositoryID != candidate.DestinationRepositoryID || destination.Branch != candidate.DestinationBranch {
+			return true, ErrConflict
+		}
+		destinationRevision = destination.ConfigRevision
+		secret, _, err := m.store.secret(destination.AccountID)
+		if err != nil {
+			return true, err
+		}
+		destinationToken, err := m.github.token(ctx, secret, destination.Repository, false)
+		if err != nil {
+			return true, err
+		}
+		info, err := m.github.repository(ctx, destination.Repository, destinationToken)
+		if err != nil {
+			return true, err
+		}
+		if info.ID != destination.RepositoryID || *info.Private != destination.Private {
+			return true, ErrConflict
+		}
+		destinationHead, err := m.github.head(ctx, destination.Repository, destination.Branch, destinationToken)
+		if err != nil {
+			return true, err
+		}
+		destinationTree, err := m.github.tree(ctx, destination.Repository, destinationHead, destinationToken)
+		if err != nil {
+			return true, err
+		}
+		if _, err = verifiedTreeFile(destinationTree, candidate.DestinationPath, target.Versions[0].Text); err != nil {
+			return true, err
+		}
 	}
 	tree, err := m.github.tree(ctx, c.Repository, head, token)
 	if err != nil {
@@ -479,8 +516,14 @@ func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection,
 	if !ok || current.Paused || !current.Write || current.ConfigRevision != c.ConfigRevision || current.RepositoryID != c.RepositoryID || current.Branch != c.Branch {
 		return true, ErrConflict
 	}
+	if candidate.DestinationConnectionID != "" {
+		destination, ok := m.store.db.Connections[candidate.DestinationConnectionID]
+		if !ok || destination.Paused || destination.ConfigRevision != destinationRevision {
+			return true, ErrConflict
+		}
+	}
 	for _, move := range m.store.db.Moves {
-		if move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
+		if move.ID != candidate.ID || move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
 			continue
 		}
 		// Re-evaluate the complete local invariants immediately before preparing.

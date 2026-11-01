@@ -45,4 +45,6 @@ it based solely on a visibility change. Public Git history cannot be recalled.
 Automated coverage uses a simulated GitHub service; anonymous public import has
 also been checked against a real public repository. Real authenticated App/PAT
 connections, writes and multi-repository recovery still require acceptance.
-Translation, cross-repository moves and user-scoped access are not implemented.
+Cross-repository moves have simulated-GitHub coverage but have not been
+accepted against authenticated live repositories. Automatic translation and
+user-scoped access are not implemented.
