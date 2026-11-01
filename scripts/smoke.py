@@ -63,7 +63,7 @@ async def main():
                     await session.initialize()
                     tools = await session.list_tools()
                     assert {tool.name for tool in tools.tools} == {
-                        "veda_sources", "veda_search", "veda_read", "veda_prepare_update", "veda_prepare_translation", "veda_create_source",
+                        "veda_sources", "veda_search", "veda_read", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_create_source",
                         "veda_write_article", "veda_copy_article", "veda_transfer_plan", "veda_moves", "veda_cancel_move",
                         "veda_move_article", "veda_translation_needed", "veda_translate_article", "veda_context",
                         "veda_conflicts", "veda_resolve_conflict", "veda_github_status", "veda_github_connect",
@@ -165,7 +165,7 @@ async def main():
                             result = await reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not result.isError and json.loads(result.content[0].text)["text"] == "# Private updated"
                             names = {tool.name for tool in (await reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_translation"}
+                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation"}
                     def owner_post(route, value):
                         req = Request(f"http://127.0.0.1:{private_port}" + route,
                             data=json.dumps(value).encode(), method="POST",
@@ -185,7 +185,7 @@ async def main():
                         async with ClientSession(scoped_in, scoped_out) as scoped:
                             await scoped.initialize()
                             names = {tool.name for tool in (await scoped.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_translation"}
+                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation"}
                             visible = await scoped.call_tool("veda_sources", {})
                             assert {item["id"] for item in json.loads(visible.content[0].text)["sources"]} == {"closed", "program"}
                             allowed = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
@@ -199,6 +199,16 @@ async def main():
                             assert json.loads(unchanged.content[0].text)["text"] == "# Private updated"
                             forbidden = await scoped.call_tool("veda_prepare_update", {"source_id": "copy", "path": "copied.md", "expected_revision": 1, "text": "# Forbidden"})
                             assert forbidden.isError
+                            new_article = await scoped.call_tool("veda_prepare_new_article", {"source_id": "closed", "path": "new.md", "text": "# Proposed new article"})
+                            assert not new_article.isError and json.loads(new_article.content[0].text)["expected_revision"] == 0 and json.loads(new_article.content[0].text)["saved"] is False
+                            exists = await scoped.call_tool("veda_prepare_new_article", {"source_id": "closed", "path": "README.md", "text": "# Existing"})
+                            assert exists.isError
+                            missing = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "new.md"})
+                            assert missing.isError
+                            unsafe = await scoped.call_tool("veda_prepare_new_article", {"source_id": "program", "path": "../outside.md", "text": "# Unsafe"})
+                            assert unsafe.isError
+                            unauthorized = await scoped.call_tool("veda_prepare_new_article", {"source_id": "copy", "path": "new.md", "text": "# Forbidden"})
+                            assert unauthorized.isError
                             translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Предложение\nЗапустите `install`."})
                             draft = json.loads(translation.content[0].text)
                             assert not translation.isError and draft["saved"] is False and draft["original_sha256"] == original["sha256"]
@@ -233,7 +243,7 @@ async def main():
                         async with ClientSession(socket_in, socket_out) as socket_reader:
                             await socket_reader.initialize()
                             names = {tool.name for tool in (await socket_reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_translation"}
+                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation"}
                             item = await socket_reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not item.isError and json.loads(item.content[0].text)["text"] == "# Private updated"
                             ctx = await socket_reader.call_tool("veda_context", {"source_id": "closed", "path": "nested/example.md"})

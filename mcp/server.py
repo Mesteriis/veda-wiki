@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import http.client
+import posixpath
 import socket
 import os
 import stat
@@ -116,6 +117,8 @@ def make_server(client):
         "veda_prepare_update": ("Prepare a non-persistent proposed article update after rereading the current revision. Returns the base revision and SHA for review; it does not save or publish the proposed text. Stale revisions are refused.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "expected_revision", "text"]),
+        "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
+            "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "text"]),
         "veda_prepare_translation": ("Prepare a non-persistent Russian translation proposal for a program docs/ article. The current original revision and SHA are reread; stale revisions are refused. This does not validate Markdown structure, save a draft, or approve publication.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "expected_revision", "text"]),
@@ -172,7 +175,7 @@ def make_server(client):
     }
 
     if client.read_only:
-        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_translation")}
+        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation")}
 
     def read(source_id, path):
         article = client.request("GET", "/api/v1/articles?" + urlencode({"source_id": source_id, "path": path}))
@@ -207,6 +210,28 @@ def make_server(client):
                           "proposed_sha256": hashlib.sha256(proposed.encode("utf-8")).hexdigest(),
                           "text": proposed, "saved": False,
                           "note": "Proposal only; review and an authorized write are still required."}
+            elif name == "veda_prepare_new_article":
+                sources = await asyncio.to_thread(client.request, "GET", "/api/v1/sources")
+                source = next((item for item in sources if item["id"] == arguments["source_id"]), None)
+                path, proposed = arguments["path"], arguments["text"]
+                if (source is None or not isinstance(path, str) or not path or len(path.encode("utf-8")) > 512
+                        or path.startswith("/") or posixpath.normpath(path) != path
+                        or any(part.startswith(".") for part in path.split("/"))
+                        or any(c in path for c in "\\\x00\r\n") or not path.lower().endswith((".md", ".markdown"))
+                        or (source.get("kind") == "program" and not path.startswith("docs/"))
+                        or not isinstance(proposed, str) or len(proposed.encode("utf-8")) > 256000):
+                    raise ValueError("Invalid new article proposal")
+                try:
+                    await asyncio.to_thread(read, arguments["source_id"], path)
+                except ValueError as exc:
+                    if "HTTP 404" not in str(exc):
+                        raise
+                else:
+                    raise ValueError("Article already exists")
+                result = {"source_id": arguments["source_id"], "path": path, "expected_revision": 0,
+                          "proposed_sha256": hashlib.sha256(proposed.encode("utf-8")).hexdigest(),
+                          "text": proposed, "saved": False,
+                          "note": "Proposal only; deleted history or concurrent writes may cause a conflict. The path is not reserved and an authorized write is still required."}
             elif name == "veda_prepare_translation":
                 sources = await asyncio.to_thread(client.request, "GET", "/api/v1/sources")
                 source = next((item for item in sources if item["id"] == arguments["source_id"]), None)
