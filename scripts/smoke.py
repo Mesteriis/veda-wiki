@@ -57,7 +57,7 @@ async def main():
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tools = await session.list_tools()
-                    assert len(tools.tools) == 12
+                    assert len(tools.tools) == 13
 
                     async def call(name, args):
                         result = await session.call_tool(name, args)
@@ -84,6 +84,11 @@ async def main():
                         "text": "# Read source context first", "expected_revision": 0})
                     context = await call("veda_context", {"source_id": "closed", "path": "README.md"})
                     assert context["instructions"][0]["path"] == "AGENTS.md"
+                    await call("veda_create_source", {"id": "copy", "title": "copy", "kind": "wiki", "visibility": "private"})
+                    copied = await call("veda_copy_article", {"source_id": "closed", "source_path": "README.md", "expected_revision": 2, "destination_id": "copy", "destination_path": "copied.md"})
+                    assert copied["revision"] == 1
+                    copy_read = await call("veda_read", {"source_id": "copy", "path": "copied.md"})
+                    assert copy_read["text"] == "# Private updated"
                     # Exercise the actual CLI -> REST batch path on a real local
                     # checkout. Fixture data never enters the project repository.
                     checkout = Path(tmp) / "checkout"
@@ -138,7 +143,7 @@ async def main():
                     process = start(data, private_port, public_port)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
-            print("PASS: twelve MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; restart persistence")
+            print("PASS: thirteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; restart persistence")
         finally:
             process.terminate()
             process.wait(timeout=10)

@@ -16,6 +16,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/api/v1/articles?source_id=…&path=…&history=1` | All revisions (owner only; public callers still receive only current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
+| POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
 | POST | `/api/v1/conflicts/resolve` | Owner-only conflict resolution with expected revision |
@@ -48,7 +49,7 @@ Responses include `revision`, `sha256`, `created_at` and the saved `text`.
 Creation returns 201; update returns 200. Revision mismatch returns 409;
 unavailable/unauthorized article returns 404; invalid input returns 400;
 unauthorized writes return 403; storage failures return 500. Unknown fields and
-trailing JSON are rejected. This release has no deletion or move endpoint.
+trailing JSON are rejected. Copying retains the original. There is no deletion or move endpoint yet.
 
 Program article paths must start with `docs/`. Absolute paths, traversal, hidden
 components, backslashes and non-Markdown paths are refused. Paths are logical
@@ -65,3 +66,18 @@ An import batch can explicitly create its source with `create: true`; it never
 implicitly creates a source from an article write. Import details and metadata
 schema: [repository import](import.md). Managed source metadata/provenance and
 assets are read-only through the ordinary source-creation endpoint.
+
+## Copy across sources
+
+`POST /api/v1/articles/copy` requires `source_id`, `source_path`,
+`expected_revision`, `destination_id`, `destination_path` and optionally
+`confirm_publication`. The destination must be a new path in a different
+source. Conflicts or stale source revisions are rejected. The copy and its
+remote outbox job are committed atomically; inspect the outbox to verify remote
+durability. The source is retained. Private-to-public copying requires explicit
+review and `confirm_publication: true`; obvious credential-like text is refused.
+A connected destination with stale visibility proof stays unpublished and its
+queued write needs later approval if the destination is verified public.
+Owner-only provenance is preserved locally and removed from public responses.
+Copy does not copy referenced assets or rewrite Markdown links, and is not a
+complete move operation.
