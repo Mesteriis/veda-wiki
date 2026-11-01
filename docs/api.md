@@ -149,7 +149,12 @@ returns the same status alongside scope instructions.
 
 `POST /api/v1/moves` takes `source_id`, `source_path`, `expected_revision`,
 `destination_id`, `destination_path`, `confirm_move: true` and optionally
-`confirm_publication`. Manually maintained local sources and synchronized,
+`confirm_publication` and `include_linked`. With `include_linked: true`, the
+linked graph is copied atomically to a standalone local destination before
+removing the requested source article; other source articles remain. A GitHub
+source is deleted only after the destination and its dependencies are
+rechecked. Graph transfers to a connected destination are not yet supported.
+Manually maintained local sources and synchronized,
 writable GitHub sources are accepted; independent local imports are not.
 Relative Markdown images can be copied with the article into a standalone local
 or writable GitHub target; existing images at the target path must have the
@@ -186,8 +191,8 @@ cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
 source revision history is retained. A change to either translation while the
 move is waiting prevents source removal. Private-to-public publication requires
-separate explicit confirmation. Linked articles are not copied automatically;
-missing or different targets must be synchronized first. Live
+separate explicit confirmation. Without `include_linked`, linked articles are
+not copied automatically; missing or different targets must be synchronized first. Live
 acceptance with credentials stored by VEDA remains pending.
 
 Creating the first local-source move upgrades the local store format to version 2;

@@ -1,40 +1,48 @@
 package main
 
-import "time"
+import (
+	"os"
+	"path"
+	"time"
+)
 
-// copyLinkedLocal stages all articles before validating references, so cycles
-// are safe. The caller owns the store lock and commits only the whole batch.
-func (s *Store) copyLinkedLocal(in copyRequest) (Revision, error) {
+// prepareCopyLinkedLocal stages all articles before validating references, so
+// cycles are safe. The caller owns the lock; no data is committed here.
+func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, transferDependencies, error) {
 	plan, err := s.planTransferLocked(in)
 	if err != nil {
-		return Revision{}, err
+		return Database{}, Revision{}, transferDependencies{}, err
 	}
 	src := s.db.Sources[in.SourceID]
 	dst := s.db.Sources[in.DestinationID]
 	// Connected destinations need a durable multi-file outbox transaction, which
 	// cannot be simulated by independent jobs without exposing broken references.
 	if dst.ConnectionID != "" || dst.ImportGeneration != "" {
-		return Revision{}, ErrInvalid
+		return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 	}
 	shadow := &Store{dir: s.dir, db: s.clone()}
 	now := time.Now()
 	public := sourcePublic(s.db, dst, now)
 	var root Revision
+	links := map[string]string{}
 	for _, item := range plan.Articles {
 		if item.Destination == "conflict" || (item.SourcePath == in.SourcePath && item.Destination != "missing") {
-			return Revision{}, ErrConflict
+			return Database{}, Revision{}, transferDependencies{}, ErrConflict
+		}
+		if item.SourcePath != in.SourcePath {
+			links[item.DestinationPath] = item.SHA
 		}
 		a := s.db.Articles[in.SourceID+"/"+item.SourcePath]
 		rev := a.Versions[item.Revision-1]
 		sourcePublicRevision := sourcePublic(s.db, src, now) && (src.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
 		if public && !sourcePublicRevision && (!in.ConfirmPublication || secretContent.MatchString(rev.Text)) {
-			return Revision{}, ErrInvalid
+			return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 		}
 		if item.Destination == "matching" {
 			continue
 		}
 		if a.Translation != nil && dst.Kind != "program" {
-			return Revision{}, ErrInvalid
+			return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 		}
 		copied := Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
 		b := Article{SourceID: in.DestinationID, Path: item.DestinationPath, Versions: []Revision{copied}, CopiedFrom: &CopyOrigin{SourceID: in.SourceID, Path: item.SourcePath, Revision: item.Revision, SHA: rev.SHA}, Translation: movedTranslation(a.Translation)}
@@ -50,7 +58,7 @@ func (s *Store) copyLinkedLocal(in copyRequest) (Revision, error) {
 		}
 	}
 	if root.Number == 0 {
-		return Revision{}, ErrConflict
+		return Database{}, Revision{}, transferDependencies{}, ErrConflict
 	}
 	assets := make(map[string]BlobRef, len(dst.Assets))
 	for p, ref := range dst.Assets {
@@ -58,18 +66,30 @@ func (s *Store) copyLinkedLocal(in copyRequest) (Revision, error) {
 	}
 	dst.Assets = assets
 	shadow.db.Sources[dst.ID] = dst
+	batchAssets := map[string]BlobRef{}
+	verifiedAssets := map[BlobRef]bool{}
+	var total int64
 	for _, item := range plan.Articles {
 		a := s.db.Articles[in.SourceID+"/"+item.SourcePath]
 		deps, e := shadow.transferAssets(a.Versions[item.Revision-1].Text, item.SourcePath, item.DestinationPath, src, shadow.db.Sources[dst.ID])
 		if e != nil {
-			return Revision{}, e
+			return Database{}, Revision{}, transferDependencies{}, e
 		}
 		for p, ref := range deps.Assets {
+			if !verifiedAssets[ref] {
+				info, err := os.Lstat(path.Join(s.dir, "blobs", ref.SHA))
+				if err != nil || !info.Mode().IsRegular() || total+info.Size() > 16<<20 {
+					return Database{}, Revision{}, transferDependencies{}, ErrInvalid
+				}
+				total += info.Size()
+				verifiedAssets[ref] = true
+			}
 			assets[p] = ref
+			batchAssets[p] = ref
+			if len(batchAssets) > 2000 {
+				return Database{}, Revision{}, transferDependencies{}, ErrInvalid
+			}
 		}
 	}
-	if err = s.commit(shadow.db); err != nil {
-		return Revision{}, err
-	}
-	return root, nil
+	return shadow.db, root, transferDependencies{Assets: batchAssets, Links: links}, nil
 }

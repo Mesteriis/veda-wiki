@@ -112,7 +112,14 @@ func (s *Store) copyArticle(in copyRequest) (Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if in.IncludeLinked {
-		return s.copyLinkedLocal(in)
+		db, revision, _, err := s.prepareCopyLinkedLocal(in)
+		if err != nil {
+			return Revision{}, err
+		}
+		if err = s.commit(db); err != nil {
+			return Revision{}, err
+		}
+		return revision, nil
 	}
 	db, revision, err := s.prepareCopy(in)
 	if err != nil {

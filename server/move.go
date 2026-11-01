@@ -228,6 +228,7 @@ type moveRequest struct {
 	DestinationPath    string `json:"destination_path"`
 	ConfirmMove        bool   `json:"confirm_move"`
 	ConfirmPublication bool   `json:"confirm_publication"`
+	IncludeLinked      bool   `json:"include_linked,omitempty"`
 }
 
 // Resolve relative images and verify linked articles at the destination.
@@ -399,16 +400,24 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if a.Translation != nil && s.db.Sources[in.DestinationID].Kind != "program" {
 		return Move{}, ErrInvalid
 	}
-	dependencies, assetErr := s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])
-	if assetErr != nil {
-		return Move{}, assetErr
-	}
 	for _, m := range s.db.Moves {
 		if (m.State == "waiting_destination" || m.State == "waiting_source_delete" || m.State == "deleting_source") && m.SourceID == in.SourceID && m.SourcePath == in.SourcePath {
 			return Move{}, ErrConflict
 		}
 	}
-	db, rev, e := s.prepareCopy(copyRequest{SourceID: in.SourceID, SourcePath: in.SourcePath, ExpectedRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, ConfirmPublication: in.ConfirmPublication})
+	copyIn := copyRequest{SourceID: in.SourceID, SourcePath: in.SourcePath, ExpectedRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, ConfirmPublication: in.ConfirmPublication}
+	var db Database
+	var rev Revision
+	var dependencies transferDependencies
+	var e error
+	if in.IncludeLinked {
+		db, rev, dependencies, e = s.prepareCopyLinkedLocal(copyIn)
+	} else {
+		dependencies, e = s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])
+		if e == nil {
+			db, rev, e = s.prepareCopy(copyIn)
+		}
+	}
 	if e != nil {
 		return Move{}, e
 	}
