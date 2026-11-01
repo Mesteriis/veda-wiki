@@ -39,6 +39,11 @@ entry, and pushed as non-force commits after pulling and conflict checks. The
 GitHub reference update requires the exact previously observed branch head;
 an intervening branch rewind is rejected as well as an ordinary concurrent push.
 If its response is uncertain, a subsequent complete pull resolves the outbox.
+Transferred relative images are committed with their article in the same Git
+commit. An existing image must match, and a partial import or repository size
+limit blocks the bundle. A complete pull must observe every image before the
+move removes its source. Previously unapproved private images remain private
+when a queued article is edited.
 Status, retry and pause are available through the CLI and owner REST API.
 Conflicts retain both versions. The worker checks visibility before import and
 private writes; public reads fail closed if the visibility proof is older than
@@ -49,7 +54,9 @@ If a repository becomes public, a previously queued private edit is blocked.
 After reviewing the exact content, the owner can approve its job using
 `POST /api/v1/github/publish-job` with `job_id`, `expected_revision` and
 `confirm_publication: true`, or the corresponding MCP tool. The operation
-publishes the approved revision and permits its background push. Never approve
+publishes the approved revision and permits its background push, including
+any queued image dependencies. Review the article and those images before
+approving. Never approve
 it based solely on a visibility change. Public Git history cannot be recalled.
 
 Automated coverage uses a simulated GitHub service; anonymous public import has
@@ -63,7 +70,7 @@ and production agent-key rollout remain outstanding. See
 [translation](translation.md) and [scoped access](scoped-access-design.md).
 
 An opt-in live acceptance test exercises a move between two branches of the
-public `Mesteriis/veda-wiki` repository using synthetic content. It checks that
+public `Mesteriis/veda-wiki` repository using synthetic content and an image. It checks that
 the source remains until the destination has been observed, and checks the
 final remote tree and destination blob. The local test store receives a
 synthetic token; a loopback test proxy invokes the authenticated `gh` CLI,

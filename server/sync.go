@@ -521,6 +521,15 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 		if _, err = verifiedTreeFile(destinationTree, candidate.DestinationPath, target.Versions[0].Text); err != nil {
 			return true, err
 		}
+		for name, ref := range candidate.Assets {
+			data, err := m.store.readAsset(ref)
+			if err != nil {
+				return true, err
+			}
+			if _, err = verifiedTreeFile(destinationTree, name, string(data)); err != nil {
+				return true, err
+			}
+		}
 	}
 	tree, err := m.github.tree(ctx, c.Repository, head, token)
 	if err != nil {
@@ -623,13 +632,7 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			continue
 		}
 		prepared := func(commit string) error {
-			m.store.mu.RLock()
-			latest, ok := m.store.db.Connections[c.ID]
-			m.store.mu.RUnlock()
-			if !ok || latest.Paused || latest.ConfigRevision != c.ConfigRevision {
-				return ErrConflict
-			}
-			return m.store.setJob(job.ID, "prepared", "", commit, "")
+			return m.store.prepareJob(job.ID, commit, c)
 		}
 		if job.Visibility != "public" {
 			info, e := m.github.repository(ctx, c.Repository, token)
@@ -641,7 +644,17 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 				return &remoteError{Code: "publication_confirmation_required"}
 			}
 		}
-		commit, e := m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
+		var commit string
+		var e error
+		if len(job.Assets) == 0 {
+			commit, e = m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
+		} else {
+			var files map[string][]byte
+			files, e = m.pendingBundle(ctx, c, head, treeSHA, token, job, a.Versions[job.Revision-1].Text)
+			if e == nil {
+				commit, e = m.github.pushFiles(ctx, c.Repository, c.Branch, head, treeSHA, files, token, prepared)
+			}
+		}
 		if e != nil {
 			m.store.setJob(job.ID, "retry", errorCode(e), "", "")
 			return e
@@ -653,4 +666,79 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		return nil // one commit per source per pass; refresh before the next write
 	}
 	return nil
+}
+
+// Refuse to overwrite pre-existing files while composing the article and its
+// images. The subsequent exact-head update makes this check race-safe.
+func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, head, treeSHA, token string, job SyncJob, text string) (map[string][]byte, error) {
+	m.store.mu.RLock()
+	source, ok := m.store.db.Sources[c.ID]
+	m.store.mu.RUnlock()
+	if !ok || source.ImportPartial {
+		return nil, ErrConflict
+	}
+	tree, err := m.github.tree(ctx, c.Repository, head, token)
+	if err != nil {
+		return nil, err
+	}
+	if tree.SHA != treeSHA {
+		return nil, ErrConflict
+	}
+	entries := map[string]gitTreeEntry{}
+	count := 0
+	total := int64(0)
+	for _, entry := range tree.Tree {
+		if _, exists := entries[entry.Path]; exists {
+			return nil, ErrInvalid
+		}
+		entries[entry.Path] = entry
+		if entry.Type != "blob" || !importablePath(entry.Path, source.Kind) {
+			continue
+		}
+		ext := strings.ToLower(path.Ext(entry.Path))
+		markdown := ext == ".md" || ext == ".markdown"
+		image := ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" || ext == ".gif"
+		if !markdown && !image {
+			continue
+		}
+		if (entry.Mode != "100644" && entry.Mode != "100755") || entry.Size < 0 || entry.Size > 4<<20 || (markdown && entry.Size > 256000) {
+			return nil, ErrConflict
+		}
+		count++
+		total += entry.Size
+	}
+	files := map[string][]byte{job.Path: []byte(text)}
+	for name, ref := range job.Assets {
+		if name == job.Path {
+			return nil, ErrConflict
+		}
+		data, e := m.store.readAsset(ref)
+		if e != nil {
+			return nil, e
+		}
+		files[name] = data
+	}
+	for name, data := range files {
+		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+			if e, exists := entries[parent]; exists && e.Type != "tree" {
+				return nil, ErrConflict
+			}
+		}
+		if entry, exists := entries[name]; exists {
+			if entry.Type != "blob" || (entry.Mode != "100644" && entry.Mode != "100755") || !commitID.MatchString(entry.SHA) || gitBlobDigest(data, len(entry.SHA)) != entry.SHA {
+				return nil, ErrConflict
+			}
+			delete(files, name)
+		} else {
+			count++
+			total += int64(len(data))
+		}
+	}
+	if count > 2000 || total > 16<<20 {
+		return nil, &remoteError{Code: "repository_limit"}
+	}
+	if len(files) == 0 {
+		return nil, ErrConflict
+	}
+	return files, nil
 }

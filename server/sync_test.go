@@ -31,9 +31,11 @@ type fakeGitHub struct {
 	fail         bool
 	reject       bool
 	loseResponse bool
+	afterCommit  func()
 	head         string
 	counter      int
 	writes       int
+	blobWrites   int
 	blobs        map[string][]byte
 	trees        map[string]map[string]string
 	commits      map[string]fakeCommit
@@ -209,11 +211,21 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		respond(map[string]any{"sha": sha, "encoding": "base64", "content": base64.StdEncoding.EncodeToString(b), "size": len(b)})
 	case route == "/git/blobs" && r.Method == "POST":
+		f.blobWrites++
 		var in struct {
-			Content string `json:"content"`
+			Content  string `json:"content"`
+			Encoding string `json:"encoding"`
 		}
 		json.NewDecoder(r.Body).Decode(&in)
 		b := []byte(in.Content)
+		if in.Encoding == "base64" {
+			var err error
+			b, err = base64.StdEncoding.DecodeString(in.Content)
+			if err != nil {
+				http.Error(w, "bad encoding", 400)
+				return
+			}
+		}
 		sha := gitBlobDigest(b, 40)
 		f.blobs[sha] = b
 		respond(map[string]string{"sha": sha})
@@ -263,6 +275,11 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.counter++
 		sha := fakeSHA(fmt.Sprint("new-commit", f.counter))
 		f.commits[sha] = fakeCommit{tree: in.Tree, parent: in.Parents[0]}
+		if f.afterCommit != nil {
+			hook := f.afterCommit
+			f.afterCommit = nil
+			hook()
+		}
 		respond(map[string]string{"sha": sha})
 	case route == "/git/refs/heads/main" && r.Method == "PATCH":
 		var in struct {

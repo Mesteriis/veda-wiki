@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -292,6 +292,22 @@ func openStore(dir string) (*Store, error) {
 		}
 	}
 	for id, j := range s.db.Outbox {
+		if len(j.Assets) > 2000 || (len(j.Assets) > 0 && s.db.Version < 7) {
+			return nil, errors.New("invalid queued assets")
+		}
+		for p, ref := range j.Assets {
+			if !remoteAssetPath(p, s.db.Sources[j.SourceID].Kind) {
+				return nil, errors.New("invalid queued asset path")
+			}
+			if _, e := hexKey(ref.SHA); e != nil {
+				return nil, errors.New("invalid queued asset digest")
+			}
+			switch ref.MIME {
+			case "image/png", "image/jpeg", "image/webp", "image/gif":
+			default:
+				return nil, errors.New("invalid queued asset type")
+			}
+		}
 		if j.Visibility == "" {
 			j.Visibility = "private"
 			s.db.Outbox[id] = j

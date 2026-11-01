@@ -133,9 +133,11 @@ returns the same status alongside scope instructions.
 `confirm_publication`. Manually maintained local sources and synchronized,
 writable GitHub sources are accepted; independent local imports are not.
 Relative Markdown images can be copied with the article into a standalone local
-target; existing images at the target path must have the same digest. Relative
-links to other articles, embedded HTML, and images targeting a connected GitHub
-source remain unsupported. A stored translation can be moved only to another program source;
+or writable GitHub target; existing images at the target path must have the
+same digest. The GitHub outbox commits the Markdown and its images together,
+then confirms them in a complete pull before allowing source deletion. A partial
+target import blocks the bundle. Relative links to other articles and embedded
+HTML remain unsupported. A stored translation can be moved only to another program source;
 it is copied as a separate private draft and requires publication review even
 when the target is public. The target must be a new path in another source.
 If two source IDs refer to the same GitHub repository and branch, moving to
@@ -162,8 +164,8 @@ cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
 source revision history is retained. A change to either translation while the
 move is waiting prevents source removal. Private-to-public publication requires
-separate explicit confirmation. Relative article links and delivery of images
-to GitHub are not yet supported for transfers. Live
+separate explicit confirmation. Relative article links are not yet supported
+for transfers. Live
 acceptance with credentials stored by VEDA remains pending.
 
 Creating the first local-source move upgrades the local store format to version 2;
@@ -175,7 +177,9 @@ store to version 5; older binaries reject it rather than discard the additional
 move invariant. An older binary refused a synthetic v5 store without changing
 it. A synthetic v5 store with a translation and scoped key also passed a PBS
 backup/restore round-trip; production v5 backup and restore have not been
-validated. A move containing images upgrades the store to version 6; older
-binaries reject the store. Production v6 backup and restore are unverified.
+validated. A move containing images to a local target upgrades the store to
+version 6; a copy or move with images to a connected target upgrades it to
+version 7. Older binaries reject these stores. Production v6/v7 backup and
+restore are unverified.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.

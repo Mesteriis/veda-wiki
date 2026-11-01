@@ -77,7 +77,7 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		b.PublishedLocal = true
 	}
 	db := s.clone()
-	if len(assets) > 0 {
+	if len(assets) > 0 && destination.ConnectionID == "" {
 		destination.Assets = make(map[string]BlobRef, len(destination.Assets)+len(assets))
 		for p, ref := range s.db.Sources[in.DestinationID].Assets {
 			destination.Assets[p] = ref
@@ -90,6 +90,15 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	db.Articles[key] = b
 	if destination.ConnectionID != "" {
 		enqueueWrite(&db, b, copied)
+		if len(assets) > 0 {
+			id := b.SourceID + "/" + b.Path + "@1"
+			job := db.Outbox[id]
+			job.Assets = assets
+			db.Outbox[id] = job
+			if db.Version < 7 {
+				db.Version = 7
+			}
+		}
 	}
 	return db, copied, nil
 }

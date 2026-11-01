@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +33,8 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		t.Fatal("unsupported fixture repository")
 	}
 	repos := []string{repo, targetRepo}
-	const content = "# Synthetic source\n\nThis is an acceptance fixture.\n"
+	const content = "# Synthetic source\n\nThis is an acceptance fixture.\n\n![fixture](img/icon.png)\n![duplicate](img/duplicate.png)\n"
+	image := smallPNG(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	gh := func(route, method string, body []byte) ([]byte, error) {
@@ -67,9 +70,12 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	}
 	nodeIDs := []string{api("repos/"+repo, nil)["node_id"].(string), api("repos/"+targetRepo, nil)["node_id"].(string)}
 	base := api("repos/"+repo+"/commits/588ff21", nil)["sha"].(string)
+	imageSHA := api("repos/"+repo+"/git/blobs", map[string]string{"content": base64.StdEncoding.EncodeToString(image), "encoding": "base64"})["sha"].(string)
 	tree := api("repos/"+repo+"/git/trees", map[string]any{"tree": []map[string]string{
 		{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture},
 		{"path": "guide.md", "mode": "100644", "type": "blob", "content": content},
+		{"path": "img/icon.png", "mode": "100644", "type": "blob", "sha": imageSHA},
+		{"path": "img/duplicate.png", "mode": "100644", "type": "blob", "sha": imageSHA},
 	}})["sha"].(string)
 	commit := api("repos/"+repo+"/git/commits", map[string]any{"message": "VEDA synthetic move fixture", "tree": tree, "parents": []string{base}})["sha"].(string)
 	suffix := time.Now().UTC().Format("20060102-150405")
@@ -258,6 +264,14 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 			}
 			if _, err := verifiedTreeFile(remoteTree, destinationPath, content); err != nil {
 				t.Fatal("destination contents do not match the fixture")
+			}
+			imagePath := path.Join(path.Dir(destinationPath), "img/icon.png")
+			if _, err := verifiedTreeFile(remoteTree, imagePath, string(image)); err != nil {
+				t.Fatal("destination image does not match fixture")
+			}
+			duplicatePath := path.Join(path.Dir(destinationPath), "img/duplicate.png")
+			if _, err := verifiedTreeFile(remoteTree, duplicatePath, string(image)); err != nil {
+				t.Fatal("duplicate image does not match fixture")
 			}
 		}
 	}

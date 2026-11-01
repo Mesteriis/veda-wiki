@@ -16,19 +16,20 @@ import (
 )
 
 type SyncJob struct {
-	ID             string `json:"id"`
-	SourceID       string `json:"source_id"`
-	Path           string `json:"path"`
-	Revision       int    `json:"revision"`
-	SHA            string `json:"sha256"`
-	State          string `json:"state"`
-	Created        string `json:"created_at"`
-	Attempts       int    `json:"attempts"`
-	LastError      string `json:"last_error,omitempty"`
-	PreparedCommit string `json:"prepared_commit,omitempty"`
-	ObservedCommit string `json:"observed_commit,omitempty"`
-	NextAttempt    string `json:"next_attempt,omitempty"`
-	Visibility     string `json:"visibility"`
+	ID             string             `json:"id"`
+	SourceID       string             `json:"source_id"`
+	Path           string             `json:"path"`
+	Revision       int                `json:"revision"`
+	SHA            string             `json:"sha256"`
+	State          string             `json:"state"`
+	Created        string             `json:"created_at"`
+	Attempts       int                `json:"attempts"`
+	LastError      string             `json:"last_error,omitempty"`
+	PreparedCommit string             `json:"prepared_commit,omitempty"`
+	ObservedCommit string             `json:"observed_commit,omitempty"`
+	NextAttempt    string             `json:"next_attempt,omitempty"`
+	Visibility     string             `json:"visibility"`
+	Assets         map[string]BlobRef `json:"assets,omitempty"`
 }
 type remoteProof struct {
 	ConnectionID   string
@@ -110,7 +111,18 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 	if db.Outbox == nil {
 		db.Outbox = map[string]SyncJob{}
 	}
+	retained := map[string]BlobRef{}
+	privateDependencies := false
 	for id, job := range db.Outbox {
+		if job.SourceID == a.SourceID && job.Path == a.Path && job.State != "complete" && job.State != "superseded" {
+			inherited := retainedPendingAssets(rev.Text, a.Path, job.Assets)
+			if len(inherited) > 0 && job.Visibility != "public" {
+				privateDependencies = true
+			}
+			for p, ref := range inherited {
+				retained[p] = ref
+			}
+		}
 		if job.SourceID == a.SourceID && job.Path == a.Path && (job.State == "pending" || job.State == "retry") {
 			job.State = "superseded"
 			db.Outbox[id] = job
@@ -118,10 +130,10 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 	}
 	id := a.SourceID + "/" + a.Path + "@" + strconv.Itoa(rev.Number)
 	visibility := "private"
-	if sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
+	if !privateDependencies && sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
 		visibility = "public"
 	}
-	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility}
+	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained}
 }
 func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if !confirm {
@@ -159,10 +171,10 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	db.Connections[conn.ID] = conn
 	return s.commit(db)
 }
-func observedWrite(db *Database, sourceID, p, hash, commit string) bool {
+func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, complete bool) bool {
 	matched := 0
 	for _, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" {
+		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" && (len(job.Assets) == 0 || (complete && assetsPresent(Source{Assets: assets}, job.Assets))) {
 			matched = job.Revision
 		}
 	}
@@ -371,6 +383,9 @@ func (s *Store) setJob(id, state, code, prepared, observed string) error {
 	if !ok {
 		return ErrNotFound
 	}
+	if j.State == "complete" || j.State == "superseded" {
+		return ErrConflict
+	}
 	j.State = state
 	j.LastError = code
 	if prepared != "" {
@@ -387,6 +402,25 @@ func (s *Store) setJob(id, state, code, prepared, observed string) error {
 	}
 	db := s.clone()
 	db.Outbox[id] = j
+	return s.commit(db)
+}
+
+// Persist the prepared commit only while the same connection and job remain
+// eligible. A concurrent edit may have superseded the job during network I/O.
+func (s *Store) prepareJob(id, commit string, expected GitHubConnection) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.db.Outbox[id]
+	connection, connected := s.db.Connections[expected.ID]
+	if !ok || !connected || connection.Paused || !connection.Write || connection.ConfigRevision != expected.ConfigRevision || connection.RepositoryID != expected.RepositoryID || connection.Branch != expected.Branch || job.SourceID != expected.ID || job.State == "complete" || job.State == "superseded" || job.State == "conflict" {
+		return ErrConflict
+	}
+	job.State = "prepared"
+	job.LastError = ""
+	job.NextAttempt = ""
+	job.PreparedCommit = commit
+	db := s.clone()
+	db.Outbox[id] = job
 	return s.commit(db)
 }
 func (s *Store) pauseConnection(id string, paused bool) error {

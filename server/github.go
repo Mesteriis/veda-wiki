@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -399,19 +400,41 @@ func (g *GitHubClient) updateBranch(ctx context.Context, repo, branch, before, a
 	return nil
 }
 func (g *GitHubClient) push(ctx context.Context, repo, branch, base, treeSHA, p, content, token string, prepare func(string) error) (string, error) {
-	var blob struct {
-		SHA string `json:"sha"`
+	return g.pushFiles(ctx, repo, branch, base, treeSHA, map[string][]byte{p: []byte(content)}, token, prepare)
+}
+func (g *GitHubClient) pushFiles(ctx context.Context, repo, branch, base, treeSHA string, files map[string][]byte, token string, prepare func(string) error) (string, error) {
+	paths := make([]string, 0, len(files))
+	for name := range files {
+		if !safeRelative(name) {
+			return "", ErrInvalid
+		}
+		paths = append(paths, name)
 	}
-	if e := g.call(ctx, "POST", "/repos/"+repo+"/git/blobs", token, map[string]string{"content": content, "encoding": "utf-8"}, &blob); e != nil {
-		return "", e
-	}
-	if !commitID.MatchString(blob.SHA) {
-		return "", ErrInvalid
+	sort.Strings(paths)
+	entries := make([]map[string]string, 0, len(paths))
+	created := map[string]string{}
+	for _, name := range paths {
+		digestKey := digest(files[name])
+		sha, ok := created[digestKey]
+		if !ok {
+			var blob struct {
+				SHA string `json:"sha"`
+			}
+			if e := g.call(ctx, "POST", "/repos/"+repo+"/git/blobs", token, map[string]string{"content": base64.StdEncoding.EncodeToString(files[name]), "encoding": "base64"}, &blob); e != nil {
+				return "", e
+			}
+			if !commitID.MatchString(blob.SHA) || gitBlobDigest(files[name], len(blob.SHA)) != blob.SHA {
+				return "", ErrInvalid
+			}
+			sha = blob.SHA
+			created[digestKey] = sha
+		}
+		entries = append(entries, map[string]string{"path": name, "mode": "100644", "type": "blob", "sha": sha})
 	}
 	var tree struct {
 		SHA string `json:"sha"`
 	}
-	if e := g.call(ctx, "POST", "/repos/"+repo+"/git/trees", token, map[string]any{"base_tree": treeSHA, "tree": []map[string]string{{"path": p, "mode": "100644", "type": "blob", "sha": blob.SHA}}}, &tree); e != nil {
+	if e := g.call(ctx, "POST", "/repos/"+repo+"/git/trees", token, map[string]any{"base_tree": treeSHA, "tree": entries}, &tree); e != nil {
 		return "", e
 	}
 	if !commitID.MatchString(tree.SHA) {

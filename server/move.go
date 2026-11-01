@@ -62,27 +62,65 @@ func assetsPresent(source Source, expected map[string]BlobRef) bool {
 	return true
 }
 
-func (s *Store) verifyAsset(ref BlobRef) error {
+func remoteAssetPath(name, kind string) bool {
+	if !importablePath(name, kind) {
+		return false
+	}
+	switch strings.ToLower(path.Ext(name)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		return true
+	}
+	return false
+}
+
+// Keep only images still referenced by a later revision of a queued article.
+func retainedPendingAssets(value, articlePath string, candidates map[string]BlobRef) map[string]BlobRef {
+	if len(candidates) == 0 {
+		return nil
+	}
+	refs := map[string]BlobRef{}
+	root := markdown.Parser().Parse(text.NewReader([]byte(value)))
+	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		image, ok := node.(*ast.Image)
+		if !entering || !ok {
+			return ast.WalkContinue, nil
+		}
+		u, err := url.Parse(string(image.Destination))
+		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" || strings.HasPrefix(u.Path, "/") {
+			return ast.WalkContinue, nil
+		}
+		name := path.Clean(path.Join(path.Dir(articlePath), u.Path))
+		if ref, found := candidates[name]; found {
+			refs[name] = ref
+		}
+		return ast.WalkContinue, nil
+	})
+	return refs
+}
+
+func (s *Store) readAsset(ref BlobRef) ([]byte, error) {
 	if _, err := hexKey(ref.SHA); err != nil {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
 	filename := path.Join(s.dir, "blobs", ref.SHA)
 	info, err := os.Lstat(filename)
 	if err != nil || !info.Mode().IsRegular() {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
 	file, err := os.Open(filename)
 	if err != nil {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
 	defer file.Close()
 	content, err := io.ReadAll(io.LimitReader(file, (4<<20)+1))
 	verified, check := imageRef(content)
 	if err != nil || check != nil || verified != ref {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
-	return nil
+	return content, nil
 }
+
+func (s *Store) verifyAsset(ref BlobRef) error { _, err := s.readAsset(ref); return err }
 
 func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
 	seen := map[BlobRef]bool{}
@@ -164,13 +202,17 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		if parsed.Scheme != "" || parsed.Host != "" || parsed.Path == "" {
 			return ast.WalkContinue, nil
 		}
-		if !image || strings.HasPrefix(parsed.Path, "/") || target.ConnectionID != "" || target.ImportGeneration != "" {
+		if !image || strings.HasPrefix(parsed.Path, "/") || (target.ConnectionID == "" && target.ImportGeneration != "") {
 			failure = ErrInvalid
 			return ast.WalkStop, nil
 		}
 		from := path.Clean(path.Join(path.Dir(sourcePath), parsed.Path))
 		to := path.Clean(path.Join(path.Dir(targetPath), parsed.Path))
 		if !safeRelative(from) || !safeRelative(to) || (target.Kind == "program" && !strings.HasPrefix(to, "docs/")) {
+			failure = ErrInvalid
+			return ast.WalkStop, nil
+		}
+		if target.ConnectionID != "" && !remoteAssetPath(to, target.Kind) {
 			failure = ErrInvalid
 			return ast.WalkStop, nil
 		}
@@ -269,8 +311,14 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 		// Old binaries must refuse stores containing these new move invariants.
 		db.Version = 5
 	}
-	if len(assets) > 0 && db.Version < 6 {
-		db.Version = 6
+	if len(assets) > 0 {
+		version := 6
+		if s.db.Sources[in.DestinationID].ConnectionID != "" {
+			version = 7
+		}
+		if db.Version < version {
+			db.Version = version
+		}
 	}
 	id, e := randomID()
 	if e != nil {
@@ -358,7 +406,7 @@ func reconcileMoves(db *Database) {
 		}
 		target, exists := db.Articles[m.DestinationID+"/"+m.DestinationPath]
 		dst, dstOK := db.Sources[m.DestinationID]
-		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || !assetsPresent(dst, m.Assets) {
+		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || (m.DestinationConnectionID == "" && !assetsPresent(dst, m.Assets)) {
 			m.State = "destination_changed"
 			db.Moves[id] = m
 			continue
@@ -390,6 +438,11 @@ func reconcileMoves(db *Database) {
 			jobID := m.DestinationID + "/" + m.DestinationPath + "@1"
 			job, ok := db.Outbox[jobID]
 			if !ok || job.State != "complete" || job.SHA != m.SHA {
+				continue
+			}
+			if !assetsPresent(dst, m.Assets) {
+				m.State = "destination_changed"
+				db.Moves[id] = m
 				continue
 			}
 		}

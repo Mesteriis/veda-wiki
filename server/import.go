@@ -526,7 +526,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			a.Published = &published
 			db.Articles[key] = a
 		}
-		if proof != nil && observedWrite(&db, batch.SourceID, p, hash, batch.Commit) {
+		if proof != nil && observedWrite(&db, batch.SourceID, p, hash, batch.Commit, refs, batch.Complete && batch.Withheld == 0) {
 			a.UpstreamHash = hash
 			a = supersedeImportConflicts(a)
 			db.Articles[key] = a
