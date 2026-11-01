@@ -204,8 +204,15 @@ func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
 // Keep both local copies stable until a complete remote pull resolves it.
 func moveDeletionLocks(db Database, sourceID, p string) bool {
 	for _, m := range db.Moves {
-		if m.State == "deleting_source" && ((m.SourceID == sourceID && m.SourcePath == p) || (m.DestinationID == sourceID && m.DestinationPath == p)) {
-			return true
+		if m.State == "deleting_source" {
+			if (m.SourceID == sourceID && m.SourcePath == p) || (m.DestinationID == sourceID && m.DestinationPath == p) {
+				return true
+			}
+			if m.DestinationID == sourceID {
+				if _, dependency := m.Links[p]; dependency {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -367,6 +374,9 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if moveDeletionLocks(s.db, in.SourceID, in.SourcePath) {
+		return Move{}, ErrConflict
+	}
 	src, ok := s.db.Sources[in.SourceID]
 	if !ok {
 		return Move{}, ErrNotFound

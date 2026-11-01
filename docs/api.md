@@ -185,7 +185,10 @@ necessarily complete. A waiting move can be cancelled through `/api/v1/moves/can
 or `veda_cancel_move` with `confirm_cancel: true` before source deletion is
 prepared. Both copies remain; an already queued destination write may still
 finish. Once deletion is prepared, its response can be uncertain and cancellation
-is refused until synchronization resolves it. A definitive rejection of the
+is refused until synchronization resolves it. During this interval, local edits,
+translation changes, conflict resolution and moves of the source, destination
+and recorded linked destination articles are refused. External changes in a
+GitHub repository cannot be locked by VEDA. A definitive rejection of the
 first ref update restores the cancellable waiting state; a later rejection
 cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
