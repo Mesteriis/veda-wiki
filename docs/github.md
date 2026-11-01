@@ -53,3 +53,20 @@ accepted against authenticated live repositories. An optional local translation
 worker and source-scoped read-only keys are implemented; model qualification
 and production agent-key rollout remain outstanding. See
 [translation](translation.md) and [scoped access](scoped-access-design.md).
+
+An opt-in live acceptance test exercises a move between two branches of the
+public `Mesteriis/veda-wiki` repository using synthetic content. It checks that
+the source remains until the destination has been observed, and checks the
+final remote tree and destination blob. The local test store receives a
+synthetic token; a loopback test proxy invokes the authenticated `gh` CLI,
+so it does not test VEDA's handling of a real PAT or App installation. It also
+does not establish behavior across two distinct repositories. With `gh`
+already authenticated as Mesteriis, run:
+
+```sh
+cd server
+VEDA_LIVE_GITHUB_MOVE=1 go test -count=1 -run '^TestLiveGitHubBranchMove$' -v .
+```
+
+Each run creates two public fixture branches and retains them for inspection;
+the test does not change an existing branch or use production wiki data.
