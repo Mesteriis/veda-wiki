@@ -119,7 +119,9 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 		m.DestinationBranch = conn.Branch
 	}
 	// Older binaries reject version 2 instead of silently dropping move records.
-	db.Version = 2
+	if db.Version < 2 {
+		db.Version = 2
+	}
 	db.Moves[id] = m
 	reconcileMoves(&db)
 	m = db.Moves[id]

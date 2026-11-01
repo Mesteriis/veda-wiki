@@ -71,6 +71,7 @@ type Database struct {
 	Connections map[string]GitHubConnection `json:"github_connections,omitempty"`
 	Outbox      map[string]SyncJob          `json:"outbox,omitempty"`
 	Moves       map[string]Move             `json:"moves,omitempty"`
+	AccessKeys  map[string]AccessKey        `json:"access_keys,omitempty"`
 }
 
 // One server process owns the data directory. All writes are serialized and
@@ -116,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 4) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -133,6 +134,14 @@ func openStore(dir string) (*Store, error) {
 	}
 	if s.db.Version == 1 && len(s.db.Moves) > 0 {
 		return nil, errors.New("move records require store version 2")
+	}
+	if s.db.Version != 4 && len(s.db.AccessKeys) > 0 {
+		return nil, errors.New("access keys require store version 4")
+	}
+	for id, key := range s.db.AccessKeys {
+		if err := validateAccessKey(id, key, s.db.Sources); err != nil {
+			return nil, err
+		}
 	}
 	for id, a := range s.db.Accounts {
 		if !identifier.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !githubPart.MatchString(a.Login) || len(a.SecretRef) != 32 {
@@ -318,6 +327,10 @@ func (s *Store) clone() Database {
 	db.Moves = make(map[string]Move, len(s.db.Moves))
 	for k, v := range s.db.Moves {
 		db.Moves[k] = v
+	}
+	db.AccessKeys = make(map[string]AccessKey, len(s.db.AccessKeys))
+	for k, v := range s.db.AccessKeys {
+		db.AccessKeys[k] = v
 	}
 	for k, v := range s.db.Sources {
 		db.Sources[k] = v
