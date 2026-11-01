@@ -641,12 +641,19 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		if job.SourceID != c.ID || job.State == "complete" || job.State == "superseded" {
 			continue
 		}
+		if job.State == "conflict" {
+			continue
+		}
 		if !c.Write {
-			m.store.setJob(job.ID, "blocked", "write_not_enabled", "", "")
+			if err := m.store.setJobFor(c, job, "blocked", "write_not_enabled", "", ""); err != nil {
+				return err
+			}
 			continue
 		}
 		if job.Visibility != "public" && !c.Private {
-			m.store.setJob(job.ID, "blocked", "publication_confirmation_required", "", "")
+			if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", "", ""); err != nil {
+				return err
+			}
 			continue
 		}
 		if due, e := time.Parse(time.RFC3339Nano, job.NextAttempt); e == nil && due.After(time.Now()) {
@@ -670,10 +677,9 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			}
 		}
 		if pending {
-			m.store.setJob(job.ID, "conflict", "source_conflict", "", "")
-			continue
-		}
-		if job.State == "conflict" {
+			if err := m.store.setJobFor(c, job, "conflict", "source_conflict", "", ""); err != nil {
+				return err
+			}
 			continue
 		}
 		prepared := func(commit string) error {
@@ -685,7 +691,9 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 				return e
 			}
 			if !*info.Private {
-				m.store.setJob(job.ID, "blocked", "publication_confirmation_required", "", "")
+				if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", "", ""); err != nil {
+					return err
+				}
 				return &remoteError{Code: "publication_confirmation_required"}
 			}
 		}
@@ -701,12 +709,16 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			}
 		}
 		if e != nil {
-			m.store.setJob(job.ID, "retry", errorCode(e), "", "")
+			if err := m.store.setJobFor(c, job, "retry", errorCode(e), "", ""); err != nil {
+				return err
+			}
 			return e
 		}
 		// Do not optimistically acknowledge the remote update. The next pull must
 		// observe the actual blob, which also recovers a lost update response.
-		m.store.setJob(job.ID, "prepared", "", "", commit)
+		if err := m.store.setJobFor(c, job, "prepared", "", "", commit); err != nil {
+			return err
+		}
 		m.Wake()
 		return nil // one commit per source per pass; refresh before the next write
 	}

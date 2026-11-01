@@ -358,6 +358,73 @@ func TestStaleSyncCannotReverifyAfterPauseResume(t *testing.T) {
 		t.Fatal("fresh verification did not restore visibility", err)
 	}
 }
+
+func TestStaleSyncCannotChangeOutboxAfterReconfiguration(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	m := connectFixture(t, s, f, false)
+	if _, err := s.put("handbook", "new.md", "# New", 0); err != nil {
+		t.Fatal(err)
+	}
+	old := s.connections()[0]
+	if err := s.pauseConnection(old.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.pauseConnection(old.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.pushPending(context.Background(), old, "", "", ""); err != ErrConflict {
+		t.Fatal("stale cycle was accepted", err)
+	}
+	jobs := s.jobs()
+	if len(jobs) != 1 || jobs[0].State != "pending" || jobs[0].LastError != "" {
+		t.Fatal("stale cycle changed outbox")
+	}
+	current := s.connections()[0]
+	if err := m.pushPending(context.Background(), current, "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if s.jobs()[0].State != "blocked" {
+		t.Fatal("current cycle did not update outbox")
+	}
+}
+
+func TestStaleOutboxObservationCannotUndoPublicationApproval(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	connectFixture(t, s, f, false)
+	if _, err := s.put("handbook", "new.md", "# New", 0); err != nil {
+		t.Fatal(err)
+	}
+	c := s.connections()[0]
+	s.mu.Lock()
+	key := "handbook/new.md@1"
+	j := s.db.Outbox[key]
+	j.Visibility = "private"
+	s.db.Outbox[key] = j
+	s.mu.Unlock()
+	old := s.jobs()[0]
+	s.mu.Lock()
+	j = s.db.Outbox[key]
+	j.Visibility = "public"
+	s.db.Outbox[key] = j
+	s.mu.Unlock()
+	if err := s.setJobFor(c, old, "blocked", "publication_confirmation_required", "", ""); err != ErrConflict {
+		t.Fatal("changed visibility was overwritten", err)
+	}
+	if s.jobs()[0].State != "pending" {
+		t.Fatal("changed job was blocked")
+	}
+	old = s.jobs()[0]
+	s.mu.Lock()
+	j = s.db.Outbox[key]
+	j.State = "conflict"
+	s.db.Outbox[key] = j
+	s.mu.Unlock()
+	if err := s.setJobFor(c, old, "retry", "upstream_unavailable", "", ""); err != ErrConflict {
+		t.Fatal("conflict state was overwritten", err)
+	}
+}
 func TestGitHubPublicPullAndTrackedProgramScope(t *testing.T) {
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Documentation", "README.md": "not imported", "src/main.go": "package original"})

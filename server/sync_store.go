@@ -506,14 +506,15 @@ func (s *Store) connectionStatusFor(observed GitHubConnection, state, verificati
 	}
 	return s.commit(db)
 }
-func (s *Store) setJob(id, state, code, prepared, observed string) error {
+func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, code, prepared, observed string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	j, ok := s.db.Outbox[id]
+	j, ok := s.db.Outbox[original.ID]
 	if !ok {
 		return ErrNotFound
 	}
-	if j.State == "complete" || j.State == "superseded" {
+	c, connected := s.db.Connections[expected.ID]
+	if !connected || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || j.SourceID != expected.ID || j.Revision != original.Revision || j.SHA != original.SHA || j.Visibility != original.Visibility || j.State == "complete" || j.State == "superseded" || (j.State == "conflict" && state != "conflict") || (j.State != original.State && j.State != "prepared") {
 		return ErrConflict
 	}
 	j.State = state
@@ -531,7 +532,7 @@ func (s *Store) setJob(id, state, code, prepared, observed string) error {
 		j.NextAttempt = ""
 	}
 	db := s.clone()
-	db.Outbox[id] = j
+	db.Outbox[original.ID] = j
 	return s.commit(db)
 }
 

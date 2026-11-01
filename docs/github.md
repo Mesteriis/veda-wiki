@@ -61,6 +61,9 @@ visibility is not being verified; a network request already in flight may finish
 The server rejects sync status and visibility observations made using an older
 connection configuration, including after pause and resume. A fresh verification
 is required before public content reappears.
+Outbox status changes also require the same connection revision and an unchanged
+job identity and visibility. A prepared commit is retained for recovery if the
+connection changes during an uncertain remote write.
 The reading interface refreshes its state periodically and when the dialog is
 opened or closed, so imported pages appear without a browser reload. Anonymous
 GitHub API limits can delay verification; while verification is unavailable,
