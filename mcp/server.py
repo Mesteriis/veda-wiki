@@ -119,7 +119,7 @@ def make_server(client):
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000},
             "expected_revision": {"type": "integer", "minimum": 0}},
             ["source_id", "path", "text", "expected_revision"]),
-        "veda_copy_article": ("Copy a specific revision to a new destination; private-to-public requires explicit user approval. Source is retained.", {
+        "veda_copy_article": ("Copy a specific revision to a new destination, retaining the source. Supported relative images are copied; linked articles must already exist at the destination with the same revision. Private-to-public copying requires explicit user approval. Inspect the outbox for remote confirmation.", {
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "destination_id": string, "destination_path": string, "confirm_publication": {"type": "boolean"}},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
@@ -127,7 +127,7 @@ def make_server(client):
             "limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0}}, []),
         "veda_cancel_move": ("Cancel a waiting move, preserving both copies; an already queued destination write may still finish.", {
             "id":string,"confirm_cancel":{"type":"boolean","const":True}}, ["id","confirm_cancel"]),
-        "veda_move_article": ("Move a standalone local or synchronized writable GitHub article after explicit user instruction. Local imported sources, relative dependencies and translations are not supported. Connected destinations must be observed before source deletion.", {
+        "veda_move_article": ("Move a standalone local or synchronized writable GitHub article after explicit user instruction. Supported relative images are transferred; linked articles must already exist at the destination with the same revision. A stored translation can move only to a program source and remains a private draft. Local imported sources are unsupported. Connected destinations must be observed before source deletion; inspect veda_moves for completion. Private-to-public publication requires explicit user approval.", {
             "source_id":string,"source_path":string,"expected_revision":{"type":"integer","minimum":1},
             "destination_id":string,"destination_path":string,"confirm_move":{"type":"boolean","const":True},"confirm_publication":{"type":"boolean"}},
             ["source_id","source_path","expected_revision","destination_id","destination_path","confirm_move"]),
