@@ -24,10 +24,16 @@ replace human review.
 
 Read-only MCP clients can use `veda_prepare_translation` to return an unsaved
 proposal bound to the current original revision and SHA. It accepts program
-`docs/` articles visible to that client and rejects a stale revision. It does
-not check translation quality or Markdown structure, save the draft, or grant
-publication approval. An authorized client must submit and validate it through
-the existing translation API. The tool does not translate text by itself.
+`docs/` articles visible to that client and rejects a stale revision. The
+server returns structural, Cyrillic-prose, unchanged-text and credential-pattern
+checks through `POST /api/v1/articles/translation-validate`. This POST is a
+non-mutating exception for authenticated readers and the local reader socket;
+browser-origin and public-listener requests are refused. The checks cannot prove
+translation quality or completeness, and a successful result does not save a
+draft or approve publication. Source changes, conflicts, move state, access or
+publication requirements can still prevent later submission. An authorized
+client must review and submit through the existing translation API. The tool
+does not translate text by itself.
 
 A translation visible to the public requires explicit publication approval;
 credential-like text is refused. A translation saved privately cannot become

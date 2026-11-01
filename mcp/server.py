@@ -122,7 +122,7 @@ def make_server(client):
             "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "text"]),
-        "veda_prepare_translation": ("Prepare a non-persistent Russian translation proposal for a program docs/ article. The current original revision and SHA are reread; stale revisions are refused. This does not validate Markdown structure, save a draft, or approve publication.", {
+        "veda_prepare_translation": ("Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article. The current revision and SHA are reread; stale revisions are refused. Validation cannot establish translation quality, save a draft, or approve publication.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_create_source": ("Create an explicit local source; GitHub connection is not implied.", {
@@ -249,10 +249,13 @@ def make_server(client):
                 if (not isinstance(proposed, str) or not proposed or len(proposed.encode("utf-8")) > 256000
                         or current["revision"] != arguments["expected_revision"]):
                     raise ValueError("Invalid or stale translation proposal")
+                validation = await asyncio.to_thread(client.request, "POST", "/api/v1/articles/translation-validate", {
+                    "source_id": arguments["source_id"], "path": arguments["path"],
+                    "expected_revision": current["revision"], "original_sha256": current["sha256"], "text": proposed})
                 result = {"source_id": arguments["source_id"], "path": arguments["path"],
                           "expected_revision": current["revision"], "original_sha256": current["sha256"],
-                          "text": proposed, "saved": False,
-                          "note": "Proposal only; review and an authorized translation submission are still required."}
+                          "text": proposed, "validation": validation, "saved": False,
+                          "note": "Proposal only; validation cannot establish translation quality. Review and an authorized translation submission are still required."}
             elif name == "veda_create_source":
                 result = await asyncio.to_thread(client.request, "POST", "/api/v1/sources", arguments)
             elif name == "veda_write_article":

@@ -224,6 +224,9 @@ async def main():
                             translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Предложение\nЗапустите `install`."})
                             draft = json.loads(translation.content[0].text)
                             assert not translation.isError and draft["saved"] is False and draft["original_sha256"] == original["sha256"]
+                            assert draft["validation"]["structural_valid"] is True and draft["validation"]["russian_prose"] is True
+                            broken_translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Ошибка\nЗапустите `different`."})
+                            assert not broken_translation.isError and json.loads(broken_translation.content[0].text)["validation"]["structural_valid"] is False
                             stale_translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 2, "text": "# Ошибка"})
                             assert stale_translation.isError
                             wrong_kind = await scoped.call_tool("veda_prepare_translation", {"source_id": "closed", "path": "README.md", "expected_revision": 2, "text": "# Ошибка"})
@@ -254,6 +257,8 @@ async def main():
                     async with stdio_client(socket_params) as (socket_in, socket_out):
                         async with ClientSession(socket_in, socket_out) as socket_reader:
                             await socket_reader.initialize()
+                            checked = await socket_reader.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Перевод\nЗапустите `install`."})
+                            assert not checked.isError and json.loads(checked.content[0].text)["validation"]["structural_valid"] is True
                             names = {tool.name for tool in (await socket_reader.list_tools()).tools}
                             assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed"}
                             item = await socket_reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})

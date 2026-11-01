@@ -204,7 +204,8 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if w.Store != nil {
 		owner := w.authorized(r)
 		implicitLocal := w.ReaderLocal && !w.ReaderKeyRequired && r.Header.Get("Authorization") == ""
-		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || w.Sessions.valid(r)))) && r.Method == "GET"
+		validation := r.Method == "POST" && r.URL.Path == "/api/v1/articles/translation-validate" && r.Header.Get("Origin") == ""
+		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || (!validation && w.Sessions.valid(r))))) && (r.Method == "GET" || validation)
 		if !w.Public && !owner && !reader && r.Method == "GET" {
 			if hash, ok := w.Sessions.scopedCookie(r); ok {
 				scoped, valid, err := w.Store.scopedViewHash(hash, time.Now())
@@ -225,7 +226,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if valid {
-				if r.Method != "GET" {
+				if r.Method != "GET" && !validation {
 					http.Error(rw, "Read-only access", http.StatusForbidden)
 					return
 				}

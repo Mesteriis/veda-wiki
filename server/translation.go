@@ -3,6 +3,7 @@ package main
 import (
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -25,6 +26,48 @@ type translationRequest struct {
 	OriginalSHA        string `json:"original_sha256"`
 	Text               string `json:"text"`
 	ConfirmPublication bool   `json:"confirm_publication"`
+}
+
+// Validate a proposal against the same current revision and protected Markdown
+// used for submission, without storing it or approving publication.
+func (s *Store) validateTranslation(in translationRequest) (map[string]any, error) {
+	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > 256000 || !utf8.ValidString(in.Text) {
+		return nil, ErrInvalid
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src, ok := s.db.Sources[in.SourceID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if src.Kind != "program" || !articlePath(in.Path, src.Kind) {
+		return nil, ErrInvalid
+	}
+	if moveDeletionLocks(s.db, in.SourceID, in.Path) {
+		return nil, ErrConflict
+	}
+	a, ok := s.db.Articles[in.SourceID+"/"+in.Path]
+	if !ok || a.Deleted {
+		return nil, ErrNotFound
+	}
+	if len(a.Versions) != in.ExpectedRevision {
+		return nil, ErrConflict
+	}
+	rev := a.Versions[len(a.Versions)-1]
+	if in.OriginalSHA != rev.SHA {
+		return nil, ErrConflict
+	}
+	for _, conflict := range a.Conflicts {
+		if conflict.Resolution == "" {
+			return nil, ErrConflict
+		}
+	}
+	return map[string]any{
+		"source_id": in.SourceID, "path": in.Path, "expected_revision": in.ExpectedRevision,
+		"original_sha256": rev.SHA, "structural_valid": reflect.DeepEqual(protectedMarkdown(rev.Text), protectedMarkdown(in.Text)),
+		"russian_prose": containsRussianProse(in.Text), "unchanged": strings.TrimSpace(rev.Text) == strings.TrimSpace(in.Text),
+		"credential_like": secretContent.MatchString(in.Text), "saved": false,
+	}, nil
 }
 
 // Translation cannot alter code or destinations. Preserve their order too, so

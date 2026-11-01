@@ -75,6 +75,8 @@ updates and translations; it has no write/admin access. The socket's directory m
 be 0700 and owned by the server user. Anyone sharing that OS identity can read
 all private sources; this is not per-agent authorization. An optional Linux-only
 root snapshot import channel is described in the [API reference](docs/api.md).
+Translation proposal validation uses a non-mutating POST on this socket; it
+checks protected Markdown but does not assess meaning or publish the result.
 
 The owner key allows reading and writing all sources. To grant an agent only
 current-content reading, pass `--reader-key-file .veda/reader.key` instead. The reader

@@ -86,7 +86,8 @@ func apiError(rw http.ResponseWriter, err error) {
 	jsonResponse(rw, code, map[string]string{"error": message})
 }
 func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
-	if r.Method != "GET" && (!owner || r.Header.Get("Origin") != "") {
+	validation := r.Method == "POST" && r.URL.Path == "/api/v1/articles/translation-validate" && reader
+	if r.Method != "GET" && ((!owner && !validation) || r.Header.Get("Origin") != "") {
 		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required; browser writes are disabled"})
 		return
 	}
@@ -145,6 +146,22 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/articles/translation-validate":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in translationRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.validateTranslation(in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, result)
 	case "/api/v1/search":
 		if r.Method != "GET" {
 			rw.WriteHeader(405)
