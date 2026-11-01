@@ -7,8 +7,10 @@ local versioned Markdown articles, REST API and an MCP adapter.
 GitHub connections and background synchronization are implemented and tested
 with a simulated GitHub service; authenticated live write acceptance is pending.
 Revision-bound cross-repository moves have simulated-GitHub coverage; live
-authenticated acceptance is pending. Automatic translation and user/team
-permissions are not implemented. This repository contains no knowledge-base content,
+authenticated acceptance is pending. An optional local translation worker
+produces reviewable Russian drafts; model quality remains unverified. Scoped
+agent read keys are implemented; user/team accounts remain unfinished. This
+repository contains no knowledge-base content,
 credentials, production configuration or deployment history.
 
 ## Run

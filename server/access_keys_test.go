@@ -223,3 +223,26 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 		t.Fatal("move or access lost after upgrade")
 	}
 }
+
+func TestTranslationDraftCannotModifySourceDuringPreparedMove(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Setup"})
+	manager := connectFixture(t, s, f, true)
+	a, err := s.article("handbook", "docs/guide.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "docs/guide.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "guide.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.Once(context.Background())
+	if s.moves()[0].State != "deleting_source" {
+		t.Fatal("deletion not prepared")
+	}
+	_, err = s.saveTranslation(translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка"}, true)
+	if err != ErrConflict {
+		t.Fatal("translation modified source during prepared move", err)
+	}
+}
