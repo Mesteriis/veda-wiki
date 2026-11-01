@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -52,6 +53,55 @@ func TestPersistenceAndOptimisticConcurrency(t *testing.T) {
 	a, e := reopened.article("one", "guide.md", false)
 	if e != nil || len(a.Versions) != 2 || a.Versions[0].Text != "# First" || a.Versions[1].Text != "# Second" {
 		t.Fatal("history lost", e)
+	}
+}
+
+func TestFailedPersistenceDoesNotPublishRevision(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "one", "private")
+	state := filepath.Join(s.dir, "state.json")
+	backup := filepath.Join(s.dir, "before-test.json")
+	if e := os.Rename(state, backup); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Mkdir(state, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.put("one", "guide.md", "# Must not publish", 0); e == nil {
+		t.Fatal("persistence failure accepted")
+	}
+	if len(s.snapshot(false).Pages) != 0 {
+		t.Fatal("failed transaction visible")
+	}
+	if e := os.Remove(state); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Rename(backup, state); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.put("one", "guide.md", "# Retry", 0); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestCorruptStoredRevisionIsRefused(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "one", "private")
+	if _, e := s.put("one", "guide.md", "# Original", 0); e != nil {
+		t.Fatal(e)
+	}
+	article := s.db.Articles["one/guide.md"]
+	article.Versions[0].Text = "# Tampered"
+	s.db.Articles["one/guide.md"] = article
+	b, e := json.Marshal(s.db)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(filepath.Join(s.dir, "state.json"), b, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = openStore(s.dir); e == nil {
+		t.Fatal("corrupt revision accepted")
 	}
 }
 func TestConcurrentSingleWinner(t *testing.T) {
