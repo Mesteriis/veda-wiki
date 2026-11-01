@@ -230,7 +230,7 @@ function PageCards({ cards }) {
             key={c.Page.path}
             href={pageHref(c.Page.path)}
           >
-            <img className="page-cover" src={"/assets/" + c.Image} alt="" />
+            <img className="page-cover" src={c.ImageURL || "/assets/" + c.Image} alt="" />
             <div className="page-card-copy">
               <strong title={c.Page.title}>{c.Page.title}</strong>
               <small className="card-path">/{c.Page.path}</small>

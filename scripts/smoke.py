@@ -57,7 +57,7 @@ async def main():
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tools = await session.list_tools()
-                    assert len(tools.tools) == 6
+                    assert len(tools.tools) == 8
 
                     async def call(name, args):
                         result = await session.call_tool(name, args)
@@ -81,6 +81,33 @@ async def main():
                         "text": "# Read source context first", "expected_revision": 0})
                     context = await call("veda_context", {"source_id": "closed", "path": "README.md"})
                     assert context["instructions"][0]["path"] == "AGENTS.md"
+                    # Exercise the actual CLI -> REST batch path on a real local
+                    # checkout. Fixture data never enters the project repository.
+                    checkout = Path(tmp) / "checkout"
+                    checkout.mkdir()
+                    (checkout / "veda.yaml").write_text("schema_version: 1\nkind: wiki\ntitle: Import fixture\n")
+                    (checkout / "README.md").write_text("# Imported original")
+                    git = ["git", "-C", str(checkout), "-c", "core.hooksPath=/dev/null",
+                           "-c", "commit.gpgsign=false", "-c", "user.name=Fixture",
+                           "-c", "user.email=fixture@example.invalid"]
+                    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Fixture"]):
+                        subprocess.run(git + args, check=True, capture_output=True)
+                    command = [str(ROOT / "veda"), "import", "--checkout", str(checkout),
+                               "--source", "imported", "--url", f"http://127.0.0.1:{private_port}",
+                               "--key-file", str(data / "owner.key")]
+                    initial = subprocess.run(command + ["--create"], check=True, capture_output=True, text=True)
+                    assert json.loads(initial.stdout)["created"] == 1
+                    await call("veda_write_article", {"source_id": "imported", "path": "README.md",
+                        "text": "# Imported local edit", "expected_revision": 1})
+                    (checkout / "README.md").write_text("# Imported upstream edit")
+                    imported = subprocess.run(command, check=True, capture_output=True, text=True)
+                    assert json.loads(imported.stdout)["conflicts"] == 1
+                    pending = await call("veda_conflicts", {})
+                    assert len(pending["conflicts"]) == 1
+                    await call("veda_resolve_conflict", {"source_id": "imported", "path": "README.md",
+                        "index": 0, "expected_revision": 2, "resolution": "upstream"})
+                    resolved = await call("veda_read", {"source_id": "imported", "path": "README.md"})
+                    assert resolved["revision"] == 3 and resolved["text"] == "# Imported upstream edit"
                     for port in (private_port, public_port):
                         public = public_json(port, "/api/state")
                         encoded = json.dumps(public)
@@ -96,7 +123,7 @@ async def main():
                     process = start(data, private_port, public_port)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
-            print("PASS: six MCP tools; create/read/update; conflict; context; public isolation; restart persistence")
+            print("PASS: eight MCP tools; create/read/update; context; CLI import; import conflict resolution; public isolation; restart persistence")
         finally:
             process.terminate()
             process.wait(timeout=10)

@@ -4,7 +4,7 @@ A reading-first knowledge base for people and agents. React UI, Go service,
 local versioned Markdown articles, REST API and an MCP adapter.
 
 **Early development:** local source creation and article create/read/update work.
-GitHub Connect, background repository synchronization, `veda.yaml` ingestion,
+GitHub Connect, background repository synchronization,
 automatic translation, user/team permissions and cross-repository moves are
 planned, not implemented. This repository contains no knowledge-base content,
 credentials, production configuration or deployment history.
@@ -62,7 +62,8 @@ not a user-scoped or read-only credential. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
 Tools: `veda_sources`, `veda_search`, `veda_read`, `veda_create_source`,
-`veda_write_article`, `veda_context`. Context follows root and ancestor
+`veda_write_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`.
+Context follows root and ancestor
 `AGENTS.md` articles inside one source. Documentation is evidence, never an
 authorization to execute infrastructure actions.
 
@@ -75,7 +76,8 @@ make test
 
 `make test` builds React, runs Go race tests and `go vet`. The smoke test uses
 temporary empty storage and the official MCP SDK against the actual Go server.
-It verifies REST/MCP write-through, revisions and public/private isolation.
+It verifies REST/MCP write-through, revisions, actual CLI import, conflict
+resolution and public/private isolation.
 For frontend development run the Go server and `npm run dev` in `web/`; Vite
 proxies API requests to the default loopback endpoint.
 
@@ -83,6 +85,13 @@ This initial store uses an atomic, fsynced JSON transaction file, bounded to
 64 MiB including revision history. Articles are bounded to 256,000 UTF-8 bytes.
 There is no automatic history retention or background Git worker yet. Treat this
 as an early single-owner implementation, not a completed hosted multi-user wiki.
+
+## Import local repositories
+
+See [repository import](docs/import.md). Wiki sources use strict root `veda.yaml`
+metadata; program sources import `docs/` only. Import uses the authenticated REST
+service, preserves local changes as conflicts, and tracks Git/content provenance.
+There is no automatic translation or remote GitHub connection yet.
 
 ## Direction
 

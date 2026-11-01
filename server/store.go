@@ -24,10 +24,16 @@ var ErrNotFound = errors.New("not found")
 var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
 type Source struct {
-	ID         string `json:"id"`
-	Title      string `json:"title"`
-	Kind       string `json:"kind"`
-	Visibility string `json:"visibility"`
+	ID               string             `json:"id"`
+	Title            string             `json:"title"`
+	Kind             string             `json:"kind"`
+	Visibility       string             `json:"visibility"`
+	Metadata         *WikiMetadata      `json:"metadata,omitempty"`
+	Assets           map[string]BlobRef `json:"assets,omitempty"`
+	ImportGeneration string             `json:"import_generation,omitempty"`
+	ImportCommit     string             `json:"import_commit,omitempty"`
+	ImportDirty      bool               `json:"import_dirty,omitempty"`
+	ImportPartial    bool               `json:"import_partial,omitempty"`
 }
 type Revision struct {
 	Number  int    `json:"revision"`
@@ -36,9 +42,12 @@ type Revision struct {
 	Created string `json:"created_at"`
 }
 type Article struct {
-	SourceID string     `json:"source_id"`
-	Path     string     `json:"path"`
-	Versions []Revision `json:"versions"`
+	SourceID     string           `json:"source_id"`
+	Path         string           `json:"path"`
+	Versions     []Revision       `json:"versions"`
+	UpstreamHash string           `json:"upstream_sha256,omitempty"`
+	Deleted      bool             `json:"deleted,omitempty"`
+	Conflicts    []ImportConflict `json:"conflicts,omitempty"`
 }
 type Database struct {
 	Version  int                `json:"version"`
@@ -68,6 +77,9 @@ func openStore(dir string) (*Store, error) {
 		return nil, errors.New("data directory must be private (0700)")
 	}
 	s := &Store{dir: dir, db: Database{Version: 1, Sources: map[string]Source{}, Articles: map[string]Article{}}}
+	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
+		return nil, errors.New("store must be a private regular file")
+	}
 	f, err := os.OpenFile(path.Join(dir, "state.json"), os.O_RDONLY, 0)
 	if os.IsNotExist(err) {
 		return s, nil
@@ -93,6 +105,24 @@ func openStore(dir string) (*Store, error) {
 		if id != src.ID || !identifier.MatchString(id) || (src.Kind != "wiki" && src.Kind != "program") || (src.Visibility != "public" && src.Visibility != "private") {
 			return nil, errors.New("invalid stored source")
 		}
+		if src.Metadata != nil {
+			if e := validateMetadata(src.Metadata); e != nil {
+				return nil, errors.New("invalid stored metadata")
+			}
+		}
+		for name, ref := range src.Assets {
+			if !safeRelative(name) {
+				return nil, errors.New("invalid stored asset")
+			}
+			if _, e := hexKey(ref.SHA); e != nil {
+				return nil, errors.New("invalid stored asset digest")
+			}
+			switch ref.MIME {
+			case "image/png", "image/jpeg", "image/webp", "image/gif":
+			default:
+				return nil, errors.New("invalid stored asset type")
+			}
+		}
 	}
 	for key, article := range s.db.Articles {
 		src, exists := s.db.Sources[article.SourceID]
@@ -103,6 +133,11 @@ func openStore(dir string) (*Store, error) {
 			sum := sha256.Sum256([]byte(revision.Text))
 			if revision.Number != i+1 || len(revision.Text) > 256000 || !utf8.ValidString(revision.Text) || revision.SHA != hex.EncodeToString(sum[:]) {
 				return nil, errors.New("invalid stored revision")
+			}
+		}
+		for _, c := range article.Conflicts {
+			if !commitID.MatchString(c.Commit) || (c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) || (!c.Deleted && (digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > 256000)) {
+				return nil, errors.New("invalid stored conflict")
 			}
 		}
 	}
@@ -163,6 +198,9 @@ func (s *Store) addSource(src Source) error {
 	if !identifier.MatchString(src.ID) || strings.TrimSpace(src.Title) == "" || len(src.Title) > 200 || (src.Kind != "wiki" && src.Kind != "program") || (src.Visibility != "private" && src.Visibility != "public") {
 		return ErrInvalid
 	}
+	if src.Metadata != nil || len(src.Assets) != 0 || src.ImportGeneration != "" || src.ImportCommit != "" || src.ImportDirty || src.ImportPartial {
+		return ErrInvalid
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.db.Sources[src.ID]; ok {
@@ -173,7 +211,7 @@ func (s *Store) addSource(src Source) error {
 	return s.commit(db)
 }
 func articlePath(p string, kind string) bool {
-	if !safePath(p) || len(p) > 512 || strings.ContainsAny(p, "\\\x00") {
+	if !utf8.ValidString(p) || !safePath(p) || len(p) > 512 || strings.ContainsAny(p, "\\\x00\r\n") {
 		return false
 	}
 	for _, part := range strings.Split(p, "/") {
@@ -206,7 +244,8 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	versions := append([]Revision(nil), article.Versions...)
 	versions = append(versions, rev)
 	db := s.clone()
-	db.Articles[key] = Article{SourceID: sourceID, Path: p, Versions: versions}
+	article.SourceID, article.Path, article.Versions, article.Deleted = sourceID, p, versions, false
+	db.Articles[key] = article
 	if err := s.commit(db); err != nil {
 		return Revision{}, err
 	}
@@ -240,6 +279,9 @@ func (s *Store) snapshot(public bool) Snapshot {
 		snap.Generated = s.db.Updated
 	}
 	for key, a := range s.db.Articles {
+		if a.Deleted {
+			continue
+		}
 		src := s.db.Sources[a.SourceID]
 		if public && src.Visibility != "public" {
 			continue
@@ -257,7 +299,7 @@ func (s *Store) page(key string, public bool) (Page, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	a, ok := s.db.Articles[key]
-	if !ok {
+	if !ok || a.Deleted {
 		return Page{}, ErrNotFound
 	}
 	src := s.db.Sources[a.SourceID]
@@ -271,7 +313,7 @@ func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	a, ok := s.db.Articles[sourceID+"/"+p]
-	if !ok {
+	if !ok || a.Deleted {
 		return Article{}, ErrNotFound
 	}
 	if public && s.db.Sources[a.SourceID].Visibility != "public" {

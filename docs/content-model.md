@@ -5,7 +5,7 @@ background without becoming the only durable copy. Multiple sources stay
 separate and are combined for reading/search; source ID plus path identifies
 an article. Matching paths do not cause automatic cross-source replacement.
 
-## Planned repository types
+## Repository types
 
 - Wiki: root `veda.yaml` with versioned metadata (title, description, optional
   image/link), plus a Markdown hierarchy and scoped `AGENTS.md` instructions.
@@ -38,6 +38,7 @@ permission/content checks. Private revision history must not become public as a
 side effect. Hiding a previously public article cannot erase external Git history
 or previously downloaded copies.
 
-The initial implementation intentionally has no source visibility update or move
-operation. Per-user/team access, repository connectors, metadata ingestion and
-translation workers require further implementation and tests.
+The current local importer implements metadata ingestion and program docs/
+selection; see [repository import](import.md). The implementation intentionally
+has no source visibility update or move operation yet. Per-user/team access,
+remote repository connectors and translation workers require further work.

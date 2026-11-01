@@ -44,6 +44,7 @@ type Card struct {
 	Image       string
 	Description string
 	Tag         string
+	ImageURL    string
 }
 type Group struct {
 	Name  string
@@ -125,6 +126,18 @@ func render(p Page) (template.HTML, template.HTML, error) {
 				}
 			}
 		}
+		if image, ok := n.(*ast.Image); ok {
+			u, e := url.Parse(string(image.Destination))
+			parts := strings.SplitN(p.Path, "/", 2)
+			if e == nil && u.Scheme == "" && u.Host == "" && len(parts) == 2 {
+				target := path.Clean(path.Join(path.Dir(parts[1]), u.Path))
+				if safeRelative(target) {
+					image.Destination = []byte("/media/" + parts[0] + "/" + url.PathEscape(target))
+				} else {
+					image.Destination = []byte("")
+				}
+			}
+		}
 		if h, ok := n.(*ast.Heading); ok {
 			if id, exists := h.AttributeString("id"); exists {
 				fmt.Fprintf(&toc, "<a class=level%d href=\"#%s\">%s</a>", h.Level, template.HTMLEscapeString(headingID(id)), template.HTMLEscapeString(string(h.Text(source))))
@@ -164,6 +177,10 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if !owner {
 			w.Public = true
 		}
+	}
+	if strings.HasPrefix(r.URL.Path, "/media/") {
+		w.media(rw, r)
+		return
 	}
 	rw.Header().Set("Content-Security-Policy", "default-src 'none'; connect-src 'self'; style-src 'self'; font-src 'self'; script-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
@@ -206,6 +223,10 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("page")
 	v := View{Public: w.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
 	groups := map[string]*Group{}
+	sources := map[string]Source{}
+	for _, source := range w.Store.sources(w.Public) {
+		sources[source.ID] = source
+	}
 	for _, p := range s.Pages {
 		id := p.Environment
 		if id == "" {
@@ -213,7 +234,11 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 		g := groups[id]
 		if g == nil {
-			g = &Group{Name: label(id), ID: id}
+			name := label(id)
+			if source, ok := sources[id]; ok {
+				name = source.Title
+			}
+			g = &Group{Name: name, ID: id}
 			groups[id] = g
 		}
 		g.Count++
@@ -251,7 +276,14 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if i >= 4 {
 			break
 		}
-		v.Cards = append(v.Cards, Card{Page: p, Image: []string{"veda-server.png", "veda-network.png", "veda-phone.png", "veda-travel.png"}[i], Description: "Документация", Tag: p.Environment})
+		card := Card{Page: p, Image: []string{"veda-server.png", "veda-network.png", "veda-phone.png", "veda-travel.png"}[i], Description: "Документация", Tag: p.Environment}
+		if source := sources[p.Environment]; source.Metadata != nil {
+			card.Description = source.Metadata.Description
+			if source.Metadata.Image != "" {
+				card.ImageURL = "/media/" + source.ID + "/" + url.PathEscape(source.Metadata.Image)
+			}
+		}
+		v.Cards = append(v.Cards, card)
 	}
 	for _, g := range groups {
 		v.Groups = append(v.Groups, *g)
