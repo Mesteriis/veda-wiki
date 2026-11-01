@@ -13,7 +13,11 @@ server builds a request-local snapshot of only authorized sources before serving
 reader routes, including search, context and media; writes and owner metadata
 remain unavailable. Requests already in progress may finish after revocation.
 Existing owner, shared reader and Unix socket behavior remains unchanged. Keys
-have not yet been provisioned to the four agents.
+have not yet been provisioned to the four agents. Use MCP
+`--reader-key-file /path/to/private-key` to expose only the four read tools;
+the file must be owned by the process user and inaccessible to group/other.
+Server authorization remains the enforcement boundary. The legacy reader
+socket grants all sources and is not restricted by scoped keys.
 
 The scoped-key store uses format version 4 so older binaries refuse it;
 coordinate this migration with the version-3 GitHub-source-move branch before

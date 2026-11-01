@@ -23,7 +23,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class Client:
-    def __init__(self, base, key_file=None, socket_path=None):
+    def __init__(self, base, key_file=None, socket_path=None, read_only=False):
         parsed = urlparse(base)
         if (parsed.scheme != "http" or parsed.hostname not in ("localhost", "127.0.0.1", "::1")
                 or parsed.username or parsed.password or parsed.path not in ("", "/")
@@ -32,13 +32,15 @@ class Client:
         self.base = base.rstrip("/")
         self.key_file = Path(key_file) if key_file else None
         self.socket_path = Path(socket_path) if socket_path else None
-        self.read_only = self.socket_path is not None
-        if self.read_only and (not self.socket_path.is_absolute() or key_file):
+        self.read_only = self.socket_path is not None or read_only
+        if self.socket_path is not None and (not self.socket_path.is_absolute() or key_file):
             raise ValueError("Invalid read-only socket configuration")
+        if self.socket_path is None and self.key_file is None:
+            raise ValueError("A key file is required")
         self.opener = build_opener(ProxyHandler({}), NoRedirect())
 
     def request(self, method, route, body=None):
-        if self.read_only:
+        if self.socket_path is not None:
             parent = os.lstat(self.socket_path.parent)
             info = os.lstat(self.socket_path)
             if (not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid() or stat.S_IMODE(parent.st_mode) & 0o077
@@ -67,10 +69,10 @@ class Client:
             info = os.fstat(stream.fileno())
             if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
                     or stat.S_IMODE(info.st_mode) & 0o077):
-                raise ValueError("Owner key must be an owner-only regular file")
+                raise ValueError("Key must be an owner-only regular file")
             token = stream.read(65)
         if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
-            raise ValueError("Invalid owner key")
+            raise ValueError("Invalid key")
         data = None if body is None else json.dumps(body).encode()
         req = Request(self.base + route, data=data, method=method,
                       headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
@@ -233,9 +235,10 @@ async def main():
     parser.add_argument("--url", default="http://127.0.0.1:8080")
     credentials = parser.add_mutually_exclusive_group(required=True)
     credentials.add_argument("--key-file")
+    credentials.add_argument("--reader-key-file")
     credentials.add_argument("--reader-socket")
     args = parser.parse_args()
-    server = make_server(Client(args.url, args.key_file, args.reader_socket))
+    server = make_server(Client(args.url, args.key_file or args.reader_key_file, args.reader_socket, read_only=args.reader_key_file is not None))
     async with stdio_server() as (read, write):
         await server.run(read, write, InitializationOptions(
             server_name="veda", server_version="0.1.0", instructions=server.instructions,

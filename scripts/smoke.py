@@ -1,6 +1,7 @@
 """Exercise the actual Go binary and official MCP client using disposable data."""
 import asyncio
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -8,7 +9,8 @@ import tempfile
 import time
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+from datetime import datetime, timedelta, timezone
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -148,16 +150,45 @@ async def main():
                             assert error.code == 404
                     reader_params = StdioServerParameters(command=sys.executable, args=[
                         str(ROOT / "mcp/server.py"), "--url", f"http://127.0.0.1:{private_port}",
-                        "--key-file", str(data / "reader.key")])
+                        "--reader-key-file", str(data / "reader.key")])
                     async with stdio_client(reader_params) as (reader_in, reader_out):
                         async with ClientSession(reader_in, reader_out) as reader:
                             await reader.initialize()
                             result = await reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not result.isError and json.loads(result.content[0].text)["text"] == "# Private updated"
-                            refused = await reader.call_tool("veda_write_article", {"source_id": "closed", "path": "README.md", "text": "# forbidden", "expected_revision": 2})
-                            assert refused.isError
-                            admin = await reader.call_tool("veda_github_status", {})
-                            assert admin.isError
+                            names = {tool.name for tool in (await reader.list_tools()).tools}
+                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context"}
+                    def owner_post(route, value):
+                        req = Request(f"http://127.0.0.1:{private_port}" + route,
+                            data=json.dumps(value).encode(), method="POST",
+                            headers={"Authorization": "Bearer " + (data / "owner.key").read_text(), "Content-Type": "application/json"})
+                        with urlopen(req, timeout=3) as response:
+                            return json.load(response)
+                    issued = owner_post("/api/v1/access-keys", {"id": "agent-test", "sources": ["closed"],
+                        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+                    scoped_path = data / "scoped.key"
+                    fd = os.open(scoped_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "w") as stream:
+                        stream.write(issued["key"])
+                    scoped_params = StdioServerParameters(command=sys.executable, args=[
+                        str(ROOT / "mcp/server.py"), "--url", f"http://127.0.0.1:{private_port}",
+                        "--reader-key-file", str(scoped_path)])
+                    async with stdio_client(scoped_params) as (scoped_in, scoped_out):
+                        async with ClientSession(scoped_in, scoped_out) as scoped:
+                            await scoped.initialize()
+                            names = {tool.name for tool in (await scoped.list_tools()).tools}
+                            assert names == {"veda_sources", "veda_search", "veda_read", "veda_context"}
+                            visible = await scoped.call_tool("veda_sources", {})
+                            assert [item["id"] for item in json.loads(visible.content[0].text)["sources"]] == ["closed"]
+                            allowed = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                            assert not allowed.isError
+                            denied = await scoped.call_tool("veda_read", {"source_id": "copy", "path": "copied.md"})
+                            assert denied.isError
+                            ctx = await scoped.call_tool("veda_context", {"source_id": "closed", "path": "README.md"})
+                            assert not ctx.isError
+                            owner_post("/api/v1/access-keys/revoke", {"id": "agent-test"})
+                            revoked = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
+                            assert revoked.isError
                     socket_params = StdioServerParameters(command=sys.executable, args=[
                         str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock")])
                     async with stdio_client(socket_params) as (socket_in, socket_out):
@@ -180,7 +211,7 @@ async def main():
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
                     after_restart = await call("veda_context", {"source_id": "imported", "path": "README.md"})
                     assert after_restart["source_status"]["last_import_observed_at"] is None
-            print("PASS: eighteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; move; translation; local read-only socket; restart persistence")
+            print("PASS: owner MCP; scoped MCP read and revocation; context; import; conflicts; public isolation; copy; move; translation; reader socket; restart")
         finally:
             process.terminate()
             process.wait(timeout=10)
