@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"image"
@@ -333,6 +334,76 @@ func TestImportDeletionsPartialCoverageAndLocalConflict(t *testing.T) {
 	}
 	if len(s.snapshot(false).Pages) != 1 {
 		t.Fatal("locally retained article deleted")
+	}
+}
+
+func TestPrivateImportPreservesImagesNeededByLocalEdits(t *testing.T) {
+	s := testStore(t)
+	b := testBatch()
+	b.Visibility = "private"
+	b.Files = map[string]string{"README.md": "# Original\n\n![image](images/keep.png)", "clean.md": "# Clean\n\n![other](images/remove.png)"}
+	b.Assets = map[string][]byte{"images/keep.png": smallPNG(t), "images/remove.png": smallPNG(t)}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("handbook", "README.md", "# Local edit\n\n![image](images/keep.png)", 1); err != nil {
+		t.Fatal(err)
+	}
+	b = applyAgain(s, b)
+	b.Files, b.Assets = map[string]string{}, map[string][]byte{}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.db.Sources["handbook"].Assets["images/keep.png"]; !ok {
+		t.Fatal("local edit lost its image")
+	}
+	if _, ok := s.db.Sources["handbook"].Assets["images/remove.png"]; ok {
+		t.Fatal("unreferenced upstream image retained")
+	}
+	if len(s.conflicts()) != 1 || !s.db.Articles["handbook/clean.md"].Deleted {
+		t.Fatal("deletion handling changed")
+	}
+	r := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/media/handbook/images/keep.png", "", true)
+	if r.Code != 200 {
+		t.Fatal("retained image unavailable", r.Code)
+	}
+}
+
+func TestPrivatePartialImportRetainsUnobservedImages(t *testing.T) {
+	s := testStore(t)
+	b := testBatch()
+	b.Visibility = "private"
+	b.Assets = map[string][]byte{"images/unobserved.png": smallPNG(t)}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	b = applyAgain(s, b)
+	b.Assets = map[string][]byte{}
+	b.Complete, b.Withheld = false, 1
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.db.Sources["handbook"].Assets["images/unobserved.png"]; !ok {
+		t.Fatal("partial observation removed an image")
+	}
+}
+
+func TestPrivateImagesAreNotRetainedOnGitHubPublication(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original\n\n![image](image.png)", "docs/image.png": string(smallPNG(t))})
+	f.modify(func() { f.private = true })
+	m := connectFixture(t, s, f, false)
+	if _, err := s.put("handbook", "docs/guide.md", "# Local edit\n\n![image](image.png)", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.private = false })
+	f.advance(map[string]string{"src/main.go": "package main"})
+	m.Once(context.Background())
+	if _, ok := s.db.Sources["handbook"].Assets["docs/image.png"]; ok {
+		t.Fatal("private image survived publication")
+	}
+	if got := request(Wiki{Store: s, Public: true}, "GET", "/media/handbook/docs/image.png", "", false); got.Code != 404 {
+		t.Fatal("private image published", got.Code)
 	}
 }
 func TestImportMediaPrivacyIntegrityAndMarkdownLinks(t *testing.T) {

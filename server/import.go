@@ -595,6 +595,33 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			db.Articles[key] = a
 		}
 	}
+	// Partial observations cannot prove that an old image was removed. A
+	// locally changed article also keeps its missing referenced images while
+	// an upstream deletion remains unresolved. Never carry private assets into
+	// a newly public source; publication needs a fresh, verified snapshot.
+	if exists && wasPrivate && src.Visibility == "private" {
+		if !batch.Complete || batch.Withheld > 0 {
+			for name, ref := range src.Assets {
+				if _, present := refs[name]; !present {
+					refs[name] = ref
+				}
+			}
+		}
+		for _, article := range db.Articles {
+			if article.SourceID != batch.SourceID || article.Deleted || len(article.Versions) == 0 {
+				continue
+			}
+			latest := article.Versions[len(article.Versions)-1]
+			if article.UpstreamHash != "" && latest.SHA == article.UpstreamHash {
+				continue
+			}
+			for name, ref := range retainedPendingAssets(latest.Text, article.Path, src.Assets) {
+				if _, present := refs[name]; !present {
+					refs[name] = ref
+				}
+			}
+		}
+	}
 	src.Metadata = batch.Metadata
 	src.Assets = refs
 	src.ImportCommit = batch.Commit

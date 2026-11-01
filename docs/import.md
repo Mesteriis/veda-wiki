@@ -55,6 +55,12 @@ checkouts and unrelated working directories do not become published content.
 Staged new files are eligible and are reported as a dirty observation.
 Credential-like Markdown is withheld, never returned in an error message.
 Incomplete coverage is explicit and disables automatic upstream deletions.
+For a private source, an incomplete observation also retains previously known
+images that were not observed. After a complete observation, missing images
+still referenced by a locally changed or local-only article are retained while
+the article remains local. An image supplied at the same path by the new import
+takes precedence; VEDA does not yet bind images to individual revisions. Old
+private images are not retained when a source becomes public.
 
 The source records Git HEAD, dirty working-tree status and a digest of imported
 content/metadata. Dirty files can be imported, but this is an observed working
