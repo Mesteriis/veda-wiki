@@ -260,7 +260,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	groups := map[string]*Group{}
 	sources := map[string]Source{}
 	for _, source := range w.Store.sources(w.Public) {
-		sources[source.ID] = source
+		sources[source.ID] = source.Source
 	}
 	for _, p := range s.Pages {
 		id := p.Environment

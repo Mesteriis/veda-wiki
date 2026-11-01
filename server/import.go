@@ -451,6 +451,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	if proof == nil && exists && src.ImportGeneration == generation {
 		result.Generation = generation
 		result.Unchanged = len(batch.Files)
+		s.markImportObserved(batch.SourceID)
 		return result, nil
 	}
 	db := s.clone()
@@ -614,6 +615,9 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	if e := s.commit(db); e != nil {
 		return ImportResult{}, e
 	}
+	if proof == nil {
+		s.markImportObserved(batch.SourceID)
+	}
 	return result, nil
 }
 
@@ -625,4 +629,12 @@ func (b *boundedGitOutput) Write(p []byte) (int, error) {
 		return 0, errors.New("Git output exceeds import limit")
 	}
 	return b.Buffer.Write(p)
+}
+
+// Caller holds the store mutex; failed imports must never advance this clock.
+func (s *Store) markImportObserved(sourceID string) {
+	if s.observed == nil {
+		s.observed = map[string]time.Time{}
+	}
+	s.observed[sourceID] = time.Now().UTC()
 }

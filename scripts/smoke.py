@@ -114,6 +114,9 @@ async def main():
                                "--key-file", str(data / "owner.key")]
                     initial = subprocess.run(command + ["--create"], check=True, capture_output=True, text=True)
                     assert json.loads(initial.stdout)["created"] == 1
+                    imported_context = await call("veda_context", {"source_id": "imported", "path": "README.md"})
+                    assert imported_context["source_status"]["last_import_observed_at"]
+                    assert imported_context["source_status"]["unresolved_conflicts"] == 0
                     await call("veda_write_article", {"source_id": "imported", "path": "README.md",
                         "text": "# Imported local edit", "expected_revision": 1})
                     (checkout / "README.md").write_text("# Imported upstream edit")
@@ -121,6 +124,8 @@ async def main():
                     assert json.loads(imported.stdout)["conflicts"] == 1
                     pending = await call("veda_conflicts", {})
                     assert len(pending["conflicts"]) == 1
+                    conflict_context = await call("veda_context", {"source_id": "imported", "path": "README.md"})
+                    assert conflict_context["source_status"]["unresolved_conflicts"] == 1
                     await call("veda_resolve_conflict", {"source_id": "imported", "path": "README.md",
                         "index": 0, "expected_revision": 2, "resolution": "upstream"})
                     resolved = await call("veda_read", {"source_id": "imported", "path": "README.md"})
@@ -167,6 +172,8 @@ async def main():
                     process = start(data, private_port, public_port)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
+                    after_restart = await call("veda_context", {"source_id": "imported", "path": "README.md"})
+                    assert after_restart["source_status"]["last_import_observed_at"] is None
             print("PASS: fifteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; translation; local read-only socket; restart persistence")
         finally:
             process.terminate()
