@@ -40,6 +40,12 @@ const descriptions = {
   ],
 };
 const pageHref = (p) => "/?page=" + encodeURIComponent(p);
+function updatedLabel(value) {
+  const date = new Date(value);
+  return value && !Number.isNaN(date.getTime())
+    ? `Обновлено ${new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(date)}`
+    : "Время обновления неизвестно";
+}
 function I({ name, ...rest }) {
   return (
     <img
@@ -216,7 +222,7 @@ function BrowseCards() {
 function PageCards({ cards }) {
   return (
     <Panel
-      title="Страницы wiki"
+      title="Недавно обновлённые"
       className="recent-pages"
       actions={
         <a href="/?env=all">
@@ -242,8 +248,7 @@ function PageCards({ cards }) {
               </div>
               <div className="card-meta">
                 <I name="clock" />
-                <span>Из текущего снимка</span>
-                <span className="avatar">A</span>
+                <time dateTime={c.Page.updated_at || undefined}>{updatedLabel(c.Page.updated_at)}</time>
               </div>
             </div>
           </a>
@@ -310,38 +315,21 @@ function TreeNodes({ node }) {
     </>
   );
 }
-function Popular({ cards }) {
+function MorePages({ cards, pages }) {
+  const displayed = new Set(cards.map((card) => card.Page.path));
+  const more = pages.filter((page) => !displayed.has(page.path)).slice(0, 5);
   return (
     <Panel
-      title="Популярные страницы"
+      title="Другие страницы"
       className="popular"
-      actions={
-        <div className="tabs">
-          {["За неделю", "За месяц", "За год"].map((s, i) => (
-            <F name="recent" className={i === 0 ? "active" : ""} key={s}>
-              {s}
-            </F>
-          ))}
-        </div>
-      }
+      actions={<a href="/?env=all">Все страницы <I name="arrow-right" /></a>}
     >
-      <div className="popular-list">
-        {cards.map((c, i) => (
-          <a href={pageHref(c.Page.path)} key={c.Page.path}>
-            <span className="rank">{i + 1}</span>
-            <span className="tiny-tile">
-              <I name="file-description" />
-            </span>
-            <span className="popular-label">
-              <strong>{c.Page.title}</strong>
-              <small>/{c.Page.path}</small>
-            </span>
-            <span className="popularity-track" />
-            <span className="unmeasured">—</span>
-          </a>
-        ))}
-      </div>
-      <p className="data-note">История просмотров ещё не подключена</p>
+      {more.length ? <div className="popular-list">{more.map((page) => (
+        <a href={pageHref(page.path)} key={page.path}>
+          <span className="tiny-tile"><I name="file-description" /></span>
+          <span className="popular-label"><strong>{page.title}</strong><small>/{page.path}</small></span>
+        </a>
+      ))}</div> : <p className="data-note">Других страниц пока нет.</p>}
     </Panel>
   );
 }
@@ -495,7 +483,7 @@ function Dashboard({ v }) {
         <div className="lower-grid">
           <Tree groups={v.Groups || []} />
           <div className="lower-right">
-            <Popular cards={v.Cards || []} />
+            <MorePages cards={v.Cards || []} pages={v.Pages || []} />
             <Activity />
           </div>
         </div>

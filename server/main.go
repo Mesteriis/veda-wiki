@@ -34,6 +34,7 @@ type Page struct {
 	Title       string        `json:"title"`
 	Environment string        `json:"environment"`
 	SHA         string        `json:"sha256"`
+	Updated     string        `json:"updated_at,omitempty"`
 	Text        string        `json:"-"`
 	HTML        template.HTML `json:"-"`
 }
@@ -350,7 +351,16 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	for i, p := range s.Pages {
+	recentPages := append([]Page(nil), s.Pages...)
+	sort.SliceStable(recentPages, func(i, j int) bool {
+		a, _ := time.Parse(time.RFC3339Nano, recentPages[i].Updated)
+		b, _ := time.Parse(time.RFC3339Nano, recentPages[j].Updated)
+		if a.Equal(b) {
+			return recentPages[i].Path < recentPages[j].Path
+		}
+		return a.After(b)
+	})
+	for i, p := range recentPages {
 		if i >= 4 {
 			break
 		}

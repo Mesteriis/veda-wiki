@@ -50,6 +50,12 @@ with `total` and `offset` calculated after visibility filtering. Limits are
 1–100 (default 20). An inaccessible source filter returns an empty result.
 Pagination is not a snapshot: repeat a search if sources change between pages.
 
+Page objects expose `updated_at`, the timestamp of the revision displayed on
+that surface. Public pages use the published revision or approved translation,
+not timestamps from unpublished private edits. The home cards are sorted by
+this value; it is not the filesystem modification time or proof that the
+upstream repository or infrastructure was recently checked.
+
 Source body:
 
 ```json

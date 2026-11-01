@@ -576,7 +576,7 @@ func (s *Store) snapshot(public bool) Snapshot {
 		if public && rev.Created > snap.Generated {
 			snap.Generated = rev.Created
 		}
-		snap.Pages = append(snap.Pages, Page{Path: key, Title: title(rev.Text, a.Path), Environment: src.ID, SHA: rev.SHA})
+		snap.Pages = append(snap.Pages, Page{Path: key, Title: title(rev.Text, a.Path), Environment: src.ID, SHA: rev.SHA, Updated: rev.Created})
 	}
 	sort.Slice(snap.Pages, func(i, j int) bool { return snap.Pages[i].Path < snap.Pages[j].Path })
 	return snap
@@ -601,7 +601,7 @@ func (s *Store) page(key string, public bool) (Page, error) {
 	}
 	originalSHA := r.SHA
 	r, translated := displayedRevision(a, r, public)
-	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Text: r.Text, OriginalSHA: originalSHA, Translated: translated}, nil
+	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated}, nil
 }
 func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	s.mu.RLock()
