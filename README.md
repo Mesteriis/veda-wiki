@@ -77,7 +77,7 @@ make test
 .venv/bin/python scripts/smoke.py
 ```
 
-`make test` builds React, runs Go race tests and `go vet`. The smoke test uses
+`make test` builds React, tests tree navigation, runs Go race tests and `go vet`. The smoke test uses
 temporary empty storage and the official MCP SDK against the actual Go server.
 It verifies REST/MCP write-through, revisions, actual CLI import, conflict
 resolution and public/private isolation.

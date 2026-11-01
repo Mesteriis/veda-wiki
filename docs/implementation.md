@@ -9,7 +9,7 @@ an individual slice is not completion of the whole application.
 | Reading-only frontend; authors use REST/MCP/repositories | No article editor or creation controls; shared REST/MCP write service |
 | Local durable articles, revisions and independent source identity | Store/restart/race/concurrency tests; bounded JSON engine currently |
 | Merge multiple sources for reading while keeping them distinct | Source-keyed index/search; remote synchronization implemented; real multi-repository acceptance pending |
-| Wiki metadata in veda.yaml and hierarchical Markdown | Strict schema and local checkout import; deeper frontend folder navigation still pending |
+| Wiki metadata in veda.yaml and hierarchical Markdown | Strict schema, checkout import and nested frontend folder navigation |
 | Program docs/ only, no docs means skip | Local checkout tests; English→Russian translation still pending |
 | GitHub App/account or explicit server token, repo-derived visibility | GitHub App/PAT and repository visibility implemented; live authenticated acceptance pending |
 | Background import/push, local availability during outages | Atomic import/conflicts and scheduled durable outbox implemented; live write acceptance pending |

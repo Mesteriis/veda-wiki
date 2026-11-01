@@ -6,4 +6,5 @@ frontend:
 build: frontend
 	cd server && go build -trimpath -o ../veda .
 test: frontend
+	node --test web/src/*.test.js
 	cd server && go test -race ./... && go vet ./...
