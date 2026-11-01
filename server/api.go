@@ -145,6 +145,38 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/search":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		sourceID := r.URL.Query().Get("source_id")
+		if query == "" || len(query) > 300 || (sourceID != "" && !identifier.MatchString(sourceID)) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		limit, offset := 20, 0
+		if r.URL.Query().Has("limit") {
+			n, err := strconv.Atoi(r.URL.Query().Get("limit"))
+			if err != nil || n < 1 || n > 100 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			limit = n
+		}
+		if r.URL.Query().Has("offset") {
+			n, err := strconv.Atoi(r.URL.Query().Get("offset"))
+			if err != nil || n < 0 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			offset = n
+		}
+		all := w.Store.findArticles(query, sourceID, !owner && !reader)
+		start := min(offset, len(all))
+		end := start + min(limit, len(all)-start)
+		jsonResponse(rw, 200, map[string]any{"results": all[start:end], "total": len(all), "offset": offset})
 	case "/api/v1/moves/cancel":
 		if !owner {
 			http.NotFound(rw, r)

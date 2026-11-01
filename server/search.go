@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -17,6 +18,47 @@ var searchAliases = map[string][]string{
 	"впс":       {"vps", "vds", "впс", "vsp"},
 	"vsp":       {"vps", "vds", "впс", "vsp"},
 }
+
+type searchHit struct {
+	SourceID string `json:"source_id"`
+	Path     string `json:"path"`
+	Title    string `json:"title"`
+}
+
+// Only visible snapshots are considered; the caller paginates after filtering.
+func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
+	type ranked struct {
+		hit   searchHit
+		score int
+	}
+	var matches []ranked
+	terms := searchTerms(query)
+	for _, page := range s.snapshot(public).Pages {
+		if sourceID != "" && page.Environment != sourceID {
+			continue
+		}
+		full, err := s.page(page.Path, public)
+		if err != nil {
+			continue
+		}
+		score := searchScore(query, page.Title+" "+page.Path, full.Text, terms)
+		if score == 0 {
+			continue
+		}
+		prefix := page.Environment + "/"
+		if !strings.HasPrefix(page.Path, prefix) {
+			continue
+		}
+		matches = append(matches, ranked{searchHit{SourceID: page.Environment, Path: strings.TrimPrefix(page.Path, prefix), Title: page.Title}, score})
+	}
+	sort.SliceStable(matches, func(i, j int) bool { return matches[i].score > matches[j].score })
+	out := make([]searchHit, 0, len(matches))
+	for _, item := range matches {
+		out = append(out, item.hit)
+	}
+	return out
+}
+
 var searchStopWords = map[string]bool{
 	"как": true, "где": true, "мне": true, "мой": true, "моем": true, "моём": true, "создай": true, "создать": true, "сделай": true, "пожалуйста": true, "помоги": true, "для": true, "это": true, "на": true, "по": true, "из": true, "от": true, "за": true, "до": true, "во": true, "со": true,
 	"the": true, "and": true, "for": true, "how": true, "create": true, "please": true, "with": true, "my": true, "on": true, "to": true,

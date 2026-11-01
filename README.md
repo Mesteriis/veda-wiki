@@ -78,7 +78,7 @@ key cannot write or use administrative endpoints and is ignored by the public
 listener. It grants access to all private sources and is not user-scoped. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
-Tools: `veda_sources`, `veda_search`, `veda_read`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_prepare_translation`, `veda_create_source`,
+Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_prepare_translation`, `veda_create_source`,
 `veda_write_article`, `veda_copy_article`, `veda_transfer_plan`, `veda_moves`, `veda_move_article`,
 `veda_cancel_move`,
 `veda_translation_needed`,

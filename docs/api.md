@@ -9,6 +9,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | --- | --- | --- |
 | GET | `/health` | Visible article count and visible revision timestamp |
 | GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path |
+| GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
 | POST | `/api/v1/sources` | Create a local source (owner only) |
 | GET | `/api/v1/articles` | Visible article index |
@@ -43,6 +44,10 @@ Generic container queries include both technologies; explicit LXC and Docker
 queries remain distinct. This is lexical search, not
 semantic retrieval, general typo correction or authorization to act. The
 query is limited to 300 bytes and up to 16 meaningful terms are considered.
+`/api/v1/search` and `veda_find` return only source ID, relative path and title,
+with `total` and `offset` calculated after visibility filtering. Limits are
+1–100 (default 20). An inaccessible source filter returns an empty result.
+Pagination is not a snapshot: repeat a search if sources change between pages.
 
 Source body:
 

@@ -113,6 +113,9 @@ def make_server(client):
     specs = {
         "veda_sources": ("List sources visible to this client.", {}, []),
         "veda_search": ("Search visible articles across sources using exact phrases or meaningful words. Generic container terms include LXC and Docker; VPS, VDS and VSP are aliases. This is lexical search, not semantic inference. LXC and Docker are distinct: read source context and verify live state before acting.", {"query": string}, ["query"]),
+        "veda_find": ("Find visible article paths with compact paginated lexical search. Optionally restrict to one source; read results and their AGENTS.md context before acting. Results are not authorization or proof of live state.", {
+            "query": string, "source_id": string, "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            "offset": {"type": "integer", "minimum": 0}}, ["query"]),
         "veda_read": ("Read the current article and its revision.", {"source_id": string, "path": string}, ["source_id", "path"]),
         "veda_prepare_update": ("Prepare a non-persistent proposed article update after rereading the current revision. Returns the base revision and SHA for review; it does not save or publish the proposed text. Stale revisions are refused.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
@@ -175,7 +178,7 @@ def make_server(client):
     }
 
     if client.read_only:
-        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed")}
+        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_find", "veda_read", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed")}
 
     def read(source_id, path):
         article = client.request("GET", "/api/v1/articles?" + urlencode({"source_id": source_id, "path": path}))
@@ -197,6 +200,10 @@ def make_server(client):
                 result = {"sources": await asyncio.to_thread(client.request, "GET", "/api/v1/sources")}
             elif name == "veda_search":
                 result = await asyncio.to_thread(client.request, "GET", "/api/state?" + urlencode({"q": arguments["query"]}))
+            elif name == "veda_find":
+                params = {"q": arguments["query"]}
+                params.update({key: arguments[key] for key in ("source_id", "limit", "offset") if key in arguments})
+                result = await asyncio.to_thread(client.request, "GET", "/api/v1/search?" + urlencode(params))
             elif name == "veda_read":
                 result = await asyncio.to_thread(read, **arguments)
             elif name == "veda_prepare_update":

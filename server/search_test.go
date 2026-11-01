@@ -66,3 +66,44 @@ func TestSearchKeepsPublicAndScopedSourcesSeparate(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactSearchPaginationAndScope(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "open", "public")
+	source(t, s, "private", "private")
+	s.put("open", "docs/a.md", "# LXC alpha\nVPS", 0)
+	s.put("open", "docs/b.md", "# LXC beta\nVPS", 0)
+	s.put("private", "docs/hidden.md", "# LXC secret\nVPS", 0)
+	key, err := s.createAccessKey("agent", []string{"open"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner"}
+	call := func(path, token string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", path, nil)
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		out := httptest.NewRecorder()
+		w.ServeHTTP(out, r)
+		return out
+	}
+	for _, token := range []string{"", key} {
+		r := call("/api/v1/search?q=lxc+vps&limit=1&offset=1", token)
+		var result struct {
+			Results []searchHit `json:"results"`
+			Total   int         `json:"total"`
+			Offset  int         `json:"offset"`
+		}
+		if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &result) != nil || result.Total != 2 || result.Offset != 1 || len(result.Results) != 1 || result.Results[0].SourceID != "open" || strings.Contains(r.Body.String(), "private") {
+			t.Fatal("invalid page or scope", r.Code)
+		}
+		filtered := call("/api/v1/search?q=lxc+vps&source_id=private", token)
+		if filtered.Code != 200 || !strings.Contains(filtered.Body.String(), `"total":0`) {
+			t.Fatal("restricted source was enumerable", filtered.Code)
+		}
+	}
+	if call("/api/v1/search?q=", key).Code != 400 || call("/api/v1/search?q=lxc&limit=101", key).Code != 400 {
+		t.Fatal("invalid query accepted")
+	}
+}
