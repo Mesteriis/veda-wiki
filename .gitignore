@@ -1,0 +1,12 @@
+web/node_modules/
+web/dist/
+server/ui/
+.venv/
+__pycache__/
+.veda/
+*.key
+.env
+.env.*
+*.log
+.DS_Store
+/veda

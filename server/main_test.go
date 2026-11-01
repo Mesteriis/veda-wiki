@@ -1,0 +1,218 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+)
+
+func testStore(t *testing.T) *Store {
+	t.Helper()
+	s, e := openStore(filepath.Join(t.TempDir(), "data"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	return s
+}
+func source(t *testing.T, s *Store, id, visibility string) {
+	t.Helper()
+	if e := s.addSource(Source{ID: id, Title: id, Kind: "wiki", Visibility: visibility}); e != nil {
+		t.Fatal(e)
+	}
+}
+func request(w Wiki, method, url, body string, auth bool) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, url, strings.NewReader(body))
+	if auth {
+		r.Header.Set("Authorization", "Bearer test-owner")
+	}
+	rw := httptest.NewRecorder()
+	w.ServeHTTP(rw, r)
+	return rw
+}
+func TestPersistenceAndOptimisticConcurrency(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "one", "private")
+	if _, e := s.put("one", "guide.md", "# First", 0); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.put("one", "guide.md", "# Stale", 0); !errors.Is(e, ErrConflict) {
+		t.Fatal(e)
+	}
+	if _, e := s.put("one", "guide.md", "# Second", 1); e != nil {
+		t.Fatal(e)
+	}
+	reopened, e := openStore(s.dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	a, e := reopened.article("one", "guide.md", false)
+	if e != nil || len(a.Versions) != 2 || a.Versions[0].Text != "# First" || a.Versions[1].Text != "# Second" {
+		t.Fatal("history lost", e)
+	}
+}
+func TestConcurrentSingleWinner(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "one", "private")
+	var wg sync.WaitGroup
+	results := make(chan error, 12)
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, e := s.put("one", "guide.md", "# Revision", 0); results <- e }()
+	}
+	wg.Wait()
+	close(results)
+	successes := 0
+	for e := range results {
+		if e == nil {
+			successes++
+		} else if !errors.Is(e, ErrConflict) {
+			t.Fatal(e)
+		}
+	}
+	if successes != 1 {
+		t.Fatal(successes)
+	}
+}
+func TestVisibilityAcrossEveryReadSurface(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "open", "public")
+	source(t, s, "closed", "private")
+	s.put("open", "README.md", "# Shared", 0)
+	s.put("closed", "README.md", "# Hidden canary", 0)
+	w := Wiki{Store: s, Token: "test-owner"}
+	for _, url := range []string{"/api/state", "/api/state?q=Hidden", "/api/v1/articles", "/api/v1/sources", "/api/v1/articles?source_id=closed&path=README.md", "/api/state?page=closed/README.md"} {
+		rw := request(w, "GET", url, "", false)
+		if strings.Contains(rw.Body.String(), "Hidden canary") || strings.Contains(rw.Body.String(), "closed") {
+			t.Fatalf("private disclosure at %s: %s", url, rw.Body.String())
+		}
+	}
+	if rw := request(w, "GET", "/api/state?page=closed/README.md", "", true); rw.Code != 200 || !strings.Contains(rw.Body.String(), "Hidden canary") {
+		t.Fatal("owner cannot read")
+	}
+	w.Public = true
+	if rw := request(w, "GET", "/api/state?page=closed/README.md", "", true); rw.Code != 404 {
+		t.Fatal("public listener accepted owner token", rw.Code)
+	}
+}
+func TestRESTWriteAuthorizationAndRevision(t *testing.T) {
+	s := testStore(t)
+	w := Wiki{Store: s, Token: "test-owner"}
+	src := `{"id":"one","title":"One","kind":"wiki","visibility":"private"}`
+	if r := request(w, "POST", "/api/v1/sources", src, false); r.Code != 403 {
+		t.Fatal(r.Code)
+	}
+	if r := request(w, "POST", "/api/v1/sources", src, true); r.Code != 201 {
+		t.Fatal(r.Code, r.Body)
+	}
+	body := `{"source_id":"one","path":"README.md","text":"# Example","expected_revision":0}`
+	if r := request(w, "POST", "/api/v1/articles", body, true); r.Code != 201 {
+		t.Fatal(r.Code, r.Body)
+	}
+	if r := request(w, "POST", "/api/v1/articles", body, true); r.Code != 409 {
+		t.Fatal(r.Code)
+	}
+	if r := request(w, "PUT", "/api/v1/articles", `{"source_id":"one","path":"README.md","text":"# Bad"}`, true); r.Code != 400 {
+		t.Fatal(r.Code)
+	}
+	r := httptest.NewRequest("POST", "/api/v1/sources", strings.NewReader(src))
+	r.Header.Set("Authorization", "Bearer test-owner")
+	r.Header.Set("Origin", "http://localhost")
+	rw := httptest.NewRecorder()
+	w.ServeHTTP(rw, r)
+	if rw.Code != 403 {
+		t.Fatal("browser write accepted")
+	}
+	w.Public = true
+	if r := request(w, "POST", "/api/v1/sources", src, true); r.Code != 403 {
+		t.Fatal(r.Code)
+	}
+}
+func TestSourcesStaySeparateAndPathsBounded(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "one", "public")
+	source(t, s, "two", "private")
+	s.put("one", "same.md", "# One", 0)
+	s.put("two", "same.md", "# Two", 0)
+	if p, e := s.page("one/same.md", false); e != nil || p.Text != "# One" {
+		t.Fatal(e)
+	}
+	if p, e := s.page("two/same.md", false); e != nil || p.Text != "# Two" {
+		t.Fatal(e)
+	}
+	for _, p := range []string{"../secret.md", "/etc/file.md", "a/../b.md", ".hidden/x.md", "x\\a.md", "x.txt"} {
+		if _, e := s.put("one", p, "bad", 0); e == nil {
+			t.Fatal(p)
+		}
+	}
+	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.put("program", "README.md", "no", 0); e == nil {
+		t.Fatal("program root imported")
+	}
+	if _, e := s.put("program", "docs/guide.md", "yes", 0); e != nil {
+		t.Fatal(e)
+	}
+}
+func TestPublicFreshnessDoesNotLeakPrivateWrites(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "one", "public")
+	source(t, s, "two", "private")
+	s.put("one", "a.md", "# A", 0)
+	before := s.snapshot(true).Generated
+	s.put("two", "secret.md", "# Secret", 0)
+	if s.snapshot(true).Generated != before {
+		t.Fatal("private update timestamp disclosed")
+	}
+}
+func TestHostGuardAndUnknownFields(t *testing.T) {
+	s := testStore(t)
+	w := Wiki{Store: s, Token: "test-owner", AllowedHosts: []string{"localhost"}}
+	if r := request(w, "GET", "http://evil.invalid/api/state", "", true); r.Code != 403 {
+		t.Fatal(r.Code)
+	}
+	w.AllowedHosts = nil
+	rw := request(w, "POST", "/api/v1/sources", `{"id":"one","title":"One","kind":"wiki","visibility":"public","unexpected":true}`, true)
+	if rw.Code != 400 {
+		t.Fatal(rw.Code)
+	}
+	rw = request(w, "GET", "/api/state", "", false)
+	var response map[string]any
+	if e := json.Unmarshal(rw.Body.Bytes(), &response); e != nil {
+		t.Fatal(e)
+	}
+}
+func TestMarkdownAndLinks(t *testing.T) {
+	p := Page{Path: "docs/index.md", Text: "# Heading\n\n[Other](other.md)\n\n<script>alert(1)</script>"}
+	body, toc, e := render(p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(string(body), "<script>") {
+		t.Fatal("unsafe html")
+	}
+	if !strings.Contains(string(body), "page=docs%2Fother.md") {
+		t.Fatal("relative link")
+	}
+	if !strings.Contains(string(toc), `href="#heading"`) {
+		t.Fatalf("bad TOC %s", toc)
+	}
+}
+func TestUnicodeHeadingFragments(t *testing.T) {
+	body, toc, err := render(Page{Path: "docs/a.md", Text: "## Раздел документации\n\n## Раздел документации"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"раздел-документации", "раздел-документации-1"} {
+		if !strings.Contains(string(body), `id="`+id+`"`) {
+			t.Fatalf("missing heading %s: %s", id, body)
+		}
+		if !strings.Contains(string(toc), `href="#`+id+`"`) {
+			t.Fatalf("missing TOC %s", id)
+		}
+	}
+}

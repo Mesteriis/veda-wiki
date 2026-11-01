@@ -1,0 +1,15 @@
+# Roadmap
+
+- [x] Standalone React/Go application with empty local storage.
+- [x] Distinct local sources and public/private read isolation.
+- [x] Durable article revisions and optimistic write concurrency.
+- [x] Authenticated REST create/read/update and MCP adapter using the same API.
+- [x] Agent context from root/ancestor AGENTS.md articles.
+- [ ] Versioned veda.yaml parser and bounded local-checkout import.
+- [ ] Verified GitHub connection, repository visibility and credential management.
+- [ ] Durable background import/push outbox and conflict resolution.
+- [ ] Program docs/ import and provenance-preserving Russian translation.
+- [ ] Stable cross-source article moves and publication review.
+- [ ] User/team permissions and private browser reading sessions.
+- [ ] SQLite migration/retention once the bounded prototype store is outgrown.
+- [ ] Packaging, deployment hardening and independent restore acceptance.
