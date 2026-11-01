@@ -58,6 +58,9 @@ An administrator can schedule an immediate retry or pause and resume from the
 GitHub connection screen. Resuming may push already queued changes when write
 access is enabled. Pausing hides that source's public articles while its GitHub
 visibility is not being verified; a network request already in flight may finish.
+The server rejects sync status and visibility observations made using an older
+connection configuration, including after pause and resume. A fresh verification
+is required before public content reappears.
 The reading interface refreshes its state periodically and when the dialog is
 opened or closed, so imported pages appear without a browser reload. Anonymous
 GitHub API limits can delay verification; while verification is unavailable,

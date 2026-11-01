@@ -95,7 +95,7 @@ func TestRateLimitRetryDeadlineSurvivesRestart(t *testing.T) {
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
 	connectFixture(t, s, f, false)
 	due := time.Now().Add(20 * time.Minute)
-	if err := s.connectionStatusRetry("handbook", "error", "unknown", "rate_limited", nil, due); err != nil {
+	if err := s.connectionStatusFor(s.connections()[0], "error", "unknown", "rate_limited", nil, due); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.dir)
@@ -117,7 +117,7 @@ func TestConfigureKeepsRateLimitForSameAccount(t *testing.T) {
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
 	m := connectFixture(t, s, f, false)
 	due := time.Now().Add(20 * time.Minute)
-	if err := s.connectionStatusRetry("handbook", "error", "unknown", "rate_limited", nil, due); err != nil {
+	if err := s.connectionStatusFor(s.connections()[0], "error", "unknown", "rate_limited", nil, due); err != nil {
 		t.Fatal(err)
 	}
 	c := s.connections()[0]

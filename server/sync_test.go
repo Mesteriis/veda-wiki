@@ -322,6 +322,42 @@ func connectFixture(t *testing.T, s *Store, f *fakeGitHub, write bool) *SyncMana
 	m.Once(context.Background())
 	return m
 }
+
+func TestStaleSyncCannotReverifyAfterPauseResume(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	m := connectFixture(t, s, f, false)
+	old := s.connections()[0]
+	if err := s.pauseConnection(old.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.pauseConnection(old.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	current := s.connections()[0]
+	if current.Verification != "unknown" || current.ConfigRevision == old.ConfigRevision {
+		t.Fatal("invalid pause fixture")
+	}
+	m.syncSource(context.Background(), old)
+	after := s.connections()[0]
+	if after.Verification != "unknown" || after.State != "pending" {
+		t.Fatal("stale success changed current status")
+	}
+	if _, err := s.page("handbook/guide.md", true); err != ErrNotFound {
+		t.Fatal("stale result republished source", err)
+	}
+	f.modify(func() { f.fail = true })
+	m.syncSource(context.Background(), old)
+	after = s.connections()[0]
+	if after.Verification != "unknown" || after.State != "pending" || after.LastError != current.LastError {
+		t.Fatal("stale failure changed current status")
+	}
+	f.modify(func() { f.fail = false })
+	m.Once(context.Background())
+	if _, err := s.page("handbook/guide.md", true); err != nil {
+		t.Fatal("fresh verification did not restore visibility", err)
+	}
+}
 func TestGitHubPublicPullAndTrackedProgramScope(t *testing.T) {
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Documentation", "README.md": "not imported", "src/main.go": "package original"})

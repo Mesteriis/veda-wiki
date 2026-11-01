@@ -422,9 +422,6 @@ func (s *Store) jobs() []SyncJob {
 	})
 	return out
 }
-func (s *Store) connectionStatus(id, state, verification, code string, info *repositoryInfo) error {
-	return s.connectionStatusRetry(id, state, verification, code, info, time.Time{})
-}
 
 // A skipped commit can be reused only while no local source exists and the
 // connection configuration still matches the one used for the remote read.
@@ -446,14 +443,15 @@ func (s *Store) recordSkippedRepository(observed GitHubConnection, head, tree st
 	return s.commit(db)
 }
 
-func (s *Store) connectionStatusRetry(id, state, verification, code string, info *repositoryInfo, retryAt time.Time) error {
+func (s *Store) connectionStatusFor(observed GitHubConnection, state, verification, code string, info *repositoryInfo, retryAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	id := observed.ID
 	c, ok := s.db.Connections[id]
 	if !ok {
 		return ErrNotFound
 	}
-	if c.Paused {
+	if c.Paused || c.ConfigRevision != observed.ConfigRevision {
 		return ErrConflict
 	}
 	c.State = state

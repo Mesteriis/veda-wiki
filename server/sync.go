@@ -394,7 +394,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 }
 func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	fail := func(e error) {
-		m.store.connectionStatusRetry(c.ID, "error", "unknown", errorCode(e), nil, remoteRetryAt(e))
+		m.store.connectionStatusFor(c, "error", "unknown", errorCode(e), nil, remoteRetryAt(e))
 	}
 	secret, _, e := m.store.secret(c.AccountID)
 	if e != nil {
@@ -417,7 +417,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	}
 	visibilityChanged := c.Private != *info.Private
 	c.Private = *info.Private
-	if e = m.store.connectionStatus(c.ID, "syncing", "verified", "", &info); e != nil {
+	if e = m.store.connectionStatusFor(c, "syncing", "verified", "", &info, time.Time{}); e != nil {
 		return
 	}
 	head, e := m.github.head(ctx, c.Repository, c.Branch, token)
@@ -430,7 +430,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	m.store.mu.RUnlock()
 	matchingVisibility := exists && (source.Visibility == "private") == c.Private
 	if !exists && c.State == "skipped" && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
-		m.store.connectionStatus(c.ID, "skipped", "verified", "", &info)
+		m.store.connectionStatusFor(c, "skipped", "verified", "", &info, time.Time{})
 		return
 	}
 	if matchingVisibility && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
@@ -451,7 +451,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 				fail(err)
 			}
 		} else {
-			_ = m.store.connectionStatus(c.ID, "skipped", "verified", "", &info)
+			_ = m.store.connectionStatusFor(c, "skipped", "verified", "", &info, time.Time{})
 		}
 		return
 	}
@@ -474,20 +474,20 @@ func (m *SyncManager) syncWrites(ctx context.Context, c GitHubConnection, head, 
 	attempted, moveErr := m.deletePendingMove(ctx, c, head, token)
 	if attempted {
 		if moveErr != nil {
-			m.store.connectionStatusRetry(c.ID, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
+			m.store.connectionStatusFor(c, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
 		}
 		return
 	}
 	if err := m.pushPending(ctx, c, head, treeSHA, token); err != nil {
-		m.store.connectionStatusRetry(c.ID, "error", "verified", errorCode(err), &info, remoteRetryAt(err))
+		m.store.connectionStatusFor(c, "error", "verified", errorCode(err), &info, remoteRetryAt(err))
 		return
 	}
 	if moveErr != nil {
-		m.store.connectionStatusRetry(c.ID, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
+		m.store.connectionStatusFor(c, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
 		return
 	}
 	state, code := m.store.sourceSyncState(c.ID)
-	m.store.connectionStatus(c.ID, state, "verified", code, &info)
+	m.store.connectionStatusFor(c, state, "verified", code, &info, time.Time{})
 }
 
 // Serialize local mutations with the remote ref update. Once prepared, the
