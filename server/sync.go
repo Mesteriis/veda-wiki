@@ -459,16 +459,36 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 // Serialize local mutations with the remote ref update. Once prepared, the
 // stored commit keeps both articles locked until a complete pull resolves it.
 func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection, head, token string) (bool, error) {
-	var candidate Move
+	var firstErr error
+	found := false
 	for _, move := range m.store.moves() {
-		if move.SourceConnectionID == c.ID && (move.State == "waiting_source_delete" || move.State == "deleting_source") {
-			candidate = move
-			break
+		if move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
+			continue
+		}
+		found = true
+		attempted, err := m.deleteMove(ctx, c, head, token, move)
+		if err == nil && attempted {
+			return true, nil
+		}
+		if err == nil {
+			continue
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		// A request with an uncertain outcome may have advanced this branch.
+		// Pull again before attempting another deletion using the same head.
+		m.store.mu.RLock()
+		current := m.store.db.Moves[move.ID]
+		m.store.mu.RUnlock()
+		if current.State == "deleting_source" {
+			return true, err
 		}
 	}
-	if candidate.ID == "" {
-		return false, nil
-	}
+	return found, firstErr
+}
+
+func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, token string, candidate Move) (bool, error) {
 	var destinationRevision int
 	if candidate.DestinationConnectionID != "" {
 		m.store.mu.RLock()

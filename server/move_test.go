@@ -127,6 +127,72 @@ func TestMoveRejectsAliasedRepositoryAndSamePhysicalPath(t *testing.T) {
 	}
 }
 
+func TestUnavailableDestinationDoesNotBlockOtherSourceMoves(t *testing.T) {
+	s, manager, original, destination := connectedMoveFixtures(t)
+	original.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source", "other.md": "# Other"})
+	syncFixtureSource(t, manager, "one")
+	source(t, s, "local", "private")
+	first, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncFixtureSource(t, manager, "two")
+	syncFixtureSource(t, manager, "two")
+	second, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "other.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "other.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination.modify(func() { destination.fail = true })
+	syncFixtureSource(t, manager, "one")
+	s.mu.RLock()
+	firstState, secondState := s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
+	s.mu.RUnlock()
+	if firstState != "waiting_source_delete" || secondState != "deleting_source" {
+		t.Fatalf("unexpected move states: %s %s", firstState, secondState)
+	}
+	files := original.contents()
+	if files["README.md"] != "# Source" {
+		t.Fatal("unavailable destination lost source")
+	}
+	if _, exists := files["other.md"]; exists {
+		t.Fatal("unrelated move did not advance")
+	}
+}
+
+func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# First", "other.md": "# Second"})
+	manager := connectFixture(t, s, f, true)
+	first, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "first.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "other.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "second.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.loseResponse = true })
+	manager.Once(context.Background())
+	s.mu.RLock()
+	firstState, secondState := s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
+	s.mu.RUnlock()
+	if firstState != "deleting_source" || secondState != "waiting_source_delete" || f.writeCount() != 1 {
+		t.Fatal("uncertain attempt did not stop same-head writes")
+	}
+	if err := s.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	manager.Once(context.Background())
+	manager.Once(context.Background())
+	s.mu.RLock()
+	firstState, secondState = s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
+	s.mu.RUnlock()
+	if firstState != "complete" || secondState != "complete" || f.writeCount() != 2 {
+		t.Fatalf("moves did not recover: %s %s", firstState, secondState)
+	}
+}
+
 func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")
