@@ -236,6 +236,7 @@ func (s *Store) cancelBundle(id string, confirm bool) error {
 	job.State = "superseded"
 	job.LastError, job.NextAttempt = "", ""
 	db.Outbox[id] = job
+	reconcileMoves(&db)
 	return s.commit(db)
 }
 func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {

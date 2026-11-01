@@ -88,6 +88,26 @@ func linksPresent(db Database, sourceID string, expected map[string]string) bool
 	return true
 }
 
+// Pending remote bundles have not acquired upstream hashes yet. Their local
+// revisions must still match until a complete remote pull confirms them.
+func localLinksPresent(db Database, sourceID string, expected map[string]string) bool {
+	if _, ok := db.Sources[sourceID]; !ok {
+		return false
+	}
+	for name, sha := range expected {
+		a, ok := db.Articles[sourceID+"/"+name]
+		if !ok || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
+			return false
+		}
+		for _, conflict := range a.Conflicts {
+			if conflict.Resolution == "" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (s *Store) linkContents(sourceID string, expected map[string]string) (map[string]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -435,11 +455,6 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	var dependencies transferDependencies
 	var e error
 	if in.IncludeLinked {
-		// A graph move requires a separate remote-observation invariant; until
-		// then only copy may enqueue a multi-article destination bundle.
-		if dst, ok := s.db.Sources[in.DestinationID]; ok && dst.ConnectionID != "" {
-			return Move{}, ErrInvalid
-		}
 		db, rev, dependencies, e = s.prepareCopyLinkedLocal(copyIn)
 	} else {
 		dependencies, e = s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])
@@ -465,6 +480,10 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	}
 	if len(dependencies.Links) > 0 && db.Version < 8 {
 		db.Version = 8
+	}
+	if in.IncludeLinked && db.Sources[in.DestinationID].ConnectionID != "" && db.Version < 10 {
+		// Previous binaries do not understand graph moves awaiting a bundle.
+		db.Version = 10
 	}
 	id, e := randomID()
 	if e != nil {
@@ -552,7 +571,7 @@ func reconcileMoves(db *Database) {
 		}
 		target, exists := db.Articles[m.DestinationID+"/"+m.DestinationPath]
 		dst, dstOK := db.Sources[m.DestinationID]
-		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || (m.DestinationConnectionID == "" && !assetsPresent(dst, m.Assets)) || !linksPresent(*db, m.DestinationID, m.Links) {
+		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || (m.DestinationConnectionID == "" && !assetsPresent(dst, m.Assets)) || !localLinksPresent(*db, m.DestinationID, m.Links) {
 			m.State = "destination_changed"
 			db.Moves[id] = m
 			continue
@@ -583,14 +602,24 @@ func reconcileMoves(db *Database) {
 			}
 			jobID := m.DestinationID + "/" + m.DestinationPath + "@1"
 			job, ok := db.Outbox[jobID]
-			if !ok || job.State != "complete" || job.SHA != m.SHA {
-				continue
-			}
-			if !assetsPresent(dst, m.Assets) {
+			if !ok || job.State == "superseded" || job.SHA != m.SHA {
 				m.State = "destination_changed"
 				db.Moves[id] = m
 				continue
 			}
+			if job.State != "complete" {
+				continue
+			}
+			if !assetsPresent(dst, m.Assets) || !linksPresent(*db, m.DestinationID, m.Links) {
+				m.State = "destination_changed"
+				db.Moves[id] = m
+				continue
+			}
+		}
+		if m.DestinationConnectionID == "" && !linksPresent(*db, m.DestinationID, m.Links) {
+			m.State = "destination_changed"
+			db.Moves[id] = m
+			continue
 		}
 		if m.SourceConnectionID != "" {
 			if m.State != "deleting_source" {

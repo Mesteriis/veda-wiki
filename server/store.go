@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7 && s.db.Version != 8 && s.db.Version != 9) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7 && s.db.Version != 8 && s.db.Version != 9 && s.db.Version != 10) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {

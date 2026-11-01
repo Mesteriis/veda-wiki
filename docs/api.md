@@ -113,7 +113,7 @@ private draft. Approval for a private-to-public batch covers every article;
 each is checked for credential-like text. Independently imported destinations
 cannot receive a linked batch. Copy never deletes the source.
 
-For a connected destination, the group is persisted locally in store format v9,
+For a connected destination, the group is persisted locally in store format v9 or newer,
 which older binaries reject. The outbox job is complete only after a complete,
 non-withheld pull observes every article and image at the expected digest.
 The group cannot be locally edited or moved while pending. An owner can cancel
@@ -163,10 +163,14 @@ returns the same status alongside scope instructions.
 `POST /api/v1/moves` takes `source_id`, `source_path`, `expected_revision`,
 `destination_id`, `destination_path`, `confirm_move: true` and optionally
 `confirm_publication` and `include_linked`. With `include_linked: true`, the
-linked graph is copied atomically to a standalone local destination before
-removing the requested source article; other source articles remain. A GitHub
-source is deleted only after the destination and its dependencies are
-rechecked. Graph transfers to a connected destination are not yet supported.
+linked graph is copied to a standalone local destination or queued as one
+GitHub commit before removing the requested source article; other source
+articles remain. A connected destination must be observed in a complete pull,
+and a GitHub source is deleted only after the destination and its dependencies
+are rechecked. Cancelling a never-prepared destination bundle marks the move
+`destination_changed` and keeps the source.
+The first graph move to a connected destination upgrades the store to v10;
+older binaries reject it. Production v10 restore has not been verified.
 Manually maintained local sources and synchronized,
 writable GitHub sources are accepted; independent local imports are not.
 Relative Markdown images can be copied with the article into a standalone local
