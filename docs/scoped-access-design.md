@@ -25,6 +25,15 @@ socket access. The Linux root-only import path remains separate. This does not
 isolate agents sharing an OS account: shell or filesystem access under that
 account may allow an agent to read its other keys.
 
+For an SSH-based stdio transport, `mcp/keyed_stdio_launcher.py --key-file KEY --
+COMMAND...` sends the 64-byte key as a preamble to the trusted child and then
+relays MCP input; the remote adapter uses `--reader-key-preamble` together with
+`--reader-socket`. The key is not put in argv or environment. The child command
+must be trusted and the local key file must be owner-only. This does not isolate
+agents that can read each other's files under the same local OS account. An
+existing unrestricted SSH/PVE administrator route also remains administrative
+access regardless of the MCP key.
+
 The scoped-key store uses format version 4 so older binaries refuse it;
 coordinate this migration with the version-3 GitHub-source-move branch before
 integration, and verify backup and rollback. The snapshot currently copies

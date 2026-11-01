@@ -23,7 +23,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class Client:
-    def __init__(self, base, key_file=None, socket_path=None, read_only=False):
+    def __init__(self, base, key_file=None, socket_path=None, read_only=False, key_value=None):
         parsed = urlparse(base)
         if (parsed.scheme != "http" or parsed.hostname not in ("localhost", "127.0.0.1", "::1")
                 or parsed.username or parsed.password or parsed.path not in ("", "/")
@@ -31,15 +31,22 @@ class Client:
             raise ValueError("MCP requires a loopback REST URL")
         self.base = base.rstrip("/")
         self.key_file = Path(key_file) if key_file else None
+        self.key_value = key_value
         self.socket_path = Path(socket_path) if socket_path else None
         self.read_only = self.socket_path is not None or read_only
         if self.socket_path is not None and (not self.socket_path.is_absolute() or (key_file and not read_only)):
             raise ValueError("Invalid read-only socket configuration")
         if self.socket_path is None and self.key_file is None:
             raise ValueError("A key file is required")
+        if key_value is not None and (self.socket_path is None or key_file or not read_only):
+            raise ValueError("Invalid preamble key configuration")
+        if key_value is not None and (len(key_value) != 64 or any(c not in "0123456789abcdef" for c in key_value)):
+            raise ValueError("Invalid preamble key")
         self.opener = build_opener(ProxyHandler({}), NoRedirect())
 
     def _read_key(self):
+        if self.key_value is not None:
+            return self.key_value
         fd = os.open(self.key_file, os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(fd, "r") as stream:
             info = os.fstat(stream.fileno())
@@ -67,7 +74,7 @@ class Client:
             try:
                 data = None if body is None else json.dumps(body).encode()
                 headers = {"Content-Type": "application/json"}
-                if self.key_file is not None:
+                if self.key_file is not None or self.key_value is not None:
                     headers["Authorization"] = "Bearer " + self._read_key()
                 connection.request(method, route, body=data, headers=headers)
                 response = connection.getresponse()
@@ -243,11 +250,27 @@ async def main():
     credentials = parser.add_mutually_exclusive_group()
     credentials.add_argument("--key-file")
     credentials.add_argument("--reader-key-file")
+    credentials.add_argument("--reader-key-preamble", action="store_true")
     parser.add_argument("--reader-socket")
     args = parser.parse_args()
-    if not (args.key_file or args.reader_key_file or args.reader_socket) or (args.key_file and args.reader_socket):
+    if not (args.key_file or args.reader_key_file or args.reader_socket) or (args.key_file and args.reader_socket) or (args.reader_key_preamble and not args.reader_socket):
         parser.error("choose a key file or a reader socket, optionally with a reader key")
-    server = make_server(Client(args.url, args.key_file or args.reader_key_file, args.reader_socket, read_only=args.reader_key_file is not None))
+    key_value = None
+    if args.reader_key_preamble:
+        # Read exactly the 64-byte token without buffering any MCP input.
+        raw = b""
+        while len(raw) < 64:
+            chunk = os.read(0, 64 - len(raw))
+            if not chunk:
+                raise ValueError("Missing reader key preamble")
+            raw += chunk
+        try:
+            key_value = raw.decode("ascii")
+        except UnicodeDecodeError:
+            raise ValueError("Invalid reader key preamble") from None
+        if any(c not in "0123456789abcdef" for c in key_value):
+            raise ValueError("Invalid reader key preamble")
+    server = make_server(Client(args.url, args.key_file or args.reader_key_file, args.reader_socket, read_only=args.reader_key_file is not None or args.reader_key_preamble, key_value=key_value))
     async with stdio_server() as (read, write):
         await server.run(read, write, InitializationOptions(
             server_name="veda", server_version="0.1.0", instructions=server.instructions,
