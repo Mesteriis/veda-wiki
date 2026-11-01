@@ -690,22 +690,25 @@ export function App() {
   const modal = useRef(null);
   useEffect(() => {
     const c = new AbortController();
-    fetch("/api/state" + window.location.search, { signal: c.signal })
-      .then((r) => {
-        if (!r.ok)
-          throw Error(
-            r.status === 404
-              ? "Страница не найдена"
-              : "Wiki временно недоступна",
-          );
-        return r.json();
-      })
-      .then(setData)
-      .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
-      });
-    return () => c.abort();
-  }, []);
+    let timer;
+    async function refreshState() {
+      try {
+        const r = await fetch("/api/state" + window.location.search, { signal: c.signal });
+        if (!r.ok) {
+          if (r.status === 404) setData(null);
+          throw Error(r.status === 404 ? "Страница не найдена" : "Wiki временно недоступна");
+        }
+        const next = await r.json();
+        if (!c.signal.aborted) { setData(next); setError(""); }
+      } catch (e) {
+        if (!c.signal.aborted) setError(e.message);
+      } finally {
+        if (!c.signal.aborted) timer = setTimeout(refreshState, 10000);
+      }
+    }
+    refreshState();
+    return () => { c.abort(); clearTimeout(timer); };
+  }, [feature]);
   useEffect(() => {
     if (feature) modal.current.showModal();
     else modal.current?.close();
@@ -719,7 +722,7 @@ export function App() {
       return;
     }
     document.getElementById(id)?.scrollIntoView({ block: "start" });
-  }, [data]);
+  }, [data?.view.Page?.path]);
   useEffect(() => {
     const listener = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {

@@ -48,6 +48,10 @@ Status, retry and pause are available through the CLI and owner REST API.
 An administrator can also schedule an immediate retry from the GitHub
 connection screen. It may push already queued changes when write access is enabled;
 paused connections must first be resumed through the owner API or CLI.
+The reading interface refreshes its state periodically and when the dialog is
+opened or closed, so imported pages appear without a browser reload. Anonymous
+GitHub API limits can delay verification; while verification is unavailable,
+public visibility fails closed until a successful retry.
 Conflicts retain both versions. The worker checks visibility before import and
 private writes; public reads fail closed if the visibility proof is older than
 ten minutes, unavailable or paused. Visibility may change externally between
