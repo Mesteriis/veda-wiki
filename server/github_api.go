@@ -41,6 +41,24 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/github/cancel-bundle":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in struct {
+			ID      string `json:"job_id"`
+			Confirm bool   `json:"confirm_cancel"`
+		}
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if err := w.Store.cancelBundle(in.ID, in.Confirm); err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]string{"state": "superseded"})
 	case "/api/v1/github/publish-job":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)

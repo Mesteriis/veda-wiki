@@ -31,7 +31,31 @@ type SyncJob struct {
 	Visibility     string             `json:"visibility"`
 	Assets         map[string]BlobRef `json:"assets,omitempty"`
 	Links          map[string]string  `json:"links,omitempty"`
+	Bundle         map[string]string  `json:"bundle,omitempty"`
 }
+
+// bundleContentsLocked checks the revisions that must be sent together.
+// Caller holds the store lock. Never substitute a newer local revision.
+func bundleContentsLocked(db Database, job SyncJob) (map[string]string, error) {
+	result := make(map[string]string, len(job.Bundle))
+	for name, sha := range job.Bundle {
+		a, ok := db.Articles[job.SourceID+"/"+name]
+		if !ok || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
+			return nil, ErrConflict
+		}
+		for _, conflict := range a.Conflicts {
+			if conflict.Resolution == "" {
+				return nil, ErrConflict
+			}
+		}
+		if job.Visibility == "public" && (a.Published == nil || a.Published.SHA != sha) {
+			return nil, ErrConflict
+		}
+		result[name] = a.Versions[len(a.Versions)-1].Text
+	}
+	return result, nil
+}
+
 type remoteProof struct {
 	ConnectionID   string
 	ConfigRevision int
@@ -159,6 +183,12 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if secretContent.MatchString(a.Versions[expected-1].Text) {
 		return ErrInvalid
 	}
+	for name, sha := range job.Bundle {
+		linked, ok := s.db.Articles[job.SourceID+"/"+name]
+		if !ok || linked.Deleted || len(linked.Versions) == 0 || linked.Versions[len(linked.Versions)-1].SHA != sha || secretContent.MatchString(linked.Versions[len(linked.Versions)-1].Text) {
+			return ErrInvalid
+		}
+	}
 	job.Visibility = "public"
 	job.State = "pending"
 	job.LastError = ""
@@ -170,11 +200,42 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	a.PublishedLocal = true
 	db := s.clone()
 	db.Articles[job.SourceID+"/"+job.Path] = a
+	for name := range job.Bundle {
+		key := job.SourceID + "/" + name
+		linked := db.Articles[key]
+		published := linked.Versions[len(linked.Versions)-1]
+		published.Number = 0
+		published.Created = time.Now().UTC().Format(time.RFC3339Nano)
+		linked.Published, linked.PublishedLocal = &published, true
+		db.Articles[key] = linked
+	}
 	db.Outbox[id] = job
 	conn := db.Connections[src.ConnectionID]
 	conn.NextAttempt = ""
 	conn.State = "pending"
 	db.Connections[conn.ID] = conn
+	return s.commit(db)
+}
+
+// A prepared ref may have reached GitHub even after a lost response. Only a
+// never-prepared group can be cancelled without risking an uncertain update.
+func (s *Store) cancelBundle(id string, confirm bool) error {
+	if !confirm {
+		return ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.db.Outbox[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if len(job.Bundle) == 0 || job.PreparedCommit != "" || job.State == "complete" || job.State == "superseded" {
+		return ErrConflict
+	}
+	db := s.clone()
+	job.State = "superseded"
+	job.LastError, job.NextAttempt = "", ""
+	db.Outbox[id] = job
 	return s.commit(db)
 }
 func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {
@@ -187,7 +248,13 @@ func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[st
 				break
 			}
 		}
-		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" && ((len(job.Assets) == 0 && len(job.Links) == 0) || (complete && assetsPresent(Source{Assets: assets}, job.Assets) && linksMatch)) {
+		for name, sha := range job.Bundle {
+			if text, exists := files[name]; !exists || digest([]byte(text)) != sha {
+				linksMatch = false
+				break
+			}
+		}
+		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" && ((len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0) || (complete && assetsPresent(Source{Assets: assets}, job.Assets) && linksMatch)) {
 			matched = job.Revision
 		}
 	}
@@ -427,6 +494,26 @@ func (s *Store) prepareJob(id, commit string, expected GitHubConnection) error {
 	connection, connected := s.db.Connections[expected.ID]
 	if !ok || !connected || connection.Paused || !connection.Write || connection.ConfigRevision != expected.ConfigRevision || connection.RepositoryID != expected.RepositoryID || connection.Branch != expected.Branch || job.SourceID != expected.ID || job.State == "complete" || job.State == "superseded" || job.State == "conflict" {
 		return ErrConflict
+	}
+	if len(job.Bundle) > 0 {
+		a, ok := s.db.Articles[job.SourceID+"/"+job.Path]
+		if !ok || a.Deleted || len(a.Versions) != job.Revision || a.Versions[job.Revision-1].SHA != job.SHA {
+			return ErrConflict
+		}
+		for _, conflict := range a.Conflicts {
+			if conflict.Resolution == "" {
+				return ErrConflict
+			}
+		}
+		if job.Visibility == "public" && (a.Published == nil || a.Published.SHA != job.SHA) {
+			return ErrConflict
+		}
+		if _, err := bundleContentsLocked(s.db, job); err != nil {
+			return err
+		}
+		if !linksPresent(s.db, job.SourceID, job.Links) {
+			return ErrConflict
+		}
 	}
 	job.State = "prepared"
 	job.LastError = ""

@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7 && s.db.Version != 8) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7 && s.db.Version != 8 && s.db.Version != 9) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -306,6 +306,18 @@ func openStore(dir string) (*Store, error) {
 		}
 	}
 	for id, j := range s.db.Outbox {
+		if len(j.Bundle) > 2000 || (len(j.Bundle) > 0 && s.db.Version < 9) {
+			return nil, errors.New("invalid queued bundle")
+		}
+		for p, sha := range j.Bundle {
+			a, exists := s.db.Articles[j.SourceID+"/"+p]
+			if p == j.Path || !articlePath(p, s.db.Sources[j.SourceID].Kind) || len(sha) != 64 || !exists || len(a.Versions) == 0 || a.Versions[0].SHA != sha {
+				return nil, errors.New("invalid queued bundle article")
+			}
+			if _, e := hex.DecodeString(sha); e != nil {
+				return nil, errors.New("invalid queued bundle digest")
+			}
+		}
 		if len(j.Links) > 2000 || (len(j.Links) > 0 && s.db.Version < 8) {
 			return nil, errors.New("invalid queued links")
 		}

@@ -203,6 +203,20 @@ func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
 // A prepared deletion may have reached GitHub even when the response was lost.
 // Keep both local copies stable until a complete remote pull resolves it.
 func moveDeletionLocks(db Database, sourceID, p string) bool {
+	for _, job := range db.Outbox {
+		if len(job.Bundle) == 0 || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
+			continue
+		}
+		if job.Path == p {
+			return true
+		}
+		if _, ok := job.Bundle[p]; ok {
+			return true
+		}
+		if _, ok := job.Links[p]; ok {
+			return true
+		}
+	}
 	for _, m := range db.Moves {
 		if m.State == "deleting_source" {
 			if (m.SourceID == sourceID && m.SourcePath == p) || (m.DestinationID == sourceID && m.DestinationPath == p) {
@@ -421,6 +435,11 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	var dependencies transferDependencies
 	var e error
 	if in.IncludeLinked {
+		// A graph move requires a separate remote-observation invariant; until
+		// then only copy may enqueue a multi-article destination bundle.
+		if dst, ok := s.db.Sources[in.DestinationID]; ok && dst.ConnectionID != "" {
+			return Move{}, ErrInvalid
+		}
 		db, rev, dependencies, e = s.prepareCopyLinkedLocal(copyIn)
 	} else {
 		dependencies, e = s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])

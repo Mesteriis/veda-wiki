@@ -32,6 +32,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/api/v1/github/outbox` | List queued write jobs (owner only) |
 | POST | `/api/v1/github/sync`, `/api/v1/github/pause` | Schedule sync or change pause state (owner only) |
 | POST | `/api/v1/github/publish-job` | Explicitly approve a queued private edit for publication (owner only) |
+| POST | `/api/v1/github/cancel-bundle` | Cancel an unprepared linked-article bundle (owner only) |
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
 Source body:
@@ -104,12 +105,24 @@ Copy transfers supported relative images and preserves relative article links
 only when the destination already contains the same linked revision. It does
 not automatically copy linked articles unless `include_linked: true` is set.
 With that flag, all recursively linked Markdown articles and supported images
-are copied atomically into a standalone local destination. Cycles are handled;
+are copied atomically into a standalone local destination, or queued together
+for one GitHub commit. Cycles are handled;
 existing matching articles are retained and conflicts reject the whole batch.
 Each newly copied article retains source provenance and its translation is a
 private draft. Approval for a private-to-public batch covers every article;
-each is checked for credential-like text. Connected or independently imported
-destinations cannot yet receive a linked batch. Copy never deletes the source.
+each is checked for credential-like text. Independently imported destinations
+cannot receive a linked batch. Copy never deletes the source.
+
+For a connected destination, the group is persisted locally in store format v9,
+which older binaries reject. The outbox job is complete only after a complete,
+non-withheld pull observes every article and image at the expected digest.
+The group cannot be locally edited or moved while pending. An owner can cancel
+a never-prepared group with `POST /api/v1/github/cancel-bundle` (`job_id`,
+`confirm_cancel: true`) or `veda_cancel_bundle`; local copies remain. Once a
+commit has been prepared, its result may be uncertain and cancellation is
+refused until synchronization resolves it. A failed group may need retry or
+conflict resolution. This workflow has synthetic tests only; restoration of a
+production v9 store and live GitHub credentials have not been verified.
 
 `POST /api/v1/articles/transfer-plan` and `veda_transfer_plan` accept the same
 source and destination identifiers, paths, and expected source revision. They

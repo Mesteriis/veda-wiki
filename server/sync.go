@@ -655,7 +655,7 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		}
 		var commit string
 		var e error
-		if len(job.Assets) == 0 && len(job.Links) == 0 {
+		if len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0 {
 			commit, e = m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
 		} else {
 			var files map[string][]byte
@@ -729,8 +729,20 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 		return nil, ErrInvalid
 	}
 	files := map[string][]byte{job.Path: []byte(article.Versions[job.Revision-1].Text)}
-	for name, ref := range job.Assets {
+	m.store.mu.RLock()
+	bundle, bundleErr := bundleContentsLocked(m.store.db, job)
+	m.store.mu.RUnlock()
+	if bundleErr != nil {
+		return nil, bundleErr
+	}
+	for name, value := range bundle {
 		if name == job.Path {
+			return nil, ErrConflict
+		}
+		files[name] = []byte(value)
+	}
+	for name, ref := range job.Assets {
+		if _, exists := files[name]; exists {
 			return nil, ErrConflict
 		}
 		data, e := m.store.readAsset(ref)

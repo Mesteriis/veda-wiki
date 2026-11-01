@@ -119,7 +119,7 @@ def make_server(client):
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000},
             "expected_revision": {"type": "integer", "minimum": 0}},
             ["source_id", "path", "text", "expected_revision"]),
-        "veda_copy_article": ("Copy a specific revision to a new destination, retaining the source. Supported relative images are copied. With include_linked, recursively copy linked articles to a standalone local destination as one transaction; conflicts are rejected. Otherwise linked articles must already exist at the destination with the same revision. Private-to-public copying requires explicit user approval for the whole graph. Inspect the outbox for remote confirmation.", {
+        "veda_copy_article": ("Copy a specific revision to a new destination, retaining the source. Supported relative images are copied. With include_linked, recursively copy linked articles to a standalone local or connected GitHub destination; conflicts are rejected. A GitHub group is queued as one commit and requires a complete pull for confirmation. Otherwise linked articles must already exist at the destination with the same revision. Private-to-public copying requires explicit user approval for the whole graph. Inspect the outbox for remote confirmation.", {
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "destination_id": string, "destination_path": string, "confirm_publication": {"type": "boolean"}, "include_linked": {"type": "boolean"}},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
@@ -160,6 +160,8 @@ def make_server(client):
         "veda_publish_job": ("Approve one private queued revision for publication only after explicit user instruction and review.", {
             "job_id":string,"expected_revision":{"type":"integer","minimum":1},
             "confirm_publication":{"type":"boolean","const":True}},["job_id","expected_revision","confirm_publication"]),
+        "veda_cancel_bundle": ("Cancel an unprepared linked-article GitHub bundle. Local copies remain. A prepared bundle cannot be cancelled until its remote outcome is resolved.", {
+            "job_id":string,"confirm_cancel":{"type":"boolean","const":True}},["job_id","confirm_cancel"]),
     }
 
     if client.read_only:
@@ -220,6 +222,8 @@ def make_server(client):
                 result=await asyncio.to_thread(client.request,"POST","/api/v1/github/sync",arguments)
             elif name == "veda_publish_job":
                 result=await asyncio.to_thread(client.request,"POST","/api/v1/github/publish-job",arguments)
+            elif name == "veda_cancel_bundle":
+                result=await asyncio.to_thread(client.request,"POST","/api/v1/github/cancel-bundle",arguments)
             else:
                 target = arguments["path"].split("/")
                 if any(part in ("", ".", "..") for part in target) or not target[-1].lower().endswith((".md", ".markdown")):
