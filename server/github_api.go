@@ -14,7 +14,7 @@ func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" && r.URL.Path != "/api/admin/github/sync" {
+	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" && r.URL.Path != "/api/admin/github/sync" && r.URL.Path != "/api/admin/github/pause" {
 		http.NotFound(rw, r)
 		return
 	}
@@ -176,7 +176,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		}
 		var in struct {
 			ID     string `json:"id"`
-			Paused bool   `json:"paused"`
+			Paused *bool  `json:"paused"`
 		}
 		if e := decodeBody(rw, r, &in); e != nil || !identifier.MatchString(in.ID) {
 			apiError(rw, ErrInvalid)
@@ -184,7 +184,11 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		}
 		var e error
 		if strings.HasSuffix(r.URL.Path, "/pause") {
-			e = w.Store.pauseConnection(in.ID, in.Paused)
+			if in.Paused == nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			e = w.Store.pauseConnection(in.ID, *in.Paused)
 		} else {
 			e = w.Store.retryConnection(in.ID)
 		}

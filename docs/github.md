@@ -32,7 +32,7 @@ automatically guessed. The private browser interface also offers GitHub App or
 token account registration and repository connection after a separate
 administrator login.
 The administrator session grants GitHub account, connection and manual sync
-endpoints, not article editing or the general owner API. It is accepted only over direct
+and pause/resume endpoints, not article editing or the general owner API. It is accepted only over direct
 HTTPS or loopback HTTP, and is separate from the reader session. The read-only
 Unix socket does not expose administration; an independently configured local
 bridge can forward only the protected administration routes.
@@ -49,9 +49,10 @@ limit blocks the bundle. A complete pull must observe every image before the
 move removes its source. Previously unapproved private images remain private
 when a queued article is edited.
 Status, retry and pause are available through the CLI and owner REST API.
-An administrator can also schedule an immediate retry from the GitHub
-connection screen. It may push already queued changes when write access is enabled;
-paused connections must first be resumed through the owner API or CLI.
+An administrator can schedule an immediate retry or pause and resume from the
+GitHub connection screen. Resuming may push already queued changes when write
+access is enabled. Pausing hides that source's public articles while its GitHub
+visibility is not being verified; a network request already in flight may finish.
 The reading interface refreshes its state periodically and when the dialog is
 opened or closed, so imported pages appear without a browser reload. Anonymous
 GitHub API limits can delay verification; while verification is unavailable,

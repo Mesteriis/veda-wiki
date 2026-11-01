@@ -657,6 +657,7 @@ function AccessSettings() {
   </div>;
 }
 function GitHubConnect() {
+  const stateLabels = { pending: "Ожидает синхронизации", syncing: "Синхронизация", ready: "Синхронизирован", paused: "Приостановлен", skipped: "Нет папки docs/", blocked: "Требует внимания", error: "Ошибка синхронизации" };
   const [status, setStatus] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [connections, setConnections] = useState([]);
@@ -729,6 +730,16 @@ function GitHubConnect() {
     } catch { setMessage("Не удалось запланировать синхронизацию. Проверьте состояние источника и сеанс администратора."); }
     finally { setBusy(false); }
   }
+  async function pauseConnection(connection) {
+    const paused = !connection.paused;
+    setBusy(true); setMessage("");
+    try {
+      await send("/api/admin/github/pause", { id: connection.id, paused });
+      setMessage(paused ? "Синхронизация приостановлена. Уже начатый сетевой запрос может завершиться." : "Синхронизация возобновлена; ожидающие изменения могут быть отправлены.");
+      refresh().catch(() => setMessage("Состояние изменено, но список источников обновить не удалось."));
+    } catch { setMessage("Не удалось изменить состояние синхронизации. Проверьте источник и сеанс администратора."); }
+    finally { setBusy(false); }
+  }
   return <div className="github-connect reader-access">
     <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
     {status === false && <form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form>}
@@ -738,9 +749,9 @@ function GitHubConnect() {
       <h3>Источники</h3>{connections.length ? <ul>{connections.map((c) => {
         const limited = c.last_error === "rate_limited" && Date.parse(c.next_attempt) > Date.now();
         const detail = limited ? `Лимит GitHub, повтор после ${new Date(c.next_attempt).toLocaleString()}` : c.last_error;
-        return <li key={c.id}>{c.id}: {c.repository} · {c.private ? "приватный" : "публичный"} · {c.state}{detail ? ` (${detail})` : ""} <button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button></li>;
+        return <li key={c.id}>{c.id}: {c.repository} · {c.private ? "приватный" : "публичный"} · {stateLabels[c.state] || c.state}{detail ? ` (${detail})` : ""} <button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button> <button type="button" disabled={busy} onClick={() => pauseConnection(c)} aria-label={`${c.paused ? "Возобновить" : "Приостановить"} синхронизацию ${c.id}`}>{c.paused ? "Возобновить" : "Приостановить"}</button></li>;
       })}</ul> : <p>Репозитории ещё не подключены.</p>}
-      <p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена.</p>
+      <p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена. На паузе публичные статьи источника временно скрыты.</p>
       <button onClick={logout} disabled={busy}>Выйти из управления</button>
     </>}
     {message && <p role="status">{message}</p>}

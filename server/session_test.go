@@ -174,11 +174,20 @@ func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	if request("POST", "/api/admin/github/sync", `{"id":"missing"}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 404 {
 		t.Fatal("unknown connection scheduled")
 	}
-	if err := store.pauseConnection("wiki", true); err != nil {
-		t.Fatal(err)
+	if request("POST", "/api/admin/github/pause", `{"id":"wiki","paused":true}`, "http://evil.example", cookie, false, "127.0.0.1:1").Code != 403 || request("POST", "/api/admin/github/pause", `{"id":"wiki","paused":true}`, "http://localhost:8080", readerCookie, false, "127.0.0.1:1").Code != 404 {
+		t.Fatal("unauthorized pause accepted")
+	}
+	if request("POST", "/api/admin/github/pause", `{"id":"wiki"}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 400 {
+		t.Fatal("missing pause state accepted")
+	}
+	if request("POST", "/api/admin/github/pause", `{"id":"wiki","paused":true}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 202 {
+		t.Fatal("pause failed")
 	}
 	if request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 409 {
 		t.Fatal("paused connection scheduled")
+	}
+	if request("POST", "/api/admin/github/pause", `{"id":"wiki","paused":false}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 202 {
+		t.Fatal("resume failed")
 	}
 	if request("POST", "/api/admin/session/logout", "", "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 200 {
 		t.Fatal("logout")
