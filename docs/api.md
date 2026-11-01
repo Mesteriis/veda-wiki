@@ -92,7 +92,7 @@ assets are read-only through the ordinary source-creation endpoint.
 
 `POST /api/v1/articles/copy` requires `source_id`, `source_path`,
 `expected_revision`, `destination_id`, `destination_path` and optionally
-`confirm_publication`. The destination must be a new path in a different
+`confirm_publication` and `include_linked`. The destination must be a new path in a different
 source. Conflicts or stale source revisions are rejected. The copy and its
 remote outbox job are committed atomically; inspect the outbox to verify remote
 durability. The source is retained. Private-to-public copying requires explicit
@@ -102,7 +102,14 @@ queued write needs later approval if the destination is verified public.
 Owner-only provenance is preserved locally and removed from public responses.
 Copy transfers supported relative images and preserves relative article links
 only when the destination already contains the same linked revision. It does
-not automatically copy linked articles and is not a complete move operation.
+not automatically copy linked articles unless `include_linked: true` is set.
+With that flag, all recursively linked Markdown articles and supported images
+are copied atomically into a standalone local destination. Cycles are handled;
+existing matching articles are retained and conflicts reject the whole batch.
+Each newly copied article retains source provenance and its translation is a
+private draft. Approval for a private-to-public batch covers every article;
+each is checked for credential-like text. Connected or independently imported
+destinations cannot yet receive a linked batch. Copy never deletes the source.
 
 `POST /api/v1/articles/transfer-plan` and `veda_transfer_plan` accept the same
 source and destination identifiers, paths, and expected source revision. They

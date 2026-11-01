@@ -26,6 +26,11 @@ type transferPlan struct {
 func (s *Store) planTransfer(in copyRequest) (transferPlan, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.planTransferLocked(in)
+}
+
+// Caller holds the store mutex or read mutex.
+func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 	if in.SourceID == in.DestinationID || in.ExpectedRevision < 1 {
 		return transferPlan{}, ErrInvalid
 	}

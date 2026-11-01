@@ -17,6 +17,7 @@ type copyRequest struct {
 	DestinationID      string `json:"destination_id"`
 	DestinationPath    string `json:"destination_path"`
 	ConfirmPublication bool   `json:"confirm_publication"`
+	IncludeLinked      bool   `json:"include_linked,omitempty"`
 }
 
 // Caller holds the store mutex. The returned transaction is not yet committed.
@@ -110,6 +111,9 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 func (s *Store) copyArticle(in copyRequest) (Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if in.IncludeLinked {
+		return s.copyLinkedLocal(in)
+	}
 	db, revision, err := s.prepareCopy(in)
 	if err != nil {
 		return Revision{}, err

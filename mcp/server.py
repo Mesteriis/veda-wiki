@@ -119,11 +119,11 @@ def make_server(client):
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000},
             "expected_revision": {"type": "integer", "minimum": 0}},
             ["source_id", "path", "text", "expected_revision"]),
-        "veda_copy_article": ("Copy a specific revision to a new destination, retaining the source. Supported relative images are copied; linked articles must already exist at the destination with the same revision. Private-to-public copying requires explicit user approval. Inspect the outbox for remote confirmation.", {
+        "veda_copy_article": ("Copy a specific revision to a new destination, retaining the source. Supported relative images are copied. With include_linked, recursively copy linked articles to a standalone local destination as one transaction; conflicts are rejected. Otherwise linked articles must already exist at the destination with the same revision. Private-to-public copying requires explicit user approval for the whole graph. Inspect the outbox for remote confirmation.", {
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
-            "destination_id": string, "destination_path": string, "confirm_publication": {"type": "boolean"}},
+            "destination_id": string, "destination_path": string, "confirm_publication": {"type": "boolean"}, "include_linked": {"type": "boolean"}},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
-        "veda_transfer_plan": ("Inspect the recursive relative article-link graph and destination matches without changing data. This is a snapshot, not a reservation or authorization; the current copy and move operations do not automatically copy missing linked articles. Images, HTML and publication approval are not validated by this plan.", {
+        "veda_transfer_plan": ("Inspect the recursive relative article-link graph and destination matches without changing data. This is a snapshot, not a reservation or authorization. Images, HTML and publication approval are not validated by this plan.", {
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "destination_id": string, "destination_path": string},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
