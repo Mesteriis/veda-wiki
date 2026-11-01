@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -27,7 +28,10 @@ func jsonResponse(rw http.ResponseWriter, status int, v any) {
 	json.NewEncoder(rw).Encode(v)
 }
 func decodeBody(rw http.ResponseWriter, r *http.Request, dst any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(rw, r.Body, 300000))
+	return decodeLimited(rw, r, dst, 300000)
+}
+func decodeLimited(rw http.ResponseWriter, r *http.Request, dst any, limit int64) error {
+	decoder := json.NewDecoder(http.MaxBytesReader(rw, r.Body, limit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
 		return err
@@ -61,6 +65,107 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/conflicts":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		all := w.Store.conflicts()
+		query := r.URL.Query()
+		if query.Get("source_id") != "" {
+			index, e := strconv.Atoi(query.Get("index"))
+			if e != nil || index < 0 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			for _, record := range all {
+				if record.SourceID == query.Get("source_id") && record.Path == query.Get("path") && record.Index == index {
+					jsonResponse(rw, 200, map[string]any{"conflicts": []ConflictRecord{record}, "total": 1, "offset": 0})
+					return
+				}
+			}
+			apiError(rw, ErrNotFound)
+			return
+		}
+		limit, offset := 30, 0
+		if query.Has("limit") {
+			value, e := strconv.Atoi(query.Get("limit"))
+			if e != nil || value < 1 || value > 100 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			limit = value
+		}
+		if query.Has("offset") {
+			value, e := strconv.Atoi(query.Get("offset"))
+			if e != nil || value < 0 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			offset = value
+		}
+		start := offset
+		if start > len(all) {
+			start = len(all)
+		}
+		end := start + limit
+		if end > len(all) {
+			end = len(all)
+		}
+		rows := all[start:end]
+		for i := range rows {
+			rows[i].Conflict.Incoming = ""
+		}
+		jsonResponse(rw, 200, map[string]any{"conflicts": rows, "total": len(all), "offset": offset})
+	case "/api/v1/conflicts/resolve":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in struct {
+			SourceID   string `json:"source_id"`
+			Path       string `json:"path"`
+			Index      *int   `json:"index"`
+			Expected   int    `json:"expected_revision"`
+			Resolution string `json:"resolution"`
+		}
+		if e := decodeBody(rw, r, &in); e != nil || in.Index == nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if e := w.Store.resolveConflict(in.SourceID, in.Path, *in.Index, in.Expected, in.Resolution); e != nil {
+			apiError(rw, e)
+			return
+		}
+		jsonResponse(rw, 200, map[string]string{"status": "resolved"})
+	case "/api/v1/import":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var batch ImportBatch
+		if e := decodeLimited(rw, r, &batch, 40<<20); e != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, e := w.Store.importBatch(batch)
+		if e != nil {
+			apiError(rw, e)
+			return
+		}
+		jsonResponse(rw, 200, result)
 	case "/api/v1/sources":
 		switch r.Method {
 		case "GET":
@@ -94,6 +199,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 			}
 			if r.URL.Query().Get("history") != "1" || !owner {
 				a.Versions = a.Versions[len(a.Versions)-1:]
+				a.Conflicts = nil
 			}
 			jsonResponse(rw, 200, a)
 		case "POST", "PUT":

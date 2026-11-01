@@ -15,6 +15,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "import" {
+		if e := importCommand(os.Args[2:]); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
 	data := flag.String("data", ".veda", "Private local data directory (single writer)")
 	listen := flag.String("listen", "127.0.0.1:8080", "API and viewer address")
 	public := flag.String("public-listen", "127.0.0.1:8081", "Public-only address")

@@ -16,6 +16,10 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/api/v1/articles?source_id=…&path=…&history=1` | All revisions (owner only; public callers still receive only current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
+| POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
+| GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
+| POST | `/api/v1/conflicts/resolve` | Owner-only conflict resolution with expected revision |
+| GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
 Source body:
 
@@ -50,3 +54,8 @@ For retries, reread after an ambiguous response: an accepted write might already
 be durable. The revision precondition prevents duplicate writes or stale updates.
 This is optimistic concurrency, not an idempotency-key implementation. Unknown
 source IDs cannot create implicit sources. No write is pushed to GitHub yet.
+
+An import batch can explicitly create its source with `create: true`; it never
+implicitly creates a source from an article write. Import details and metadata
+schema: [repository import](import.md). Managed source metadata/provenance and
+assets are read-only through the ordinary source-creation endpoint.

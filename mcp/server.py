@@ -46,8 +46,8 @@ class Client:
                       headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
         try:
             with self.opener.open(req, timeout=15) as response:
-                payload = response.read(1_000_001)
-                if len(payload) > 1_000_000:
+                payload = response.read(2_000_001)
+                if len(payload) > 2_000_000:
                     raise ValueError("Response exceeds MCP limit")
                 return json.loads(payload)
         except HTTPError as exc:
@@ -73,6 +73,15 @@ def make_server(client):
             ["source_id", "path", "text", "expected_revision"]),
         "veda_context": ("Read root and ancestor AGENTS.md articles for a target within one source.", {
             "source_id": string, "path": string}, ["source_id", "path"]),
+        "veda_conflicts": ("List conflict summaries with pagination; supply source_id/path/index to inspect one incoming text.", {
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            "offset": {"type": "integer", "minimum": 0},
+            "source_id": string, "path": string, "index": {"type": "integer", "minimum": 0}}, []),
+        "veda_resolve_conflict": ("Resolve an import conflict against the current local revision, retaining history.", {
+            "source_id": string, "path": string, "index": {"type": "integer", "minimum": 0},
+            "expected_revision": {"type": "integer", "minimum": 1},
+            "resolution": {"enum": ["local", "upstream"]}},
+            ["source_id", "path", "index", "expected_revision", "resolution"]),
     }
 
     def read(source_id, path):
@@ -102,6 +111,10 @@ def make_server(client):
             elif name == "veda_write_article":
                 method = "POST" if arguments["expected_revision"] == 0 else "PUT"
                 result = await asyncio.to_thread(client.request, method, "/api/v1/articles", arguments)
+            elif name == "veda_conflicts":
+                result = await asyncio.to_thread(client.request, "GET", "/api/v1/conflicts?" + urlencode(arguments))
+            elif name == "veda_resolve_conflict":
+                result = await asyncio.to_thread(client.request, "POST", "/api/v1/conflicts/resolve", arguments)
             else:
                 target = arguments["path"].split("/")
                 if any(part in ("", ".", "..") for part in target) or not target[-1].endswith(".md"):

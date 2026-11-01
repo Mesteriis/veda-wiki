@@ -5,7 +5,9 @@
 - [x] Durable article revisions and optimistic write concurrency.
 - [x] Authenticated REST create/read/update and MCP adapter using the same API.
 - [x] Agent context from root/ancestor AGENTS.md articles.
-- [ ] Versioned veda.yaml parser and bounded local-checkout import.
+- [x] Versioned veda.yaml parser and bounded local-checkout import.
+- [x] Manual upstream conflicts, deletion handling and revision-checked resolution.
+- [x] Confined, visibility-checked local image import and serving.
 - [ ] Verified GitHub connection, repository visibility and credential management.
 - [ ] Durable background import/push outbox and conflict resolution.
 - [ ] Program docs/ import and provenance-preserving Russian translation.
@@ -13,3 +15,5 @@
 - [ ] User/team permissions and private browser reading sessions.
 - [ ] SQLite migration/retention once the bounded prototype store is outgrown.
 - [ ] Packaging, deployment hardening and independent restore acceptance.
+
+Full-scope status is tracked in [implementation ledger](implementation.md).
