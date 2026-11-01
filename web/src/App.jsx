@@ -629,8 +629,8 @@ function GitHubConnect() {
   async function login(event) {
     event.preventDefault(); const form = event.currentTarget; const key = new FormData(form).get("key");
     setBusy(true); setMessage("");
-    try { await send("/api/admin/session/login", { key }); setStatus(true); await refresh(); }
-    catch { setMessage("Не удалось войти или загрузить настройки. Проверьте ключ и подключение."); }
+    try { await send("/api/admin/session/login", { key }); setStatus(true); refresh().catch(() => setMessage("Вход выполнен, но не удалось загрузить настройки.")); }
+    catch { setMessage("Не удалось войти. Проверьте ключ и подключение."); }
     finally { form.reset(); setBusy(false); }
   }
   async function addAccount(event) {
@@ -639,7 +639,7 @@ function GitHubConnect() {
     const secret = accountKind === "app"
       ? { kind: "app", app_id: Number(data.get("app_id")), installation_id: Number(data.get("installation_id")), private_key: data.get("private_key") }
       : { kind: "token", token: data.get("token") };
-    try { await send("/api/admin/github/accounts", { id: data.get("id"), ...secret }); form.reset(); await refresh(); setMessage("Аккаунт подключён."); }
+    try { await send("/api/admin/github/accounts", { id: data.get("id"), ...secret }); form.reset(); setMessage("Аккаунт подключён."); refresh().catch(() => setMessage("Аккаунт подключён, но не удалось обновить список.")); }
     catch { setMessage("Не удалось подключить аккаунт. Проверьте данные и идентификатор."); }
     finally { if (form.elements.token) form.elements.token.value = ""; if (form.elements.private_key) form.elements.private_key.value = ""; setBusy(false); }
   }
@@ -649,7 +649,7 @@ function GitHubConnect() {
     setBusy(true); setMessage("");
     try {
       await send("/api/admin/github/connections", { id: data.get("id"), repository: data.get("repository"), account_id: account, branch: data.get("branch"), write: data.has("write") });
-      form.reset(); await refresh(); setMessage("Репозиторий подключён; импорт выполняется в фоне.");
+      form.reset(); setMessage("Репозиторий подключён; импорт выполняется в фоне."); refresh().catch(() => setMessage("Репозиторий подключён, но не удалось обновить список."));
     } catch { setMessage("Не удалось подключить репозиторий. Проверьте адрес, ветку и права аккаунта."); }
     finally { setBusy(false); }
   }
