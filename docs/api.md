@@ -38,7 +38,9 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 Search matches exact phrases or meaningful words across visible titles, paths
 and article text. Multiword queries require two distinct meaningful matches;
 title and path matches rank above body matches. A small set of infrastructure
-aliases covers container/LXC and VPS/VDS/VSP. This is lexical search, not
+aliases covers generic container terms, LXC and Docker, as well as VPS/VDS/VSP.
+Generic container queries include both technologies; explicit LXC and Docker
+queries remain distinct. This is lexical search, not
 semantic retrieval, general typo correction or authorization to act. The
 query is limited to 300 bytes and up to 16 meaningful terms are considered.
 

@@ -20,6 +20,12 @@ func TestSearchTermsAndRanking(t *testing.T) {
 	if score := searchScore(qTypo, "vps_ru/docs/setup.md", "Deploy an LXC guest", searchTerms(qTypo)); score == 0 {
 		t.Fatal("VSP alias did not find VPS documentation")
 	}
+	if score := searchScore(qTypo, "vps_ru/docs/docker.md", "Docker service", searchTerms(qTypo)); score == 0 {
+		t.Fatal("container request did not find Docker documentation")
+	}
+	if score := searchScore("lxc vps", "vps_ru/docs/docker.md", "Docker service", searchTerms("lxc vps")); score != 0 {
+		t.Fatal("specific LXC request matched Docker-only documentation")
+	}
 	if score := searchScore("создай контейнер на моём VPS", "vps_ru/docs/backup.md", "Backup instructions", terms); score != 0 {
 		t.Fatal("single token matched a multiword query")
 	}

@@ -112,7 +112,7 @@ def make_server(client):
     string = {"type": "string", "minLength": 1}
     specs = {
         "veda_sources": ("List sources visible to this client.", {}, []),
-        "veda_search": ("Search visible articles across sources using exact phrases or meaningful words. Limited infrastructure aliases include container/LXC and VPS/VDS/VSP; this is lexical search, not semantic inference. Read source context and verify live state before acting.", {"query": string}, ["query"]),
+        "veda_search": ("Search visible articles across sources using exact phrases or meaningful words. Generic container terms include LXC and Docker; VPS, VDS and VSP are aliases. This is lexical search, not semantic inference. LXC and Docker are distinct: read source context and verify live state before acting.", {"query": string}, ["query"]),
         "veda_read": ("Read the current article and its revision.", {"source_id": string, "path": string}, ["source_id", "path"]),
         "veda_prepare_update": ("Prepare a non-persistent proposed article update after rereading the current revision. Returns the base revision and SHA for review; it does not save or publish the proposed text. Stale revisions are refused.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},

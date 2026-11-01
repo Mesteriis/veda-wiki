@@ -8,9 +8,10 @@ import (
 // Search remains lexical. These aliases cover common infrastructure terms;
 // they do not infer intent or authorization from the user's request.
 var searchAliases = map[string][]string{
-	"контейнер": {"контейнер", "container", "lxc"},
-	"container": {"контейнер", "container", "lxc"},
-	"lxc":       {"контейнер", "container", "lxc"},
+	"контейнер": {"контейнер", "container", "lxc", "docker"},
+	"container": {"контейнер", "container", "lxc", "docker"},
+	"lxc":       {"lxc"},
+	"docker":    {"docker"},
 	"vps":       {"vps", "vds", "впс", "vsp"},
 	"vds":       {"vps", "vds", "впс", "vsp"},
 	"впс":       {"vps", "vds", "впс", "vsp"},
