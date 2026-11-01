@@ -58,7 +58,15 @@ python3 -m venv .venv
 
 Register that command with your MCP client, using absolute paths appropriate to
 your checkout. stdio is the MCP transport; use `--url` to choose the loopback
-REST endpoint. The owner key allows reading and writing all sources. To grant an agent only
+REST endpoint. For a local read-only agent, the service can instead expose a Unix socket in a
+private directory owned by the service user. Start VEDA with `--reader-socket
+/path/to/private/reader.sock`, then use the MCP adapter with `--reader-socket`
+pointing to that socket. This adapter advertises only sources, search, read and
+context; it has no credential or write/admin access. The socket's directory must
+be 0700 and owned by the server user. Anyone sharing that OS identity can read
+all private sources; this is not per-agent authorization.
+
+The owner key allows reading and writing all sources. To grant an agent only
 current-content reading, pass `--key-file .veda/reader.key` instead. The reader
 key cannot write or use administrative endpoints and is ignored by the public
 listener. It grants access to all private sources and is not user-scoped. An existing private infrastructure
