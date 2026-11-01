@@ -25,8 +25,9 @@ the key is sent only over direct HTTPS or loopback HTTP and is not stored in the
 browser. The administrator session is limited to GitHub account registration
 and connection, and cannot authorize article writes or other owner APIs. It
 uses its own HttpOnly, SameSite=Strict cookie, expires after eight hours, and
-is revoked on logout or restart. The reader-only Unix socket and viewing proxy
-do not expose this administration surface. The interface offers no article
+is revoked on logout or restart. The reader-only Unix socket does not expose
+administration; a separately configured local bridge may forward the limited
+administration routes. The interface offers no article
 editing. Browser session and administration POST endpoints accept only
 same-origin requests. This is an initial
 single shared reader mechanism; account provisioning, independent revocation,

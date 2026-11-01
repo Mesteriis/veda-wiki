@@ -29,8 +29,9 @@ token account registration and repository connection after a separate
 administrator login.
 The administrator session grants only GitHub account and connection endpoints,
 not article editing or the general owner API. It is accepted only over direct
-HTTPS or loopback HTTP, and is separate from the reader session. The existing
-read-only Unix socket and local viewing proxy do not expose administration.
+HTTPS or loopback HTTP, and is separate from the reader session. The read-only
+Unix socket does not expose administration; an independently configured local
+bridge can forward only the protected administration routes.
 
 The worker polls every five minutes by default (`--sync-interval`, 5 seconds
 to 1 hour). Local writes to connected sources are committed with an outbox
