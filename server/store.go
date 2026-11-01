@@ -36,6 +36,14 @@ type Source struct {
 	ImportPartial    bool               `json:"import_partial,omitempty"`
 	ConnectionID     string             `json:"connection_id,omitempty"`
 }
+
+// SourceView adds ephemeral, owner-visible sync evidence without persisting a
+// timestamp on every unchanged snapshot import.
+type SourceView struct {
+	Source
+	LastImportObservedAt string `json:"last_import_observed_at,omitempty"`
+	UnresolvedConflicts  int    `json:"unresolved_conflicts,omitempty"`
+}
 type Revision struct {
 	Number  int    `json:"revision"`
 	Text    string `json:"text"`
@@ -68,9 +76,10 @@ type Database struct {
 // persisted before becoming visible. Whole-state transactions keep article
 // history and the future sync outbox in one durability boundary.
 type Store struct {
-	mu  sync.RWMutex
-	dir string
-	db  Database
+	mu       sync.RWMutex
+	dir      string
+	db       Database
+	observed map[string]time.Time
 }
 
 func openStore(dir string) (*Store, error) {
@@ -353,16 +362,33 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	}
 	return rev, nil
 }
-func (s *Store) sources(public bool) []Source {
+func (s *Store) sources(public bool) []SourceView {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := []Source{}
+	out := []SourceView{}
+	conflicts := map[string]int{}
+	if !public {
+		for _, a := range s.db.Articles {
+			for _, c := range a.Conflicts {
+				if c.Resolution == "" {
+					conflicts[a.SourceID]++
+				}
+			}
+		}
+	}
 	for _, src := range s.db.Sources {
 		if !public || sourcePublic(s.db, src, time.Now()) {
 			if public {
 				src.ConnectionID = ""
 			}
-			out = append(out, src)
+			view := SourceView{Source: src}
+			if !public {
+				if observed, ok := s.observed[src.ID]; ok {
+					view.LastImportObservedAt = observed.UTC().Format(time.RFC3339Nano)
+				}
+				view.UnresolvedConflicts = conflicts[src.ID]
+			}
+			out = append(out, view)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })

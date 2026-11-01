@@ -95,3 +95,15 @@ change visibility. The same generation and conflict rules apply. Non-root peers
 remain read-only; HTTP headers cannot supply peer identity. On other operating
 systems this import channel is unavailable. A privileged process can already
 access local files; do not treat this mechanism as per-user authorization.
+
+## Import observation
+
+Authenticated source listings include `last_import_observed_at` when a local
+import was successfully accepted since this server process started, including
+an unchanged import. A failed import does not advance it. The value is kept in
+memory and is absent after restart until another successful import; it is not
+a claim that the upstream checkout or infrastructure is currently correct.
+`unresolved_conflicts` counts pending conflicts. `import_partial` and
+`import_dirty` indicate known coverage and source-state limits. These fields
+are omitted from public-only listings where applicable. MCP `veda_context`
+returns the same status alongside scope instructions.
