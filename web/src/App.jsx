@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
+import { buildTree } from "./tree.js";
 const Features = createContext(() => {});
 const descriptions = {
   github: [
@@ -278,19 +279,33 @@ function Tree({ groups }) {
             <small>{g.Count}</small>
           </summary>
           <div className="tree-pages">
-            {(g.Pages || []).map((p) => (
-              <a href={pageHref(p.path)} key={p.path}>
-                <I name="file-text" />
-                <span>{p.title}</span>
-              </a>
-            ))}
-            <a className="tree-all" href={"/?env=" + g.ID}>
+            <TreeNodes node={buildTree(g.ID, g.Pages || [])} />
+            <a className="tree-all" href={"/?env=" + encodeURIComponent(g.ID)}>
               Все страницы раздела <I name="arrow-right" />
             </a>
           </div>
         </details>
       ))}
     </Panel>
+  );
+}
+function TreeNodes({ node }) {
+  const folders = [...node.folders.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const pages = [...node.pages].sort((a, b) => a.title.localeCompare(b.title) || a.path.localeCompare(b.path));
+  return (
+    <>
+      {folders.map(([name, child]) => (
+        <details className="tree-group tree-folder" key={name}>
+          <summary><I name="chevron-right" /><I name="folder" /><span title={name}>{name}</span></summary>
+          <div className="tree-pages"><TreeNodes node={child} /></div>
+        </details>
+      ))}
+      {pages.map((page) => (
+        <a href={pageHref(page.path)} key={page.path} title={page.path}>
+          <I name="file-text" /><span>{page.title}</span>
+        </a>
+      ))}
+    </>
   );
 }
 function Popular({ cards }) {

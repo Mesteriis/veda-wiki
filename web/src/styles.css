@@ -2010,3 +2010,7 @@ dialog > p {
 .browse-card:focus-visible, .browse-card:hover { border-color:var(--cyan); background:#00202b; }
 #knowledge-tree { scroll-margin-top:16px; }
 @media (max-width:600px) { .reading-mode { font-size:11px; padding:7px; } .reading-mode .icon { display:none; } }
+
+.tree-folder > summary { padding: 0 8px; min-width: 0; font-size: 13px; }
+.tree-folder > summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-folder > .tree-pages { margin-left: 18px; }
