@@ -60,6 +60,12 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	}
 	copied := Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
 	b := Article{SourceID: in.DestinationID, Path: in.DestinationPath, Versions: []Revision{copied}, CopiedFrom: &CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}}
+	if a.Translation != nil {
+		if destination.Kind != "program" {
+			return Database{}, Revision{}, ErrInvalid
+		}
+		b.Translation = movedTranslation(a.Translation)
+	}
 	if targetPublic {
 		published := copied
 		published.Number = 0

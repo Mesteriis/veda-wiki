@@ -622,7 +622,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			}
 			target, exists := db.Articles[move.DestinationID+"/"+move.DestinationPath]
 			destination, dstOK := db.Sources[move.DestinationID]
-			valid := exists && dstOK && !target.Deleted && len(target.Versions) == 1 && target.Versions[0].SHA == move.SHA && destination.ConnectionID == move.DestinationConnectionID
+			valid := exists && dstOK && !target.Deleted && len(target.Versions) == 1 && target.Versions[0].SHA == move.SHA && destination.ConnectionID == move.DestinationConnectionID && translationFingerprint(original.Translation) == move.TranslationFingerprint && translationFingerprint(target.Translation) == translationFingerprint(movedTranslation(original.Translation))
 			for _, conflict := range target.Conflicts {
 				if conflict.Resolution == "" {
 					valid = false

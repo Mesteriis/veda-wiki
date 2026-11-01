@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/url"
 	"sort"
 	"time"
@@ -26,7 +27,25 @@ type Move struct {
 	SHA                     string `json:"sha256"`
 	State                   string `json:"state"`
 	PreparedDeletion        string `json:"prepared_deletion,omitempty"`
+	TranslationFingerprint  string `json:"translation_fingerprint,omitempty"`
 	Created                 string `json:"created_at"`
+}
+
+func translationFingerprint(tr *Translation) string {
+	if tr == nil {
+		return ""
+	}
+	b, _ := json.Marshal(tr)
+	return digest(b)
+}
+
+func movedTranslation(tr *Translation) *Translation {
+	if tr == nil {
+		return nil
+	}
+	copy := *tr
+	copy.PublicApproved = false
+	return &copy
 }
 
 // A prepared deletion may have reached GitHub even when the response was lost.
@@ -122,8 +141,8 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 			}
 		}
 	}
-	// A derived translation must not become inaccessible by silently moving only its original.
-	if a.Translation != nil {
+	// Translations belong to program documents; never discard one when moving.
+	if a.Translation != nil && s.db.Sources[in.DestinationID].Kind != "program" {
 		return Move{}, ErrInvalid
 	}
 	if hasRelativeDependencies(a.Versions[len(a.Versions)-1].Text) {
@@ -138,6 +157,10 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if e != nil {
 		return Move{}, e
 	}
+	if a.Translation != nil {
+		// Old binaries must refuse stores containing these new move invariants.
+		db.Version = 5
+	}
 	id, e := randomID()
 	if e != nil {
 		return Move{}, e
@@ -145,7 +168,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if db.Moves == nil {
 		db.Moves = map[string]Move{}
 	}
-	m := Move{ID: id, SourceID: in.SourceID, SourcePath: in.SourcePath, SourceRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, SHA: rev.SHA, State: "waiting_destination", Created: time.Now().UTC().Format(time.RFC3339Nano)}
+	m := Move{ID: id, SourceID: in.SourceID, SourcePath: in.SourcePath, SourceRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, SHA: rev.SHA, TranslationFingerprint: translationFingerprint(a.Translation), State: "waiting_destination", Created: time.Now().UTC().Format(time.RFC3339Nano)}
 	if src.ConnectionID != "" {
 		conn := db.Connections[src.ConnectionID]
 		m.SourceConnectionID, m.SourceRepositoryID, m.SourceBranch = src.ConnectionID, conn.RepositoryID, conn.Branch
@@ -199,7 +222,7 @@ func reconcileMoves(db *Database) {
 		}
 		source, exists := db.Articles[m.SourceID+"/"+m.SourcePath]
 		src, srcOK := db.Sources[m.SourceID]
-		if !exists || !srcOK || source.Deleted || source.Translation != nil || len(source.Versions) != m.SourceRevision || source.Versions[m.SourceRevision-1].SHA != m.SHA || src.ConnectionID != m.SourceConnectionID || (m.SourceConnectionID == "" && src.ImportGeneration != "") {
+		if !exists || !srcOK || source.Deleted || translationFingerprint(source.Translation) != m.TranslationFingerprint || len(source.Versions) != m.SourceRevision || source.Versions[m.SourceRevision-1].SHA != m.SHA || src.ConnectionID != m.SourceConnectionID || (m.SourceConnectionID == "" && src.ImportGeneration != "") {
 			m.State = "source_changed"
 			db.Moves[id] = m
 			continue
@@ -224,7 +247,7 @@ func reconcileMoves(db *Database) {
 		}
 		target, exists := db.Articles[m.DestinationID+"/"+m.DestinationPath]
 		dst, dstOK := db.Sources[m.DestinationID]
-		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA {
+		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) {
 			m.State = "destination_changed"
 			db.Moves[id] = m
 			continue

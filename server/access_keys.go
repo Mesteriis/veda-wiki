@@ -82,7 +82,9 @@ func (s *Store) createAccessKey(id string, sourceIDs []string, expiry time.Time)
 		db.AccessKeys = map[string]AccessKey{}
 	}
 	db.AccessKeys[id] = AccessKey{ID: id, Hash: hex.EncodeToString(digest[:]), Sources: sources, Expires: expiry.UTC().Format(time.RFC3339Nano)}
-	db.Version = 4
+	if db.Version < 4 {
+		db.Version = 4
+	}
 	if err := s.commit(db); err != nil {
 		return "", err
 	}

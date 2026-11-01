@@ -22,6 +22,10 @@ A translation visible to the public requires explicit publication approval;
 credential-like text is refused. A translation saved privately cannot become
 public automatically if visibility changes: it appears as `publication_review`
 in the candidate list and must be reviewed and resubmitted with approval.
+Copying or moving an article with a translation to another program source keeps
+the translation as a private draft even when it was previously approved. A
+translation cannot be transferred to a wiki source. A move with translation
+uses store format version 5; older binaries cannot open the upgraded store.
 An optional background worker can use a separately installed Ollama service on
 the same host, for example `--translation-local-url http://127.0.0.1:11434
 --translation-model MODEL`. Alternatively, use a local MLX LM server and set

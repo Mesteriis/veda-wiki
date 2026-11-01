@@ -132,9 +132,10 @@ returns the same status alongside scope instructions.
 `destination_id`, `destination_path`, `confirm_move: true` and optionally
 `confirm_publication`. Manually maintained local sources and synchronized,
 writable GitHub sources are accepted; independent local imports are not.
-Markdown with relative links or
-images and articles with stored translations are refused until their dependencies
-can be moved safely. The target must be a new path in another source.
+Markdown with relative links or images is refused until dependencies can be
+moved safely. A stored translation can be moved only to another program source;
+it is copied as a separate private draft and requires publication review even
+when the target is public. The target must be a new path in another source.
 If two source IDs refer to the same GitHub repository and branch, moving to
 the same physical path is rejected even when one source view is stale.
 
@@ -157,16 +158,19 @@ is refused until synchronization resolves it. A definitive rejection of the
 first ref update restores the cancellable waiting state; a later rejection
 cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
-source revision history is retained. Private-to-public publication requires
-separate explicit confirmation. Linked assets and translations are not yet
-supported; use copy until those cases have a safe move protocol. Live
-authenticated GitHub move acceptance remains pending.
+source revision history is retained. A change to either translation while the
+move is waiting prevents source removal. Private-to-public publication requires
+separate explicit confirmation. Linked assets and relative links are not yet
+moved; copying such Markdown alone does not copy its dependencies. Live
+acceptance with credentials stored by VEDA remains pending.
 
 Creating the first local-source move upgrades the local store format to version 2;
 the first GitHub-source move upgrades it to version 3. Older
 versions of VEDA reject that store instead of silently discarding move records.
 The previous version-2 store reader was tested against a synthetic version-3
-file and refused it without changing it; an actual backup restoration has not
-been verified for this release.
+file and refused it without changing it. A move with a translation upgrades the
+store to version 5; older binaries reject it rather than discard the additional
+move invariant. An older binary refused a synthetic v5 store without changing
+it. Production v5 backup and restore have not been validated.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.

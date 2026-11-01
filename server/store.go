@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -135,7 +135,7 @@ func openStore(dir string) (*Store, error) {
 	if s.db.Version == 1 && len(s.db.Moves) > 0 {
 		return nil, errors.New("move records require store version 2")
 	}
-	if s.db.Version != 4 && len(s.db.AccessKeys) > 0 {
+	if s.db.Version < 4 && len(s.db.AccessKeys) > 0 {
 		return nil, errors.New("access keys require store version 4")
 	}
 	for id, key := range s.db.AccessKeys {
@@ -232,6 +232,14 @@ func openStore(dir string) (*Store, error) {
 		target, dstOK := s.db.Articles[m.DestinationID+"/"+m.DestinationPath]
 		if len(id) != 32 || id != m.ID || m.SourceID == m.DestinationID || !srcOK || !dstOK || m.SourceRevision < 1 || m.SourceRevision > len(source.Versions) || len(target.Versions) < 1 || source.Versions[m.SourceRevision-1].SHA != m.SHA || target.Versions[0].SHA != m.SHA {
 			return nil, errors.New("invalid stored move")
+		}
+		if m.TranslationFingerprint != "" {
+			if s.db.Version < 5 || len(m.TranslationFingerprint) != 64 {
+				return nil, errors.New("invalid move translation fingerprint")
+			}
+			if _, e := hex.DecodeString(m.TranslationFingerprint); e != nil {
+				return nil, errors.New("invalid move translation fingerprint")
+			}
 		}
 		if _, e := hex.DecodeString(id); e != nil {
 			return nil, errors.New("invalid stored move")
