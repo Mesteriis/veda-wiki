@@ -534,12 +534,28 @@ func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection,
 			return true, m.store.commit(db)
 		}
 		original := db.Articles[move.SourceID+"/"+move.SourcePath]
+		previousState := move.State
+		prepared := false
 		prepare := func(commit string) error {
 			move.State, move.PreparedDeletion = "deleting_source", commit
 			db.Moves[move.ID] = move
-			return m.store.commit(db)
+			if err := m.store.commit(db); err != nil {
+				return err
+			}
+			prepared = true
+			return nil
 		}
 		_, err := m.github.remove(ctx, c.Repository, c.Branch, head, tree, move.SourcePath, original.Versions[move.SourceRevision-1].Text, token, prepare)
+		var remote *remoteError
+		// A definitive rejection of the first ref update cannot have changed the
+		// branch. Do not clear an earlier uncertain attempt on a later rejection.
+		if prepared && previousState == "waiting_source_delete" && errors.As(err, &remote) && (remote.Status == 409 || remote.Status == 422) {
+			move.State, move.PreparedDeletion = "waiting_source_delete", ""
+			db.Moves[move.ID] = move
+			if commitErr := m.store.commit(db); commitErr != nil {
+				return true, commitErr
+			}
+		}
 		if err == nil {
 			m.Wake()
 		}

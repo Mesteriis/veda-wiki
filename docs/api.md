@@ -134,7 +134,9 @@ necessarily complete. A waiting move can be cancelled through `/api/v1/moves/can
 or `veda_cancel_move` with `confirm_cancel: true` before source deletion is
 prepared. Both copies remain; an already queued destination write may still
 finish. Once deletion is prepared, its response can be uncertain and cancellation
-is refused until synchronization resolves it. The two remote repositories
+is refused until synchronization resolves it. A definitive rejection of the
+first ref update restores the cancellable waiting state; a later rejection
+cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
 source revision history is retained. Private-to-public publication requires
 separate explicit confirmation. Linked assets and translations are not yet
@@ -144,5 +146,8 @@ authenticated GitHub move acceptance remains pending.
 Creating the first local-source move upgrades the local store format to version 2;
 the first GitHub-source move upgrades it to version 3. Older
 versions of VEDA reject that store instead of silently discarding move records.
+The previous version-2 store reader was tested against a synthetic version-3
+file and refused it without changing it; an actual backup restoration has not
+been verified for this release.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.

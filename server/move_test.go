@@ -252,6 +252,57 @@ func TestConnectedSourceMoveRecoversLostDeleteResponse(t *testing.T) {
 		t.Fatal("unexpected remote changes")
 	}
 }
+
+func TestConnectedSourceMoveCanCancelAfterDefinitiveRejection(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	manager := connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.reject = true })
+	manager.Once(context.Background())
+	if got := s.moves()[0]; got.State != "waiting_source_delete" || got.PreparedDeletion != "" {
+		t.Fatal("definitive rejection left source locked", got)
+	}
+	if err := s.cancelMove(move.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if f.contents()["README.md"] != "# Source" || f.writeCount() != 0 {
+		t.Fatal("source changed after rejected update")
+	}
+}
+
+func TestConnectedSourceMoveUncertainAttemptRemainsLockedAfterRejection(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	manager := connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a prepared request whose outcome could not be determined after restart.
+	s.mu.Lock()
+	db := s.clone()
+	move.State, move.PreparedDeletion = "deleting_source", strings.Repeat("a", 40)
+	db.Moves[move.ID] = move
+	err = s.commit(db)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.reject = true })
+	manager.Once(context.Background())
+	if s.moves()[0].State != "deleting_source" {
+		t.Fatal("uncertain prior request was unlocked", s.moves())
+	}
+	if err := s.cancelMove(move.ID, true); err != ErrConflict {
+		t.Fatal("uncertain move cancelled", err)
+	}
+}
 func TestMoveWaitsForObservedRemoteDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
