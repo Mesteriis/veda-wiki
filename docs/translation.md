@@ -7,6 +7,12 @@ translation only when it matches the exact original SHA; when the original
 changes it displays the original until a fresh translation is submitted.
 The article view labels the translation and shows both hashes. REST/MCP article
 reads return the original, allowing an agent to translate from the actual source.
+New drafts produced by the local worker retain `origin: local_model` across
+restart, copying, moving, and unchanged approval. The reader labels those
+translations as automatic. An edited submission has unknown origin; older
+translations and API submissions are not assumed to be human-authored.
+Recording this provenance upgrades the store to version 11, which older
+servers reject; back up and verify a compatible restore before upgrading.
 
 An owner or authenticated reader can list candidates with `GET /api/v1/articles/translation-needed`
 (`limit` 1–100 and `offset`) or `veda_translation_needed`. Scoped readers see

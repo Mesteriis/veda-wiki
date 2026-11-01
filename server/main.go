@@ -28,15 +28,16 @@ var assets embed.FS
 var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
 type Page struct {
-	OriginalSHA string        `json:"original_sha256,omitempty"`
-	Translated  bool          `json:"translated,omitempty"`
-	Path        string        `json:"path"`
-	Title       string        `json:"title"`
-	Environment string        `json:"environment"`
-	SHA         string        `json:"sha256"`
-	Updated     string        `json:"updated_at,omitempty"`
-	Text        string        `json:"-"`
-	HTML        template.HTML `json:"-"`
+	TranslationOrigin string        `json:"translation_origin,omitempty"`
+	OriginalSHA       string        `json:"original_sha256,omitempty"`
+	Translated        bool          `json:"translated,omitempty"`
+	Path              string        `json:"path"`
+	Title             string        `json:"title"`
+	Environment       string        `json:"environment"`
+	SHA               string        `json:"sha256"`
+	Updated           string        `json:"updated_at,omitempty"`
+	Text              string        `json:"-"`
+	HTML              template.HTML `json:"-"`
 }
 type Snapshot struct {
 	Generated string `json:"generated_at"`

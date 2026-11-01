@@ -18,7 +18,9 @@ an individual slice is not completion of the whole application.
 | Agent context and the four client integrations | Four client configurations use the VEDA read-only socket; MCP can prepare a non-persistent, revision-bound proposal; individual scoped keys and separate operating-system identities are not rolled out |
 | Safe production migration, backup/rollback and restore acceptance | Standalone instance deployed alongside the existing wiki; isolated restore and queue-resume rehearsals passed through synthetic v10 and an earlier production v1 snapshot; restoring actual production data written in newer formats and rollback without data loss remain unverified |
 
-Additional engineering work: translation provenance and stale-state handling,
+Additional engineering work: richer translation provenance and stale-state handling
+(new local-model drafts are labelled; older and externally submitted translations
+retain unknown origin),
 historical image bindings, blob/history retention, scale-appropriate database
 migration, packaging and whole-product acceptance. Future verification must
 include actual multi-repository synchronization, failure recovery and all

@@ -12,6 +12,7 @@ import (
 )
 
 type Translation struct {
+	Origin         string `json:"origin,omitempty"`
 	Language       string `json:"language"`
 	OriginalSHA    string `json:"original_sha256"`
 	Text           string `json:"text"`
@@ -159,9 +160,19 @@ func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Trans
 	if public && ((!in.ConfirmPublication && !privateDraft) || secretContent.MatchString(in.Text)) {
 		return Translation{}, ErrInvalid
 	}
-	tr := Translation{Language: "ru", OriginalSHA: rev.SHA, Text: in.Text, SHA: digest([]byte(in.Text)), Created: time.Now().UTC().Format(time.RFC3339Nano), PublicApproved: public && in.ConfirmPublication}
+	origin := ""
+	if privateDraft {
+		origin = "local_model"
+	} else if a.Translation != nil && a.Translation.OriginalSHA == rev.SHA && a.Translation.Text == in.Text {
+		// Approval of an unchanged draft does not change its provenance.
+		origin = a.Translation.Origin
+	}
+	tr := Translation{Language: "ru", OriginalSHA: rev.SHA, Text: in.Text, SHA: digest([]byte(in.Text)), Created: time.Now().UTC().Format(time.RFC3339Nano), PublicApproved: public && in.ConfirmPublication, Origin: origin}
 	a.Translation = &tr
 	db := s.clone()
+	if origin != "" && db.Version < 11 {
+		db.Version = 11
+	}
 	db.Articles[key] = a
 	reconcileMoves(&db)
 	if e := s.commit(db); e != nil {

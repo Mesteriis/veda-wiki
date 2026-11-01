@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 )
 
@@ -50,6 +54,119 @@ func TestLocalTranslationWorkerSavesPrivateDraft(t *testing.T) {
 	}
 	if candidates := s.translationCandidates(); len(candidates) != 1 || candidates[0].State != "publication_review" {
 		t.Fatal("missing review", candidates)
+	}
+}
+
+func TestOldBinaryRejectsTranslationOriginStore(t *testing.T) {
+	old := os.Getenv("VEDA_OLD_V11_BINARY")
+	if old == "" {
+		t.Skip("old binary not provided")
+	}
+	s := testStore(t)
+	programSource(t, s, "program", "private")
+	rev, err := s.put("program", "docs/a.md", "# Original", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.saveTranslation(translationRequest{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(s.dir, "state.json")
+	before, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
+		t.Fatal("old binary did not reject version 11")
+	}
+	after, err := os.ReadFile(state)
+	if err != nil || string(after) != string(before) {
+		t.Fatal("old binary changed state")
+	}
+}
+
+func TestLocalTranslationOriginSurvivesRestartAndApproval(t *testing.T) {
+	s := testStore(t)
+	programSource(t, s, "program", "public")
+	rev, err := s.put("program", "docs/guide.md", "# Setup", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := translationRequest{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Установка"}
+	if _, err = s.saveTranslation(in, true); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil || s.db.Version != 11 {
+		t.Fatal("origin store failed to reopen", err)
+	}
+	private, err := s.page("program/docs/guide.md", false)
+	if err != nil || private.TranslationOrigin != "local_model" {
+		t.Fatal("draft origin lost", err)
+	}
+	view := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/api/state?page=program%2Fdocs%2Fguide.md", "", true)
+	var response struct {
+		View struct {
+			Page *Page `json:"Page"`
+		} `json:"view"`
+	}
+	if view.Code != 200 || json.Unmarshal(view.Body.Bytes(), &response) != nil || response.View.Page == nil || response.View.Page.TranslationOrigin != "local_model" {
+		t.Fatal("reader API lost translation origin")
+	}
+	public, err := s.page("program/docs/guide.md", true)
+	if err != nil || public.Translated || public.TranslationOrigin != "" {
+		t.Fatal("draft origin exposed", err)
+	}
+	in.ConfirmPublication = true
+	if _, err = s.submitTranslation(in); err != nil {
+		t.Fatal(err)
+	}
+	public, err = s.page("program/docs/guide.md", true)
+	if err != nil || !public.Translated || public.TranslationOrigin != "local_model" {
+		t.Fatal("approval lost origin", err)
+	}
+	in.Text = "# Настройка"
+	if _, err = s.submitTranslation(in); err != nil {
+		t.Fatal(err)
+	}
+	public, err = s.page("program/docs/guide.md", true)
+	if err != nil || public.TranslationOrigin != "" {
+		t.Fatal("edited translation incorrectly attributed", err)
+	}
+}
+
+func TestLocalTranslationOriginSurvivesMove(t *testing.T) {
+	s := testStore(t)
+	programSource(t, s, "from", "private")
+	programSource(t, s, "to", "public")
+	rev, err := s.put("from", "docs/a.md", "# Original", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.saveTranslation(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.moveArticle(moveRequest{SourceID: "from", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "docs/b.md", ConfirmMove: true, ConfirmPublication: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private, err := s.page("to/docs/b.md", false)
+	if err != nil || private.TranslationOrigin != "local_model" {
+		t.Fatal("move lost origin", err)
+	}
+	public, err := s.page("to/docs/b.md", true)
+	if err != nil || public.Translated || public.TranslationOrigin != "" {
+		t.Fatal("move published draft", err)
 	}
 }
 

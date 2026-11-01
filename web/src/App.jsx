@@ -507,6 +507,7 @@ function Reading({ data }) {
         <div className="source-path">{v.Page.path}</div>
         <div className="provenance">
           {v.Page.translated ? "Перевод на русский · SHA256" : "SHA256"} <code>{v.Page.sha256}</code>
+          {v.Page.translated && v.Page.translation_origin === "local_model" && <> · Локальный автоматический перевод</>}
           {v.Page.translated && <> · Оригинал <code>{v.Page.original_sha256}</code></>}
         </div>
         <div

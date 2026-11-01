@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7 && s.db.Version != 8 && s.db.Version != 9 && s.db.Version != 10) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version < 1 || s.db.Version > 11) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -198,6 +198,9 @@ func openStore(dir string) (*Store, error) {
 		}
 		if article.Translation != nil {
 			tr := article.Translation
+			if tr.Origin != "" && (tr.Origin != "local_model" || s.db.Version < 11) {
+				return nil, errors.New("invalid translation origin")
+			}
 			if src.Kind != "program" || tr.Language != "ru" || len(tr.Text) == 0 || len(tr.Text) > 256000 || !utf8.ValidString(tr.Text) || digest([]byte(tr.Text)) != tr.SHA || len(tr.OriginalSHA) != 64 {
 				return nil, errors.New("invalid stored translation")
 			}
@@ -601,7 +604,11 @@ func (s *Store) page(key string, public bool) (Page, error) {
 	}
 	originalSHA := r.SHA
 	r, translated := displayedRevision(a, r, public)
-	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated}, nil
+	origin := ""
+	if translated {
+		origin = a.Translation.Origin
+	}
+	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated, TranslationOrigin: origin}, nil
 }
 func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	s.mu.RLock()
