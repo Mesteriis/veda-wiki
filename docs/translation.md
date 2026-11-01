@@ -49,4 +49,6 @@ and local model. One synthetic example passed on macOS with a local 1.7B model;
 that same model failed the opt-in test on VEDA's public `docs/import.md`: it
 changed protected Markdown elements, so the worker rejected the output. A
 second experiment using shorter sections also failed structural validation.
+Masking code with markers was also tried: the model changed or omitted the
+markers on the same project document, so the experiment was not retained.
 This does not establish model quality, production security or LXC availability.
