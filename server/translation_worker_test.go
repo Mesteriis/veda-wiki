@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -112,5 +113,61 @@ func TestLocalTranslationWorkerDoesNotOverwriteConcurrentOwnerTranslation(t *tes
 	a, err := s.article("program", "docs/a.md", false)
 	if err != nil || a.Translation == nil || a.Translation.Text != "# Перевод владельца" {
 		t.Fatal("owner translation overwritten", err)
+	}
+}
+
+func TestLocalTranslationWorkerRejectsIncompleteAndUnchangedOutput(t *testing.T) {
+	for _, fixture := range []struct {
+		done           bool
+		reason, output string
+	}{
+		{false, "", "# Перевод"}, {true, "length", "# Перевод"}, {true, "stop", "# Original"},
+	} {
+		s := testStore(t)
+		if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.put("program", "docs/a.md", "# Original", 0); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			jsonResponse(w, 200, map[string]any{"done": fixture.done, "done_reason": fixture.reason, "response": fixture.output})
+		}))
+		worker, err := newTranslationWorker(s, srv.URL, "fixture")
+		if err != nil {
+			t.Fatal(err)
+		}
+		worker.Once(context.Background())
+		srv.Close()
+		a, err := s.article("program", "docs/a.md", false)
+		if err != nil || a.Translation != nil {
+			t.Fatal("incomplete or unchanged output accepted", fixture, err)
+		}
+	}
+}
+
+func TestOversizedDocumentDoesNotBlockOtherTranslations(t *testing.T) {
+	s := testStore(t)
+	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("program", "docs/a.md", strings.Repeat("a", 32001), 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("program", "docs/b.md", "# Second", 0); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, 200, map[string]any{"done": true, "response": "# Вторая"})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorker(s, srv.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	a, err := s.article("program", "docs/b.md", false)
+	if err != nil || a.Translation == nil || a.Translation.Text != "# Вторая" {
+		t.Fatal("shorter article blocked", err)
 	}
 }
