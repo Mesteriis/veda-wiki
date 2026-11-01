@@ -94,6 +94,25 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/articles/copy":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in copyRequest
+		if err := decodeBody(rw, r, &in); err != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		rev, err := w.Store.copyArticle(in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		if w.Sync != nil {
+			w.Sync.Wake()
+		}
+		jsonResponse(rw, 201, rev)
 	case "/api/v1/conflicts":
 		if !owner {
 			http.NotFound(rw, r)
@@ -235,6 +254,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 				a.Conflicts = nil
 			}
 			if reader && !owner {
+				a.CopiedFrom = nil
 				a.Published = nil
 				a.PublishedLocal = false
 				a.UpstreamHash = ""

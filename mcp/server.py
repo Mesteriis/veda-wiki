@@ -72,6 +72,10 @@ def make_server(client):
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000},
             "expected_revision": {"type": "integer", "minimum": 0}},
             ["source_id", "path", "text", "expected_revision"]),
+        "veda_copy_article": ("Copy a specific revision to a new destination; private-to-public requires explicit user approval. Source is retained.", {
+            "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
+            "destination_id": string, "destination_path": string, "confirm_publication": {"type": "boolean"}},
+            ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
         "veda_context": ("Read root and ancestor AGENTS.md articles for a target within one source.", {
             "source_id": string, "path": string}, ["source_id", "path"]),
         "veda_conflicts": ("List conflict summaries with pagination; supply source_id/path/index to inspect one incoming text.", {
@@ -120,6 +124,8 @@ def make_server(client):
             elif name == "veda_write_article":
                 method = "POST" if arguments["expected_revision"] == 0 else "PUT"
                 result = await asyncio.to_thread(client.request, method, "/api/v1/articles", arguments)
+            elif name == "veda_copy_article":
+                result = await asyncio.to_thread(client.request, "POST", "/api/v1/articles/copy", arguments)
             elif name == "veda_conflicts":
                 result = await asyncio.to_thread(client.request, "GET", "/api/v1/conflicts?" + urlencode(arguments))
             elif name == "veda_resolve_conflict":

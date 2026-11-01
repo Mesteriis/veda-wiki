@@ -43,6 +43,7 @@ type Revision struct {
 	Created string `json:"created_at"`
 }
 type Article struct {
+	CopiedFrom     *CopyOrigin      `json:"copied_from,omitempty"`
 	SourceID       string           `json:"source_id"`
 	Path           string           `json:"path"`
 	Versions       []Revision       `json:"versions"`
@@ -167,6 +168,16 @@ func openStore(dir string) (*Store, error) {
 			sum := sha256.Sum256([]byte(revision.Text))
 			if revision.Number != i+1 || len(revision.Text) > 256000 || !utf8.ValidString(revision.Text) || revision.SHA != hex.EncodeToString(sum[:]) {
 				return nil, errors.New("invalid stored revision")
+			}
+		}
+		if article.CopiedFrom != nil {
+			origin := article.CopiedFrom
+			src, exists := s.db.Sources[origin.SourceID]
+			if !exists || !articlePath(origin.Path, src.Kind) || origin.Revision < 1 || len(origin.SHA) != 64 {
+				return nil, errors.New("invalid copy provenance")
+			}
+			if _, e := hex.DecodeString(origin.SHA); e != nil {
+				return nil, errors.New("invalid copy provenance")
 			}
 		}
 		if article.Published != nil {
@@ -427,6 +438,7 @@ func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 		a.PublishedLocal = false
 	}
 	if public {
+		a.CopiedFrom = nil
 		a.Versions = a.Versions[len(a.Versions)-1:]
 		a.Versions[0].Number = 0
 		if a.Published != nil {
