@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
@@ -107,6 +108,9 @@ func (w *translationWorker) Once(ctx context.Context) {
 		if err == nil && strings.TrimSpace(translated) == strings.TrimSpace(original.Text) {
 			err = errors.New("unchanged translation")
 		}
+		if err == nil && !containsRussianProse(translated) {
+			err = errors.New("translation lacks sufficient Cyrillic prose")
+		}
 		if err == nil {
 			_, err = w.store.saveTranslation(translationRequest{SourceID: candidate.SourceID, Path: candidate.Path, ExpectedRevision: candidate.Revision, OriginalSHA: candidate.OriginalSHA, Text: translated}, true)
 		}
@@ -118,6 +122,34 @@ func (w *translationWorker) Once(ctx context.Context) {
 		}
 		return
 	}
+}
+
+// This conservative script check cannot establish language or translation
+// quality. It prevents an automatic draft containing only untranslated Latin
+// prose from being accepted; code and URLs cannot satisfy the check.
+func containsRussianProse(value string) bool {
+	source := []byte(value)
+	root := markdown.Parser().Parse(text.NewReader(source))
+	var latin, cyrillic int
+	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch n := node.(type) {
+		case *ast.FencedCodeBlock, *ast.CodeBlock, *ast.CodeSpan, *ast.AutoLink, *ast.RawHTML, *ast.HTMLBlock:
+			return ast.WalkSkipChildren, nil
+		case *ast.Text:
+			for _, r := range string(n.Segment.Value(source)) {
+				if unicode.Is(unicode.Cyrillic, r) && unicode.IsLetter(r) {
+					cyrillic++
+				} else if unicode.Is(unicode.Latin, r) && unicode.IsLetter(r) {
+					latin++
+				}
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return cyrillic >= 3 && cyrillic*5 >= (latin+cyrillic)*2
 }
 
 func (w *translationWorker) translate(ctx context.Context, original string) (string, error) {

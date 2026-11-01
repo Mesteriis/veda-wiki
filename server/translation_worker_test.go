@@ -194,6 +194,7 @@ func TestLocalTranslationWorkerProcessesLongDocumentBySection(t *testing.T) {
 		}
 		requests++
 		output := strings.ReplaceAll(strings.ReplaceAll(input.Prompt, "# First", "# Первый"), "# Second", "# Второй")
+		output = strings.ReplaceAll(strings.ReplaceAll(output, "hello ", "привет "), "world ", "мир ")
 		jsonResponse(w, 200, map[string]any{"done": true, "response": output})
 	}))
 	defer srv.Close()
@@ -205,6 +206,44 @@ func TestLocalTranslationWorkerProcessesLongDocumentBySection(t *testing.T) {
 	a, err := s.article("program", "docs/long.md", false)
 	if err != nil || requests != 2 || a.Translation == nil || !strings.Contains(a.Translation.Text, "# Второй") || !strings.Contains(a.Translation.Text, "echo hello") {
 		t.Fatal("long document not translated safely", requests, err)
+	}
+}
+
+func TestTranslationScriptCheckIgnoresCodeAndLinks(t *testing.T) {
+	for _, value := range []string{
+		"# Setup\n\n```text\nРусский текст\n```\n",
+		"# Setup `Русский` and [documentation](https://example.test/русский)",
+		"# Setup\n\nThis output remains in English.",
+	} {
+		if containsRussianProse(value) {
+			t.Fatal("non-Russian prose accepted")
+		}
+	}
+	if !containsRussianProse("# Установка\n\nЗапустите `install` и откройте [документацию](guide.md).") {
+		t.Fatal("Russian prose refused")
+	}
+}
+
+func TestLocalTranslationWorkerRejectsNonRussianOutput(t *testing.T) {
+	s := testStore(t)
+	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("program", "docs/a.md", "# Setup\n\nRun `install`.", 0); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, 200, map[string]any{"done": true, "response": "# Installation\n\nRun `install` now."})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorker(s, srv.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	a, err := s.article("program", "docs/a.md", false)
+	if err != nil || a.Translation != nil || len(worker.retry) != 1 {
+		t.Fatal("non-Russian output was accepted", err)
 	}
 }
 

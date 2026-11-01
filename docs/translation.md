@@ -50,7 +50,12 @@ code fences, then validated and saved as one result. Large sections without a
 safe split and large documents containing HTML require manual handling and are
 skipped for 24 hours. It does not detect the original language or verify translation
 quality. It rejects unchanged output, truncated generation, stale revisions and
-changes to protected Markdown. A public article's machine translation remains
+changes to protected Markdown. The worker also requires at least three Cyrillic
+letters and at least 40% Cyrillic among Latin and Cyrillic letters in parsed
+prose; code blocks, inline code, autolinks and raw HTML do not count. This is
+a conservative script check, not language identification or quality review:
+code-only or identifier-heavy documents and valid mixed-language translations
+may be rejected and require manual handling. A public article's machine translation remains
 a private draft with `publication_review` until the owner approves it through
 the existing REST/MCP submission. A concurrent owner translation is never
 overwritten by the worker. Preserve and review translations before publication;
