@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -35,6 +36,58 @@ func TestSearchTermsAndRanking(t *testing.T) {
 	partial := searchScore(q, "vps_ru/setup.md", "LXC setup", ts)
 	if exact <= partial || partial == 0 {
 		t.Fatal("unexpected ranking", exact, partial)
+	}
+}
+
+func TestSearchUsesOneRevisionDuringConcurrentUpdates(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "src", "private")
+	if _, err := s.put("src", "guide.md", "# alpha\n\nalpha", 0); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			s.mu.Lock()
+			a := s.db.Articles["src/guide.md"]
+			if i%2 == 0 {
+				a.Versions[0].Text = "# beta\n\nbeta"
+			} else {
+				a.Versions[0].Text = "# alpha\n\nalpha"
+			}
+			s.db.Articles["src/guide.md"] = a
+			s.mu.Unlock()
+		}
+	}()
+	for i := 0; i < 1000; i++ {
+		if len(s.findArticles("alpha beta", "src", false)) != 0 {
+			wg.Wait()
+			t.Fatal("search matched terms from different revisions")
+		}
+	}
+	wg.Wait()
+}
+
+func TestPublicSearchUsesPublishedRevision(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published guide\npublic keyword"})
+	connectFixture(t, s, f, false)
+	s.mu.Lock()
+	a := s.db.Articles["handbook/guide.md"]
+	text := "# Confidential local\nprivate keyword"
+	a.Versions = append(a.Versions, Revision{Number: 2, Text: text, SHA: digest([]byte(text))})
+	s.db.Articles["handbook/guide.md"] = a
+	s.mu.Unlock()
+	if hits := s.findArticles("confidential", "", true); len(hits) != 0 {
+		t.Fatal("public search leaked local revision")
+	}
+	if hits := s.findArticles("published", "", true); len(hits) != 1 || hits[0].Title != "Published guide" {
+		t.Fatal("published revision missing")
+	}
+	if hits := s.findArticles("confidential", "", false); len(hits) != 1 || hits[0].Title != "Confidential local" {
+		t.Fatal("private revision missing")
 	}
 }
 

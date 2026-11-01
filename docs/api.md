@@ -50,6 +50,8 @@ query is limited to 300 bytes and up to 16 meaningful terms are considered.
 with `total` and `offset` calculated after visibility filtering. Limits are
 1–100 (default 20). An inaccessible source filter returns an empty result.
 Pagination is not a snapshot: repeat a search if sources change between pages.
+Each individual search ranks titles and bodies from one in-memory snapshot;
+public results use only revisions visible to the public at that snapshot.
 
 Page objects expose `updated_at`, the timestamp of the revision displayed on
 that surface. Public pages use the published revision or approved translation,

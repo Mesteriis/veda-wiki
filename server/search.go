@@ -3,6 +3,7 @@ package main
 import (
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -25,31 +26,50 @@ type searchHit struct {
 	Title    string `json:"title"`
 }
 
-// Only visible snapshots are considered; the caller paginates after filtering.
+// Capture the visible revisions together before ranking, so concurrent imports
+// cannot mix a title from one revision with another revision's body.
 func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 	type ranked struct {
 		hit   searchHit
 		score int
 	}
+	type candidate struct {
+		hit  searchHit
+		body string
+	}
+	var candidates []candidate
+	s.mu.RLock()
+	now := time.Now()
+	for _, a := range s.db.Articles {
+		if a.Deleted || (sourceID != "" && a.SourceID != sourceID) {
+			continue
+		}
+		src, ok := s.db.Sources[a.SourceID]
+		if !ok || (public && !sourcePublic(s.db, src, now)) {
+			continue
+		}
+		rev := a.Versions[len(a.Versions)-1]
+		if public && src.ConnectionID != "" {
+			if a.Published == nil {
+				continue
+			}
+			rev = *a.Published
+		}
+		rev, _ = displayedRevision(a, rev, public)
+		candidates = append(candidates, candidate{hit: searchHit{SourceID: a.SourceID, Path: a.Path, Title: title(rev.Text, a.Path)}, body: rev.Text})
+	}
+	s.mu.RUnlock()
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].hit.SourceID+"/"+candidates[i].hit.Path < candidates[j].hit.SourceID+"/"+candidates[j].hit.Path
+	})
 	var matches []ranked
 	terms := searchTerms(query)
-	for _, page := range s.snapshot(public).Pages {
-		if sourceID != "" && page.Environment != sourceID {
-			continue
-		}
-		full, err := s.page(page.Path, public)
-		if err != nil {
-			continue
-		}
-		score := searchScore(query, page.Title+" "+page.Path, full.Text, terms)
+	for _, c := range candidates {
+		score := searchScore(query, c.hit.Title+" "+c.hit.SourceID+"/"+c.hit.Path, c.body, terms)
 		if score == 0 {
 			continue
 		}
-		prefix := page.Environment + "/"
-		if !strings.HasPrefix(page.Path, prefix) {
-			continue
-		}
-		matches = append(matches, ranked{searchHit{SourceID: page.Environment, Path: strings.TrimPrefix(page.Path, prefix), Title: page.Title}, score})
+		matches = append(matches, ranked{c.hit, score})
 	}
 	sort.SliceStable(matches, func(i, j int) bool { return matches[i].score > matches[j].score })
 	out := make([]searchHit, 0, len(matches))
