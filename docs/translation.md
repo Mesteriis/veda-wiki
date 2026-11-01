@@ -24,7 +24,9 @@ public automatically if visibility changes: it appears as `publication_review`
 in the candidate list and must be reviewed and resubmitted with approval.
 An optional background worker can use a separately installed Ollama service on
 the same host, for example `--translation-local-url http://127.0.0.1:11434
---translation-model MODEL`. Both flags are required; the worker is disabled by
+--translation-model MODEL`. Alternatively, use a local MLX LM server and set
+`--translation-protocol mlx`; the default protocol is `ollama`. Both URL and
+model flags are required; the worker is disabled by
 default. Its URL must use a numeric loopback address, HTTP, and an explicit port;
 HTTP proxies and redirects are disabled. The operator must verify that the
 local service and model do not forward documents elsewhere. Configure
@@ -41,3 +43,7 @@ a private draft with `publication_review` until the owner approves it through
 the existing REST/MCP submission. A concurrent owner translation is never
 overwritten by the worker. Preserve and review translations before publication;
 structural checks do not detect every possible semantic or formatting error.
+An opt-in synthetic MLX integration test can be run with `VEDA_TEST_MLX_URL`
+and `VEDA_TEST_MLX_MODEL` pointing at an already running numeric-loopback server
+and local model. One synthetic example passed on macOS with a local 1.7B model;
+this does not establish model quality, production security or LXC availability.

@@ -38,11 +38,12 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flag.String("tls-key", "", "TLS private key for the private listener")
 	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
-	translationURL := flag.String("translation-local-url", "", "Optional numeric loopback Ollama URL")
-	translationModel := flag.String("translation-model", "", "Local Ollama model for Russian documentation drafts")
+	translationURL := flag.String("translation-local-url", "", "Optional numeric loopback translation service URL")
+	translationModel := flag.String("translation-model", "", "Local model for Russian documentation drafts")
+	translationProtocol := flag.String("translation-protocol", "ollama", "Local translation protocol: ollama or mlx")
 	translationInterval := flag.Duration("translation-interval", time.Minute, "Local translation check interval (5s to 1h)")
 	flag.Parse()
-	if (*translationURL == "") != (*translationModel == "") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
+	if (*translationURL == "") != (*translationModel == "") || (*translationProtocol != "ollama" && *translationProtocol != "mlx") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
 		log.Fatal("invalid local translation configuration")
 	}
 	if *localImportSource != "" && (*readerSocket == "" || !identifier.MatchString(*localImportSource)) {
@@ -109,7 +110,7 @@ func main() {
 	defer stop()
 	manager := newSyncManager(store, newGitHubClient())
 	if *translationURL != "" {
-		worker, err := newTranslationWorker(store, *translationURL, *translationModel)
+		worker, err := newTranslationWorkerProtocol(store, *translationURL, *translationModel, *translationProtocol)
 		if err != nil {
 			log.Fatal(err)
 		}

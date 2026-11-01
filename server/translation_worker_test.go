@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 func TestLocalTranslationWorkerSavesPrivateDraft(t *testing.T) {
@@ -213,5 +215,62 @@ func TestTranslationChunksDoNotSplitInsideFencesOrHTML(t *testing.T) {
 	largeHTML := "# Heading\n\n<div>\n" + strings.Repeat("x", 17000) + "\n\n# Fake heading\n" + strings.Repeat("x", 17000) + "\n</div>\n"
 	if _, err := translationChunks(largeHTML, 32000); err == nil {
 		t.Fatal("HTML-containing document split")
+	}
+}
+
+func TestLocalMLXTranslationResponse(t *testing.T) {
+	s := testStore(t)
+	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("program", "docs/a.md", "# Setup `install`", 0); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Error("unexpected path")
+		}
+		var body struct {
+			Messages []struct{ Role, Content string } `json:"messages"`
+			Template map[string]bool                  `json:"chat_template_kwargs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Messages) != 2 || body.Messages[1].Content != "# Setup `install`" || body.Template["enable_thinking"] {
+			t.Error("invalid request")
+		}
+		jsonResponse(w, 200, map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": "# Установка `install`"}}}})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorkerProtocol(s, srv.URL, "fixture", "mlx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	a, err := s.article("program", "docs/a.md", false)
+	if err != nil || a.Translation == nil || a.Translation.Text != "# Установка `install`" {
+		t.Fatal("MLX translation not saved", err)
+	}
+}
+
+// Opt-in synthetic acceptance against an explicitly supplied local MLX server.
+func TestRealLocalMLXSyntheticTranslation(t *testing.T) {
+	endpoint, model := os.Getenv("VEDA_TEST_MLX_URL"), os.Getenv("VEDA_TEST_MLX_MODEL")
+	if endpoint == "" || model == "" {
+		t.Skip("local MLX acceptance not configured")
+	}
+	s := testStore(t)
+	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("program", "docs/a.md", "# Setup\n\nRun `install` and read [guide](guide.md).", 0); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := newTranslationWorkerProtocol(s, endpoint, model, "mlx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	a, err := s.article("program", "docs/a.md", false)
+	if err != nil || a.Translation == nil || !strings.Contains(a.Translation.Text, "`install`") || !strings.Contains(a.Translation.Text, "(guide.md)") || !strings.ContainsFunc(a.Translation.Text, func(r rune) bool { return unicode.In(r, unicode.Cyrillic) }) {
+		t.Fatal("local model did not produce a structurally valid translation", err)
 	}
 }
