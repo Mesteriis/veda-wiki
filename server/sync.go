@@ -429,7 +429,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	if c.Private {
 		visibility = "private"
 	}
-	if _, e = m.store.applyImport(batch, &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: visibility, TreeSHA: tree.SHA}); e != nil {
+	if _, e = m.store.applyImport(batch, &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: visibility, TreeSHA: tree.SHA}, false); e != nil {
 		fail(e)
 		return
 	}

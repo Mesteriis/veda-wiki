@@ -367,9 +367,9 @@ func imageRef(b []byte) (BlobRef, error) {
 }
 
 func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
-	return s.applyImport(batch, nil)
+	return s.applyImport(batch, nil, false)
 }
-func (s *Store) applyImport(batch ImportBatch, proof *remoteProof) (ImportResult, error) {
+func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalOnly bool) (ImportResult, error) {
 	result := ImportResult{Withheld: batch.Withheld}
 	if !identifier.MatchString(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !commitID.MatchString(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
 		return result, ErrInvalid
@@ -420,6 +420,11 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof) (ImportResult
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, exists := s.db.Sources[batch.SourceID]
+	// The privileged local ingest route can update only a pre-existing,
+	// disconnected private source. Check this inside the import transaction.
+	if privateLocalOnly && (!exists || src.Visibility != "private" || src.ConnectionID != "" || batch.Create) {
+		return result, ErrInvalid
+	}
 	if !exists {
 		if !batch.Create || (batch.Visibility != "public" && batch.Visibility != "private") {
 			return result, ErrNotFound

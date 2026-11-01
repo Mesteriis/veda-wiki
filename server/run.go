@@ -33,11 +33,15 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8080", "API and viewer address")
 	public := flag.String("public-listen", "127.0.0.1:8081", "Public-only address")
 	hosts := flag.String("allowed-hosts", "localhost,127.0.0.1,::1", "Allowed HTTP Host names")
+	localImportSource := flag.String("local-import-source", "", "Allow Linux root on the reader socket to import this existing private local source")
 	readerSocket := flag.String("reader-socket", "", "Optional private Unix socket for read-only local clients")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flag.String("tls-key", "", "TLS private key for the private listener")
 	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
 	flag.Parse()
+	if *localImportSource != "" && (*readerSocket == "" || !identifier.MatchString(*localImportSource)) {
+		log.Fatal("invalid local import source")
+	}
 	if (*tlsCert == "") != (*tlsKey == "") {
 		log.Fatal("both tls-cert and tls-key are required")
 	}
@@ -108,8 +112,14 @@ func main() {
 			handler.ReaderToken = ""
 			handler.Sessions = nil
 			handler.ReaderLocal = true
+			handler.LocalImportSource = *localImportSource
 		}
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+		if readerOnly && *localImportSource != "" {
+			server.ConnContext = func(ctx context.Context, conn net.Conn) context.Context {
+				return context.WithValue(ctx, localRootKey{}, peerIsRoot(conn))
+			}
+		}
 		go func() {
 			<-ctx.Done()
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -198,3 +208,6 @@ func listenReaderSocket(name string) (net.Listener, error) {
 	}
 	return listener, nil
 }
+
+// localRootKey is set only from kernel credentials on the Unix listener.
+type localRootKey struct{}
