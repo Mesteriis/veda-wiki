@@ -57,12 +57,15 @@ async def main():
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tools = await session.list_tools()
-                    assert len(tools.tools) == 8
+                    assert len(tools.tools) == 12
 
                     async def call(name, args):
                         result = await session.call_tool(name, args)
                         assert not result.isError, (name, result.content)
                         return json.loads(result.content[0].text)
+
+                    status=await call("veda_github_status",{})
+                    assert status["connections"]==[] and status["outbox"]["total"]==0
 
                     for source, visibility in [("open", "public"), ("closed", "private")]:
                         await call("veda_create_source", {"id": source, "title": source,
@@ -123,7 +126,7 @@ async def main():
                     process = start(data, private_port, public_port)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
-            print("PASS: eight MCP tools; create/read/update; context; CLI import; import conflict resolution; public isolation; restart persistence")
+            print("PASS: twelve MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; restart persistence")
         finally:
             process.terminate()
             process.wait(timeout=10)

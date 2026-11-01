@@ -43,6 +43,21 @@ func decodeLimited(rw http.ResponseWriter, r *http.Request, dst any, limit int64
 	return nil
 }
 func apiError(rw http.ResponseWriter, err error) {
+	var upstream *remoteError
+	if errors.As(err, &upstream) {
+		code := 502
+		if upstream.Code == "repository_unavailable" {
+			code = 404
+		}
+		if upstream.Code == "permission_denied" {
+			code = 403
+		}
+		if upstream.Code == "rate_limited" || upstream.Code == "upstream_unavailable" {
+			code = 503
+		}
+		jsonResponse(rw, code, map[string]string{"error": upstream.Code})
+		return
+	}
 	code := 500
 	message := "storage operation failed"
 	if errors.Is(err, ErrInvalid) {
@@ -62,6 +77,10 @@ func apiError(rw http.ResponseWriter, err error) {
 func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 	if r.Method != "GET" && (!owner || r.Header.Get("Origin") != "") {
 		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required; browser writes are disabled"})
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v1/github/") {
+		w.githubAPI(rw, r, owner)
 		return
 	}
 	switch r.URL.Path {
@@ -145,6 +164,10 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 			apiError(rw, e)
 			return
 		}
+		if w.Sync != nil {
+			w.Store.retryConnection(in.SourceID)
+			w.Sync.Wake()
+		}
 		jsonResponse(rw, 200, map[string]string{"status": "resolved"})
 	case "/api/v1/import":
 		if !owner {
@@ -221,6 +244,9 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 			if err != nil {
 				apiError(rw, err)
 				return
+			}
+			if w.Sync != nil {
+				w.Sync.Wake()
 			}
 			status := 200
 			if r.Method == "POST" {

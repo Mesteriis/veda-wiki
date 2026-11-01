@@ -8,8 +8,8 @@
 - [x] Versioned veda.yaml parser and bounded local-checkout import.
 - [x] Manual upstream conflicts, deletion handling and revision-checked resolution.
 - [x] Confined, visibility-checked local image import and serving.
-- [ ] Verified GitHub connection, repository visibility and credential management.
-- [ ] Durable background import/push outbox and conflict resolution.
+- [ ] GitHub connection, repository visibility and credential management: implemented; live authenticated acceptance pending.
+- [ ] Durable background import/push outbox: implemented and mock-tested; live acceptance pending.
 - [ ] Program docs/ import and provenance-preserving Russian translation.
 - [ ] Stable cross-source article moves and publication review.
 - [ ] User/team permissions and private browser reading sessions.

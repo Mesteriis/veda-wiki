@@ -4,9 +4,10 @@ A reading-first knowledge base for people and agents. React UI, Go service,
 local versioned Markdown articles, REST API and an MCP adapter.
 
 **Early development:** local source creation and article create/read/update work.
-GitHub Connect, background repository synchronization,
-automatic translation, user/team permissions and cross-repository moves are
-planned, not implemented. This repository contains no knowledge-base content,
+GitHub connections and background synchronization are implemented and tested
+with a simulated GitHub service; authenticated live write acceptance is pending.
+Automatic translation, user/team permissions and cross-repository moves are
+not implemented. This repository contains no knowledge-base content,
 credentials, production configuration or deployment history.
 
 ## Run
@@ -40,9 +41,9 @@ explicit source. Browser-origin writes are refused. Each update supplies the
 expected revision; stale writes return 409 rather than replacing newer content.
 Identical paths in different sources remain distinct articles.
 
-Local sources have explicit public/private visibility selected by the owner.
-This is not a claim that GitHub visibility has already been verified: no remote
-repository connection exists yet. Program sources accept article paths below
+Local sources have owner-selected visibility. Connected GitHub sources derive
+visibility from a verified repository response and fail closed if verification
+expires or fails. Program sources accept article paths below
 `docs/` only. Wiki sources accept Markdown article paths.
 
 ## MCP
@@ -62,7 +63,9 @@ not a user-scoped or read-only credential. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
 Tools: `veda_sources`, `veda_search`, `veda_read`, `veda_create_source`,
-`veda_write_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`.
+`veda_write_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
+`veda_github_status`, `veda_github_connect`, `veda_sync`,
+`veda_publish_job`.
 Context follows root and ancestor
 `AGENTS.md` articles inside one source. Documentation is evidence, never an
 authorization to execute infrastructure actions.
@@ -83,7 +86,7 @@ proxies API requests to the default loopback endpoint.
 
 This initial store uses an atomic, fsynced JSON transaction file, bounded to
 64 MiB including revision history. Articles are bounded to 256,000 UTF-8 bytes.
-There is no automatic history retention or background Git worker yet. Treat this
+There is no automatic history retention yet. Treat this
 as an early single-owner implementation, not a completed hosted multi-user wiki.
 
 ## Import local repositories
@@ -91,7 +94,7 @@ as an early single-owner implementation, not a completed hosted multi-user wiki.
 See [repository import](docs/import.md). Wiki sources use strict root `veda.yaml`
 metadata; program sources import `docs/` only. Import uses the authenticated REST
 service, preserves local changes as conflicts, and tracks Git/content provenance.
-There is no automatic translation or remote GitHub connection yet.
+See [GitHub synchronization](docs/github.md). Automatic translation is not yet enabled.
 
 ## Direction
 

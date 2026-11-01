@@ -12,6 +12,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/yuin/goldmark"
@@ -55,16 +56,17 @@ type Group struct {
 type View struct {
 	Cards []Card
 
-	Public    bool
-	Groups    []Group
-	Pages     []Page
-	Page      *Page
-	Query     string
-	Selected  string
-	Generated string
-	Withheld  int
-	Count     int
-	TOC       template.HTML
+	Public      bool
+	Groups      []Group
+	Pages       []Page
+	Page        *Page
+	Query       string
+	Selected    string
+	Generated   string
+	Withheld    int
+	Count       int
+	GitHubCount int
+	TOC         template.HTML
 }
 
 type Wiki struct {
@@ -73,10 +75,11 @@ type Wiki struct {
 	Public bool
 	Store  *Store
 	Token  string
+	Sync   *SyncManager
 }
 
 func safePath(p string) bool {
-	return p != "" && !strings.HasPrefix(p, "/") && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../") && strings.HasSuffix(p, ".md")
+	return p != "" && !strings.HasPrefix(p, "/") && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../") && (strings.EqualFold(path.Ext(p), ".md") || strings.EqualFold(path.Ext(p), ".markdown"))
 }
 func headingID(id any) string {
 	if b, ok := id.([]byte); ok {
@@ -222,6 +225,13 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	env := r.URL.Query().Get("env")
 	name := r.URL.Query().Get("page")
 	v := View{Public: w.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
+	w.Store.mu.RLock()
+	for _, source := range w.Store.db.Sources {
+		if source.ConnectionID != "" && (!w.Public || sourcePublic(w.Store.db, source, time.Now())) {
+			v.GitHubCount++
+		}
+	}
+	w.Store.mu.RUnlock()
 	groups := map[string]*Group{}
 	sources := map[string]Source{}
 	for _, source := range w.Store.sources(w.Public) {

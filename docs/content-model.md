@@ -1,6 +1,6 @@
 # Content model
 
-VEDA owns a local versioned article store. Repositories will synchronize in the
+VEDA owns a local versioned article store. Connected repositories synchronize in the
 background without becoming the only durable copy. Multiple sources stay
 separate and are combined for reading/search; source ID plus path identifies
 an article. Matching paths do not cause automatic cross-source replacement.
@@ -18,18 +18,16 @@ connected; folder names and YAML cannot override it. Unknown remote visibility
 fails closed. Local sources in the initial release have owner-selected visibility
 and are not connected to any repository.
 
-GitHub Connect will use an explicitly selected GitHub App/account. An optional
+GitHub connections use an explicitly selected GitHub App/account. An optional
 server-held token can support installations without an App. Never guess an
 account by trying unrelated tokens. Import permissions and outbound write
 permissions are separate. Do not send private source text to a translation
 provider without owner authorization.
 
-## Synchronization and moves (not implemented)
+## Synchronization and moves
 
-Local changes need a durable outbox, tracked base commit/blob and per-source
-status. Import must not overwrite a concurrently modified local revision.
-Conflicts preserve both versions. An outage retains the local accepted write.
-Do not treat the current local transaction as an already implemented outbox.
+Connected sources have a durable outbox and per-source status. Conflicts preserve
+both versions and outages retain accepted local writes. See [GitHub synchronization](github.md).
 
 A move across repositories must preserve provenance, wait for destination
 durability before removing the source, and report independent remote sync
@@ -41,4 +39,4 @@ or previously downloaded copies.
 The current local importer implements metadata ingestion and program docs/
 selection; see [repository import](import.md). The implementation intentionally
 has no source visibility update or move operation yet. Per-user/team access,
-remote repository connectors and translation workers require further work.
+translation workers require further work.

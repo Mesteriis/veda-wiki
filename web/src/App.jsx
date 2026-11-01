@@ -3,7 +3,7 @@ const Features = createContext(() => {});
 const descriptions = {
   github: [
     "GitHub",
-    "Подключение GitHub ещё не реализовано. Публичность определяется видимостью репозитория. Wiki использует veda.yaml; для программ импортируется docs/ с переводом на русский. Источники хранятся раздельно и объединяются для чтения.",
+    "GitHub подключается через REST API или MCP с явным выбором аккаунта. Публичность определяется видимостью репозитория. Wiki использует veda.yaml; программы используют docs/. Автоматический перевод ещё не подключён. Источники хранятся раздельно и объединяются для чтения.",
   ],
   graph: [
     "Граф знаний",
@@ -19,7 +19,7 @@ const descriptions = {
   ],
   api: [
     "API и MCP",
-    "Статьи создаются и обновляются через REST API или MCP. Веб-интерфейс предназначен только для чтения. GitHub Connect пока не настроен.",
+    "Статьи создаются и обновляются через REST API или MCP. Веб-интерфейс предназначен только для чтения. GitHub настраивается через REST/MCP; статьи хранятся локально.",
   ],
   settings: [
     "Настройки",
@@ -121,7 +121,7 @@ function Sidebar({ v }) {
             <I name="git-branch" />
           </div>
           <p>
-            <b>{v.Count}</b> страниц<span>Снимок</span>
+            <b>{v.Count}</b> страниц<span>Локально</span>
           </p>
           <div className="meter">
             <i />
@@ -139,7 +139,7 @@ function Sidebar({ v }) {
             {[
               ["shield-check", "Wiki", true],
               ["shield-check", "MCP", false],
-              ["brand-github", "GitHub", false],
+              ["brand-github", "GitHub", v.GitHubCount > 0],
             ].map(([icon, name, active]) => (
               <div key={name}>
                 <dt>
@@ -148,7 +148,7 @@ function Sidebar({ v }) {
                 </dt>
                 <dd className={active ? "" : "muted"}>
                   {active && <i />}
-                  {active ? "Online" : "Не настроен"}
+                  {active ? (name === "GitHub" ? "Настроен" : "Online") : "Не настроен"}
                 </dd>
               </div>
             ))}
@@ -369,15 +369,15 @@ function Activity() {
     </Panel>
   );
 }
-function Integrations({ isPublic }) {
+function Integrations({ isPublic, githubCount }) {
   const integrations = [
     [
       "brand-github",
       "GitHub",
-      "Источники документации",
+      githubCount ? `${githubCount} источников` : "Источники документации",
       "Хранение контента в Markdown",
       "github",
-      false,
+      githubCount > 0,
     ],
     [
       "link",
@@ -410,7 +410,7 @@ function Integrations({ isPublic }) {
           </div>
           <span className={"status " + (!active ? "pending" : "")}>
             {active
-              ? name === "REST API"
+              ? name === "GitHub" ? "Настроен" : name === "REST API"
                 ? "Чтение"
                 : "Подключён"
               : "Не настроен"}
@@ -484,7 +484,7 @@ function Dashboard({ v }) {
         </div>
       </div>
       <aside className="right-column">
-        {<Integrations isPublic={v.Public} />}
+        {<Integrations isPublic={v.Public} githubCount={v.GitHubCount || 0} />}
         <Statistics count={v.Count} groups={(v.Groups || []).length} isPublic={v.Public} />
         <Shortcuts />
       </aside>

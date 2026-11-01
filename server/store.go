@@ -34,6 +34,7 @@ type Source struct {
 	ImportCommit     string             `json:"import_commit,omitempty"`
 	ImportDirty      bool               `json:"import_dirty,omitempty"`
 	ImportPartial    bool               `json:"import_partial,omitempty"`
+	ConnectionID     string             `json:"connection_id,omitempty"`
 }
 type Revision struct {
 	Number  int    `json:"revision"`
@@ -42,18 +43,23 @@ type Revision struct {
 	Created string `json:"created_at"`
 }
 type Article struct {
-	SourceID     string           `json:"source_id"`
-	Path         string           `json:"path"`
-	Versions     []Revision       `json:"versions"`
-	UpstreamHash string           `json:"upstream_sha256,omitempty"`
-	Deleted      bool             `json:"deleted,omitempty"`
-	Conflicts    []ImportConflict `json:"conflicts,omitempty"`
+	SourceID       string           `json:"source_id"`
+	Path           string           `json:"path"`
+	Versions       []Revision       `json:"versions"`
+	UpstreamHash   string           `json:"upstream_sha256,omitempty"`
+	Deleted        bool             `json:"deleted,omitempty"`
+	Conflicts      []ImportConflict `json:"conflicts,omitempty"`
+	Published      *Revision        `json:"published,omitempty"`
+	PublishedLocal bool             `json:"published_local,omitempty"`
 }
 type Database struct {
-	Version  int                `json:"version"`
-	Updated  string             `json:"updated_at"`
-	Sources  map[string]Source  `json:"sources"`
-	Articles map[string]Article `json:"articles"`
+	Version     int                         `json:"version"`
+	Updated     string                      `json:"updated_at"`
+	Sources     map[string]Source           `json:"sources"`
+	Articles    map[string]Article          `json:"articles"`
+	Accounts    map[string]GitHubAccount    `json:"github_accounts,omitempty"`
+	Connections map[string]GitHubConnection `json:"github_connections,omitempty"`
+	Outbox      map[string]SyncJob          `json:"outbox,omitempty"`
 }
 
 // One server process owns the data directory. All writes are serialized and
@@ -101,6 +107,34 @@ func openStore(dir string) (*Store, error) {
 	if s.db.Version != 1 || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
+	if s.db.Accounts == nil {
+		s.db.Accounts = map[string]GitHubAccount{}
+	}
+	if s.db.Connections == nil {
+		s.db.Connections = map[string]GitHubConnection{}
+	}
+	if s.db.Outbox == nil {
+		s.db.Outbox = map[string]SyncJob{}
+	}
+	for id, a := range s.db.Accounts {
+		if !identifier.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !githubPart.MatchString(a.Login) || len(a.SecretRef) != 32 {
+			return nil, errors.New("invalid stored GitHub account")
+		}
+		if _, e := hex.DecodeString(a.SecretRef); e != nil {
+			return nil, errors.New("invalid credential reference")
+		}
+	}
+	for id, c := range s.db.Connections {
+		repo, e := repositoryName(c.Repository)
+		if e != nil || repo != c.Repository || !identifier.MatchString(id) || id != c.ID || c.RepositoryID < 1 || !validBranch(c.Branch) || c.ConfigRevision < 1 {
+			return nil, errors.New("invalid stored GitHub connection")
+		}
+		if c.AccountID != "" {
+			if _, ok := s.db.Accounts[c.AccountID]; !ok {
+				return nil, errors.New("connection account unavailable")
+			}
+		}
+	}
 	for id, src := range s.db.Sources {
 		if id != src.ID || !identifier.MatchString(id) || (src.Kind != "wiki" && src.Kind != "program") || (src.Visibility != "public" && src.Visibility != "private") {
 			return nil, errors.New("invalid stored source")
@@ -135,10 +169,34 @@ func openStore(dir string) (*Store, error) {
 				return nil, errors.New("invalid stored revision")
 			}
 		}
+		if article.Published != nil {
+			p := article.Published
+			if len(p.Text) > 256000 || !utf8.ValidString(p.Text) || digest([]byte(p.Text)) != p.SHA {
+				return nil, errors.New("invalid publication snapshot")
+			}
+		}
 		for _, c := range article.Conflicts {
 			if !commitID.MatchString(c.Commit) || (c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) || (!c.Deleted && (digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > 256000)) {
 				return nil, errors.New("invalid stored conflict")
 			}
+		}
+	}
+	for id, j := range s.db.Outbox {
+		if j.Visibility == "" {
+			j.Visibility = "private"
+			s.db.Outbox[id] = j
+		}
+		if j.Visibility != "private" && j.Visibility != "public" {
+			return nil, errors.New("invalid queued publication scope")
+		}
+		a, ok := s.db.Articles[j.SourceID+"/"+j.Path]
+		if !ok || j.ID != id || j.Revision < 1 || j.Revision > len(a.Versions) || a.Versions[j.Revision-1].SHA != j.SHA {
+			return nil, errors.New("invalid outbox revision")
+		}
+		switch j.State {
+		case "pending", "prepared", "retry", "blocked", "conflict", "complete", "superseded":
+		default:
+			return nil, errors.New("invalid outbox state")
 		}
 	}
 	return s, nil
@@ -186,6 +244,18 @@ func (s *Store) clone() Database {
 	db := s.db
 	db.Sources = make(map[string]Source, len(s.db.Sources))
 	db.Articles = make(map[string]Article, len(s.db.Articles))
+	db.Accounts = make(map[string]GitHubAccount, len(s.db.Accounts))
+	for k, v := range s.db.Accounts {
+		db.Accounts[k] = v
+	}
+	db.Connections = make(map[string]GitHubConnection, len(s.db.Connections))
+	for k, v := range s.db.Connections {
+		db.Connections[k] = v
+	}
+	db.Outbox = make(map[string]SyncJob, len(s.db.Outbox))
+	for k, v := range s.db.Outbox {
+		db.Outbox[k] = v
+	}
 	for k, v := range s.db.Sources {
 		db.Sources[k] = v
 	}
@@ -198,7 +268,7 @@ func (s *Store) addSource(src Source) error {
 	if !identifier.MatchString(src.ID) || strings.TrimSpace(src.Title) == "" || len(src.Title) > 200 || (src.Kind != "wiki" && src.Kind != "program") || (src.Visibility != "private" && src.Visibility != "public") {
 		return ErrInvalid
 	}
-	if src.Metadata != nil || len(src.Assets) != 0 || src.ImportGeneration != "" || src.ImportCommit != "" || src.ImportDirty || src.ImportPartial {
+	if src.ConnectionID != "" || src.Metadata != nil || len(src.Assets) != 0 || src.ImportGeneration != "" || src.ImportCommit != "" || src.ImportDirty || src.ImportPartial {
 		return ErrInvalid
 	}
 	s.mu.Lock()
@@ -245,7 +315,18 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	versions = append(versions, rev)
 	db := s.clone()
 	article.SourceID, article.Path, article.Versions, article.Deleted = sourceID, p, versions, false
+	if sourcePublic(s.db, src, time.Now()) {
+		published := rev
+		published.Number = 0
+		article.Published = &published
+		article.PublishedLocal = true
+	} else {
+		article.PublishedLocal = false
+	}
 	db.Articles[key] = article
+	if src.ConnectionID != "" {
+		enqueueWrite(&db, article, rev)
+	}
 	if err := s.commit(db); err != nil {
 		return Revision{}, err
 	}
@@ -256,7 +337,10 @@ func (s *Store) sources(public bool) []Source {
 	defer s.mu.RUnlock()
 	out := []Source{}
 	for _, src := range s.db.Sources {
-		if !public || src.Visibility == "public" {
+		if !public || sourcePublic(s.db, src, time.Now()) {
+			if public {
+				src.ConnectionID = ""
+			}
 			out = append(out, src)
 		}
 	}
@@ -283,10 +367,16 @@ func (s *Store) snapshot(public bool) Snapshot {
 			continue
 		}
 		src := s.db.Sources[a.SourceID]
-		if public && src.Visibility != "public" {
+		if public && !sourcePublic(s.db, src, time.Now()) {
 			continue
 		}
 		rev := a.Versions[len(a.Versions)-1]
+		if public && src.ConnectionID != "" {
+			if a.Published == nil {
+				continue
+			}
+			rev = *a.Published
+		}
 		if public && rev.Created > snap.Generated {
 			snap.Generated = rev.Created
 		}
@@ -303,10 +393,16 @@ func (s *Store) page(key string, public bool) (Page, error) {
 		return Page{}, ErrNotFound
 	}
 	src := s.db.Sources[a.SourceID]
-	if public && src.Visibility != "public" {
+	if public && !sourcePublic(s.db, src, time.Now()) {
 		return Page{}, ErrNotFound
 	}
 	r := a.Versions[len(a.Versions)-1]
+	if public && src.ConnectionID != "" {
+		if a.Published == nil {
+			return Page{}, ErrNotFound
+		}
+		r = *a.Published
+	}
 	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Text: r.Text}, nil
 }
 func (s *Store) article(sourceID, p string, public bool) (Article, error) {
@@ -316,9 +412,29 @@ func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	if !ok || a.Deleted {
 		return Article{}, ErrNotFound
 	}
-	if public && s.db.Sources[a.SourceID].Visibility != "public" {
+	src := s.db.Sources[a.SourceID]
+	if public && !sourcePublic(s.db, src, time.Now()) {
 		return Article{}, ErrNotFound
 	}
 	a.Versions = append([]Revision(nil), a.Versions...)
+	if public && src.ConnectionID != "" {
+		if a.Published == nil {
+			return Article{}, ErrNotFound
+		}
+		a.Versions = []Revision{*a.Published}
+		a.Conflicts = nil
+		a.UpstreamHash = ""
+		a.PublishedLocal = false
+	}
+	if public {
+		a.Versions = a.Versions[len(a.Versions)-1:]
+		a.Versions[0].Number = 0
+		if a.Published != nil {
+			published := *a.Published
+			published.Number = 0
+			a.Published = &published
+		}
+		a.PublishedLocal = false
+	}
 	return a, nil
 }
