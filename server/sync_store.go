@@ -112,7 +112,11 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 		}
 	}
 	id := a.SourceID + "/" + a.Path + "@" + strconv.Itoa(rev.Number)
-	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: db.Sources[a.SourceID].Visibility}
+	visibility := "private"
+	if sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
+		visibility = "public"
+	}
+	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility}
 }
 func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if !confirm {

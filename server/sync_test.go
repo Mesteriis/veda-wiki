@@ -590,3 +590,22 @@ func TestGitHubPrivateQueuedWritesRequirePublicationConsent(t *testing.T) {
 
 func (f *fakeGitHub) modify(fn func()) { f.mu.Lock(); defer f.mu.Unlock(); fn() }
 func (f *fakeGitHub) writeCount() int  { f.mu.Lock(); defer f.mu.Unlock(); return f.writes }
+
+func TestGitHubExpiredPublicProofDoesNotApproveQueuedWrite(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
+	m := connectFixture(t, s, f, true)
+	s.mu.Lock()
+	c := s.db.Connections["handbook"]
+	c.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
+	s.db.Connections[c.ID] = c
+	s.mu.Unlock()
+	if _, e := s.put("handbook", "README.md", "# Unverified edit", 1); e != nil {
+		t.Fatal(e)
+	}
+	m.Once(context.Background())
+	jobs := s.jobs()
+	if f.writeCount() != 0 || len(jobs) != 1 || jobs[0].LastError != "publication_confirmation_required" {
+		t.Fatal("expired proof allowed publication", jobs)
+	}
+}
