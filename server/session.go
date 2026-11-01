@@ -15,6 +15,7 @@ import (
 
 const sessionCookie = "veda_reader_session"
 const adminSessionCookie = "veda_admin_session"
+const accessSessionCookie = "veda_access_session"
 
 type readerSessions struct {
 	mu       sync.Mutex
@@ -97,6 +98,9 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 	sessions, cookie, token, prefix := w.Sessions, sessionCookie, w.ReaderToken, "/api/session/"
 	if strings.HasPrefix(r.URL.Path, "/api/admin/session/") {
 		sessions, cookie, token, prefix = w.AdminSessions, adminSessionCookie, w.Token, "/api/admin/session/"
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/access/session/") {
+		sessions, cookie, token, prefix = w.AccessSessions, accessSessionCookie, w.Token, "/api/access/session/"
 	}
 	if w.Public || sessions == nil || !secureBrowserRequest(r) {
 		http.NotFound(rw, r)

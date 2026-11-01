@@ -25,6 +25,10 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |
 | GET/POST | `/api/v1/access-keys` | List scoped-key metadata or create a source-scoped read-only key (owner only) |
 | POST | `/api/v1/access-keys/revoke` | Revoke a scoped key by ID (owner only) |
+| GET/POST | `/api/access/session/status`, `/api/access/session/login`, `/api/access/session/logout` | Separate browser access-administration session |
+| GET | `/api/access/sources` | List source metadata for the separate browser access-administration session |
+| GET/POST | `/api/access/keys` | List or create scoped keys in that browser session |
+| POST | `/api/access/keys/revoke` | Revoke a scoped key in that browser session |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
 | POST | `/api/v1/articles/transfer-plan` | Inspect recursive relative article links and destination matches (owner only) |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |

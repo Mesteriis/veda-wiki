@@ -37,3 +37,17 @@ private reads with its sessions; requests already in progress may finish. User
 accounts, teams, and multi-user administration remain future work. On login,
 expired sessions and sessions tied to revoked or expired scoped keys are removed
 before applying the session limit.
+
+Settings provide a separate owner-authenticated access-administration session
+for listing sources and issuing or revoking source-scoped reader keys. Its
+cookie cannot authorize GitHub administration, private reading, or article
+writes; the GitHub and reader cookies cannot manage keys. Login and mutations
+require the same HTTPS/loopback and same-origin protections described above.
+A new key is shown once and remains only in the current page's memory; save it
+before closing the dialog. If creation fails or the response is lost, inspect
+the key list before retrying: the server may have created the key even if its
+value was not received. A key with an unknown value should be revoked and a
+new ID created. Revocation stops subsequent reads and sessions associated with
+that key; in-flight requests may finish. Issuing a key upgrades the store to
+version 4 or newer; verify backup and rollback compatibility before use. These
+are separate credentials, not user accounts, teams, or OS isolation.

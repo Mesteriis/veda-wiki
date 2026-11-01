@@ -132,15 +132,17 @@ func main() {
 	}
 	sessions := &readerSessions{}
 	adminSessions := &readerSessions{}
+	accessSessions := &readerSessions{}
 	workers.Add(1)
 	go func() { defer workers.Done(); manager.Run(ctx, *interval) }()
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
-		handler := Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, AdminSessions: adminSessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}
+		handler := Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}
 		if readerOnly {
 			handler.Token = ""
 			handler.ReaderToken = ""
 			handler.Sessions = nil
 			handler.AdminSessions = nil
+			handler.AccessSessions = nil
 			handler.ReaderLocal = true
 			handler.ReaderKeyRequired = *readerKeyRequired
 			handler.LocalImportSource = *localImportSource

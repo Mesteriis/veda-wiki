@@ -586,6 +586,76 @@ function ReaderAccess() {
     </div>
   );
 }
+function AccessSettings() {
+  const [status, setStatus] = useState(null);
+  const [sources, setSources] = useState([]);
+  const [keys, setKeys] = useState([]);
+  const [issued, setIssued] = useState(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function json(route, options = {}) {
+    const response = await fetch(route, options);
+    if (!response.ok) throw Error("request failed");
+    return response.json();
+  }
+  async function refresh() {
+    const [available, existing] = await Promise.all([json("/api/access/sources"), json("/api/access/keys")]);
+    setSources(available); setKeys(existing);
+  }
+  async function send(route, body) {
+    return json(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  }
+  useEffect(() => {
+    const controller = new AbortController();
+    json("/api/access/session/status", { signal: controller.signal })
+      .then(async (s) => { setStatus(s.authenticated); if (s.authenticated) await refresh(); })
+      .catch((e) => { if (e.name !== "AbortError") setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
+    return () => controller.abort();
+  }, []);
+  async function login(event) {
+    event.preventDefault(); const form = event.currentTarget; const key = new FormData(form).get("key");
+    setBusy(true); setMessage("");
+    try { await send("/api/access/session/login", { key }); setStatus(true); await refresh(); }
+    catch { setMessage("Не удалось войти или загрузить источники. Проверьте подключение."); }
+    finally { form.reset(); setBusy(false); }
+  }
+  async function create(event) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    const days = Number(data.get("days")); const selected = data.getAll("sources");
+    if (!Number.isInteger(days) || days < 1 || days > 365 || !selected.length) { setMessage("Выберите источники и срок от 1 до 365 дней."); return; }
+    setBusy(true); setMessage(""); setIssued(null);
+    try {
+      const result = await send("/api/access/keys", { id: data.get("id"), sources: selected, expires_at: new Date(Date.now() + days * 86400000).toISOString() });
+      setIssued(result); form.reset();
+      try { await refresh(); } catch { setMessage("Ключ создан, но список не обновился. Сохраните ключ и обновите список позже."); }
+    } catch { setMessage("Создание не подтверждено: ключ мог быть создан. Проверьте список перед повтором."); }
+    finally { setBusy(false); }
+  }
+  async function revoke(id) {
+    if (!window.confirm(`Отозвать ключ ${id}? Доступ по нему прекратится.`)) return;
+    setBusy(true); setMessage("");
+    try { await send("/api/access/keys/revoke", { id }); await refresh(); }
+    catch { setMessage("Не удалось подтвердить отзыв. Обновите список перед повтором."); }
+    finally { setBusy(false); }
+  }
+  async function logout() {
+    setBusy(true); setMessage("");
+    try { await send("/api/access/session/logout", {}); setStatus(false); setKeys([]); setSources([]); setIssued(null); }
+    catch { setMessage("Не удалось завершить сеанс."); }
+    finally { setBusy(false); }
+  }
+  return <div className="github-connect reader-access">
+    <p>Ключи дают только чтение выбранных источников. Для агентов и пользователей можно выдавать отдельные ключи.</p>
+    {status === false && <form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти в управление доступом</button></form>}
+    {status === true && <>
+      {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
+      <form onSubmit={create}><h3>Новый ключ чтения</h3><label>Идентификатор<input name="id" required placeholder="agent-one" /></label><label>Срок в днях<input name="days" type="number" min="1" max="365" defaultValue="30" required /></label><fieldset><legend>Доступные источники</legend>{sources.length ? sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} /> {s.title} ({s.id})</label>) : <p>Источников пока нет.</p>}</fieldset><button disabled={busy || !!issued || !sources.length}>Создать ключ</button></form>
+      <h3>Выданные ключи</h3>{keys.length ? <ul>{keys.map((k) => <li key={k.id}><strong>{k.id}</strong> · {k.sources.join(", ")} · до {new Date(k.expires_at).toLocaleString()} <button type="button" disabled={busy} onClick={() => revoke(k.id)}>Отозвать</button></li>)}</ul> : <p>Ключей пока нет.</p>}
+      <button type="button" disabled={busy} onClick={logout}>Выйти из управления доступом</button>
+    </>}
+    {message && <p role="alert">{message}</p>}
+  </div>;
+}
 function GitHubConnect() {
   const [status, setStatus] = useState(null);
   const [accounts, setAccounts] = useState([]);
@@ -762,7 +832,7 @@ export function App() {
             <I name="x" />
           </button>
         </div>
-        {feature === "profile" ? <ReaderAccess /> : feature === "github" ? <GitHubConnect /> : <p>{descriptions[feature]?.[1]}</p>}
+        {feature === "profile" ? <ReaderAccess /> : feature === "github" ? <GitHubConnect /> : feature === "settings" ? <AccessSettings /> : <p>{descriptions[feature]?.[1]}</p>}
       </dialog>
     </Features.Provider>
   );
