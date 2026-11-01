@@ -55,8 +55,9 @@ it based solely on a visibility change. Public Git history cannot be recalled.
 Automated coverage uses a simulated GitHub service; anonymous public import has
 also been checked against a real public repository. Real authenticated App/PAT
 connections, writes and multi-repository recovery still require acceptance.
-Cross-repository moves have simulated-GitHub coverage but have not been
-accepted against authenticated live repositories. An optional local translation
+Cross-repository moves have simulated-GitHub coverage and an opt-in live
+synthetic check using a `gh` credential-owning proxy; authentication using
+VEDA's own saved App/PAT credential still needs live acceptance. An optional local translation
 worker and source-scoped read-only keys are implemented; model qualification
 and production agent-key rollout remain outstanding. See
 [translation](translation.md) and [scoped access](scoped-access-design.md).
@@ -66,8 +67,7 @@ public `Mesteriis/veda-wiki` repository using synthetic content. It checks that
 the source remains until the destination has been observed, and checks the
 final remote tree and destination blob. The local test store receives a
 synthetic token; a loopback test proxy invokes the authenticated `gh` CLI,
-so it does not test VEDA's handling of a real PAT or App installation. It also
-does not establish behavior across two distinct repositories. With `gh`
+so it does not test VEDA's handling of a real PAT or App installation. With `gh`
 already authenticated as Mesteriis, run:
 
 ```sh
@@ -77,3 +77,10 @@ VEDA_LIVE_GITHUB_MOVE=1 go test -count=1 -run '^TestLiveGitHubBranchMove$' -v .
 
 Each run creates two public fixture branches and retains them for inspection;
 the test does not change an existing branch or use production wiki data.
+Setting `VEDA_LIVE_GITHUB_TARGET=Mesteriis/mac-tower` explicitly runs the
+same test across two repositories. The target fixture starts from the other
+repository's default branch and preserves its existing files; only the new
+branch gets synthetic metadata and the moved fixture. The two-repository test
+passed against public GitHub on 2026-11-01 via the `gh` proxy. The test refuses
+to create the target branch if its source tree contains GitHub Actions
+workflows, avoiding an unintended workflow run.

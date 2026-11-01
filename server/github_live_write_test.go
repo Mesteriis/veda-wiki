@@ -16,12 +16,21 @@ import (
 
 // This opt-in test uses gh as a credential-owning transport. VEDA receives
 // only a synthetic token and an isolated local store, never a real credential.
-// It creates two retained fixture branches in the public VEDA repository.
+// It creates retained fixture branches; an explicitly selected second public
+// repository is only changed on a new branch, preserving its existing tree.
 func TestLiveGitHubBranchMove(t *testing.T) {
 	if os.Getenv("VEDA_LIVE_GITHUB_MOVE") != "1" {
 		t.Skip("explicit live GitHub acceptance not enabled")
 	}
 	const repo = "Mesteriis/veda-wiki"
+	targetRepo := os.Getenv("VEDA_LIVE_GITHUB_TARGET")
+	if targetRepo == "" {
+		targetRepo = repo
+	}
+	if targetRepo != repo && targetRepo != "Mesteriis/mac-tower" {
+		t.Fatal("unsupported fixture repository")
+	}
+	repos := []string{repo, targetRepo}
 	const content = "# Synthetic source\n\nThis is an acceptance fixture.\n"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -56,7 +65,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	if login != "Mesteriis" && login != "mesteriis" {
 		t.Fatal("fixture requires the Mesteriis account")
 	}
-	nodeID := api("repos/"+repo, nil)["node_id"].(string)
+	nodeIDs := []string{api("repos/"+repo, nil)["node_id"].(string), api("repos/"+targetRepo, nil)["node_id"].(string)}
 	base := api("repos/"+repo+"/commits/588ff21", nil)["sha"].(string)
 	tree := api("repos/"+repo+"/git/trees", map[string]any{"tree": []map[string]string{
 		{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture},
@@ -65,13 +74,51 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	commit := api("repos/"+repo+"/git/commits", map[string]any{"message": "VEDA synthetic move fixture", "tree": tree, "parents": []string{base}})["sha"].(string)
 	suffix := time.Now().UTC().Format("20060102-150405")
 	branches := []string{"feature/veda-live-source-" + suffix, "feature/veda-live-target-" + suffix}
-	for _, b := range branches {
-		api("repos/"+repo+"/git/refs", map[string]string{"ref": "refs/heads/" + b, "sha": commit})
+	destinationPath := "moved.md"
+	commits := []string{commit, commit}
+	baseEntries := map[string]string{}
+	if targetRepo != repo {
+		destinationPath = "veda-fixtures/" + suffix + "/moved.md"
+		info := api("repos/"+targetRepo, nil)
+		targetBase := api("repos/"+targetRepo+"/commits/"+info["default_branch"].(string), nil)
+		baseSHA := targetBase["sha"].(string)
+		baseTree := targetBase["commit"].(map[string]any)["tree"].(map[string]any)["sha"].(string)
+		entries := api("repos/"+targetRepo+"/git/trees/"+baseTree+"?recursive=1", nil)
+		if entries["truncated"] != false {
+			t.Fatal("target fixture tree incomplete")
+		}
+		for _, value := range entries["tree"].([]any) {
+			item := value.(map[string]any)
+			p := item["path"].(string)
+			if item["type"] == "blob" && strings.HasPrefix(p, ".github/workflows/") {
+				t.Fatal("target contains workflows; refusing to create a fixture branch")
+			}
+			if p == "veda.yaml" || p == destinationPath {
+				t.Fatal("target fixture path already exists")
+			}
+			if p == "veda-fixtures" && item["type"] != "tree" {
+				t.Fatal("fixture directory is not a tree")
+			}
+			if item["type"] != "tree" {
+				baseEntries[p] = item["type"].(string) + ":" + item["mode"].(string) + ":" + item["sha"].(string)
+			}
+		}
+		fixtureTree := api("repos/"+targetRepo+"/git/trees", map[string]any{"base_tree": baseTree, "tree": []map[string]string{{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture}}})["sha"].(string)
+		commits[1] = api("repos/"+targetRepo+"/git/commits", map[string]any{"message": "VEDA synthetic move fixture", "tree": fixtureTree, "parents": []string{baseSHA}})["sha"].(string)
+	}
+	for i, b := range branches {
+		api("repos/"+repos[i]+"/git/refs", map[string]string{"ref": "refs/heads/" + b, "sha": commits[i]})
 	}
 
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := strings.TrimPrefix(r.URL.RequestURI(), "/")
-		if route != "user" && route != "graphql" && route != "repos/"+repo && !strings.HasPrefix(route, "repos/"+repo+"/") {
+		allowedRepo := false
+		for _, allowed := range repos {
+			if route == "repos/"+allowed || strings.HasPrefix(route, "repos/"+allowed+"/") {
+				allowedRepo = true
+			}
+		}
+		if route != "user" && route != "graphql" && !allowedRepo {
 			http.Error(w, "route denied", 403)
 			return
 		}
@@ -80,7 +127,13 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 			http.Error(w, "bad body", 400)
 			return
 		}
-		if r.Method != "GET" && (r.Method != "POST" || (route != "graphql" && route != "repos/"+repo+"/git/blobs" && route != "repos/"+repo+"/git/trees" && route != "repos/"+repo+"/git/commits")) {
+		allowedWrite := route == "graphql"
+		for _, allowed := range repos {
+			if route == "repos/"+allowed+"/git/blobs" || route == "repos/"+allowed+"/git/trees" || route == "repos/"+allowed+"/git/commits" {
+				allowedWrite = true
+			}
+		}
+		if r.Method != "GET" && (r.Method != "POST" || !allowedWrite) {
 			http.Error(w, "write denied", 403)
 			return
 		}
@@ -105,17 +158,17 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 			}
 			switch request.Query {
 			case `query($owner:String!, $name:String!) { repository(owner:$owner, name:$name) { id } }`:
-				if request.Variables.Owner != "Mesteriis" || request.Variables.Name != "veda-wiki" {
+				if request.Variables.Owner != "Mesteriis" || (request.Variables.Name != "veda-wiki" && !(targetRepo != repo && request.Variables.Name == "mac-tower")) {
 					http.Error(w, "repository denied", 403)
 					return
 				}
 			case `mutation($input:UpdateRefsInput!) { updateRefs(input:$input) { clientMutationId } }`:
-				if request.Variables.Input.RepositoryID != nodeID || len(request.Variables.Input.Updates) != 1 {
+				if len(request.Variables.Input.Updates) != 1 {
 					http.Error(w, "mutation denied", 403)
 					return
 				}
 				update := request.Variables.Input.Updates[0]
-				if update.Force || (update.Name != "refs/heads/"+branches[0] && update.Name != "refs/heads/"+branches[1]) {
+				if update.Force || !((request.Variables.Input.RepositoryID == nodeIDs[0] && update.Name == "refs/heads/"+branches[0]) || (request.Variables.Input.RepositoryID == nodeIDs[1] && update.Name == "refs/heads/"+branches[1])) {
 					http.Error(w, "branch denied", 403)
 					return
 				}
@@ -144,12 +197,12 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	}
 	for i, b := range branches {
 		id := []string{"source", "target"}[i]
-		if _, err := manager.connect(ctx, connectRequest{ID: id, Repository: repo, AccountID: "fixture", Branch: b, Write: true}); err != nil {
+		if _, err := manager.connect(ctx, connectRequest{ID: id, Repository: repos[i], AccountID: "fixture", Branch: b, Write: true}); err != nil {
 			t.Fatalf("connect %s: %v", id, err)
 		}
 	}
 	manager.Once(ctx)
-	if _, err := store.moveArticle(moveRequest{SourceID: "source", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: "moved.md", ConfirmMove: true}); err != nil {
+	if _, err := store.moveArticle(moveRequest{SourceID: "source", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: destinationPath, ConfirmMove: true}); err != nil {
 		t.Fatalf("move: %v", err)
 	}
 	syncFixtureSource(t, manager, "target")
@@ -179,27 +232,34 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		t.Fatalf("move incomplete: %s", got)
 	}
 	for i, b := range branches {
-		ref := api("repos/"+repo+"/git/ref/heads/"+b, nil)
+		ref := api("repos/"+repos[i]+"/git/ref/heads/"+b, nil)
 		head := ref["object"].(map[string]any)["sha"].(string)
-		remoteTree, err := client.tree(ctx, repo, head, fixtureAccess)
+		remoteTree, err := client.tree(ctx, repos[i], head, fixtureAccess)
 		if err != nil {
 			t.Fatal(err)
 		}
 		found := map[string]bool{}
+		actual := map[string]string{}
 		for _, entry := range remoteTree.Tree {
 			found[entry.Path] = true
+			actual[entry.Path] = entry.Type + ":" + entry.Mode + ":" + entry.SHA
 		}
 		if i == 0 && found["guide.md"] {
 			t.Fatal("source still exists")
 		}
-		if i == 1 && !found["moved.md"] {
+		if i == 1 && !found[destinationPath] {
 			t.Fatal("destination absent")
 		}
 		if i == 1 {
-			if _, err := verifiedTreeFile(remoteTree, "moved.md", content); err != nil {
+			for path, sha := range baseEntries {
+				if actual[path] != sha {
+					t.Fatal("target fixture modified existing content")
+				}
+			}
+			if _, err := verifiedTreeFile(remoteTree, destinationPath, content); err != nil {
 				t.Fatal("destination contents do not match the fixture")
 			}
 		}
 	}
-	t.Logf("live fixture branches retained: %s, %s", branches[0], branches[1])
+	t.Logf("live fixture branches retained: %s:%s, %s:%s", repos[0], branches[0], repos[1], branches[1])
 }
