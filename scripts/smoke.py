@@ -57,7 +57,7 @@ async def main():
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tools = await session.list_tools()
-                    assert len(tools.tools) == 13
+                    assert len(tools.tools) == 15
 
                     async def call(name, args):
                         result = await session.call_tool(name, args)
@@ -89,6 +89,15 @@ async def main():
                     assert copied["revision"] == 1
                     copy_read = await call("veda_read", {"source_id": "copy", "path": "copied.md"})
                     assert copy_read["text"] == "# Private updated"
+                    await call("veda_create_source", {"id": "program", "title": "program", "kind": "program", "visibility": "private"})
+                    original = await call("veda_write_article", {"source_id": "program", "path": "docs/setup.md", "text": "# Setup\nRun `install`.", "expected_revision": 0})
+                    waiting = await call("veda_translation_needed", {})
+                    assert any(c["source_id"] == "program" and c["original_sha256"] == original["sha256"] for c in waiting["candidates"])
+                    translated = await call("veda_translate_article", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "original_sha256": original["sha256"], "text": "# Установка\nЗапустите `install`."})
+                    assert translated["language"] == "ru"
+                    unchanged = await call("veda_read", {"source_id": "program", "path": "docs/setup.md"})
+                    assert unchanged["text"] == "# Setup\nRun `install`."
+                    assert not (await call("veda_translation_needed", {}))["candidates"]
                     # Exercise the actual CLI -> REST batch path on a real local
                     # checkout. Fixture data never enters the project repository.
                     checkout = Path(tmp) / "checkout"
@@ -143,7 +152,7 @@ async def main():
                     process = start(data, private_port, public_port)
                     restored = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
-            print("PASS: thirteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; restart persistence")
+            print("PASS: fifteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; translation; restart persistence")
         finally:
             process.terminate()
             process.wait(timeout=10)

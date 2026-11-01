@@ -516,7 +516,8 @@ function Reading({ data }) {
         </a>
         <div className="source-path">{v.Page.path}</div>
         <div className="provenance">
-          SHA256 <code>{v.Page.sha256}</code>
+          {v.Page.translated ? "Перевод на русский · SHA256" : "SHA256"} <code>{v.Page.sha256}</code>
+          {v.Page.translated && <> · Оригинал <code>{v.Page.original_sha256}</code></>}
         </div>
         <div
           className="markdown"
