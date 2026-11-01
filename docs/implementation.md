@@ -14,7 +14,7 @@ an individual slice is not completion of the whole application.
 | GitHub App/account or explicit server token, repo-derived visibility | GitHub App/PAT and repository visibility implemented; live authenticated acceptance pending |
 | Background import/push, local availability during outages | Atomic import/conflicts and scheduled durable outbox implemented; live write acceptance pending |
 | Transfers between repositories with provenance and publication control | Revision-bound moves and lost-response recovery tested with simulated repositories; a live synthetic move passed between two branches of one repository through a `gh` proxy; two-repository acceptance, real VEDA credential acceptance, dependency and translation transfer pending |
-| Private users/teams/agents and public browsing | Separate owner/read-only keys, local read-only socket, isolated public listener and read-only browser sessions; per-user scopes and admin Connect UI pending |
+| Private users/teams/agents and public browsing | Separate owner/read-only keys, local read-only socket, isolated public listener, reader sessions and limited GitHub administrator sessions; per-user/team permissions pending |
 | Agent context and the four client integrations | Four client configurations use the VEDA read-only socket; individual scoped keys and separate operating-system identities are not rolled out |
 | Safe production migration, backup/rollback and restore acceptance | Standalone instance deployed alongside the existing wiki; backup and isolated restored-state checks passed; full guest restore and production v4 rollback remain unverified |
 

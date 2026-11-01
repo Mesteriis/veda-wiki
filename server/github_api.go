@@ -7,6 +7,30 @@ import (
 	"strings"
 )
 
+// Browser administration is restricted to account registration and source
+// connections. The cookie cannot authorize the owner API or article writes.
+func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
+	if w.Public || w.Store == nil || !w.AdminSessions.validCookie(r, adminSessionCookie) {
+		http.NotFound(rw, r)
+		return
+	}
+	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" {
+		http.NotFound(rw, r)
+		return
+	}
+	if r.Method != "GET" && r.Method != "POST" {
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Method == "POST" && !sameOrigin(r) {
+		jsonResponse(rw, http.StatusForbidden, map[string]string{"error": "origin rejected"})
+		return
+	}
+	request := r.Clone(r.Context())
+	request.URL.Path = strings.Replace(r.URL.Path, "/api/admin/github/", "/api/v1/github/", 1)
+	w.githubAPI(rw, request, true)
+}
+
 func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 	if !owner {
 		http.NotFound(rw, r)

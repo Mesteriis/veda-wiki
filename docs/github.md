@@ -24,7 +24,13 @@ file after registration. VEDA stores credentials separately in its private data
 directory; account listings do not return them. Never commit credentials or
 pass them on a command line. Connect using `--account ACCOUNT`; add `--write`
 only when the account has the required repository permission. No account is
-automatically guessed. There is currently no browser Connect flow.
+automatically guessed. The private browser interface also offers GitHub App or
+token account registration and repository connection after a separate
+administrator login.
+The administrator session grants only GitHub account and connection endpoints,
+not article editing or the general owner API. It is accepted only over direct
+HTTPS or loopback HTTP, and is separate from the reader session. The existing
+read-only Unix socket and local viewing proxy do not expose administration.
 
 The worker polls every five minutes by default (`--sync-interval`, 5 seconds
 to 1 hour). Local writes to connected sources are committed with an outbox

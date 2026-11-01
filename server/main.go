@@ -82,6 +82,7 @@ type Wiki struct {
 	ReaderKeyRequired bool
 	LocalImportSource string
 	Sessions          *readerSessions
+	AdminSessions     *readerSessions
 	Sync              *SyncManager
 }
 
@@ -178,8 +179,12 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if strings.HasPrefix(r.URL.Path, "/api/session/") {
+	if strings.HasPrefix(r.URL.Path, "/api/session/") || strings.HasPrefix(r.URL.Path, "/api/admin/session/") {
 		w.sessionAPI(rw, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/admin/github/") {
+		w.adminGitHubAPI(rw, r)
 		return
 	}
 	if w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/v1/import" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {

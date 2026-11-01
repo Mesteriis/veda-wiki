@@ -121,14 +121,16 @@ func main() {
 		go worker.Run(ctx, *translationInterval)
 	}
 	sessions := &readerSessions{}
+	adminSessions := &readerSessions{}
 	go manager.Run(ctx, *interval)
 	errors := make(chan error, 3)
 	serve := func(l net.Listener, publicOnly, readerOnly bool) {
-		handler := Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}
+		handler := Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, AdminSessions: adminSessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}
 		if readerOnly {
 			handler.Token = ""
 			handler.ReaderToken = ""
 			handler.Sessions = nil
+			handler.AdminSessions = nil
 			handler.ReaderLocal = true
 			handler.ReaderKeyRequired = *readerKeyRequired
 			handler.LocalImportSource = *localImportSource

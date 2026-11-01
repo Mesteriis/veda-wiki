@@ -20,7 +20,14 @@ limit of ten login attempts per minute and at most 100 active sessions. To
 revoke all sessions restart the service; credential rotation requires replacing
 the reader key in the private data directory and restarting the service.
 
-The interface never sends the owner key or offers article editing. Browser
-session POST endpoints accept only same-origin requests. This is an initial
+The GitHub dialog accepts the owner key for a separate administrator session;
+the key is sent only over direct HTTPS or loopback HTTP and is not stored in the
+browser. The administrator session is limited to GitHub account registration
+and connection, and cannot authorize article writes or other owner APIs. It
+uses its own HttpOnly, SameSite=Strict cookie, expires after eight hours, and
+is revoked on logout or restart. The reader-only Unix socket and viewing proxy
+do not expose this administration surface. The interface offers no article
+editing. Browser session and administration POST endpoints accept only
+same-origin requests. This is an initial
 single shared reader mechanism; account provisioning, independent revocation,
 per-source permissions, and multi-user administration remain future work.

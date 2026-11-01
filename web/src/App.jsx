@@ -4,7 +4,7 @@ const Features = createContext(() => {});
 const descriptions = {
   github: [
     "GitHub",
-    "GitHub подключается через REST API или MCP с явным выбором аккаунта. Публичность определяется видимостью репозитория. Wiki использует veda.yaml; программы используют docs/. Локальный переводчик можно настроить отдельно. Источники хранятся раздельно и объединяются для чтения.",
+    "Управление подключениями GitHub",
   ],
   graph: [
     "Граф знаний",
@@ -20,7 +20,7 @@ const descriptions = {
   ],
   api: [
     "API и MCP",
-    "Статьи создаются и обновляются через REST API или MCP. Веб-интерфейс предназначен только для чтения. GitHub настраивается через REST/MCP; статьи хранятся локально.",
+    "Статьи создаются и обновляются через REST API или MCP. Веб-интерфейс показывает статьи и позволяет управлять подключениями GitHub; статьи хранятся локально.",
   ],
   settings: [
     "Настройки",
@@ -595,6 +595,82 @@ function ReaderAccess() {
     </div>
   );
 }
+function GitHubConnect() {
+  const [status, setStatus] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [accountKind, setAccountKind] = useState("app");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function json(route, options = {}) {
+    const response = await fetch(route, options);
+    if (!response.ok) throw Error("request failed");
+    return response.json();
+  }
+  async function refresh() {
+    const [a, c] = await Promise.all([json("/api/admin/github/accounts"), json("/api/admin/github/connections")]);
+    setAccounts(a); setConnections(c);
+  }
+  useEffect(() => {
+    const controller = new AbortController();
+    json("/api/admin/session/status", { signal: controller.signal })
+      .then(async (s) => { setStatus(s.authenticated); if (s.authenticated) await refresh(); })
+      .catch((e) => { if (e.name !== "AbortError") setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
+    return () => controller.abort();
+  }, []);
+  useEffect(() => {
+    if (!status) return;
+    const timer = setInterval(() => { refresh().catch(() => setMessage("Не удалось обновить состояние GitHub.")); }, 10000);
+    return () => clearInterval(timer);
+  }, [status]);
+  async function send(route, data) {
+    return json(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+  }
+  async function login(event) {
+    event.preventDefault(); const form = event.currentTarget; const key = new FormData(form).get("key");
+    setBusy(true); setMessage("");
+    try { await send("/api/admin/session/login", { key }); setStatus(true); await refresh(); }
+    catch { setMessage("Не удалось войти или загрузить настройки. Проверьте ключ и подключение."); }
+    finally { form.reset(); setBusy(false); }
+  }
+  async function addAccount(event) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    setBusy(true); setMessage("");
+    const secret = accountKind === "app"
+      ? { kind: "app", app_id: Number(data.get("app_id")), installation_id: Number(data.get("installation_id")), private_key: data.get("private_key") }
+      : { kind: "token", token: data.get("token") };
+    try { await send("/api/admin/github/accounts", { id: data.get("id"), ...secret }); form.reset(); await refresh(); setMessage("Аккаунт подключён."); }
+    catch { setMessage("Не удалось подключить аккаунт. Проверьте данные и идентификатор."); }
+    finally { if (form.elements.token) form.elements.token.value = ""; if (form.elements.private_key) form.elements.private_key.value = ""; setBusy(false); }
+  }
+  async function connect(event) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    const account = data.get("account");
+    setBusy(true); setMessage("");
+    try {
+      await send("/api/admin/github/connections", { id: data.get("id"), repository: data.get("repository"), account_id: account, branch: data.get("branch"), write: data.has("write") });
+      form.reset(); await refresh(); setMessage("Репозиторий подключён; импорт выполняется в фоне.");
+    } catch { setMessage("Не удалось подключить репозиторий. Проверьте адрес, ветку и права аккаунта."); }
+    finally { setBusy(false); }
+  }
+  async function logout() {
+    setBusy(true); setMessage("");
+    try { await send("/api/admin/session/logout", {}); setStatus(false); setAccounts([]); setConnections([]); }
+    catch { setMessage("Не удалось завершить сеанс."); }
+    finally { setBusy(false); }
+  }
+  return <div className="github-connect reader-access">
+    <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
+    {status === false && <form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form>}
+    {status === true && <>
+      <form onSubmit={addAccount}><h3>Аккаунт GitHub</h3><label>Идентификатор<input name="id" required placeholder="personal" /></label><label>Способ подключения<select value={accountKind} onChange={(e) => setAccountKind(e.target.value)}><option value="app">GitHub App</option><option value="token">Токен</option></select></label>{accountKind === "app" ? <><label>App ID<input name="app_id" type="number" min="1" step="1" required /></label><label>Installation ID<input name="installation_id" type="number" min="1" step="1" required /></label><label>Приватный ключ App<textarea name="private_key" autoComplete="off" required rows="4" /></label></> : <label>Токен<input name="token" type="password" autoComplete="off" required /></label>}<button disabled={busy}>Сохранить аккаунт</button></form>
+      <form onSubmit={connect}><h3>Подключить репозиторий</h3><label>Идентификатор источника<input name="id" required placeholder="handbook" /></label><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" defaultValue=""><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><button disabled={busy}>Подключить</button></form>
+      <h3>Источники</h3>{connections.length ? <ul>{connections.map((c) => <li key={c.id}>{c.id}: {c.repository} · {c.private ? "приватный" : "публичный"} · {c.state}{c.last_error ? ` (${c.last_error})` : ""}</li>)}</ul> : <p>Репозитории ещё не подключены.</p>}
+      <button onClick={logout} disabled={busy}>Выйти из управления</button>
+    </>}
+    {message && <p role="status">{message}</p>}
+  </div>;
+}
 export function App() {
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
@@ -678,7 +754,7 @@ export function App() {
             <I name="x" />
           </button>
         </div>
-        {feature === "profile" ? <ReaderAccess /> : <p>{descriptions[feature]?.[1]}</p>}
+        {feature === "profile" ? <ReaderAccess /> : feature === "github" ? <GitHubConnect /> : <p>{descriptions[feature]?.[1]}</p>}
       </dialog>
     </Features.Provider>
   );
