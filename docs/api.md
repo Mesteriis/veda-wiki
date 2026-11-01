@@ -20,6 +20,8 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local source (owner only) |
+| GET/POST | `/api/v1/access-keys` | List scoped-key metadata or create a source-scoped read-only key (owner only) |
+| POST | `/api/v1/access-keys/revoke` | Revoke a scoped key by ID (owner only) |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
@@ -54,6 +56,16 @@ Creation returns 201; update returns 200. Revision mismatch returns 409;
 unavailable/unauthorized article returns 404; invalid input returns 400;
 unauthorized writes return 403; storage failures return 500. Unknown fields and
 trailing JSON are rejected. Copying retains the original. Moves are limited to standalone local sources as described below.
+
+Scoped reader keys grant current read-only content only for explicitly listed
+sources. Create with an owner-authorized POST to `/api/v1/access-keys` containing
+`id`, `sources` and `expires_at` (RFC3339, future and at most 366 days). The
+response returns the bearer key once; only its hash is stored. Revoke by POSTing
+the `id` to `/api/v1/access-keys/revoke`. The list endpoint returns metadata,
+never the key or hash. Scoped keys are ignored on the public listener and cannot
+write, access history or use owner-only endpoints. Existing shared reader and
+Unix socket credentials still grant all private sources until separately changed.
+Key issuance upgrades the store to version 4, which older servers refuse to open.
 
 Program article paths must start with `docs/`. Absolute paths, traversal, hidden
 components, backslashes and non-Markdown paths are refused. Paths are logical

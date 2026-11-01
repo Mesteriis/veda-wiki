@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (w Wiki) authorized(r *http.Request) bool {
@@ -87,6 +88,56 @@ func apiError(rw http.ResponseWriter, err error) {
 func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 	if r.Method != "GET" && (!owner || r.Header.Get("Origin") != "") {
 		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required; browser writes are disabled"})
+		return
+	}
+	if r.URL.Path == "/api/v1/access-keys" || r.URL.Path == "/api/v1/access-keys/revoke" {
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.URL.Path == "/api/v1/access-keys" && r.Method == "GET" {
+			jsonResponse(rw, 200, w.Store.listAccessKeys())
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path == "/api/v1/access-keys/revoke" {
+			var input struct {
+				ID string `json:"id"`
+			}
+			if decodeBody(rw, r, &input) != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			if err := w.Store.revokeAccessKey(input.ID); err != nil {
+				apiError(rw, err)
+				return
+			}
+			jsonResponse(rw, 200, map[string]string{"status": "revoked"})
+			return
+		}
+		var input struct {
+			ID      string   `json:"id"`
+			Sources []string `json:"sources"`
+			Expires string   `json:"expires_at"`
+		}
+		if decodeBody(rw, r, &input) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		expiry, err := time.Parse(time.RFC3339Nano, input.Expires)
+		if err != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		key, err := w.Store.createAccessKey(input.ID, input.Sources, expiry)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 201, map[string]any{"id": input.ID, "sources": input.Sources, "expires_at": expiry.UTC().Format(time.RFC3339Nano), "key": key})
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/v1/github/") {

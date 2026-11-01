@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"sort"
 	"time"
@@ -17,6 +18,23 @@ type AccessKey struct {
 	Hash    string   `json:"hash"`
 	Sources []string `json:"sources"`
 	Expires string   `json:"expires_at"`
+}
+
+type AccessKeyView struct {
+	ID      string   `json:"id"`
+	Sources []string `json:"sources"`
+	Expires string   `json:"expires_at"`
+}
+
+func (s *Store) listAccessKeys() []AccessKeyView {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	keys := make([]AccessKeyView, 0, len(s.db.AccessKeys))
+	for _, key := range s.db.AccessKeys {
+		keys = append(keys, AccessKeyView{ID: key.ID, Sources: append([]string(nil), key.Sources...), Expires: key.Expires})
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].ID < keys[j].ID })
+	return keys
 }
 
 func validateAccessKey(id string, key AccessKey, sources map[string]Source) error {
@@ -83,6 +101,12 @@ func (s *Store) revokeAccessKey(id string) error {
 }
 
 func (s *Store) accessScope(token string, now time.Time) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.accessScopeLocked(token, now)
+}
+
+func (s *Store) accessScopeLocked(token string, now time.Time) []string {
 	if len(token) != 64 {
 		return nil
 	}
@@ -90,8 +114,6 @@ func (s *Store) accessScope(token string, now time.Time) []string {
 		return nil
 	}
 	sum := sha256.Sum256([]byte(token))
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	for _, key := range s.db.AccessKeys {
 		hash, err := hex.DecodeString(key.Hash)
 		expires, expiryErr := time.Parse(time.RFC3339Nano, key.Expires)
@@ -100,4 +122,45 @@ func (s *Store) accessScope(token string, now time.Time) []string {
 		}
 	}
 	return nil
+}
+
+// Build an immutable request-local snapshot under the same lock as key
+// verification. Every existing reader surface then operates only on that
+// snapshot; no caller-provided source selector can widen it.
+func (s *Store) scopedView(token string, now time.Time) (*Store, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	scope := s.accessScopeLocked(token, now)
+	if scope == nil {
+		return nil, false, nil
+	}
+	selected := make(map[string]bool, len(scope))
+	db := Database{Version: s.db.Version, Sources: map[string]Source{}, Articles: map[string]Article{}, Connections: map[string]GitHubConnection{}}
+	observed := map[string]time.Time{}
+	for _, id := range scope {
+		selected[id] = true
+		if source, ok := s.db.Sources[id]; ok {
+			db.Sources[id] = source
+			if conn, ok := s.db.Connections[source.ConnectionID]; ok {
+				db.Connections[conn.ID] = conn
+			}
+		}
+		if t, ok := s.observed[id]; ok {
+			observed[id] = t
+		}
+	}
+	for key, article := range s.db.Articles {
+		if selected[article.SourceID] {
+			db.Articles[key] = article
+		}
+	}
+	encoded, err := json.Marshal(db)
+	if err != nil {
+		return nil, true, err
+	}
+	var snapshot Database
+	if err = json.Unmarshal(encoded, &snapshot); err != nil {
+		return nil, true, err
+	}
+	return &Store{dir: s.dir, db: snapshot, observed: observed}, true, nil
 }

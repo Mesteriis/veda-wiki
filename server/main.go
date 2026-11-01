@@ -198,6 +198,21 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if w.Store != nil {
 		owner := w.authorized(r)
 		reader := (w.readerAuthorized(r) || (!w.Public && (w.ReaderLocal || w.Sessions.valid(r)))) && r.Method == "GET"
+		if !w.Public && !owner && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			scoped, valid, err := w.Store.scopedView(token, time.Now())
+			if err != nil {
+				http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if valid {
+				if r.Method != "GET" {
+					http.Error(rw, "Read-only access", http.StatusForbidden)
+					return
+				}
+				w.Store, reader = scoped, true
+			}
+		}
 		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
 			w.api(rw, r, owner, reader)
 			return
