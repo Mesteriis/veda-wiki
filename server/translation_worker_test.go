@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode"
@@ -272,5 +273,55 @@ func TestRealLocalMLXSyntheticTranslation(t *testing.T) {
 	a, err := s.article("program", "docs/a.md", false)
 	if err != nil || a.Translation == nil || !strings.Contains(a.Translation.Text, "`install`") || !strings.Contains(a.Translation.Text, "(guide.md)") || !strings.ContainsFunc(a.Translation.Text, func(r rune) bool { return unicode.In(r, unicode.Cyrillic) }) {
 		t.Fatal("local model did not produce a structurally valid translation", err)
+	}
+}
+
+func TestRealLocalMLXProjectDocumentation(t *testing.T) {
+	endpoint, model := os.Getenv("VEDA_TEST_MLX_URL"), os.Getenv("VEDA_TEST_MLX_MODEL")
+	if endpoint == "" || model == "" {
+		t.Skip("local MLX acceptance not configured")
+	}
+	original, err := os.ReadFile("../docs/import.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testStore(t)
+	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("program", "docs/import.md", string(original), 0); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := newTranslationWorkerProtocol(s, endpoint, model, "mlx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts, err := translationChunks(string(original), 32000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outputs []string
+	for _, part := range parts {
+		translatedPart, err := worker.translate(context.Background(), part)
+		if err != nil {
+			t.Fatalf("local model response rejected before validation: %v", err)
+		}
+		outputs = append(outputs, translatedPart)
+	}
+	translated := strings.Join(outputs, "\n\n")
+	before, after := protectedMarkdown(string(original)), protectedMarkdown(translated)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("model changed protected Markdown: original %d elements, translated %d elements", len(before), len(after))
+	}
+	if !strings.ContainsFunc(translated, func(r rune) bool { return unicode.In(r, unicode.Cyrillic) }) {
+		t.Fatal("response contains no Cyrillic text")
+	}
+	rev, err := s.article("program", "docs/import.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.saveTranslation(translationRequest{SourceID: "program", Path: "docs/import.md", ExpectedRevision: 1, OriginalSHA: rev.Versions[0].SHA, Text: translated}, true)
+	if err != nil {
+		t.Fatalf("translated documentation rejected: %v", err)
 	}
 }

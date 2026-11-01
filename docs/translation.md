@@ -46,4 +46,7 @@ structural checks do not detect every possible semantic or formatting error.
 An opt-in synthetic MLX integration test can be run with `VEDA_TEST_MLX_URL`
 and `VEDA_TEST_MLX_MODEL` pointing at an already running numeric-loopback server
 and local model. One synthetic example passed on macOS with a local 1.7B model;
-this does not establish model quality, production security or LXC availability.
+that same model failed the opt-in test on VEDA's public `docs/import.md`: it
+changed protected Markdown elements, so the worker rejected the output. A
+second experiment using shorter sections also failed structural validation.
+This does not establish model quality, production security or LXC availability.
