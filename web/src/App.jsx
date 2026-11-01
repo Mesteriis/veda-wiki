@@ -149,7 +149,7 @@ function Sidebar({ v }) {
                 </dt>
                 <dd className={active ? "" : "muted"}>
                   {active && <i />}
-                  {active ? (name === "GitHub" ? "Настроен" : "Online") : "Не настроен"}
+                  {name === "MCP" ? "Неизвестно" : active ? (name === "GitHub" ? "Настроен" : "Online") : "Не настроен"}
                 </dd>
               </div>
             ))}
@@ -428,7 +428,7 @@ function Integrations({ isPublic, githubCount }) {
               ? name === "GitHub" ? "Настроен" : name === "REST API"
                 ? "Чтение"
                 : "Подключён"
-              : "Не настроен"}
+              : name === "MCP Server" ? "Неизвестно" : "Не настроен"}
           </span>
           <F name={feature} label={"Настроить " + name}>
             <I name="settings" />
