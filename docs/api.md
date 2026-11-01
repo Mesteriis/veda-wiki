@@ -23,6 +23,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET/POST | `/api/v1/access-keys` | List scoped-key metadata or create a source-scoped read-only key (owner only) |
 | POST | `/api/v1/access-keys/revoke` | Revoke a scoped key by ID (owner only) |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
+| POST | `/api/v1/articles/transfer-plan` | Inspect recursive relative article links and destination matches (owner only) |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
 | POST | `/api/v1/conflicts/resolve` | Owner-only conflict resolution with expected revision |
@@ -102,6 +103,16 @@ Owner-only provenance is preserved locally and removed from public responses.
 Copy transfers supported relative images and preserves relative article links
 only when the destination already contains the same linked revision. It does
 not automatically copy linked articles and is not a complete move operation.
+
+`POST /api/v1/articles/transfer-plan` and `veda_transfer_plan` accept the same
+source and destination identifiers, paths, and expected source revision. They
+return the recursively linked Markdown articles with their current revisions,
+digests, mapped paths and destination status (`missing`, `matching`, or
+`conflict`). Cycles are included once; ambiguous path mappings are rejected.
+The plan is a read-only snapshot, not a reservation or a guarantee that a
+copy or move will succeed. It does not inspect images, embedded HTML,
+publication approval, remote write permissions or later changes. It does not
+automatically copy missing articles; execution must revalidate all conditions.
 
 ## Restricted local snapshot import
 

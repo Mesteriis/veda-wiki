@@ -260,6 +260,22 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		jsonResponse(rw, 200, tr)
+	case "/api/v1/articles/transfer-plan":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in copyRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		plan, err := w.Store.planTransfer(in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, plan)
 	case "/api/v1/articles/copy":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)
