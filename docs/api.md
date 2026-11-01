@@ -16,6 +16,8 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/api/v1/articles?source_id=…&path=…&history=1` | All revisions (owner only; public callers still receive only current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
+| GET | `/api/v1/articles/translation-needed` | List program documents needing translation or publication review (owner only) |
+| POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |

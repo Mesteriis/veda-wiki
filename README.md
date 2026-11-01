@@ -65,7 +65,8 @@ listener. It grants access to all private sources and is not user-scoped. An exi
 MCP configuration must not be replaced automatically by this development server.
 
 Tools: `veda_sources`, `veda_search`, `veda_read`, `veda_create_source`,
-`veda_write_article`, `veda_copy_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
+`veda_write_article`, `veda_copy_article`, `veda_translation_needed`,
+`veda_translate_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
 `veda_github_status`, `veda_github_connect`, `veda_sync`,
 `veda_publish_job`.
 Context follows root and ancestor

@@ -43,6 +43,7 @@ type Revision struct {
 	Created string `json:"created_at"`
 }
 type Article struct {
+	Translation    *Translation     `json:"translation,omitempty"`
 	CopiedFrom     *CopyOrigin      `json:"copied_from,omitempty"`
 	SourceID       string           `json:"source_id"`
 	Path           string           `json:"path"`
@@ -168,6 +169,15 @@ func openStore(dir string) (*Store, error) {
 			sum := sha256.Sum256([]byte(revision.Text))
 			if revision.Number != i+1 || len(revision.Text) > 256000 || !utf8.ValidString(revision.Text) || revision.SHA != hex.EncodeToString(sum[:]) {
 				return nil, errors.New("invalid stored revision")
+			}
+		}
+		if article.Translation != nil {
+			tr := article.Translation
+			if src.Kind != "program" || tr.Language != "ru" || len(tr.Text) == 0 || len(tr.Text) > 256000 || !utf8.ValidString(tr.Text) || digest([]byte(tr.Text)) != tr.SHA || len(tr.OriginalSHA) != 64 {
+				return nil, errors.New("invalid stored translation")
+			}
+			if _, e := hex.DecodeString(tr.OriginalSHA); e != nil {
+				return nil, errors.New("invalid translation provenance")
 			}
 		}
 		if article.CopiedFrom != nil {
@@ -388,6 +398,7 @@ func (s *Store) snapshot(public bool) Snapshot {
 			}
 			rev = *a.Published
 		}
+		rev, _ = displayedRevision(a, rev, public)
 		if public && rev.Created > snap.Generated {
 			snap.Generated = rev.Created
 		}
@@ -414,7 +425,9 @@ func (s *Store) page(key string, public bool) (Page, error) {
 		}
 		r = *a.Published
 	}
-	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Text: r.Text}, nil
+	originalSHA := r.SHA
+	r, translated := displayedRevision(a, r, public)
+	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Text: r.Text, OriginalSHA: originalSHA, Translated: translated}, nil
 }
 func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	s.mu.RLock()
@@ -438,6 +451,7 @@ func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 		a.PublishedLocal = false
 	}
 	if public {
+		a.Translation = nil
 		a.CopiedFrom = nil
 		a.Versions = a.Versions[len(a.Versions)-1:]
 		a.Versions[0].Number = 0

@@ -39,9 +39,9 @@ Metadata cannot set visibility or change repository access.
 
 If `veda.yaml` is absent, the source is a program and only `docs/` is imported.
 If `docs/` is absent, the command reports `skipped`; it does not substitute root
-README, source code or a `do/` directory. Translation is not yet enabled: program
-Markdown is currently retained in its original language with provenance. Do not
-describe the current import as an already completed Russian translation.
+README, source code or a `do/` directory. Original program Markdown remains intact. Agents can submit a separate Russian
+translation via REST/MCP; see [translation workflow](translation.md). Automatic
+translation is not yet configured.
 
 ## Bounds and provenance
 

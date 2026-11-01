@@ -94,6 +94,52 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/articles/translation-needed":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		limit, offset := 30, 0
+		if r.URL.Query().Has("limit") {
+			n, e := strconv.Atoi(r.URL.Query().Get("limit"))
+			if e != nil || n < 1 || n > 100 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			limit = n
+		}
+		if r.URL.Query().Has("offset") {
+			n, e := strconv.Atoi(r.URL.Query().Get("offset"))
+			if e != nil || n < 0 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			offset = n
+		}
+		all := w.Store.translationCandidates()
+		start := min(offset, len(all))
+		end := min(start+limit, len(all))
+		jsonResponse(rw, 200, map[string]any{"candidates": all[start:end], "total": len(all), "offset": offset})
+	case "/api/v1/articles/translation":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in translationRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		tr, e := w.Store.submitTranslation(in)
+		if e != nil {
+			apiError(rw, e)
+			return
+		}
+		jsonResponse(rw, 200, tr)
 	case "/api/v1/articles/copy":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)
@@ -254,6 +300,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 				a.Conflicts = nil
 			}
 			if reader && !owner {
+				a.Translation = nil
 				a.CopiedFrom = nil
 				a.Published = nil
 				a.PublishedLocal = false

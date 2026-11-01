@@ -10,7 +10,7 @@ an individual slice is not completion of the whole application.
 | Local durable articles, revisions and independent source identity | Store/restart/race/concurrency tests; bounded JSON engine currently |
 | Merge multiple sources for reading while keeping them distinct | Source-keyed index/search; remote synchronization implemented; real multi-repository acceptance pending |
 | Wiki metadata in veda.yaml and hierarchical Markdown | Strict schema, checkout import and nested frontend folder navigation |
-| Program docs/ only, no docs means skip | Local checkout tests; English→Russian translation still pending |
+| Program docs/ only, no docs means skip | Originals and version-bound Russian translations stored separately; automatic translation worker pending |
 | GitHub App/account or explicit server token, repo-derived visibility | GitHub App/PAT and repository visibility implemented; live authenticated acceptance pending |
 | Background import/push, local availability during outages | Atomic import/conflicts and scheduled durable outbox implemented; live write acceptance pending |
 | Transfers between repositories with provenance and publication control | Copy and destination outbox implemented; source removal, asset transfer and complete move still pending |
