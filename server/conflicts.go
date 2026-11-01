@@ -91,5 +91,17 @@ func (s *Store) resolveConflict(sourceID, p string, index, expected int, resolut
 	}
 	db := s.clone()
 	db.Articles[key] = a
+	if s.db.Sources[sourceID].ConnectionID != "" {
+		if resolution == "local" {
+			enqueueWrite(&db, a, a.Versions[len(a.Versions)-1])
+		} else {
+			for id, job := range db.Outbox {
+				if job.SourceID == sourceID && job.Path == p && job.State != "complete" {
+					job.State = "superseded"
+					db.Outbox[id] = job
+				}
+			}
+		}
+	}
 	return s.commit(db)
 }

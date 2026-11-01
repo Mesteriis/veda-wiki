@@ -2,8 +2,7 @@
 
 The importer observes an explicitly selected **local Git checkout root**. It
 does not clone repositories, discover unrelated directories or infer public
-visibility from folder names. GitHub connectivity and automatic visibility
-verification are separate work.
+visibility from folder names. For remote connections see [GitHub synchronization](github.md).
 
 ```sh
 ./veda import --checkout /path/to/handbook --source handbook --create \

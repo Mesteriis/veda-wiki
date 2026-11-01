@@ -19,6 +19,11 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
 | POST | `/api/v1/conflicts/resolve` | Owner-only conflict resolution with expected revision |
+| GET/POST | `/api/v1/github/accounts` | List or add explicitly selected GitHub credentials (owner only) |
+| GET/POST/PUT | `/api/v1/github/connections` | List, connect or reconfigure repositories (owner only) |
+| GET | `/api/v1/github/outbox` | List queued write jobs (owner only) |
+| POST | `/api/v1/github/sync`, `/api/v1/github/pause` | Schedule sync or change pause state (owner only) |
+| POST | `/api/v1/github/publish-job` | Explicitly approve a queued private edit for publication (owner only) |
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
 Source body:
@@ -28,8 +33,8 @@ Source body:
 ```
 
 `id` is a lowercase alphanumeric/hyphen/underscore slug, at most 64 characters.
-`kind`: `wiki` or `program`. `visibility`: `public` or `private`. Source visibility
-and identity are immutable in this release. Source creation is an explicit local
+`kind`: `wiki` or `program`. `visibility`: `public` or `private`. Local source visibility and identity are immutable. Connected source visibility
+follows verified GitHub repository visibility. Source creation is an explicit local
 administrative action, not GitHub import or remote permission verification.
 
 Article body:
@@ -53,7 +58,8 @@ disables raw HTML and dangerous link schemes. There is no CORS write interface.
 For retries, reread after an ambiguous response: an accepted write might already
 be durable. The revision precondition prevents duplicate writes or stale updates.
 This is optimistic concurrency, not an idempotency-key implementation. Unknown
-source IDs cannot create implicit sources. No write is pushed to GitHub yet.
+source IDs cannot create implicit sources. Connected writable sources queue writes
+for background synchronization; see [GitHub synchronization](github.md).
 
 An import batch can explicitly create its source with `create: true`; it never
 implicitly creates a source from an article write. Import details and metadata

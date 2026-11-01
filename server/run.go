@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -15,6 +17,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "github" {
+		if e := githubCommand(os.Args[2:]); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "import" {
 		if e := importCommand(os.Args[2:]); e != nil {
 			log.Fatal(e)
@@ -25,7 +33,11 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8080", "API and viewer address")
 	public := flag.String("public-listen", "127.0.0.1:8081", "Public-only address")
 	hosts := flag.String("allowed-hosts", "localhost,127.0.0.1,::1", "Allowed HTTP Host names")
+	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
 	flag.Parse()
+	if *interval < 5*time.Second || *interval > time.Hour {
+		log.Fatal("invalid sync interval")
+	}
 	store, err := openStore(*data)
 	if err != nil {
 		log.Fatal(err)
@@ -89,11 +101,25 @@ func main() {
 		apiListener.Close()
 		log.Fatal(err)
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	manager := newSyncManager(store, newGitHubClient())
+	go manager.Run(ctx, *interval)
+	errors := make(chan error, 2)
 	serve := func(l net.Listener, publicOnly bool) {
-		server := http.Server{Handler: Wiki{Store: store, Token: string(token), Public: publicOnly, AllowedHosts: hostList}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
-		log.Fatal(server.Serve(l))
+		server := &http.Server{Handler: Wiki{Store: store, Token: string(token), Public: publicOnly, AllowedHosts: hostList, Sync: manager}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+		go func() {
+			<-ctx.Done()
+			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			server.Shutdown(shutdown)
+		}()
+		errors <- server.Serve(l)
 	}
 	log.Printf("VEDA listening on %s; public on %s; owner key saved to data directory (not printed)", *listen, *public)
 	go serve(publicListener, true)
-	serve(apiListener, false)
+	go serve(apiListener, false)
+	if err := <-errors; err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
 }

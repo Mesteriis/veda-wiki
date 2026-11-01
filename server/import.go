@@ -298,7 +298,7 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 			return ErrInvalid
 		}
 		ext := strings.ToLower(path.Ext(name))
-		markdown := ext == ".md"
+		markdown := ext == ".md" || ext == ".markdown"
 		image := ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" || ext == ".gif"
 		if !markdown && !image {
 			return nil
@@ -367,6 +367,9 @@ func imageRef(b []byte) (BlobRef, error) {
 }
 
 func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
+	return s.applyImport(batch, nil)
+}
+func (s *Store) applyImport(batch ImportBatch, proof *remoteProof) (ImportResult, error) {
 	result := ImportResult{Withheld: batch.Withheld}
 	if !identifier.MatchString(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !commitID.MatchString(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
 		return result, ErrInvalid
@@ -425,15 +428,36 @@ func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
 	} else if batch.Create {
 		return result, ErrConflict
 	}
+	wasPrivate := src.Visibility != "public"
+	if proof == nil && src.ConnectionID != "" {
+		return result, ErrInvalid
+	}
+	if proof != nil {
+		conn, ok := s.db.Connections[proof.ConnectionID]
+		if !ok || conn.Paused || conn.ConfigRevision != proof.ConfigRevision || conn.ID != batch.SourceID || (exists && src.ConnectionID != conn.ID) {
+			return result, ErrConflict
+		}
+		src.ConnectionID = conn.ID
+		src.Visibility = proof.Visibility
+	}
 	if src.Kind != batch.Kind || src.ImportGeneration != *batch.ExpectedImport {
 		return result, ErrConflict
 	}
-	if exists && src.ImportGeneration == generation {
+	if proof == nil && exists && src.ImportGeneration == generation {
 		result.Generation = generation
 		result.Unchanged = len(batch.Files)
 		return result, nil
 	}
 	db := s.clone()
+	if proof != nil && proof.Visibility == "public" {
+		for key, a := range db.Articles {
+			if a.SourceID == batch.SourceID && (wasPrivate || !a.PublishedLocal) {
+				a.Published = nil
+				a.PublishedLocal = false
+				db.Articles[key] = a
+			}
+		}
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	// Immutable blobs are written before the metadata transaction. A failed commit
 	// may leave an unreferenced blob, never a reference to an incomplete file.
@@ -488,6 +512,21 @@ func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
 		hash := digest([]byte(text))
 		key := batch.SourceID + "/" + p
 		a, found := db.Articles[key]
+		if proof != nil && proof.Visibility == "public" && !a.PublishedLocal {
+			published := Revision{Text: text, SHA: hash, Created: now}
+			if previous := s.db.Articles[key].Published; previous != nil && previous.SHA == hash {
+				published = *previous
+			}
+			a.Published = &published
+			db.Articles[key] = a
+		}
+		if proof != nil && observedWrite(&db, batch.SourceID, p, hash, batch.Commit) {
+			a.UpstreamHash = hash
+			a = supersedeImportConflicts(a)
+			db.Articles[key] = a
+			result.Unchanged++
+			continue
+		}
 		if found && a.UpstreamHash == hash && !a.Deleted {
 			db.Articles[key] = supersedeImportConflicts(a)
 			result.Unchanged++
@@ -561,6 +600,12 @@ func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
 	src.ImportGeneration = generation
 	result.Generation = src.ImportGeneration
 	db.Sources[src.ID] = src
+	if proof != nil {
+		conn := db.Connections[proof.ConnectionID]
+		conn.LastPull = batch.Commit
+		conn.TreeSHA = proof.TreeSHA
+		db.Connections[conn.ID] = conn
+	}
 	if e := s.commit(db); e != nil {
 		return ImportResult{}, e
 	}
