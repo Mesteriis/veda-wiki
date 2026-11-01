@@ -83,3 +83,15 @@ queued write needs later approval if the destination is verified public.
 Owner-only provenance is preserved locally and removed from public responses.
 Copy does not copy referenced assets or rewrite Markdown links, and is not a
 complete move operation.
+
+## Restricted local snapshot import
+
+On Linux, the optional `--local-import-source ID` works only with
+`--reader-socket`. The kernel must identify the Unix socket peer as UID 0. It
+accepts only `POST /api/v1/import` without a browser Origin, and only a partial
+batch (`complete: false`) for that exact existing, private, disconnected local
+source. It cannot create sources, operate GitHub, write individual articles or
+change visibility. The same generation and conflict rules apply. Non-root peers
+remain read-only; HTTP headers cannot supply peer identity. On other operating
+systems this import channel is unavailable. A privileged process can already
+access local files; do not treat this mechanism as per-user authorization.

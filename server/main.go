@@ -74,13 +74,14 @@ type View struct {
 type Wiki struct {
 	AllowedHosts []string
 
-	Public      bool
-	Store       *Store
-	Token       string
-	ReaderToken string
-	ReaderLocal bool
-	Sessions    *readerSessions
-	Sync        *SyncManager
+	Public            bool
+	Store             *Store
+	Token             string
+	ReaderToken       string
+	ReaderLocal       bool
+	LocalImportSource string
+	Sessions          *readerSessions
+	Sync              *SyncManager
 }
 
 func safePath(p string) bool {
@@ -178,6 +179,20 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	if strings.HasPrefix(r.URL.Path, "/api/session/") {
 		w.sessionAPI(rw, r)
+		return
+	}
+	if w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/v1/import" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
+		var batch ImportBatch
+		if decodeLimited(rw, r, &batch, 40<<20) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.applyImport(batch, nil, true)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, result)
 		return
 	}
 	if w.Store != nil {

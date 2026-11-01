@@ -64,7 +64,8 @@ private directory owned by the service user. Start VEDA with `--reader-socket
 pointing to that socket. This adapter advertises only sources, search, read and
 context; it has no credential or write/admin access. The socket's directory must
 be 0700 and owned by the server user. Anyone sharing that OS identity can read
-all private sources; this is not per-agent authorization.
+all private sources; this is not per-agent authorization. An optional Linux-only
+root snapshot import channel is described in the [API reference](docs/api.md).
 
 The owner key allows reading and writing all sources. To grant an agent only
 current-content reading, pass `--key-file .veda/reader.key` instead. The reader
