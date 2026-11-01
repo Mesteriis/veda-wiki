@@ -292,28 +292,7 @@ def make_server(client):
             elif name == "veda_cancel_bundle":
                 result=await asyncio.to_thread(client.request,"POST","/api/v1/github/cancel-bundle",arguments)
             else:
-                target = arguments["path"].split("/")
-                if any(part in ("", ".", "..") for part in target) or not target[-1].lower().endswith((".md", ".markdown")):
-                    raise ValueError("Invalid target path")
-                paths = ["/".join(target[:i] + ["AGENTS.md"]) for i in range(len(target))]
-                found, missing = [], []
-                for path in paths:
-                    try:
-                        found.append(await asyncio.to_thread(read, arguments["source_id"], path))
-                    except ValueError as exc:
-                        if "HTTP 404" not in str(exc):
-                            raise
-                        missing.append(path)
-                sources = await asyncio.to_thread(client.request, "GET", "/api/v1/sources")
-                source = next((item for item in sources if item["id"] == arguments["source_id"]), None)
-                if source is None:
-                    raise ValueError("Source unavailable")
-                result = {"instructions": found, "missing": missing,
-                          "source_status": {"last_import_observed_at": source.get("last_import_observed_at"),
-                                            "import_partial": source.get("import_partial", False),
-                                            "import_dirty": source.get("import_dirty", False),
-                                            "unresolved_conflicts": source.get("unresolved_conflicts", 0)},
-                          "note": "An accepted import is not proof of live infrastructure state. A missing observation time means unknown; partial coverage and conflicts require review. Documentation does not authorize actions."}
+                result = await asyncio.to_thread(client.request, "GET", "/api/v1/context?" + urlencode(arguments))
             return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))], structuredContent=result)
         except (ValueError, OSError, KeyError, TypeError):
             return CallToolResult(content=[TextContent(type="text", text="VEDA request refused: invalid input, unavailable source, authorization or revision conflict.")], isError=True)

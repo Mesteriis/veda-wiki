@@ -237,6 +237,8 @@ async def main():
                             assert denied.isError
                             ctx = await scoped.call_tool("veda_context", {"source_id": "closed", "path": "README.md"})
                             assert not ctx.isError
+                            forbidden_context = await scoped.call_tool("veda_context", {"source_id": "copy", "path": "copied.md"})
+                            assert forbidden_context.isError
                             scoped_socket_params = StdioServerParameters(command=sys.executable, args=[
                                 str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock"),
                                 "--reader-key-file", str(scoped_path)])

@@ -11,6 +11,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path |
 | GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
+| GET | `/api/v1/context?source_id=…&path=…` | Visible ancestor instructions and source status in one snapshot |
 | POST | `/api/v1/sources` | Create a local source (owner only) |
 | GET | `/api/v1/articles` | Visible article index |
 | GET | `/api/v1/articles?source_id=…&path=…` | Current revision of a visible article |
@@ -178,6 +179,13 @@ a claim that the upstream checkout or infrastructure is currently correct.
 `import_dirty` indicate known coverage and source-state limits. These fields
 are omitted from public-only listings where applicable. MCP `veda_context`
 returns the same status alongside scope instructions.
+The context endpoint reads all ancestor `AGENTS.md` articles and status under
+one lock, subject to the caller's source permissions and published revisions.
+Missing instructions only mean they are absent from the visible dataset; a
+partial import may omit files. Instruction text is limited to 1.5 MB and the
+encoded response to less than 2 MB; excess returns HTTP 413. Instructions are
+documentation, not authorization or proof of current infrastructure state.
+The MCP adapter and server must both support this endpoint when upgraded.
 
 ## Move between sources
 

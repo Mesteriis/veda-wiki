@@ -146,6 +146,35 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/context":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		sourceID, target := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
+		if !identifier.MatchString(sourceID) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.agentContext(sourceID, target, !owner && !reader)
+		if errors.Is(err, errContextLimit) {
+			jsonResponse(rw, 413, map[string]string{"error": "context exceeds response limit"})
+			return
+		}
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		if len(encoded) >= 2000000 {
+			jsonResponse(rw, 413, map[string]string{"error": "context exceeds response limit"})
+			return
+		}
+		jsonResponse(rw, 200, result)
 	case "/api/v1/articles/translation-validate":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)
