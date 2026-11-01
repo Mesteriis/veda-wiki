@@ -57,7 +57,7 @@ async def main():
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tools = await session.list_tools()
-                    assert len(tools.tools) == 15
+                    assert len(tools.tools) == 18
 
                     async def call(name, args):
                         result = await session.call_tool(name, args)
@@ -98,6 +98,12 @@ async def main():
                     unchanged = await call("veda_read", {"source_id": "program", "path": "docs/setup.md"})
                     assert unchanged["text"] == "# Setup\nRun `install`."
                     assert not (await call("veda_translation_needed", {}))["candidates"]
+                    await call("veda_write_article", {"source_id":"closed", "path":"move.md", "text":"# Move fixture", "expected_revision":0})
+                    moved = await call("veda_move_article", {"source_id":"closed", "source_path":"move.md", "expected_revision":1, "destination_id":"copy", "destination_path":"moved.md", "confirm_move":True})
+                    assert moved["state"] == "complete"
+                    assert (await call("veda_read", {"source_id":"copy", "path":"moved.md"}))["text"] == "# Move fixture"
+                    assert (await session.call_tool("veda_read", {"source_id":"closed", "path":"move.md"})).isError
+                    assert (await call("veda_moves", {}))["total"] == 1
                     # Exercise the actual CLI -> REST batch path on a real local
                     # checkout. Fixture data never enters the project repository.
                     checkout = Path(tmp) / "checkout"
@@ -174,7 +180,7 @@ async def main():
                     assert restored["revision"] == 2 and restored["text"] == "# Private updated"
                     after_restart = await call("veda_context", {"source_id": "imported", "path": "README.md"})
                     assert after_restart["source_status"]["last_import_observed_at"] is None
-            print("PASS: fifteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; translation; local read-only socket; restart persistence")
+            print("PASS: eighteen MCP tools; create/read/update; context; CLI import; conflict resolution; sync status; public isolation; read-only credential; copy; move; translation; local read-only socket; restart persistence")
         finally:
             process.terminate()
             process.wait(timeout=10)

@@ -94,6 +94,75 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/moves/cancel":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in struct {
+			ID      string `json:"id"`
+			Confirm bool   `json:"confirm_cancel"`
+		}
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if err := w.Store.cancelMove(in.ID, in.Confirm); err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]string{"state": "cancelled"})
+	case "/api/v1/moves":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method == "GET" {
+			all := w.Store.moves()
+			limit, offset := 30, 0
+			if r.URL.Query().Has("limit") {
+				n, e := strconv.Atoi(r.URL.Query().Get("limit"))
+				if e != nil || n < 1 || n > 100 {
+					apiError(rw, ErrInvalid)
+					return
+				}
+				limit = n
+			}
+			if r.URL.Query().Has("offset") {
+				n, e := strconv.Atoi(r.URL.Query().Get("offset"))
+				if e != nil || n < 0 {
+					apiError(rw, ErrInvalid)
+					return
+				}
+				offset = n
+			}
+			start := min(offset, len(all))
+			end := min(start+limit, len(all))
+			jsonResponse(rw, 200, map[string]any{"moves": all[start:end], "total": len(all), "offset": offset})
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in moveRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, e := w.Store.moveArticle(in)
+		if e != nil {
+			apiError(rw, e)
+			return
+		}
+		if w.Sync != nil {
+			w.Sync.Wake()
+		}
+		jsonResponse(rw, 201, result)
 	case "/api/v1/articles/translation-needed":
 		if !owner {
 			http.NotFound(rw, r)

@@ -18,6 +18,8 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | PUT | `/api/v1/articles` | Update with the current expected revision |
 | GET | `/api/v1/articles/translation-needed` | List program documents needing translation or publication review (owner only) |
 | POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
+| POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
+| GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local source (owner only) |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
@@ -51,7 +53,7 @@ Responses include `revision`, `sha256`, `created_at` and the saved `text`.
 Creation returns 201; update returns 200. Revision mismatch returns 409;
 unavailable/unauthorized article returns 404; invalid input returns 400;
 unauthorized writes return 403; storage failures return 500. Unknown fields and
-trailing JSON are rejected. Copying retains the original. There is no deletion or move endpoint yet.
+trailing JSON are rejected. Copying retains the original. Moves are limited to standalone local sources as described below.
 
 Program article paths must start with `docs/`. Absolute paths, traversal, hidden
 components, backslashes and non-Markdown paths are refused. Paths are logical
@@ -107,3 +109,31 @@ a claim that the upstream checkout or infrastructure is currently correct.
 `import_dirty` indicate known coverage and source-state limits. These fields
 are omitted from public-only listings where applicable. MCP `veda_context`
 returns the same status alongside scope instructions.
+
+## Move from a standalone local source
+
+`POST /api/v1/moves` takes `source_id`, `source_path`, `expected_revision`,
+`destination_id`, `destination_path`, `confirm_move: true` and optionally
+`confirm_publication`. Only manually maintained local sources without an import
+generation or GitHub connection are accepted. Markdown with relative links or
+images and articles with stored translations are refused until their dependencies
+can be moved safely. The target must be a new path in another source.
+
+The destination and durable move record are created in one transaction. For a
+local target, the source is tombstoned in that transaction; for a connected
+target, the source remains visible until a later pull observes the queued
+revision in the same repository and branch. An outage or write-disabled target
+leaves the move waiting. If either article changes, its source identity changes,
+or a destination conflict appears, the source stays and the move reports
+`source_changed` or `destination_changed`. Source revision history remains in
+the store. Inspect `GET /api/v1/moves` or `veda_moves`; an accepted move is not
+necessarily complete. A waiting move can be cancelled through `/api/v1/moves/cancel`
+or `veda_cancel_move` with `confirm_cancel: true`. Both copies remain; an already
+queued destination write may still finish. Private-to-public publication requires separate explicit
+confirmation. Source GitHub deletion, linked assets and translations are not yet
+supported; use copy until those cases have a safe move protocol.
+
+Creating the first move upgrades the local store format to version 2. Older
+versions of VEDA reject that store instead of silently discarding move records.
+Restore a compatible binary or a separately verified backup when rolling back;
+do not overwrite newer state with an older server.
