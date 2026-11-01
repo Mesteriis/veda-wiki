@@ -217,9 +217,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			groups[id] = g
 		}
 		g.Count++
-		if true {
-			g.Pages = append(g.Pages, p)
-		}
+		g.Pages = append(g.Pages, p)
 		if name == p.Path {
 			full, e := w.Store.page(p.Path, w.Public)
 			if e != nil {
