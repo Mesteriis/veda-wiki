@@ -389,6 +389,54 @@ func (g *GitHubClient) push(ctx context.Context, repo, branch, base, treeSHA, p,
 	}
 	return commit.SHA, nil
 }
+
+// remove creates a deletion commit only when the complete source tree contains
+// exactly the expected regular file. The caller must persist the prepared
+// commit and observe the deletion in a subsequent complete pull.
+func (g *GitHubClient) remove(ctx context.Context, repo, branch, base string, source gitTree, p, expected, token string, prepare func(string) error) (string, error) {
+	if source.Truncated || !commitID.MatchString(source.SHA) || !commitID.MatchString(base) {
+		return "", ErrInvalid
+	}
+	matches := 0
+	mode := ""
+	for _, item := range source.Tree {
+		if item.Path != p {
+			continue
+		}
+		matches++
+		if item.Type != "blob" || (item.Mode != "100644" && item.Mode != "100755") || !commitID.MatchString(item.SHA) || gitBlobDigest([]byte(expected), len(item.SHA)) != item.SHA {
+			return "", ErrConflict
+		}
+		mode = item.Mode
+	}
+	if matches != 1 {
+		return "", ErrConflict
+	}
+	var tree struct {
+		SHA string `json:"sha"`
+	}
+	entry := map[string]any{"path": p, "mode": mode, "type": "blob", "sha": nil}
+	if e := g.call(ctx, "POST", "/repos/"+repo+"/git/trees", token, map[string]any{"base_tree": source.SHA, "tree": []map[string]any{entry}}, &tree); e != nil {
+		return "", e
+	}
+	if !commitID.MatchString(tree.SHA) {
+		return "", ErrInvalid
+	}
+	var commit gitCommit
+	if e := g.call(ctx, "POST", "/repos/"+repo+"/git/commits", token, map[string]any{"message": "Move documentation through VEDA", "tree": tree.SHA, "parents": []string{base}}, &commit); e != nil {
+		return "", e
+	}
+	if !commitID.MatchString(commit.SHA) {
+		return "", ErrInvalid
+	}
+	if e := prepare(commit.SHA); e != nil {
+		return "", e
+	}
+	if e := g.call(ctx, "PATCH", "/repos/"+repo+"/git/refs/heads/"+url.PathEscape(branch), token, map[string]any{"sha": commit.SHA, "force": false}, &struct{}{}); e != nil {
+		return "", e
+	}
+	return commit.SHA, nil
+}
 func errorCode(e error) string {
 	var remote *remoteError
 	if errors.As(e, &remote) {
