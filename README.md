@@ -32,6 +32,10 @@ The first start creates `.veda/` (0700), `state.json` on first write and an
 `owner.key` and `reader.key` files (0600). The key is never printed. Protect and back up this
 directory; never add it to Git. The process holds an exclusive writer lock.
 One process owns one data directory. There is no multi-process database support.
+On SIGTERM or SIGINT, VEDA stops accepting requests, cancels background work
+and waits up to ten seconds for active requests and workers before exiting.
+An incomplete shutdown is logged as an error; durable outbox jobs are recovered
+on the next start.
 
 The browser can sign in with the separate reader key to view private content;
 it cannot edit articles. See [browser access](docs/browser-access.md). Authenticated

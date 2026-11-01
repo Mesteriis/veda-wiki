@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"log"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -112,19 +114,21 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	var workers sync.WaitGroup
 	manager := newSyncManager(store, newGitHubClient())
 	if *translationURL != "" {
 		worker, err := newTranslationWorkerProtocol(store, *translationURL, *translationModel, *translationProtocol)
 		if err != nil {
 			log.Fatal(err)
 		}
-		go worker.Run(ctx, *translationInterval)
+		workers.Add(1)
+		go func() { defer workers.Done(); worker.Run(ctx, *translationInterval) }()
 	}
 	sessions := &readerSessions{}
 	adminSessions := &readerSessions{}
-	go manager.Run(ctx, *interval)
-	errors := make(chan error, 3)
-	serve := func(l net.Listener, publicOnly, readerOnly bool) {
+	workers.Add(1)
+	go func() { defer workers.Done(); manager.Run(ctx, *interval) }()
+	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
 		handler := Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, AdminSessions: adminSessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}
 		if readerOnly {
 			handler.Token = ""
@@ -141,27 +145,79 @@ func main() {
 				return context.WithValue(ctx, localRootKey{}, peerIsRoot(conn))
 			}
 		}
-		go func() {
-			<-ctx.Done()
-			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			server.Shutdown(shutdown)
-		}()
-		if !publicOnly && !readerOnly && *tlsCert != "" {
-			errors <- server.ServeTLS(l, *tlsCert, *tlsKey)
-		} else {
-			errors <- server.Serve(l)
+		endpoint := servedListener{server: server, listener: l}
+		if !publicOnly && !readerOnly {
+			endpoint.cert, endpoint.key = *tlsCert, *tlsKey
 		}
+		return endpoint
 	}
 	log.Printf("VEDA listening on %s; public on %s; owner key saved to data directory (not printed)", *listen, *public)
-	go serve(publicListener, true, false)
-	go serve(apiListener, false, false)
+	endpoints := []servedListener{makeServer(publicListener, true, false), makeServer(apiListener, false, false)}
 	if socketListener != nil {
-		go serve(socketListener, false, true)
+		endpoints = append(endpoints, makeServer(socketListener, false, true))
 	}
-	if err := <-errors; err != nil && err != http.ErrServerClosed {
+	if err := serveUntilStopped(ctx, stop, endpoints, &workers); err != nil {
 		log.Fatal(err)
 	}
+}
+
+type servedListener struct {
+	server    *http.Server
+	listener  net.Listener
+	cert, key string
+}
+
+// Drain every listener and wait for background workers before releasing the
+// store lock. A bounded timeout prevents an unresponsive client from hanging shutdown.
+func serveUntilStopped(ctx context.Context, stop context.CancelFunc, endpoints []servedListener, workers *sync.WaitGroup) error {
+	errs := make(chan error, len(endpoints))
+	var serving sync.WaitGroup
+	for _, endpoint := range endpoints {
+		serving.Add(1)
+		go func(e servedListener) {
+			defer serving.Done()
+			if e.cert != "" {
+				errs <- e.server.ServeTLS(e.listener, e.cert, e.key)
+			} else {
+				errs <- e.server.Serve(e.listener)
+			}
+		}(endpoint)
+	}
+	var first error
+	select {
+	case <-ctx.Done():
+	case first = <-errs:
+	}
+	stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var drains sync.WaitGroup
+	shutdownErrors := make(chan error, len(endpoints))
+	for _, endpoint := range endpoints {
+		drains.Add(1)
+		go func(s *http.Server) {
+			defer drains.Done()
+			if err := s.Shutdown(shutdownCtx); err != nil {
+				shutdownErrors <- err
+				_ = s.Close()
+			}
+		}(endpoint.server)
+	}
+	done := make(chan struct{})
+	go func() { drains.Wait(); serving.Wait(); workers.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-shutdownCtx.Done():
+		return errors.Join(first, errors.New("shutdown timed out before requests and workers finished"))
+	}
+	if errors.Is(first, http.ErrServerClosed) {
+		first = nil
+	}
+	close(shutdownErrors)
+	for err := range shutdownErrors {
+		first = errors.Join(first, err)
+	}
+	return first
 }
 
 // loadOrCreateKey never logs key material; both files are local private state.
