@@ -49,5 +49,7 @@ Automated coverage uses a simulated GitHub service; anonymous public import has
 also been checked against a real public repository. Real authenticated App/PAT
 connections, writes and multi-repository recovery still require acceptance.
 Cross-repository moves have simulated-GitHub coverage but have not been
-accepted against authenticated live repositories. Automatic translation and
-user-scoped access are not implemented.
+accepted against authenticated live repositories. An optional local translation
+worker and source-scoped read-only keys are implemented; model qualification
+and production agent-key rollout remain outstanding. See
+[translation](translation.md) and [scoped access](scoped-access-design.md).

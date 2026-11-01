@@ -36,7 +36,7 @@ permission/content checks. Private revision history must not become public as a
 side effect. Hiding a previously public article cannot erase external Git history
 or previously downloaded copies.
 
-The current local importer implements metadata ingestion and program docs/
-selection; see [repository import](import.md). The implementation intentionally
-has no source visibility update or move operation yet. Per-user/team access,
-translation workers require further work.
+The local importer implements metadata ingestion and program docs/ selection;
+see [repository import](import.md). Revision-bound moves are available with
+the restrictions documented in [the API](api.md). Per-user/team access, live
+GitHub move acceptance and translation model qualification require further work.

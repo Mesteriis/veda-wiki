@@ -15,8 +15,8 @@ an individual slice is not completion of the whole application.
 | Background import/push, local availability during outages | Atomic import/conflicts and scheduled durable outbox implemented; live write acceptance pending |
 | Transfers between repositories with provenance and publication control | Revision-bound local/GitHub source moves and lost-response recovery tested with simulated repositories; live authenticated acceptance, dependency and translation transfer pending |
 | Private users/teams/agents and public browsing | Separate owner/read-only keys, local read-only socket, isolated public listener and read-only browser sessions; per-user scopes and admin Connect UI pending |
-| Agent context and the four client integrations | Context tools implemented; production clients not yet migrated to the standalone server |
-| Safe production migration, backup/rollback and restore acceptance | Current instance deliberately retained; standalone deployment/migration pending |
+| Agent context and the four client integrations | Four client configurations use the VEDA read-only socket; individual scoped keys and separate operating-system identities are not rolled out |
+| Safe production migration, backup/rollback and restore acceptance | Standalone instance deployed alongside the existing wiki; backup and isolated restored-state checks passed; full guest restore and production v4 rollback remain unverified |
 
 Additional engineering work: translation provenance and stale-state handling,
 historical image bindings, blob/history retention, scale-appropriate database
