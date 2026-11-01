@@ -25,6 +25,12 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "access-key" {
+		if e := accessKeyCommand(os.Args[2:], os.Stdout); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "import" {
 		if e := importCommand(os.Args[2:]); e != nil {
 			log.Fatal(e)

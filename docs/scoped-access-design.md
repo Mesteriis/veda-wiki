@@ -18,7 +18,25 @@ have not yet been provisioned to the four agents. Use MCP
 non-persistent new-article, update and translation proposal preparation tools,
 plus the translation queue filtered to authorized sources;
 the file must be owned by the process user and inaccessible to group/other.
-Server authorization remains the enforcement boundary. The legacy reader
+Server authorization remains the enforcement boundary.
+
+The local owner can create a separate key without printing it to a terminal:
+
+```sh
+./veda access-key create --id agent-one --sources infra --expires-at "$EXPIRY" --out /private/path/agent-one.key --key-file /private/path/owner.key
+./veda access-key list --key-file /private/path/owner.key
+./veda access-key revoke --id agent-one --key-file /private/path/owner.key
+```
+
+Set `EXPIRY` to an RFC3339 time within 366 days and choose an existing source ID. The output must not
+already exist; the CLI creates it with mode 0600 and prints only metadata. On a
+failed or uncertain request it keeps the reserved file: inspect the server's key
+metadata before revoking or retrying. If the server accepted creation but the
+file write failed, revoke that ID and protect the partial file. Revocation does
+not remove local key files. The key file is usable by any process with its OS
+owner's filesystem privileges.
+
+The legacy reader
 socket grants all sources by default to clients without a bearer key. Start
 VEDA with `--reader-socket-require-key` to require scoped credentials on that
 socket, and pass both `--reader-socket` and `--reader-key-file` to MCP. An
