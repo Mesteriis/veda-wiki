@@ -60,6 +60,12 @@ func protectedMarkdown(value string) []string {
 	return result
 }
 func (s *Store) submitTranslation(in translationRequest) (Translation, error) {
+	return s.saveTranslation(in, false)
+}
+
+// Automatic translations of public articles remain private drafts until an
+// owner explicitly approves publication through submitTranslation.
+func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Translation, error) {
 	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > 256000 || !utf8.ValidString(in.Text) {
 		return Translation{}, ErrInvalid
 	}
@@ -84,6 +90,9 @@ func (s *Store) submitTranslation(in translationRequest) (Translation, error) {
 	if in.OriginalSHA != rev.SHA {
 		return Translation{}, ErrConflict
 	}
+	if privateDraft && a.Translation != nil && a.Translation.OriginalSHA == rev.SHA {
+		return Translation{}, ErrConflict
+	}
 	for _, c := range a.Conflicts {
 		if c.Resolution == "" {
 			return Translation{}, ErrConflict
@@ -93,7 +102,7 @@ func (s *Store) submitTranslation(in translationRequest) (Translation, error) {
 		return Translation{}, ErrInvalid
 	}
 	public := sourcePublic(s.db, src, time.Now())
-	if public && (!in.ConfirmPublication || secretContent.MatchString(in.Text)) {
+	if public && ((!in.ConfirmPublication && !privateDraft) || secretContent.MatchString(in.Text)) {
 		return Translation{}, ErrInvalid
 	}
 	tr := Translation{Language: "ru", OriginalSHA: rev.SHA, Text: in.Text, SHA: digest([]byte(in.Text)), Created: time.Now().UTC().Format(time.RFC3339Nano), PublicApproved: public && in.ConfirmPublication}

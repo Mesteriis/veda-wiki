@@ -38,7 +38,13 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flag.String("tls-key", "", "TLS private key for the private listener")
 	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
+	translationURL := flag.String("translation-local-url", "", "Optional numeric loopback Ollama URL")
+	translationModel := flag.String("translation-model", "", "Local Ollama model for Russian documentation drafts")
+	translationInterval := flag.Duration("translation-interval", time.Minute, "Local translation check interval (5s to 1h)")
 	flag.Parse()
+	if (*translationURL == "") != (*translationModel == "") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
+		log.Fatal("invalid local translation configuration")
+	}
 	if *localImportSource != "" && (*readerSocket == "" || !identifier.MatchString(*localImportSource)) {
 		log.Fatal("invalid local import source")
 	}
@@ -102,6 +108,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	manager := newSyncManager(store, newGitHubClient())
+	if *translationURL != "" {
+		worker, err := newTranslationWorker(store, *translationURL, *translationModel)
+		if err != nil {
+			log.Fatal(err)
+		}
+		go worker.Run(ctx, *translationInterval)
+	}
 	sessions := &readerSessions{}
 	go manager.Run(ctx, *interval)
 	errors := make(chan error, 3)

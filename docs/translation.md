@@ -22,6 +22,20 @@ A translation visible to the public requires explicit publication approval;
 credential-like text is refused. A translation saved privately cannot become
 public automatically if visibility changes: it appears as `publication_review`
 in the candidate list and must be reviewed and resubmitted with approval.
-Private content must not be sent to an external translation provider without
-owner authorization. There is currently no automatic translation worker or
-language detection: candidates require an agent or operator to supply text.
+An optional background worker can use a separately installed Ollama service on
+the same host, for example `--translation-local-url http://127.0.0.1:11434
+--translation-model MODEL`. Both flags are required; the worker is disabled by
+default. Its URL must use a numeric loopback address, HTTP, and an explicit port;
+HTTP proxies and redirects are disabled. The operator must verify that the
+local service and model do not forward documents elsewhere. Configure
+`--translation-interval` between 5 seconds and 1 hour (default one minute).
+
+The worker processes one candidate per interval, retries failures after 15
+minutes, and skips documents above 32,000 bytes for 24 hours; those require
+manual handling. It does not detect the original language or verify translation
+quality. It rejects unchanged output, truncated generation, stale revisions and
+changes to protected Markdown. A public article's machine translation remains
+a private draft with `publication_review` until the owner approves it through
+the existing REST/MCP submission. A concurrent owner translation is never
+overwritten by the worker. Preserve and review translations before publication;
+structural checks do not detect every possible semantic or formatting error.

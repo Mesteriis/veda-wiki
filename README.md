@@ -6,8 +6,9 @@ local versioned Markdown articles, REST API and an MCP adapter.
 **Early development:** local source creation and article create/read/update work.
 GitHub connections and background synchronization are implemented and tested
 with a simulated GitHub service; authenticated live write acceptance is pending.
-Automatic translation, user/team permissions and cross-repository moves are
-not implemented. This repository contains no knowledge-base content,
+An optional local translation worker produces reviewable Russian drafts;
+translation quality and live-model acceptance remain unverified. User/team
+permissions and cross-repository moves are not implemented. This repository contains no knowledge-base content,
 credentials, production configuration or deployment history.
 
 ## Run
