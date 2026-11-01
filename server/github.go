@@ -88,11 +88,20 @@ type gitCommit struct {
 	} `json:"tree"`
 }
 type remoteError struct {
-	Code   string
-	Status int
+	Code    string
+	Status  int
+	RetryAt time.Time
 }
 
 func (e *remoteError) Error() string { return e.Code }
+
+func remoteRetryAt(err error) time.Time {
+	var remote *remoteError
+	if errors.As(err, &remote) {
+		return remote.RetryAt
+	}
+	return time.Time{}
+}
 
 var githubPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$`)
 
@@ -156,6 +165,8 @@ func (g *GitHubClient) call(ctx context.Context, method, route, token string, bo
 			if resp.Header.Get("X-RateLimit-Remaining") == "0" || resp.Header.Get("Retry-After") != "" {
 				code = "rate_limited"
 			}
+		case 429:
+			code = "rate_limited"
 		case 404:
 			code = "repository_unavailable"
 		case 409, 422:
@@ -164,7 +175,11 @@ func (g *GitHubClient) call(ctx context.Context, method, route, token string, bo
 		if resp.StatusCode >= 500 {
 			code = "upstream_unavailable"
 		}
-		return &remoteError{Code: code, Status: resp.StatusCode}
+		err := &remoteError{Code: code, Status: resp.StatusCode}
+		if code == "rate_limited" {
+			err.RetryAt = githubRetryAt(resp.Header, time.Now())
+		}
+		return err
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, (20<<20)+1))
 	if e != nil || len(b) > 20<<20 {
@@ -177,6 +192,25 @@ func (g *GitHubClient) call(ctx context.Context, method, route, token string, bo
 		return &remoteError{Code: "invalid_upstream_response"}
 	}
 	return nil
+}
+
+// Respect both primary and secondary rate-limit deadlines. The one-minute
+// floor handles missing or malformed headers; cap untrusted values at 24 hours.
+func githubRetryAt(headers http.Header, now time.Time) time.Time {
+	delay := time.Minute
+	if seconds, err := strconv.ParseInt(headers.Get("Retry-After"), 10, 64); err == nil && seconds > 0 {
+		if seconds > 86400 {
+			seconds = 86400
+		}
+		delay = max(delay, time.Duration(seconds)*time.Second)
+	}
+	if headers.Get("X-RateLimit-Remaining") == "0" {
+		if seconds, err := strconv.ParseInt(headers.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+			resetDelay := time.Unix(seconds, 0).Sub(now)
+			delay = max(delay, min(resetDelay, 24*time.Hour))
+		}
+	}
+	return now.Add(delay)
 }
 func appJWT(secret GitHubSecret) (string, error) {
 	block, _ := pem.Decode([]byte(secret.PrivateKey))

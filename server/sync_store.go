@@ -84,6 +84,11 @@ func (s *Store) retryConnection(id string) error {
 	if c.Paused {
 		return ErrConflict
 	}
+	if c.LastError == "rate_limited" {
+		if due, err := time.Parse(time.RFC3339Nano, c.NextAttempt); err == nil && due.After(time.Now()) {
+			return ErrConflict
+		}
+	}
 	c.NextAttempt = ""
 	c.State = "pending"
 	db := s.clone()
@@ -418,6 +423,10 @@ func (s *Store) jobs() []SyncJob {
 	return out
 }
 func (s *Store) connectionStatus(id, state, verification, code string, info *repositoryInfo) error {
+	return s.connectionStatusRetry(id, state, verification, code, info, time.Time{})
+}
+
+func (s *Store) connectionStatusRetry(id, state, verification, code string, info *repositoryInfo, retryAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, ok := s.db.Connections[id]
@@ -442,7 +451,11 @@ func (s *Store) connectionStatus(id, state, verification, code string, info *rep
 	if code != "" {
 		c.Attempts++
 		delay := time.Duration(1<<min(c.Attempts, 8)) * time.Second
-		c.NextAttempt = time.Now().Add(delay).UTC().Format(time.RFC3339Nano)
+		next := time.Now().Add(delay)
+		if code == "rate_limited" && retryAt.After(next) {
+			next = retryAt
+		}
+		c.NextAttempt = next.UTC().Format(time.RFC3339Nano)
 	} else {
 		c.Attempts = 0
 		c.NextAttempt = ""

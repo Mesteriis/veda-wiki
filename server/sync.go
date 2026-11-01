@@ -369,7 +369,9 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 	return batch, nil
 }
 func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
-	fail := func(e error) { m.store.connectionStatus(c.ID, "error", "unknown", errorCode(e), nil) }
+	fail := func(e error) {
+		m.store.connectionStatusRetry(c.ID, "error", "unknown", errorCode(e), nil, remoteRetryAt(e))
+	}
 	secret, _, e := m.store.secret(c.AccountID)
 	if e != nil {
 		fail(e)
@@ -438,16 +440,16 @@ func (m *SyncManager) syncWrites(ctx context.Context, c GitHubConnection, head, 
 	attempted, moveErr := m.deletePendingMove(ctx, c, head, token)
 	if attempted {
 		if moveErr != nil {
-			m.store.connectionStatus(c.ID, "error", "verified", errorCode(moveErr), &info)
+			m.store.connectionStatusRetry(c.ID, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
 		}
 		return
 	}
 	if err := m.pushPending(ctx, c, head, treeSHA, token); err != nil {
-		m.store.connectionStatus(c.ID, "error", "verified", errorCode(err), &info)
+		m.store.connectionStatusRetry(c.ID, "error", "verified", errorCode(err), &info, remoteRetryAt(err))
 		return
 	}
 	if moveErr != nil {
-		m.store.connectionStatus(c.ID, "error", "verified", errorCode(moveErr), &info)
+		m.store.connectionStatusRetry(c.ID, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
 		return
 	}
 	state, code := m.store.sourceSyncState(c.ID)
