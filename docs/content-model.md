@@ -4,6 +4,10 @@ VEDA owns a local versioned article store. Connected repositories synchronize in
 background without becoming the only durable copy. Multiple sources stay
 separate and are combined for reading/search; source ID plus path identifies
 an article. Matching paths do not cause automatic cross-source replacement.
+The web knowledge tree shows a combined directory view by default when more than
+one source is visible, with a switch to browse by source. Each entry keeps its source name, ID and separate link;
+matching paths are shown as separate articles, not merged into one text. Both
+views use the same visibility-filtered data as the rest of the interface.
 
 ## Repository types
 

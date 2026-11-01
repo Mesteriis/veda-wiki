@@ -724,9 +724,24 @@ kbd {
   font-size: 12px;
 }
 .tree-pages > a span {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.tree-pages > a small {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  color: #8eafc2;
+  font-size: 10px;
+  text-align: right;
 }
 .tree-pages .icon {
   width: 15px;
