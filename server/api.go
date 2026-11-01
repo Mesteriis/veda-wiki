@@ -20,6 +20,16 @@ func (w Wiki) authorized(r *http.Request) bool {
 	provided := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	return subtle.ConstantTimeCompare([]byte(provided), []byte(w.Token)) == 1
 }
+
+// A reader credential grants current content only. It never grants writes or
+// administrative APIs, even when presented to the private listener.
+func (w Wiki) readerAuthorized(r *http.Request) bool {
+	if w.Public || w.ReaderToken == "" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+		return false
+	}
+	provided := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(w.ReaderToken)) == 1
+}
 func jsonResponse(rw http.ResponseWriter, status int, v any) {
 	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 	rw.Header().Set("Cache-Control", "no-store")
@@ -74,7 +84,7 @@ func apiError(rw http.ResponseWriter, err error) {
 	}
 	jsonResponse(rw, code, map[string]string{"error": message})
 }
-func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
+func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 	if r.Method != "GET" && (!owner || r.Header.Get("Origin") != "") {
 		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required; browser writes are disabled"})
 		return
@@ -192,7 +202,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 	case "/api/v1/sources":
 		switch r.Method {
 		case "GET":
-			jsonResponse(rw, 200, w.Store.sources(!owner))
+			jsonResponse(rw, 200, w.Store.sources(!owner && !reader))
 		case "POST":
 			var src Source
 			if err := decodeBody(rw, r, &src); err != nil {
@@ -212,10 +222,10 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 		case "GET":
 			sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
 			if sourceID == "" && p == "" {
-				jsonResponse(rw, 200, w.Store.snapshot(!owner).Pages)
+				jsonResponse(rw, 200, w.Store.snapshot(!owner && !reader).Pages)
 				return
 			}
-			a, err := w.Store.article(sourceID, p, !owner)
+			a, err := w.Store.article(sourceID, p, !owner && !reader)
 			if err != nil {
 				apiError(rw, err)
 				return
@@ -223,6 +233,11 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner bool) {
 			if r.URL.Query().Get("history") != "1" || !owner {
 				a.Versions = a.Versions[len(a.Versions)-1:]
 				a.Conflicts = nil
+			}
+			if reader && !owner {
+				a.Published = nil
+				a.PublishedLocal = false
+				a.UpstreamHash = ""
 			}
 			jsonResponse(rw, 200, a)
 		case "POST", "PUT":

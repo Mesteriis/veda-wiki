@@ -72,10 +72,11 @@ type View struct {
 type Wiki struct {
 	AllowedHosts []string
 
-	Public bool
-	Store  *Store
-	Token  string
-	Sync   *SyncManager
+	Public      bool
+	Store       *Store
+	Token       string
+	ReaderToken string
+	Sync        *SyncManager
 }
 
 func safePath(p string) bool {
@@ -173,11 +174,12 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	if w.Store != nil {
 		owner := w.authorized(r)
+		reader := w.readerAuthorized(r) && r.Method == "GET"
 		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
-			w.api(rw, r, owner)
+			w.api(rw, r, owner, reader)
 			return
 		}
-		if !owner {
+		if !owner && !reader {
 			w.Public = true
 		}
 	}

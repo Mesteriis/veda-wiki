@@ -55,35 +55,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	tokenPath := filepath.Join(*data, "owner.key")
-	if info, e := os.Lstat(tokenPath); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
-		log.Fatal("owner key must be a private regular file")
-	}
-	token, err := os.ReadFile(tokenPath)
-	if os.IsNotExist(err) {
-		secret := make([]byte, 32)
-		if _, err = rand.Read(secret); err != nil {
-			log.Fatal(err)
-		}
-		f, e := os.OpenFile(tokenPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if e != nil {
-			log.Fatal(e)
-		}
-		_, err = f.WriteString(hex.EncodeToString(secret))
-		if err == nil {
-			err = f.Sync()
-		}
-		closeErr := f.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-		if closeErr != nil {
-			log.Fatal(closeErr)
-		}
-		token, err = os.ReadFile(tokenPath)
-	}
-	if err != nil || len(token) != 64 {
+	token, err := loadOrCreateKey(*data, "owner.key")
+	if err != nil {
 		log.Fatal("owner key unavailable or invalid")
+	}
+	readerToken, err := loadOrCreateKey(*data, "reader.key")
+	if err != nil {
+		log.Fatal("reader key unavailable or invalid")
 	}
 	hostList := strings.Split(*hosts, ",")
 	for i := range hostList {
@@ -107,7 +85,7 @@ func main() {
 	go manager.Run(ctx, *interval)
 	errors := make(chan error, 2)
 	serve := func(l net.Listener, publicOnly bool) {
-		server := &http.Server{Handler: Wiki{Store: store, Token: string(token), Public: publicOnly, AllowedHosts: hostList, Sync: manager}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+		server := &http.Server{Handler: Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList, Sync: manager}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 		go func() {
 			<-ctx.Done()
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -122,4 +100,42 @@ func main() {
 	if err := <-errors; err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// loadOrCreateKey never logs key material; both files are local private state.
+func loadOrCreateKey(dir, name string) ([]byte, error) {
+	keyPath := filepath.Join(dir, name)
+	if info, e := os.Lstat(keyPath); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
+		return nil, ErrInvalid
+	}
+	key, err := os.ReadFile(keyPath)
+	if os.IsNotExist(err) {
+		secret := make([]byte, 32)
+		if _, err = rand.Read(secret); err != nil {
+			return nil, err
+		}
+		f, e := os.OpenFile(keyPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if e != nil {
+			return nil, e
+		}
+		_, err = f.WriteString(hex.EncodeToString(secret))
+		if err == nil {
+			err = f.Sync()
+		}
+		closeErr := f.Close()
+		if err != nil {
+			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		key, err = os.ReadFile(keyPath)
+	}
+	if err != nil || len(key) != 64 {
+		return nil, ErrInvalid
+	}
+	if _, err = hex.DecodeString(string(key)); err != nil {
+		return nil, ErrInvalid
+	}
+	return key, nil
 }
