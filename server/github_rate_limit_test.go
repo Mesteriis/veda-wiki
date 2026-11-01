@@ -111,3 +111,27 @@ func TestRateLimitRetryDeadlineSurvivesRestart(t *testing.T) {
 		t.Fatal("manual retry bypassed limit", err)
 	}
 }
+
+func TestConfigureKeepsRateLimitForSameAccount(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	m := connectFixture(t, s, f, false)
+	due := time.Now().Add(20 * time.Minute)
+	if err := s.connectionStatusRetry("handbook", "error", "unknown", "rate_limited", nil, due); err != nil {
+		t.Fatal(err)
+	}
+	c := s.connections()[0]
+	write := false
+	updated, err := m.configure(context.Background(), configureRequest{ID: c.ID, Write: &write, Expected: &c.ConfigRevision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline, err := time.Parse(time.RFC3339Nano, updated.NextAttempt)
+	if err != nil || deadline.Before(due) {
+		t.Fatal("configuration discarded cooldown")
+	}
+	write = true
+	if _, err = m.configure(context.Background(), configureRequest{ID: c.ID, Write: &write, Expected: &updated.ConfigRevision}); err != ErrConflict {
+		t.Fatal("configuration bypassed rate limit", err)
+	}
+}

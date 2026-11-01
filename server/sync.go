@@ -108,6 +108,11 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 	if in.Write != nil {
 		write = *in.Write
 	}
+	if (write || accountID != c.AccountID) && accountID == c.AccountID && c.LastError == "rate_limited" {
+		if due, err := time.Parse(time.RFC3339Nano, c.NextAttempt); err == nil && due.After(time.Now()) {
+			return c, ErrConflict
+		}
+	}
 	var info *repositoryInfo
 	if write || accountID != c.AccountID {
 		secret, account, e := m.store.secret(accountID)
@@ -143,11 +148,20 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 		return c, ErrConflict
 	}
 	c = current
+	// Reconfiguring the same account must not circumvent GitHub's cooldown.
+	keepCooldown := c.AccountID == accountID && c.LastError == "rate_limited"
 	c.AccountID = accountID
 	c.Write = write
 	c.ConfigRevision++
-	c.State = "pending"
-	c.NextAttempt = ""
+	if c.Paused {
+		c.State = "paused"
+	} else {
+		c.State = "pending"
+	}
+	if !keepCooldown {
+		c.NextAttempt = ""
+		c.LastError = ""
+	}
 	c.LastPull = ""
 	c.TreeSHA = ""
 	db := m.store.clone()
@@ -166,7 +180,9 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 	db.Connections[c.ID] = c
 	for id, j := range db.Outbox {
 		if j.SourceID == c.ID {
-			j.NextAttempt = ""
+			if !keepCooldown {
+				j.NextAttempt = ""
+			}
 			if j.State == "blocked" {
 				j.State = "pending"
 				j.LastError = ""

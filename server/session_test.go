@@ -159,6 +159,16 @@ func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	if r = request("POST", "/api/admin/github/connections", `{"id":"wiki","repository":"org/handbook","account_id":"fixture","write":true}`, "http://localhost:8080", cookie, false, "127.0.0.1:1"); r.Code != 202 {
 		t.Fatal("connection", r.Code)
 	}
+	config := `{"id":"wiki","account_id":"fixture","write":false,"expected_config_revision":1}`
+	if request("PUT", "/api/admin/github/connections", config, "http://evil.example", cookie, false, "127.0.0.1:1").Code != 403 || request("PUT", "/api/admin/github/connections", config, "http://localhost:8080", readerCookie, false, "127.0.0.1:1").Code != 404 {
+		t.Fatal("unauthorized configuration accepted")
+	}
+	if request("PUT", "/api/admin/github/connections", config, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 200 {
+		t.Fatal("configuration failed")
+	}
+	if request("PUT", "/api/admin/github/connections", config, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 409 {
+		t.Fatal("stale configuration accepted")
+	}
 	if request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://localhost:8080", readerCookie, false, "127.0.0.1:1").Code != 404 {
 		t.Fatal("reader cookie scheduled sync")
 	}
@@ -182,6 +192,9 @@ func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	}
 	if request("POST", "/api/admin/github/pause", `{"id":"wiki","paused":true}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 202 {
 		t.Fatal("pause failed")
+	}
+	if request("PUT", "/api/admin/github/connections", `{"id":"wiki","write":false,"expected_config_revision":3}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 200 || store.connections()[0].State != "paused" {
+		t.Fatal("configuration lost paused state")
 	}
 	if request("POST", "/api/admin/github/sync", `{"id":"wiki"}`, "http://localhost:8080", cookie, false, "127.0.0.1:1").Code != 409 {
 		t.Fatal("paused connection scheduled")

@@ -18,11 +18,11 @@ func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	if r.Method != "GET" && r.Method != "POST" {
+	if r.Method != "GET" && r.Method != "POST" && !(r.Method == "PUT" && r.URL.Path == "/api/admin/github/connections") {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Method == "POST" && !sameOrigin(r) {
+	if r.Method != "GET" && !sameOrigin(r) {
 		jsonResponse(rw, http.StatusForbidden, map[string]string{"error": "origin rejected"})
 		return
 	}

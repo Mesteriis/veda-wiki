@@ -31,11 +31,16 @@ only when the account has the required repository permission. No account is
 automatically guessed. The private browser interface also offers GitHub App or
 token account registration and repository connection after a separate
 administrator login.
-The administrator session grants GitHub account, connection and manual sync
-and pause/resume endpoints, not article editing or the general owner API. It is accepted only over direct
+The administrator session grants GitHub account, connection, configuration,
+manual sync and pause/resume endpoints, not article editing or the general owner API. It is accepted only over direct
 HTTPS or loopback HTTP, and is separate from the reader session. The read-only
 Unix socket does not expose administration; an independently configured local
 bridge can forward only the protected administration routes.
+The connection dialog can change the selected account and write permission
+using the current configuration revision. A concurrent change is rejected;
+reload and review the updated settings before retrying. Repository and branch
+identity are fixed for an existing connection. A same-account configuration
+change does not clear an active GitHub rate-limit cooldown.
 
 The worker polls every five minutes by default (`--sync-interval`, 5 seconds
 to 1 hour). Local writes to connected sources are committed with an outbox

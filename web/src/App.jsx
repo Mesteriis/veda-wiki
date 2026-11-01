@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { buildTree, buildMergedTree } from "./tree.js";
+import { githubErrorMessage } from "./githubErrors.js";
 const Features = createContext(() => {});
 const descriptions = {
   github: [
@@ -666,7 +667,10 @@ function GitHubConnect() {
   const [busy, setBusy] = useState(false);
   async function json(route, options = {}) {
     const response = await fetch(route, options);
-    if (!response.ok) throw Error("request failed");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const error = new Error("request failed"); error.code = body.error; error.status = response.status; throw error;
+    }
     return response.json();
   }
   async function refresh() {
@@ -702,7 +706,7 @@ function GitHubConnect() {
       ? { kind: "app", app_id: Number(data.get("app_id")), installation_id: Number(data.get("installation_id")), private_key: data.get("private_key") }
       : { kind: "token", token: data.get("token") };
     try { await send("/api/admin/github/accounts", { id: data.get("id"), ...secret }); form.reset(); setMessage("Аккаунт подключён."); refresh().catch(() => setMessage("Аккаунт подключён, но не удалось обновить список.")); }
-    catch { setMessage("Не удалось подключить аккаунт. Проверьте данные и идентификатор."); }
+    catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось подключить аккаунт. Проверьте данные и идентификатор.")); }
     finally { if (form.elements.token) form.elements.token.value = ""; if (form.elements.private_key) form.elements.private_key.value = ""; setBusy(false); }
   }
   async function connect(event) {
@@ -712,7 +716,7 @@ function GitHubConnect() {
     try {
       await send("/api/admin/github/connections", { id: data.get("id"), repository: data.get("repository"), account_id: account, branch: data.get("branch"), write: data.has("write") });
       form.reset(); setMessage("Репозиторий подключён; импорт выполняется в фоне."); refresh().catch(() => setMessage("Репозиторий подключён, но не удалось обновить список."));
-    } catch { setMessage("Не удалось подключить репозиторий. Проверьте адрес, ветку и права аккаунта."); }
+    } catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось подключить репозиторий. Проверьте адрес, ветку и права аккаунта.")); }
     finally { setBusy(false); }
   }
   async function logout() {
@@ -740,6 +744,18 @@ function GitHubConnect() {
     } catch { setMessage("Не удалось изменить состояние синхронизации. Проверьте источник и сеанс администратора."); }
     finally { setBusy(false); }
   }
+  async function configureConnection(event, connection) {
+    event.preventDefault(); const data = new FormData(event.currentTarget);
+    setBusy(true); setMessage("");
+    try {
+      await json("/api/admin/github/connections", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: connection.id, account_id: data.get("account"), write: data.has("write"), expected_config_revision: connection.config_revision }) });
+      setMessage(connection.paused ? "Настройки сохранены. Источник остаётся на паузе до возобновления." : "Настройки сохранены; синхронизация проверит репозиторий и может отправить ожидающие изменения.");
+      refresh().catch(() => setMessage("Настройки сохранены, но список источников обновить не удалось."));
+    } catch (e) {
+      setMessage(githubErrorMessage(e.code, e.status, "Не удалось изменить настройки. Проверьте аккаунт и разрешение записи."));
+      refresh().catch(() => setMessage((previous) => `${previous} Не удалось обновить список.`));
+    } finally { setBusy(false); }
+  }
   return <div className="github-connect reader-access">
     <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
     {status === false && <form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form>}
@@ -748,8 +764,8 @@ function GitHubConnect() {
       <form onSubmit={connect}><h3>Подключить репозиторий</h3><label>Идентификатор источника<input name="id" required placeholder="handbook" /></label><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" defaultValue=""><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><button disabled={busy}>Подключить</button></form>
       <h3>Источники</h3>{connections.length ? <ul>{connections.map((c) => {
         const limited = c.last_error === "rate_limited" && Date.parse(c.next_attempt) > Date.now();
-        const detail = limited ? `Лимит GitHub, повтор после ${new Date(c.next_attempt).toLocaleString()}` : c.last_error;
-        return <li key={c.id}>{c.id}: {c.repository} · {c.private ? "приватный" : "публичный"} · {stateLabels[c.state] || c.state}{detail ? ` (${detail})` : ""} <button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button> <button type="button" disabled={busy} onClick={() => pauseConnection(c)} aria-label={`${c.paused ? "Возобновить" : "Приостановить"} синхронизацию ${c.id}`}>{c.paused ? "Возобновить" : "Приостановить"}</button></li>;
+        const detail = limited ? `Лимит GitHub, повтор после ${new Date(c.next_attempt).toLocaleString()}` : c.last_error ? githubErrorMessage(c.last_error, 0, "Проверьте состояние источника.") : "";
+        return <li key={c.id}>{c.id}: {c.repository} · {c.private ? "приватный" : "публичный"} · {stateLabels[c.state] || c.state}{detail ? ` (${detail})` : ""} <button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button> <button type="button" disabled={busy} onClick={() => pauseConnection(c)} aria-label={`${c.paused ? "Возобновить" : "Приостановить"} синхронизацию ${c.id}`}>{c.paused ? "Возобновить" : "Приостановить"}</button><details><summary>Настроить подключение {c.id}</summary><form key={c.config_revision} onSubmit={(e) => configureConnection(e, c)}><label>Аккаунт<select name="account" defaultValue={c.account_id || ""}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" defaultChecked={c.write} /> Разрешить запись в репозиторий</label><button disabled={busy}>Сохранить настройки</button></form></details></li>;
       })}</ul> : <p>Репозитории ещё не подключены.</p>}
       <p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена. На паузе публичные статьи источника временно скрыты.</p>
       <button onClick={logout} disabled={busy}>Выйти из управления</button>
