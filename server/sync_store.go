@@ -30,6 +30,7 @@ type SyncJob struct {
 	NextAttempt    string             `json:"next_attempt,omitempty"`
 	Visibility     string             `json:"visibility"`
 	Assets         map[string]BlobRef `json:"assets,omitempty"`
+	Links          map[string]string  `json:"links,omitempty"`
 }
 type remoteProof struct {
 	ConnectionID   string
@@ -112,15 +113,20 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 		db.Outbox = map[string]SyncJob{}
 	}
 	retained := map[string]BlobRef{}
+	retainedLinks := map[string]string{}
 	privateDependencies := false
 	for id, job := range db.Outbox {
 		if job.SourceID == a.SourceID && job.Path == a.Path && job.State != "complete" && job.State != "superseded" {
 			inherited := retainedPendingAssets(rev.Text, a.Path, job.Assets)
-			if len(inherited) > 0 && job.Visibility != "public" {
+			inheritedLinks := retainedPendingLinks(rev.Text, a.Path, job.Links)
+			if (len(inherited) > 0 || len(inheritedLinks) > 0) && job.Visibility != "public" {
 				privateDependencies = true
 			}
 			for p, ref := range inherited {
 				retained[p] = ref
+			}
+			for p, sha := range inheritedLinks {
+				retainedLinks[p] = sha
 			}
 		}
 		if job.SourceID == a.SourceID && job.Path == a.Path && (job.State == "pending" || job.State == "retry") {
@@ -133,7 +139,7 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 	if !privateDependencies && sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
 		visibility = "public"
 	}
-	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained}
+	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained, Links: retainedLinks}
 }
 func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if !confirm {
@@ -171,10 +177,17 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	db.Connections[conn.ID] = conn
 	return s.commit(db)
 }
-func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, complete bool) bool {
+func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {
 	matched := 0
 	for _, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" && (len(job.Assets) == 0 || (complete && assetsPresent(Source{Assets: assets}, job.Assets))) {
+		linksMatch := true
+		for name, sha := range job.Links {
+			if text, exists := files[name]; !exists || digest([]byte(text)) != sha {
+				linksMatch = false
+				break
+			}
+		}
+		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" && ((len(job.Assets) == 0 && len(job.Links) == 0) || (complete && assetsPresent(Source{Assets: assets}, job.Assets) && linksMatch)) {
 			matched = job.Revision
 		}
 	}

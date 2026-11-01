@@ -52,7 +52,7 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		return Database{}, Revision{}, ErrConflict
 	}
 	rev := a.Versions[len(a.Versions)-1]
-	assets, err := s.transferAssets(rev.Text, in.SourcePath, in.DestinationPath, source, destination)
+	dependencies, err := s.transferAssets(rev.Text, in.SourcePath, in.DestinationPath, source, destination)
 	if err != nil {
 		return Database{}, Revision{}, err
 	}
@@ -77,12 +77,12 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		b.PublishedLocal = true
 	}
 	db := s.clone()
-	if len(assets) > 0 && destination.ConnectionID == "" {
-		destination.Assets = make(map[string]BlobRef, len(destination.Assets)+len(assets))
+	if len(dependencies.Assets) > 0 && destination.ConnectionID == "" {
+		destination.Assets = make(map[string]BlobRef, len(destination.Assets)+len(dependencies.Assets))
 		for p, ref := range s.db.Sources[in.DestinationID].Assets {
 			destination.Assets[p] = ref
 		}
-		for p, ref := range assets {
+		for p, ref := range dependencies.Assets {
 			destination.Assets[p] = ref
 		}
 		db.Sources[destination.ID] = destination
@@ -90,13 +90,18 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	db.Articles[key] = b
 	if destination.ConnectionID != "" {
 		enqueueWrite(&db, b, copied)
-		if len(assets) > 0 {
+		if len(dependencies.Assets) > 0 || len(dependencies.Links) > 0 {
 			id := b.SourceID + "/" + b.Path + "@1"
 			job := db.Outbox[id]
-			job.Assets = assets
+			job.Assets = dependencies.Assets
+			job.Links = dependencies.Links
 			db.Outbox[id] = job
-			if db.Version < 7 {
-				db.Version = 7
+			version := 7
+			if len(dependencies.Links) > 0 {
+				version = 8
+			}
+			if db.Version < version {
+				db.Version = version
 			}
 		}
 	}

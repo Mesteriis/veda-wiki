@@ -526,7 +526,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			a.Published = &published
 			db.Articles[key] = a
 		}
-		if proof != nil && observedWrite(&db, batch.SourceID, p, hash, batch.Commit, refs, batch.Complete && batch.Withheld == 0) {
+		if proof != nil && observedWrite(&db, batch.SourceID, p, hash, batch.Commit, refs, batch.Files, batch.Complete && batch.Withheld == 0) {
 			a.UpstreamHash = hash
 			a = supersedeImportConflicts(a)
 			db.Articles[key] = a
@@ -622,7 +622,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			}
 			target, exists := db.Articles[move.DestinationID+"/"+move.DestinationPath]
 			destination, dstOK := db.Sources[move.DestinationID]
-			valid := exists && dstOK && !target.Deleted && len(target.Versions) == 1 && target.Versions[0].SHA == move.SHA && destination.ConnectionID == move.DestinationConnectionID && translationFingerprint(original.Translation) == move.TranslationFingerprint && translationFingerprint(target.Translation) == translationFingerprint(movedTranslation(original.Translation)) && assetsPresent(destination, move.Assets)
+			valid := exists && dstOK && !target.Deleted && len(target.Versions) == 1 && target.Versions[0].SHA == move.SHA && destination.ConnectionID == move.DestinationConnectionID && translationFingerprint(original.Translation) == move.TranslationFingerprint && translationFingerprint(target.Translation) == translationFingerprint(movedTranslation(original.Translation)) && assetsPresent(destination, move.Assets) && linksPresent(db, move.DestinationID, move.Links)
 			if s.verifyMoveAssets(move.Assets) != nil {
 				valid = false
 			}

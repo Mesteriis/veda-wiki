@@ -33,6 +33,7 @@ type Move struct {
 	PreparedDeletion        string             `json:"prepared_deletion,omitempty"`
 	TranslationFingerprint  string             `json:"translation_fingerprint,omitempty"`
 	Assets                  map[string]BlobRef `json:"assets,omitempty"`
+	Links                   map[string]string  `json:"links,omitempty"`
 	Created                 string             `json:"created_at"`
 }
 
@@ -60,6 +61,45 @@ func assetsPresent(source Source, expected map[string]BlobRef) bool {
 		}
 	}
 	return true
+}
+
+func linksPresent(db Database, sourceID string, expected map[string]string) bool {
+	src, ok := db.Sources[sourceID]
+	if !ok {
+		return false
+	}
+	for name, sha := range expected {
+		a, exists := db.Articles[sourceID+"/"+name]
+		if !exists || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
+			return false
+		}
+		if src.ConnectionID != "" && a.UpstreamHash != sha {
+			return false
+		}
+		if src.Visibility == "public" && (a.Published == nil || a.Published.SHA != sha) {
+			return false
+		}
+		for _, conflict := range a.Conflicts {
+			if conflict.Resolution == "" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (s *Store) linkContents(sourceID string, expected map[string]string) (map[string]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !linksPresent(s.db, sourceID, expected) {
+		return nil, ErrConflict
+	}
+	texts := make(map[string]string, len(expected))
+	for name := range expected {
+		a := s.db.Articles[sourceID+"/"+name]
+		texts[name] = a.Versions[len(a.Versions)-1].Text
+	}
+	return texts, nil
 }
 
 func remoteAssetPath(name, kind string) bool {
@@ -92,6 +132,30 @@ func retainedPendingAssets(value, articlePath string, candidates map[string]Blob
 		name := path.Clean(path.Join(path.Dir(articlePath), u.Path))
 		if ref, found := candidates[name]; found {
 			refs[name] = ref
+		}
+		return ast.WalkContinue, nil
+	})
+	return refs
+}
+
+func retainedPendingLinks(value, articlePath string, candidates map[string]string) map[string]string {
+	if len(candidates) == 0 {
+		return nil
+	}
+	refs := map[string]string{}
+	root := markdown.Parser().Parse(text.NewReader([]byte(value)))
+	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		link, ok := node.(*ast.Link)
+		if !entering || !ok {
+			return ast.WalkContinue, nil
+		}
+		u, err := url.Parse(string(link.Destination))
+		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" || strings.HasPrefix(u.Path, "/") {
+			return ast.WalkContinue, nil
+		}
+		name := path.Clean(path.Join(path.Dir(articlePath), u.Path))
+		if sha, found := candidates[name]; found {
+			refs[name] = sha
 		}
 		return ast.WalkContinue, nil
 	})
@@ -166,13 +230,19 @@ type moveRequest struct {
 	ConfirmPublication bool   `json:"confirm_publication"`
 }
 
-// Resolve relative images into equivalent paths at the destination. Linked
-// articles and embedded HTML remain blocked until their dependencies can move.
+// Resolve relative images and verify linked articles at the destination.
+// Embedded HTML and links without an identical destination remain blocked.
 // Caller holds the store lock.
-func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target Source) (map[string]BlobRef, error) {
+type transferDependencies struct {
+	Assets map[string]BlobRef
+	Links  map[string]string
+}
+
+func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target Source) (transferDependencies, error) {
 	document := []byte(value)
 	doc := markdown.Parser().Parse(text.NewReader(document))
 	assets := map[string]BlobRef{}
+	links := map[string]string{}
 	verified := map[BlobRef]bool{}
 	total := int64(0)
 	var failure error
@@ -202,7 +272,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		if parsed.Scheme != "" || parsed.Host != "" || parsed.Path == "" {
 			return ast.WalkContinue, nil
 		}
-		if !image || strings.HasPrefix(parsed.Path, "/") || (target.ConnectionID == "" && target.ImportGeneration != "") {
+		if strings.HasPrefix(parsed.Path, "/") || (target.ConnectionID == "" && target.ImportGeneration != "") {
 			failure = ErrInvalid
 			return ast.WalkStop, nil
 		}
@@ -211,6 +281,41 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		if !safeRelative(from) || !safeRelative(to) || (target.Kind == "program" && !strings.HasPrefix(to, "docs/")) {
 			failure = ErrInvalid
 			return ast.WalkStop, nil
+		}
+		if !image {
+			if from == sourcePath {
+				if to == targetPath {
+					return ast.WalkContinue, nil
+				}
+				failure = ErrInvalid
+				return ast.WalkStop, nil
+			}
+			if !articlePath(from, src.Kind) || !articlePath(to, target.Kind) || to == targetPath {
+				failure = ErrInvalid
+				return ast.WalkStop, nil
+			}
+			original, ok := s.db.Articles[src.ID+"/"+from]
+			if !ok || original.Deleted || len(original.Versions) == 0 {
+				failure = ErrInvalid
+				return ast.WalkStop, nil
+			}
+			for _, conflict := range original.Conflicts {
+				if conflict.Resolution == "" {
+					failure = ErrConflict
+					return ast.WalkStop, nil
+				}
+			}
+			sha := original.Versions[len(original.Versions)-1].SHA
+			if !linksPresent(s.db, target.ID, map[string]string{to: sha}) {
+				failure = ErrConflict
+				return ast.WalkStop, nil
+			}
+			links[to] = sha
+			if len(links) > 2000 {
+				failure = ErrInvalid
+				return ast.WalkStop, nil
+			}
+			return ast.WalkContinue, nil
 		}
 		if target.ConnectionID != "" && !remoteAssetPath(to, target.Kind) {
 			failure = ErrInvalid
@@ -253,7 +358,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		}
 		return ast.WalkContinue, nil
 	})
-	return assets, failure
+	return transferDependencies{Assets: assets, Links: links}, failure
 }
 func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if !in.ConfirmMove {
@@ -294,7 +399,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if a.Translation != nil && s.db.Sources[in.DestinationID].Kind != "program" {
 		return Move{}, ErrInvalid
 	}
-	assets, assetErr := s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])
+	dependencies, assetErr := s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])
 	if assetErr != nil {
 		return Move{}, assetErr
 	}
@@ -311,7 +416,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 		// Old binaries must refuse stores containing these new move invariants.
 		db.Version = 5
 	}
-	if len(assets) > 0 {
+	if len(dependencies.Assets) > 0 {
 		version := 6
 		if s.db.Sources[in.DestinationID].ConnectionID != "" {
 			version = 7
@@ -320,6 +425,9 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 			db.Version = version
 		}
 	}
+	if len(dependencies.Links) > 0 && db.Version < 8 {
+		db.Version = 8
+	}
 	id, e := randomID()
 	if e != nil {
 		return Move{}, e
@@ -327,7 +435,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if db.Moves == nil {
 		db.Moves = map[string]Move{}
 	}
-	m := Move{ID: id, SourceID: in.SourceID, SourcePath: in.SourcePath, SourceRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, SHA: rev.SHA, TranslationFingerprint: translationFingerprint(a.Translation), Assets: assets, State: "waiting_destination", Created: time.Now().UTC().Format(time.RFC3339Nano)}
+	m := Move{ID: id, SourceID: in.SourceID, SourcePath: in.SourcePath, SourceRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, SHA: rev.SHA, TranslationFingerprint: translationFingerprint(a.Translation), Assets: dependencies.Assets, Links: dependencies.Links, State: "waiting_destination", Created: time.Now().UTC().Format(time.RFC3339Nano)}
 	if src.ConnectionID != "" {
 		conn := db.Connections[src.ConnectionID]
 		m.SourceConnectionID, m.SourceRepositoryID, m.SourceBranch = src.ConnectionID, conn.RepositoryID, conn.Branch
@@ -406,7 +514,7 @@ func reconcileMoves(db *Database) {
 		}
 		target, exists := db.Articles[m.DestinationID+"/"+m.DestinationPath]
 		dst, dstOK := db.Sources[m.DestinationID]
-		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || (m.DestinationConnectionID == "" && !assetsPresent(dst, m.Assets)) {
+		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || (m.DestinationConnectionID == "" && !assetsPresent(dst, m.Assets)) || !linksPresent(*db, m.DestinationID, m.Links) {
 			m.State = "destination_changed"
 			db.Moves[id] = m
 			continue

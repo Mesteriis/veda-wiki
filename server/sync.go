@@ -530,6 +530,15 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 				return true, err
 			}
 		}
+		linked, err := m.store.linkContents(candidate.DestinationID, candidate.Links)
+		if err != nil {
+			return true, err
+		}
+		for name, text := range linked {
+			if _, err = verifiedTreeFile(destinationTree, name, text); err != nil {
+				return true, err
+			}
+		}
 	}
 	tree, err := m.github.tree(ctx, c.Repository, head, token)
 	if err != nil {
@@ -646,11 +655,11 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		}
 		var commit string
 		var e error
-		if len(job.Assets) == 0 {
+		if len(job.Assets) == 0 && len(job.Links) == 0 {
 			commit, e = m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
 		} else {
 			var files map[string][]byte
-			files, e = m.pendingBundle(ctx, c, head, treeSHA, token, job, a.Versions[job.Revision-1].Text)
+			files, e = m.pendingBundle(ctx, c, head, treeSHA, token, job, a)
 			if e == nil {
 				commit, e = m.github.pushFiles(ctx, c.Repository, c.Branch, head, treeSHA, files, token, prepared)
 			}
@@ -670,7 +679,7 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 
 // Refuse to overwrite pre-existing files while composing the article and its
 // images. The subsequent exact-head update makes this check race-safe.
-func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, head, treeSHA, token string, job SyncJob, text string) (map[string][]byte, error) {
+func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, head, treeSHA, token string, job SyncJob, article Article) (map[string][]byte, error) {
 	m.store.mu.RLock()
 	source, ok := m.store.db.Sources[c.ID]
 	m.store.mu.RUnlock()
@@ -683,6 +692,15 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 	}
 	if tree.SHA != treeSHA {
 		return nil, ErrConflict
+	}
+	linked, err := m.store.linkContents(c.ID, job.Links)
+	if err != nil {
+		return nil, err
+	}
+	for name, text := range linked {
+		if _, err = verifiedTreeFile(tree, name, text); err != nil {
+			return nil, err
+		}
 	}
 	entries := map[string]gitTreeEntry{}
 	count := 0
@@ -707,7 +725,10 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 		count++
 		total += entry.Size
 	}
-	files := map[string][]byte{job.Path: []byte(text)}
+	if job.Revision < 1 || job.Revision > len(article.Versions) {
+		return nil, ErrInvalid
+	}
+	files := map[string][]byte{job.Path: []byte(article.Versions[job.Revision-1].Text)}
 	for name, ref := range job.Assets {
 		if name == job.Path {
 			return nil, ErrConflict
@@ -725,10 +746,26 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 			}
 		}
 		if entry, exists := entries[name]; exists {
-			if entry.Type != "blob" || (entry.Mode != "100644" && entry.Mode != "100755") || !commitID.MatchString(entry.SHA) || gitBlobDigest(data, len(entry.SHA)) != entry.SHA {
+			if entry.Type != "blob" || (entry.Mode != "100644" && entry.Mode != "100755") || !commitID.MatchString(entry.SHA) {
 				return nil, ErrConflict
 			}
-			delete(files, name)
+			if gitBlobDigest(data, len(entry.SHA)) == entry.SHA {
+				delete(files, name)
+				continue
+			}
+			if name != job.Path || article.UpstreamHash == "" {
+				return nil, ErrConflict
+			}
+			matchesBase := false
+			for _, rev := range article.Versions {
+				if rev.SHA == article.UpstreamHash && gitBlobDigest([]byte(rev.Text), len(entry.SHA)) == entry.SHA {
+					matchesBase = true
+					break
+				}
+			}
+			if !matchesBase {
+				return nil, ErrConflict
+			}
 		} else {
 			count++
 			total += int64(len(data))

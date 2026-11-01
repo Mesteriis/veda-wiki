@@ -33,7 +33,8 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		t.Fatal("unsupported fixture repository")
 	}
 	repos := []string{repo, targetRepo}
-	const content = "# Synthetic source\n\nThis is an acceptance fixture.\n\n![fixture](img/icon.png)\n![duplicate](img/duplicate.png)\n"
+	const content = "# Synthetic source\n\nThis is an acceptance fixture.\n\n[Related](related.md)\n\n![fixture](img/icon.png)\n![duplicate](img/duplicate.png)\n"
+	const related = "# Synthetic related article\n"
 	image := smallPNG(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -74,6 +75,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	tree := api("repos/"+repo+"/git/trees", map[string]any{"tree": []map[string]string{
 		{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture},
 		{"path": "guide.md", "mode": "100644", "type": "blob", "content": content},
+		{"path": "related.md", "mode": "100644", "type": "blob", "content": related},
 		{"path": "img/icon.png", "mode": "100644", "type": "blob", "sha": imageSHA},
 		{"path": "img/duplicate.png", "mode": "100644", "type": "blob", "sha": imageSHA},
 	}})["sha"].(string)
@@ -109,7 +111,13 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 				baseEntries[p] = item["type"].(string) + ":" + item["mode"].(string) + ":" + item["sha"].(string)
 			}
 		}
-		fixtureTree := api("repos/"+targetRepo+"/git/trees", map[string]any{"base_tree": baseTree, "tree": []map[string]string{{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture}}})["sha"].(string)
+		relatedPath := path.Join(path.Dir(destinationPath), "related.md")
+		for _, value := range entries["tree"].([]any) {
+			if value.(map[string]any)["path"].(string) == relatedPath {
+				t.Fatal("target fixture link already exists")
+			}
+		}
+		fixtureTree := api("repos/"+targetRepo+"/git/trees", map[string]any{"base_tree": baseTree, "tree": []map[string]string{{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture}, {"path": relatedPath, "mode": "100644", "type": "blob", "content": related}}})["sha"].(string)
 		commits[1] = api("repos/"+targetRepo+"/git/commits", map[string]any{"message": "VEDA synthetic move fixture", "tree": fixtureTree, "parents": []string{baseSHA}})["sha"].(string)
 	}
 	for i, b := range branches {
@@ -272,6 +280,10 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 			duplicatePath := path.Join(path.Dir(destinationPath), "img/duplicate.png")
 			if _, err := verifiedTreeFile(remoteTree, duplicatePath, string(image)); err != nil {
 				t.Fatal("duplicate image does not match fixture")
+			}
+			relatedPath := path.Join(path.Dir(destinationPath), "related.md")
+			if _, err := verifiedTreeFile(remoteTree, relatedPath, related); err != nil {
+				t.Fatal("linked fixture differs")
 			}
 		}
 	}

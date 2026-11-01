@@ -470,6 +470,30 @@ func TestEditedPendingCopyKeepsReferencedAssets(t *testing.T) {
 	}
 }
 
+func TestEditedPreparedBundleUpdatesFromObservedBase(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	ref := fixtureAsset(t, s, "from", "img/icon.png")
+	s.put("from", "a.md", "![icon](img/icon.png)", 0)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	manager := connectFixture(t, s, f, true)
+	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true}); err != nil {
+		t.Fatal(err)
+	}
+	manager.Once(context.Background())
+	if f.writeCount() != 1 || s.db.Articles["from/a.md"].Deleted {
+		t.Fatal("initial bundle not pending")
+	}
+	if _, err := s.put("handbook", "b.md", "# Updated\n![icon](img/icon.png)", 1); err != nil {
+		t.Fatal(err)
+	}
+	manager.Once(context.Background())
+	manager.Once(context.Background())
+	if s.db.Articles["from/a.md"].Deleted || f.contents()["b.md"] != "# Updated\n![icon](img/icon.png)" || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA {
+		t.Fatal("prepared bundle edit did not synchronize safely")
+	}
+}
+
 func TestConcurrentEditCannotReviveSupersededBundle(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")
@@ -595,7 +619,7 @@ func TestImageBundleHonorsRepositoryFileLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = manager.pendingBundle(context.Background(), GitHubConnection{ID: "handbook", Repository: f.name, Branch: "main"}, head, tree.SHA, "", SyncJob{Path: "new.md", Assets: map[string]BlobRef{"img/icon.png": ref}}, "![icon](img/icon.png)")
+	_, err = manager.pendingBundle(context.Background(), GitHubConnection{ID: "handbook", Repository: f.name, Branch: "main"}, head, tree.SHA, "", SyncJob{Path: "new.md", Revision: 1, Assets: map[string]BlobRef{"img/icon.png": ref}}, Article{Versions: []Revision{{Text: "![icon](img/icon.png)"}}})
 	var remote *remoteError
 	if !errors.As(err, &remote) || remote.Code != "repository_limit" || f.writeCount() != 0 {
 		t.Fatal("repository limit not enforced", err)

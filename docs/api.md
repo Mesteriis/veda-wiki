@@ -99,8 +99,9 @@ review and `confirm_publication: true`; obvious credential-like text is refused.
 A connected destination with stale visibility proof stays unpublished and its
 queued write needs later approval if the destination is verified public.
 Owner-only provenance is preserved locally and removed from public responses.
-Copy does not copy referenced assets or rewrite Markdown links, and is not a
-complete move operation.
+Copy transfers supported relative images and preserves relative article links
+only when the destination already contains the same linked revision. It does
+not automatically copy linked articles and is not a complete move operation.
 
 ## Restricted local snapshot import
 
@@ -136,8 +137,11 @@ Relative Markdown images can be copied with the article into a standalone local
 or writable GitHub target; existing images at the target path must have the
 same digest. The GitHub outbox commits the Markdown and its images together,
 then confirms them in a complete pull before allowing source deletion. A partial
-target import blocks the bundle. Relative links to other articles and embedded
-HTML remain unsupported. A stored translation can be moved only to another program source;
+target import blocks the bundle. A relative article link is accepted when its
+destination path already has the same current article revision; a public target
+also requires that revision to be published. The linked article is checked
+again before source deletion. Other relative links and embedded HTML remain
+unsupported. A stored translation can be moved only to another program source;
 it is copied as a separate private draft and requires publication review even
 when the target is public. The target must be a new path in another source.
 If two source IDs refer to the same GitHub repository and branch, moving to
@@ -164,8 +168,8 @@ cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
 source revision history is retained. A change to either translation while the
 move is waiting prevents source removal. Private-to-public publication requires
-separate explicit confirmation. Relative article links are not yet supported
-for transfers. Live
+separate explicit confirmation. Linked articles are not copied automatically;
+missing or different targets must be synchronized first. Live
 acceptance with credentials stored by VEDA remains pending.
 
 Creating the first local-source move upgrades the local store format to version 2;
@@ -179,8 +183,10 @@ it. A synthetic v5 store with a translation and scoped key also passed a PBS
 backup/restore round-trip; production v5 backup and restore have not been
 validated. A move containing images to a local target upgrades the store to
 version 6; a copy or move with images to a connected target upgrades it to
-version 7. Older binaries reject these stores. A synthetic v7 store with a
+version 7. Moves with linked articles, and connected copies with linked
+articles, upgrade the store to version 8. Older binaries reject these stores.
+A synthetic v7 store with a
 paused image outbox passed a PBS round-trip; its restored queue then completed
-against a local fake GitHub. Production v6/v7 backup and restore are unverified.
+against a local fake GitHub. Production v6/v7/v8 backup and restore are unverified.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.

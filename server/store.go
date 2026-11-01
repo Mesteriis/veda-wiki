@@ -117,7 +117,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version != 1 && s.db.Version != 2 && s.db.Version != 3 && s.db.Version != 4 && s.db.Version != 5 && s.db.Version != 6 && s.db.Version != 7 && s.db.Version != 8) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -260,6 +260,20 @@ func openStore(dir string) (*Store, error) {
 				return nil, errors.New("invalid move asset type")
 			}
 		}
+		if len(m.Links) > 2000 || (len(m.Links) > 0 && s.db.Version < 8) {
+			return nil, errors.New("invalid move links")
+		}
+		for p, sha := range m.Links {
+			if p == m.DestinationPath || !articlePath(p, s.db.Sources[m.DestinationID].Kind) {
+				return nil, errors.New("invalid move link path")
+			}
+			if len(sha) != 64 {
+				return nil, errors.New("invalid move link digest")
+			}
+			if _, e := hex.DecodeString(sha); e != nil {
+				return nil, errors.New("invalid move link digest")
+			}
+		}
 		if _, e := hex.DecodeString(id); e != nil {
 			return nil, errors.New("invalid stored move")
 		}
@@ -292,6 +306,20 @@ func openStore(dir string) (*Store, error) {
 		}
 	}
 	for id, j := range s.db.Outbox {
+		if len(j.Links) > 2000 || (len(j.Links) > 0 && s.db.Version < 8) {
+			return nil, errors.New("invalid queued links")
+		}
+		for p, sha := range j.Links {
+			if p == j.Path || !articlePath(p, s.db.Sources[j.SourceID].Kind) {
+				return nil, errors.New("invalid queued link path")
+			}
+			if len(sha) != 64 {
+				return nil, errors.New("invalid queued link digest")
+			}
+			if _, e := hex.DecodeString(sha); e != nil {
+				return nil, errors.New("invalid queued link digest")
+			}
+		}
 		if len(j.Assets) > 2000 || (len(j.Assets) > 0 && s.db.Version < 7) {
 			return nil, errors.New("invalid queued assets")
 		}
