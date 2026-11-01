@@ -34,4 +34,6 @@ editing. Browser session and administration POST endpoints accept only
 same-origin requests. This is an initial key-based reader mechanism, not a
 multi-user account system. Revoking or expiring a scoped key prevents subsequent
 private reads with its sessions; requests already in progress may finish. User
-accounts, teams, and multi-user administration remain future work.
+accounts, teams, and multi-user administration remain future work. On login,
+expired sessions and sessions tied to revoked or expired scoped keys are removed
+before applying the session limit.

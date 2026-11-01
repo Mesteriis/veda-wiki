@@ -171,7 +171,8 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for h, expiry := range sessions.active {
-		if !expiry.After(now) {
+		scope, restricted := sessions.scoped[h]
+		if !expiry.After(now) || (restricted && (w.Store == nil || !w.Store.validScopeHash(scope, now))) {
 			delete(sessions.active, h)
 			delete(sessions.scoped, h)
 		}

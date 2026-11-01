@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,32 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 		if _, err := s.put(id, "guide.md", "# "+id+" secret", 0); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := s.put(id, "guide.md", "# "+id+" current", 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	image := smallPNG(t)
+	ref, err := imageRef(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(filepath.Join(s.dir, "blobs"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(s.dir, "blobs", ref.SHA), image, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	initial := s.clone()
+	for _, id := range []string{"alpha", "beta"} {
+		src := initial.Sources[id]
+		src.Assets = map[string]BlobRef{"image.png": ref}
+		initial.Sources[id] = src
+	}
+	err = s.commit(initial)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
 	}
 	key, err := s.createAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
@@ -45,7 +73,7 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if status := call("GET", "/api/session/status", "", "", cookie, false); !strings.Contains(status.Body.String(), `"authenticated":true`) {
 		t.Fatal("valid scoped session reported unauthenticated")
 	}
-	for _, path := range []string{"/api/state", "/api/v1/sources", "/api/v1/articles", "/health"} {
+	for _, path := range []string{"/api/state", "/api/v1/sources", "/api/v1/articles", "/api/state?q=current", "/health"} {
 		r := call("GET", path, "", "", cookie, false)
 		if r.Code != 200 || strings.Contains(r.Body.String(), "beta") {
 			t.Fatalf("scope leak %s: %d", path, r.Code)
@@ -56,6 +84,13 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	}
 	if call("GET", "/api/state?page=beta%2Fguide.md", "", "", cookie, false).Code != 404 {
 		t.Fatal("other source disclosed")
+	}
+	if call("GET", "/media/alpha/image.png", "", "", cookie, false).Code != 200 || call("GET", "/media/beta/image.png", "", "", cookie, false).Code != 404 {
+		t.Fatal("image scope not enforced")
+	}
+	history := call("GET", "/api/v1/articles?source_id=alpha&path=guide.md&history=1", "", "", cookie, false)
+	if history.Code != 200 || strings.Contains(history.Body.String(), "alpha secret") || !strings.Contains(history.Body.String(), "alpha current") {
+		t.Fatal("reader accessed historical revision or not current content")
 	}
 	if call("GET", "/api/state?page=alpha%2Fguide.md", "", "", cookie, true).Code != 404 {
 		t.Fatal("public listener accepted session")
@@ -98,8 +133,31 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if call("GET", "/api/state?page=alpha%2Fguide.md", "", "", cookie, false).Code != 404 {
 		t.Fatal("revoked session read private data")
 	}
+	if call("GET", "/media/alpha/image.png", "", "", cookie, false).Code != 404 {
+		t.Fatal("revoked session read image")
+	}
 	status := call("GET", "/api/session/status", "", "", cookie, false)
 	if !strings.Contains(status.Body.String(), `"authenticated":false`) {
 		t.Fatal("revoked session reported active")
+	}
+}
+
+func TestRevokedScopedSessionsDoNotExhaustSessionLimit(t *testing.T) {
+	s := testStore(t)
+	sessions := &readerSessions{active: map[[32]byte]time.Time{}, scoped: map[[32]byte][32]byte{}}
+	for i := 0; i < 100; i++ {
+		var cookieHash [32]byte
+		cookieHash[0] = byte(i)
+		sessions.active[cookieHash] = time.Now().Add(time.Hour)
+		sessions.scoped[cookieHash] = [32]byte{1}
+	}
+	w := Wiki{Store: s, ReaderToken: "reader", Sessions: sessions}
+	r := httptest.NewRequest("POST", "http://localhost:8080/api/session/login", strings.NewReader(`{"key":"reader"}`))
+	r.RemoteAddr = "127.0.0.1:1234"
+	r.Header.Set("Origin", "http://localhost:8080")
+	out := httptest.NewRecorder()
+	w.ServeHTTP(out, r)
+	if out.Code != 200 || len(sessions.active) != 1 || len(sessions.scoped) != 0 {
+		t.Fatal("revoked sessions occupied the session limit", out.Code)
 	}
 }
