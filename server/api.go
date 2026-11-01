@@ -215,7 +215,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		}
 		jsonResponse(rw, 201, result)
 	case "/api/v1/articles/translation-needed":
-		if !owner {
+		if !owner && !reader {
 			http.NotFound(rw, r)
 			return
 		}

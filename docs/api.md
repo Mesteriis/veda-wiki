@@ -16,7 +16,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/api/v1/articles?source_id=…&path=…&history=1` | All revisions (owner only; public callers still receive only current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
-| GET | `/api/v1/articles/translation-needed` | List program documents needing translation or publication review (owner only) |
+| GET | `/api/v1/articles/translation-needed` | List program documents needing translation or publication review, limited to the reader's authorized sources |
 | POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |

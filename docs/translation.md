@@ -8,9 +8,10 @@ changes it displays the original until a fresh translation is submitted.
 The article view labels the translation and shows both hashes. REST/MCP article
 reads return the original, allowing an agent to translate from the actual source.
 
-The owner can list candidates with `GET /api/v1/articles/translation-needed`
-(`limit` 1–100 and `offset`) or `veda_translation_needed`, read each original,
-and submit via `POST /api/v1/articles/translation` or `veda_translate_article`
+An owner or authenticated reader can list candidates with `GET /api/v1/articles/translation-needed`
+(`limit` 1–100 and `offset`) or `veda_translation_needed`. Scoped readers see
+only their authorized sources; anonymous callers cannot list the queue. The
+owner can read each original and submit via `POST /api/v1/articles/translation` or `veda_translate_article`
 with `source_id`, `path`, `expected_revision`, `original_sha256`, `text` and
 optional `confirm_publication`. The original revision and SHA must still match;
 unresolved conflicts block submission. Code blocks, inline code, link and image

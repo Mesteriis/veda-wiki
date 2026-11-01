@@ -66,7 +66,8 @@ REST endpoint. For a local read-only agent, the service can instead expose a Uni
 private directory owned by the service user. Start VEDA with `--reader-socket
 /path/to/private/reader.sock`, then use the MCP adapter with `--reader-socket`
 pointing to that socket. This adapter advertises sources, search, read, context
-and non-persistent preparation of new articles, updates and translations; it has no write/admin access. The socket's directory must
+the scoped translation queue, and non-persistent preparation of new articles,
+updates and translations; it has no write/admin access. The socket's directory must
 be 0700 and owned by the server user. Anyone sharing that OS identity can read
 all private sources; this is not per-agent authorization. An optional Linux-only
 root snapshot import channel is described in the [API reference](docs/api.md).
