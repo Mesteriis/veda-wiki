@@ -272,6 +272,8 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	env := r.URL.Query().Get("env")
 	name := r.URL.Query().Get("page")
 	v := View{Public: w.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
+	terms := searchTerms(query)
+	scores := map[string]int{}
 	w.Store.mu.RLock()
 	for _, source := range w.Store.db.Sources {
 		if source.ConnectionID != "" && (!w.Public || sourcePublic(w.Store.db, source, time.Now())) {
@@ -314,16 +316,22 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			v.Page = &full
 		}
 		if name == "" && (env == "" || env == "all" || env == id) {
-			matched := query == "" || strings.Contains(strings.ToLower(p.Title+" "+p.Path), strings.ToLower(query))
-			if !matched {
+			score := 1
+			if query != "" {
+				body := ""
 				if full, e := w.Store.page(p.Path, w.Public); e == nil {
-					matched = strings.Contains(strings.ToLower(full.Text), strings.ToLower(query))
+					body = full.Text
 				}
+				score = searchScore(query, p.Title+" "+p.Path, body, terms)
 			}
-			if matched {
+			if score > 0 {
 				v.Pages = append(v.Pages, p)
+				scores[p.Path] = score
 			}
 		}
+	}
+	if query != "" {
+		sort.SliceStable(v.Pages, func(i, j int) bool { return scores[v.Pages[i].Path] > scores[v.Pages[j].Path] })
 	}
 	if name != "" && v.Page == nil {
 		http.NotFound(rw, r)

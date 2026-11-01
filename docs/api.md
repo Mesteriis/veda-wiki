@@ -35,6 +35,13 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | POST | `/api/v1/github/cancel-bundle` | Cancel an unprepared linked-article bundle (owner only) |
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
+Search matches exact phrases or meaningful words across visible titles, paths
+and article text. Multiword queries require two distinct meaningful matches;
+title and path matches rank above body matches. A small set of infrastructure
+aliases covers container/LXC and VPS/VDS/VSP. This is lexical search, not
+semantic retrieval, general typo correction or authorization to act. The
+query is limited to 300 bytes and up to 16 meaningful terms are considered.
+
 Source body:
 
 ```json
