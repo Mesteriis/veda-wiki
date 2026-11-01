@@ -5,9 +5,10 @@ local versioned Markdown articles, REST API and an MCP adapter.
 
 **Early development:** local source creation and article create/read/update work.
 GitHub connections and background synchronization are implemented and tested
-with a simulated GitHub service; authenticated live write acceptance is pending.
-Revision-bound cross-repository moves have simulated-GitHub coverage; live
-authenticated acceptance is pending. An optional local translation worker
+with a simulated GitHub service. Cross-repository moves, including linked
+articles and images, have also passed a synthetic live test through an
+authenticated `gh` proxy; VEDA's own saved App/PAT credentials have not passed
+live acceptance. An optional local translation worker
 produces reviewable Russian drafts; model quality remains unverified. Scoped
 agent read keys are implemented; user/team accounts remain unfinished. This
 repository contains no knowledge-base content,
@@ -64,28 +65,31 @@ your checkout. stdio is the MCP transport; use `--url` to choose the loopback
 REST endpoint. For a local read-only agent, the service can instead expose a Unix socket in a
 private directory owned by the service user. Start VEDA with `--reader-socket
 /path/to/private/reader.sock`, then use the MCP adapter with `--reader-socket`
-pointing to that socket. This adapter advertises only sources, search, read and
-context; it has no credential or write/admin access. The socket's directory must
+pointing to that socket. This adapter advertises sources, search, read, context
+and non-persistent update preparation; it has no write/admin access. The socket's directory must
 be 0700 and owned by the server user. Anyone sharing that OS identity can read
 all private sources; this is not per-agent authorization. An optional Linux-only
 root snapshot import channel is described in the [API reference](docs/api.md).
 
 The owner key allows reading and writing all sources. To grant an agent only
-current-content reading, pass `--key-file .veda/reader.key` instead. The reader
+current-content reading, pass `--reader-key-file .veda/reader.key` instead. The reader
 key cannot write or use administrative endpoints and is ignored by the public
 listener. It grants access to all private sources and is not user-scoped. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
-Tools: `veda_sources`, `veda_search`, `veda_read`, `veda_create_source`,
-`veda_write_article`, `veda_copy_article`, `veda_moves`, `veda_move_article`,
+Tools: `veda_sources`, `veda_search`, `veda_read`, `veda_prepare_update`, `veda_create_source`,
+`veda_write_article`, `veda_copy_article`, `veda_transfer_plan`, `veda_moves`, `veda_move_article`,
 `veda_cancel_move`,
 `veda_translation_needed`,
 `veda_translate_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
 `veda_github_status`, `veda_github_connect`, `veda_sync`,
-`veda_publish_job`.
+`veda_publish_job`, `veda_cancel_bundle`.
 Context follows root and ancestor
 `AGENTS.md` articles inside one source. Documentation is evidence, never an
 authorization to execute infrastructure actions.
+`veda_prepare_update` rereads the current revision and returns the proposed
+text and base digest for review. It does not save a draft or publish anything;
+an authorized client must reread or submit with the returned expected revision.
 
 ## Development
 
@@ -111,7 +115,8 @@ as an early single-owner implementation, not a completed hosted multi-user wiki.
 See [repository import](docs/import.md). Wiki sources use strict root `veda.yaml`
 metadata; program sources import `docs/` only. Import uses the authenticated REST
 service, preserves local changes as conflicts, and tracks Git/content provenance.
-See [GitHub synchronization](docs/github.md). Automatic translation is not yet enabled.
+See [GitHub synchronization](docs/github.md). The optional translation worker
+is disabled by default and needs a separately configured, qualified local model.
 
 ## Direction
 

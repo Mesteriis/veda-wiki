@@ -1,6 +1,7 @@
 """VEDA stdio adapter. Uses the same REST service and revision rules as clients."""
 import argparse
 import asyncio
+import hashlib
 import json
 import http.client
 import socket
@@ -112,6 +113,9 @@ def make_server(client):
         "veda_sources": ("List sources visible to this client.", {}, []),
         "veda_search": ("Search current articles across sources.", {"query": string}, ["query"]),
         "veda_read": ("Read the current article and its revision.", {"source_id": string, "path": string}, ["source_id", "path"]),
+        "veda_prepare_update": ("Prepare a non-persistent proposed article update after rereading the current revision. Returns the base revision and SHA for review; it does not save or publish the proposed text. Stale revisions are refused.", {
+            "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
+            "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_create_source": ("Create an explicit local source; GitHub connection is not implied.", {
             "id": string, "title": string, "kind": {"enum": ["wiki", "program"]},
             "visibility": {"enum": ["private", "public"]}}, ["id", "title", "kind", "visibility"]),
@@ -165,7 +169,7 @@ def make_server(client):
     }
 
     if client.read_only:
-        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_read", "veda_context")}
+        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_read", "veda_context", "veda_prepare_update")}
 
     def read(source_id, path):
         article = client.request("GET", "/api/v1/articles?" + urlencode({"source_id": source_id, "path": path}))
@@ -189,6 +193,17 @@ def make_server(client):
                 result = await asyncio.to_thread(client.request, "GET", "/api/state?" + urlencode({"q": arguments["query"]}))
             elif name == "veda_read":
                 result = await asyncio.to_thread(read, **arguments)
+            elif name == "veda_prepare_update":
+                current = await asyncio.to_thread(read, arguments["source_id"], arguments["path"])
+                proposed = arguments["text"]
+                if (not isinstance(proposed, str) or len(proposed.encode("utf-8")) > 256000
+                        or current["revision"] != arguments["expected_revision"]):
+                    raise ValueError("Invalid or stale proposal")
+                result = {"source_id": arguments["source_id"], "path": arguments["path"],
+                          "expected_revision": current["revision"], "base_sha256": current["sha256"],
+                          "proposed_sha256": hashlib.sha256(proposed.encode("utf-8")).hexdigest(),
+                          "text": proposed, "saved": False,
+                          "note": "Proposal only; review and an authorized write are still required."}
             elif name == "veda_create_source":
                 result = await asyncio.to_thread(client.request, "POST", "/api/v1/sources", arguments)
             elif name == "veda_write_article":

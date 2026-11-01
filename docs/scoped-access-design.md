@@ -14,7 +14,8 @@ reader routes, including search, context and media; writes and owner metadata
 remain unavailable. Requests already in progress may finish after revocation.
 Existing owner, shared reader and Unix socket behavior remains unchanged. Keys
 have not yet been provisioned to the four agents. Use MCP
-`--reader-key-file /path/to/private-key` to expose only the four read tools;
+`--reader-key-file /path/to/private-key` to expose the four read tools and the
+non-persistent proposal preparation tool;
 the file must be owned by the process user and inaccessible to group/other.
 Server authorization remains the enforcement boundary. The legacy reader
 socket grants all sources by default to clients without a bearer key. Start
@@ -34,8 +35,8 @@ agents that can read each other's files under the same local OS account. An
 existing unrestricted SSH/PVE administrator route also remains administrative
 access regardless of the MCP key.
 
-The scoped-key store uses format version 4 so older binaries refuse it;
-coordinate this migration with the version-3 GitHub-source-move branch before
-integration, and verify backup and rollback. The snapshot currently copies
+The scoped-key store uses format version 4 or newer so older binaries refuse it;
+preserve the current store and verify backup compatibility before rollback.
+The snapshot currently copies
 authorized content per request; performance with large collections is unverified.
 Keys have not been deployed or externally audited.
