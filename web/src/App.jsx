@@ -508,7 +508,7 @@ function Dashboard({ v }) {
         </div>
       </div>
       <aside className="right-column">
-        {<Integrations isPublic={v.Public} githubCount={v.GitHubCount || 0} />}
+        {!v.Public && <Integrations isPublic={v.Public} githubCount={v.GitHubCount || 0} />}
         <Statistics count={v.Count} groups={(v.Groups || []).length} isPublic={v.Public} />
         <Shortcuts />
       </aside>
