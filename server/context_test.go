@@ -182,6 +182,57 @@ func TestScopedContextReportsConnectionFailure(t *testing.T) {
 	}
 }
 
+func TestContextReportsUnconfirmedWritesInScopedSnapshot(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
+	m := connectFixture(t, s, f, true)
+	source(t, s, "other", "private")
+	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(public bool) contextStatus {
+		r := httptest.NewRequest("GET", "/api/v1/context?source_id=handbook&path=guide.md", nil)
+		if !public {
+			r.Header.Set("Authorization", "Bearer "+key)
+		}
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner", Public: public}).ServeHTTP(out, r)
+		var result agentContext
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &result) != nil {
+			t.Fatal("context unavailable", out.Code)
+		}
+		return result.SourceStatus
+	}
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 {
+		t.Fatal("initial queue count unavailable")
+	}
+	if _, err = s.put("handbook", "guide.md", "# Local update", 1); err != nil {
+		t.Fatal(err)
+	}
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 {
+		t.Fatal("queued write not reflected immediately")
+	}
+	if status := read(true); status.UnconfirmedWrites != nil {
+		t.Fatal("public context exposed write queue")
+	}
+	m.Once(context.Background())
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 {
+		t.Fatal("write counted as confirmed before the follow-up import")
+	}
+	m.Once(context.Background())
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 {
+		t.Fatal("confirmed write still counted")
+	}
+	if _, err = s.agentContext("other", "guide.md", false); err != nil {
+		t.Fatal(err)
+	}
+	local, _ := s.agentContext("other", "guide.md", false)
+	if local.SourceStatus.UnconfirmedWrites != nil {
+		t.Fatal("local source reported a GitHub outbox count")
+	}
+}
+
 func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Instructions"})

@@ -225,7 +225,7 @@ func (s *Store) scopedViewUser(id string, version int) (*Store, bool, error) {
 // Caller holds the store read lock, keeping authorization and snapshot atomic.
 func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 	selected := make(map[string]bool, len(scope))
-	db := Database{Version: s.db.Version, Sources: map[string]Source{}, Articles: map[string]Article{}, Connections: map[string]GitHubConnection{}}
+	db := Database{Version: s.db.Version, Sources: map[string]Source{}, Articles: map[string]Article{}, Connections: map[string]GitHubConnection{}, Outbox: map[string]SyncJob{}}
 	observed := map[string]time.Time{}
 	withheld := map[string]int{}
 	for _, id := range scope {
@@ -269,6 +269,13 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 			article.Published = &published
 		}
 		db.Articles[key] = article
+	}
+	// The reader context exposes only a source-level count, never job IDs,
+	// paths, revisions or content. Capture the count inputs under the same lock.
+	for id, job := range s.db.Outbox {
+		if selected[job.SourceID] && job.State != "complete" && job.State != "superseded" {
+			db.Outbox[id] = SyncJob{SourceID: job.SourceID, State: job.State}
+		}
 	}
 	return &Store{dir: s.dir, db: db, observed: observed, withheld: withheld}, true, nil
 }

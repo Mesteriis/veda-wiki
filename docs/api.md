@@ -251,6 +251,10 @@ not proof that the upstream repository or infrastructure is current. A failed,
 paused or unverified connection can leave the local copy stale even when an
 earlier observation time is present. These connection fields are omitted from public context responses
 and from local disconnected sources.
+The same status includes `unconfirmed_write_jobs` for a connected source: the
+number of non-complete, non-superseded outbox jobs at the snapshot. It includes
+blocked or ambiguous jobs and is not a count of individual files or moves. Zero
+does not establish remote freshness; public context omits the field.
 The context endpoint reads all ancestor `AGENTS.md` articles and status under
 one lock, subject to the caller's source permissions and published revisions.
 Missing instructions only mean they are absent from the visible dataset; a

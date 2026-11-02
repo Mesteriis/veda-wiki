@@ -20,6 +20,7 @@ type contextStatus struct {
 	ImportPartial        bool    `json:"import_partial"`
 	ImportDirty          bool    `json:"import_dirty"`
 	UnresolvedConflicts  int     `json:"unresolved_conflicts"`
+	UnconfirmedWrites    *int    `json:"unconfirmed_write_jobs,omitempty"`
 	SyncState            string  `json:"sync_state,omitempty"`
 	SyncError            string  `json:"sync_error,omitempty"`
 	SyncVerification     string  `json:"sync_verification,omitempty"`
@@ -40,6 +41,13 @@ func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
 		status.SyncState = conn.State
 		status.SyncError = conn.LastError
 		status.SyncVerification = conn.Verification
+		count := 0
+		for _, job := range s.db.Outbox {
+			if job.SourceID == sourceID && job.State != "complete" && job.State != "superseded" {
+				count++
+			}
+		}
+		status.UnconfirmedWrites = &count
 	}
 	if observed, ok := s.observed[sourceID]; ok {
 		value := observed.UTC().Format(time.RFC3339Nano)
