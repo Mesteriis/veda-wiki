@@ -29,7 +29,9 @@ imports both into a disposable store, migrates it to SQLite, restarts, and uses
 the official MCP SDK to search, read and prepare unsaved proposals. It checks
 the anonymous rate limit before starting and skips if fewer than 40 requests
 remain. Repository sizes and upstream changes can still exceed that budget.
-It makes no GitHub writes and does not verify private access:
+It makes no GitHub writes and does not verify private access. An equivalent
+check on the deployment host passed for two public program repositories,
+including SQLite restart and source-filtered MCP search, read and proposals:
 
 ```sh
 VEDA_TEST_PUBLIC_MULTI=1 VEDA_TEST_PUBLIC_REPO_ONE=OWNER/REPO1 \
