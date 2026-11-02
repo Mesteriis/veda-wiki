@@ -34,8 +34,13 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		t.Fatal("unsupported fixture repository")
 	}
 	repos := []string{repo, targetRepo}
-	const content = "# Synthetic source\n\nThis is an acceptance fixture.\n\n[Related](related.md)\n\n![fixture](img/icon.png)\n![duplicate](img/duplicate.png)\n"
+	content := "# Synthetic source\n\nThis is an acceptance fixture.\n\n[Related](related.md)\n\n![fixture](img/icon.png)\n![duplicate](img/duplicate.png)\n"
+	directoryFixture := os.Getenv("VEDA_LIVE_GITHUB_DIRECTORY") == "1"
+	if directoryFixture {
+		content += "\n[Directory](docs/)\n"
+	}
 	const related = "# Synthetic related article\n"
+	const index = "# Synthetic directory index\n"
 	image := smallPNG(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -79,17 +84,24 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	nodeIDs := []string{infoSource["node_id"].(string), infoTarget["node_id"].(string)}
 	base := api("repos/"+repo+"/commits/588ff21", nil)["sha"].(string)
 	imageSHA := api("repos/"+repo+"/git/blobs", map[string]string{"content": base64.StdEncoding.EncodeToString(image), "encoding": "base64"})["sha"].(string)
-	tree := api("repos/"+repo+"/git/trees", map[string]any{"tree": []map[string]string{
+	treeEntries := []map[string]string{
 		{"path": "veda.yaml", "mode": "100644", "type": "blob", "content": metadataFixture},
 		{"path": "guide.md", "mode": "100644", "type": "blob", "content": content},
 		{"path": "related.md", "mode": "100644", "type": "blob", "content": related},
 		{"path": "img/icon.png", "mode": "100644", "type": "blob", "sha": imageSHA},
 		{"path": "img/duplicate.png", "mode": "100644", "type": "blob", "sha": imageSHA},
-	}})["sha"].(string)
+	}
+	if directoryFixture {
+		treeEntries = append(treeEntries, map[string]string{"path": "docs/index.md", "mode": "100644", "type": "blob", "content": index})
+	}
+	tree := api("repos/"+repo+"/git/trees", map[string]any{"tree": treeEntries})["sha"].(string)
 	commit := api("repos/"+repo+"/git/commits", map[string]any{"message": "VEDA synthetic move fixture", "tree": tree, "parents": []string{base}})["sha"].(string)
 	suffix := time.Now().UTC().Format("20060102-150405")
 	branches := []string{"feature/veda-live-source-" + suffix, "feature/veda-live-target-" + suffix}
 	destinationPath := "moved.md"
+	if directoryFixture && targetRepo == repo {
+		destinationPath = "veda-fixture/moved.md"
+	}
 	commits := []string{commit, commit}
 	baseEntries := map[string]string{}
 	if targetRepo != repo {
@@ -330,6 +342,9 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		if i == 0 && !found["related.md"] {
 			t.Fatal("linked source article was removed")
 		}
+		if i == 0 && directoryFixture && !found["docs/index.md"] {
+			t.Fatal("linked directory source was removed")
+		}
 		if i == 1 && !found[destinationPath] {
 			t.Fatal("destination absent")
 		}
@@ -353,6 +368,12 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 			relatedPath := path.Join(path.Dir(destinationPath), "related.md")
 			if _, err := verifiedTreeFile(remoteTree, relatedPath, related); err != nil {
 				t.Fatal("linked fixture differs")
+			}
+			if directoryFixture {
+				indexPath := path.Join(path.Dir(destinationPath), "docs/README.md")
+				if _, err := verifiedTreeFile(remoteTree, indexPath, index); err != nil {
+					t.Fatal("mapped directory fixture differs")
+				}
 			}
 		}
 	}

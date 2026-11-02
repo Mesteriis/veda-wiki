@@ -238,6 +238,12 @@ cd server
 VEDA_LIVE_GITHUB_MOVE=1 go test -count=1 -run '^TestLiveGitHubBranchMove$' -v .
 ```
 
+Add `VEDA_LIVE_GITHUB_DIRECTORY=1` to include a directory `index.md` mapped
+to a destination `README.md`. This variant passed on 2026-11-02 between two
+new branches of the public VEDA repository, including image and linked-article
+checks. It used the same `gh` proxy and synthetic VEDA credential; it did not
+exercise saved credentials or a private repository.
+
 Add `VEDA_LIVE_GITHUB_RECOVERY=1` to the same command to create a synthetic
 article through the REST handler, simulate an upstream outage, migrate and
 reopen the local store as SQLite, and verify that the queued write reaches the
