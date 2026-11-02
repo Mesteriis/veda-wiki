@@ -31,6 +31,13 @@ procedure is to stop VEDA and back up the entire data directory. A raw copy of
 only the database while the service is running is not a supported backup. Test
 restores independently before relying on a backup.
 
+An atomic filesystem snapshot must include the database, any rollback journal,
+and the rest of the data directory at the same point in time. One isolated
+Proxmox/PBS snapshot taken while a synthetic VEDA instance was writing restored
+and started successfully. This single exercise does not establish safety for
+other storage systems or all failure modes; validate the complete backup and
+restore path for the deployment in use.
+
 The SQLite backend removes the 64 MiB whole-state JSON limit and updates
 individual records within an atomic transaction. It still loads the complete
 logical state into memory and serializes records during commits. It is not a
