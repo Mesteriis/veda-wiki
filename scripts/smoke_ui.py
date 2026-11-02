@@ -81,19 +81,29 @@ def main():
             key_file.write_text(key)
             key_file.chmod(0o600)
             debug = port()
+            browser_log = (root / 'browser.log').open('w+b')
             browser = subprocess.Popen(
                 [chrome, '--headless=new', '--disable-gpu', '--disable-background-networking',
                  '--disable-extensions', '--no-first-run', '--no-proxy-server',
                  f'--user-data-dir={root / "chrome"}', f'--remote-debugging-port={debug}', 'about:blank'],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=browser_log,
             )
             try:
                 subprocess.run(['node', str(ROOT / 'scripts/smoke_ui.mjs'), str(debug),
                                 f'http://127.0.0.1:{public}/', f'http://127.0.0.1:{private}/', str(key_file)],
                                check=True, timeout=45)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                browser_log.flush()
+                browser_log.seek(0)
+                log = browser_log.read().lower()
+                print(json.dumps({'browser_exit': browser.poll(), 'sandbox_error': b'sandbox' in log,
+                                  'missing_library': b'shared libraries' in log,
+                                  'devtools_listening': b'devtools listening' in log}), flush=True)
+                raise
             finally:
                 browser.terminate()
                 browser.wait(timeout=10)
+                browser_log.close()
         finally:
             server.terminate()
             server.wait(timeout=10)
