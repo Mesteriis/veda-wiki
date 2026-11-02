@@ -1,6 +1,8 @@
 import io
 from pathlib import Path
 import tarfile
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,7 +15,7 @@ class ReleasePackageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in ('README.md', 'LICENSE', 'mcp/server.py', 'mcp/requirements.txt',
-                         'deploy/systemd/veda.service', 'docs/guide.md', '.veda/owner.key'):
+                         'mcp/keyed_stdio_launcher.py', 'deploy/systemd/veda.service', 'docs/guide.md', '.veda/owner.key'):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('synthetic ' + name)
@@ -31,9 +33,25 @@ class ReleasePackageTest(unittest.TestCase):
                 prefix = 'veda-test-linux-amd64/'
                 self.assertEqual(set(members), {prefix + x for x in (
                     'veda', 'README.md', 'LICENSE', 'mcp/server.py', 'mcp/requirements.txt',
-                    'deploy/systemd/veda.service')} | {prefix + 'docs/' + p.name for p in (package_release.ROOT / 'docs').glob('*.md')})
+                    'mcp/keyed_stdio_launcher.py', 'deploy/systemd/veda.service')} | {prefix + 'docs/' + p.name for p in (package_release.ROOT / 'docs').glob('*.md')})
                 self.assertEqual(members[prefix + 'veda'].mode, 0o755)
                 self.assertTrue(all(m.isfile() and m.uid == 0 and m.gid == 0 and m.mtime == 0 for m in members.values()))
+
+    def test_packaged_launcher_relays_key_and_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            binary, archive, key = root / 'binary', root / 'archive.tar.gz', root / 'reader.key'
+            binary.write_bytes(b'executable')
+            key.write_text('a' * 64)
+            key.chmod(0o600)
+            package_release.package(archive, binary, 'test', 'amd64')
+            with tarfile.open(archive, 'r:gz') as tar:
+                launcher = root / 'launcher.py'
+                launcher.write_bytes(tar.extractfile('veda-test-linux-amd64/mcp/keyed_stdio_launcher.py').read())
+            child = "import sys; key=sys.stdin.buffer.read(64); request=sys.stdin.buffer.read(); print('ok' if key == b'a'*64 and request == b'hello' else 'bad')"
+            result = subprocess.run([sys.executable, str(launcher), '--key-file', str(key), '--', sys.executable, '-c', child], input=b'hello', capture_output=True, timeout=10, check=True)
+            self.assertEqual(result.stdout, b'ok\n')
+            self.assertEqual(result.stderr, b'')
 
     def test_refuses_symlink_and_does_not_replace_archive(self):
         with tempfile.TemporaryDirectory() as tmp:

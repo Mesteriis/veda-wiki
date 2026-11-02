@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def package(archive: Path, binary: Path, version: str, arch: str) -> None:
     prefix = f"veda-{version}-linux-{arch}"
     files = [Path("README.md"), Path("LICENSE"), Path("mcp/server.py"),
-             Path("mcp/requirements.txt"), Path("deploy/systemd/veda.service")]
+             Path("mcp/requirements.txt"), Path("mcp/keyed_stdio_launcher.py"),
+             Path("deploy/systemd/veda.service")]
     files.extend(Path("docs") / name for name in (
         "agent-workflow.md", "api.md", "assets.md", "browser-access.md",
         "content-model.md", "github.md", "implementation.md", "import.md",

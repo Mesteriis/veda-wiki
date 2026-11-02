@@ -14,10 +14,12 @@ python3 scripts/package_release.py --version dev --arch amd64
 ```
 
 Choose `arm64` for Linux ARM64. The archive contains the embedded-interface
-binary, MCP adapter, pinned Python requirements, documentation and example unit;
+binary, MCP adapter and SSH launcher, pinned Python requirements, documentation
+and example unit;
 it contains no application data or credentials. Verify the printed SHA-256
 when transferring the archive. Extract it on the destination and run the
-following from the extracted directory:
+following from the extracted directory. Commands in the documentation that
+build VEDA or run source tests require a separate source checkout:
 
 ```sh
 sudo useradd --system --user-group --home-dir /var/lib/veda --no-create-home --shell /usr/sbin/nologin veda
