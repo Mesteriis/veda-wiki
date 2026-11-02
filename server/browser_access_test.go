@@ -74,6 +74,23 @@ func TestBrowserAccessAdministrationBoundaries(t *testing.T) {
 	if listed.Code != 200 || strings.Contains(listed.Body.String(), result.Key) {
 		t.Fatal("key leaked in list")
 	}
+	var keys []AccessKeyView
+	if json.Unmarshal(listed.Body.Bytes(), &keys) != nil || len(keys) != 1 || keys[0].ETag == "" {
+		t.Fatal("missing key version")
+	}
+	update := `{"id":"test-agent","sources":["other"],"expires_at":"` + expires + `","expected_etag":"` + keys[0].ETag + `"}`
+	if r := call("POST", "/api/access/keys", update, "http://evil.example", cookie, false, local); r.Code != 403 {
+		t.Fatal("cross-origin update", r.Code)
+	}
+	if r := call("POST", "/api/access/keys", update, origin, cookie, false, local); r.Code != 200 {
+		t.Fatal("access update failed", r.Code)
+	}
+	if got := s.accessScope(result.Key, time.Now()); len(got) != 1 || got[0] != "other" {
+		t.Fatal("scope update not enforced")
+	}
+	if r := call("POST", "/api/access/keys", update, origin, cookie, false, local); r.Code != 409 {
+		t.Fatal("stale browser update accepted", r.Code)
+	}
 	if r := call("GET", "/api/v1/access-keys", "", "", cookie, false, local); r.Code != 404 {
 		t.Fatal("owner API accessible", r.Code)
 	}

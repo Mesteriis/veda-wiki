@@ -603,11 +603,12 @@ function AccessSettings() {
   const [sources, setSources] = useState([]);
   const [keys, setKeys] = useState([]);
   const [issued, setIssued] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   async function json(route, options = {}) {
     const response = await fetch(route, options);
-    if (!response.ok) throw Error("request failed");
+    if (!response.ok) { const error = Error("request failed"); error.status = response.status; throw error; }
     return response.json();
   }
   async function refresh() {
@@ -650,9 +651,22 @@ function AccessSettings() {
     catch { setMessage("Не удалось подтвердить отзыв. Обновите список перед повтором."); }
     finally { setBusy(false); }
   }
+  async function update(event, key) {
+    event.preventDefault();
+    const selected = new FormData(event.currentTarget).getAll("sources");
+    if (!selected.length) { setMessage("Выберите хотя бы один источник."); return; }
+    setBusy(true); setMessage("");
+    try {
+      await send("/api/access/keys", { id: key.id, sources: selected, expires_at: key.expires_at, expected_etag: key.etag });
+      setEditing(null);
+      try { await refresh(); } catch { setMessage("Права изменены, но список не обновился. Обновите его позже."); }
+    } catch (error) {
+      setMessage(error.status === 409 ? "Ключ изменился или срок истёк. Обновите список и проверьте права." : "Изменение не подтверждено. Обновите список перед повтором.");
+    } finally { setBusy(false); }
+  }
   async function logout() {
     setBusy(true); setMessage("");
-    try { await send("/api/access/session/logout", {}); setStatus(false); setKeys([]); setSources([]); setIssued(null); }
+    try { await send("/api/access/session/logout", {}); setStatus(false); setKeys([]); setSources([]); setIssued(null); setEditing(null); }
     catch { setMessage("Не удалось завершить сеанс."); }
     finally { setBusy(false); }
   }
@@ -662,7 +676,7 @@ function AccessSettings() {
     {status === true && <>
       {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
       <form onSubmit={create}><h3>Новый ключ чтения</h3><label>Идентификатор<input name="id" required placeholder="agent-one" /></label><label>Срок в днях<input name="days" type="number" min="1" max="365" defaultValue="30" required /></label><fieldset><legend>Доступные источники</legend>{sources.length ? sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} /> {s.title} ({s.id})</label>) : <p>Источников пока нет.</p>}</fieldset><button disabled={busy || !!issued || !sources.length}>Создать ключ</button></form>
-      <h3>Выданные ключи</h3>{keys.length ? <ul>{keys.map((k) => <li key={k.id}><strong>{k.id}</strong> · {k.sources.join(", ")} · до {new Date(k.expires_at).toLocaleString()} <button type="button" disabled={busy} onClick={() => revoke(k.id)}>Отозвать</button></li>)}</ul> : <p>Ключей пока нет.</p>}
+      <h3>Выданные ключи</h3>{keys.length ? <ul>{keys.map((k) => <li key={k.id}><strong>{k.id}</strong> · {k.sources.join(", ")} · до {new Date(k.expires_at).toLocaleString()} <button type="button" disabled={busy} onClick={() => setEditing(editing === k.id ? null : k.id)}>Изменить доступ</button> <button type="button" disabled={busy} onClick={() => revoke(k.id)}>Отозвать</button>{editing === k.id && <form onSubmit={(event) => update(event, k)}><fieldset><legend>Источники для {k.id}</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} defaultChecked={k.sources.includes(s.id)} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy}>Сохранить доступ</button> <button type="button" disabled={busy} onClick={() => setEditing(null)}>Отмена</button></form>}</li>)}</ul> : <p>Ключей пока нет.</p>}
       <button type="button" disabled={busy} onClick={logout}>Выйти из управления доступом</button>
     </>}
     {message && <p role="alert">{message}</p>}

@@ -24,6 +24,15 @@ type AccessKeyView struct {
 	ID      string   `json:"id"`
 	Sources []string `json:"sources"`
 	Expires string   `json:"expires_at"`
+	ETag    string   `json:"etag,omitempty"`
+}
+
+func accessKeyView(key AccessKey) AccessKeyView {
+	// The bearer is random; only its stored digest enters this opaque fingerprint.
+	// Including it distinguishes a revoked/reissued key with the same metadata.
+	encoded, _ := json.Marshal(key)
+	digest := sha256.Sum256(encoded)
+	return AccessKeyView{ID: key.ID, Sources: append([]string(nil), key.Sources...), Expires: key.Expires, ETag: hex.EncodeToString(digest[:])}
 }
 
 func (s *Store) listAccessKeys() []AccessKeyView {
@@ -31,10 +40,52 @@ func (s *Store) listAccessKeys() []AccessKeyView {
 	defer s.mu.RUnlock()
 	keys := make([]AccessKeyView, 0, len(s.db.AccessKeys))
 	for _, key := range s.db.AccessKeys {
-		keys = append(keys, AccessKeyView{ID: key.ID, Sources: append([]string(nil), key.Sources...), Expires: key.Expires})
+		keys = append(keys, accessKeyView(key))
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i].ID < keys[j].ID })
 	return keys
+}
+
+// Update the existing key without disclosing or replacing its bearer. The
+// caller must provide the current fingerprint to avoid overwriting concurrent
+// administrative changes. Expired credentials must be reissued, not revived.
+func (s *Store) updateAccessKey(id string, sourceIDs []string, expiry time.Time, expected string) (AccessKeyView, error) {
+	now := time.Now()
+	if !identifier.MatchString(id) || len(sourceIDs) == 0 || len(sourceIDs) > 100 || !expiry.After(now) || expiry.After(now.Add(366*24*time.Hour)) || len(expected) != 64 {
+		return AccessKeyView{}, ErrInvalid
+	}
+	if _, err := hexKey(expected); err != nil {
+		return AccessKeyView{}, ErrInvalid
+	}
+	sources := append([]string(nil), sourceIDs...)
+	sort.Strings(sources)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now = time.Now()
+	if !expiry.After(now) || expiry.After(now.Add(366*24*time.Hour)) {
+		return AccessKeyView{}, ErrInvalid
+	}
+	key, ok := s.db.AccessKeys[id]
+	if !ok {
+		return AccessKeyView{}, ErrNotFound
+	}
+	current := accessKeyView(key)
+	previousExpiry, err := time.Parse(time.RFC3339Nano, key.Expires)
+	if err != nil || !previousExpiry.After(now) || subtle.ConstantTimeCompare([]byte(current.ETag), []byte(expected)) != 1 {
+		return AccessKeyView{}, ErrConflict
+	}
+	for i, source := range sources {
+		if _, ok := s.db.Sources[source]; !ok || (i > 0 && sources[i-1] == source) {
+			return AccessKeyView{}, ErrInvalid
+		}
+	}
+	key.Sources, key.Expires = sources, expiry.UTC().Format(time.RFC3339Nano)
+	db := s.clone()
+	db.AccessKeys[id] = key
+	if err = s.commit(db); err != nil {
+		return AccessKeyView{}, err
+	}
+	return accessKeyView(key), nil
 }
 
 func validateAccessKey(id string, key AccessKey, sources map[string]Source) error {

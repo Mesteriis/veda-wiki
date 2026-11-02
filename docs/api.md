@@ -24,11 +24,11 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |
-| GET/POST | `/api/v1/access-keys` | List scoped-key metadata or create a source-scoped read-only key (owner only) |
+| GET/POST | `/api/v1/access-keys` | List, create or update a source-scoped read-only key (owner only) |
 | POST | `/api/v1/access-keys/revoke` | Revoke a scoped key by ID (owner only) |
 | GET/POST | `/api/access/session/status`, `/api/access/session/login`, `/api/access/session/logout` | Separate browser access-administration session |
 | GET | `/api/access/sources` | List source metadata for the separate browser access-administration session |
-| GET/POST | `/api/access/keys` | List or create scoped keys in that browser session |
+| GET/POST | `/api/access/keys` | List, create or update scoped keys in that browser session |
 | POST | `/api/access/keys/revoke` | Revoke a scoped key in that browser session |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
 | POST | `/api/v1/articles/transfer-plan` | Inspect recursive relative article links and destination matches (owner only) |
@@ -96,7 +96,12 @@ sources. Create with an owner-authorized POST to `/api/v1/access-keys` containin
 `id`, `sources` and `expires_at` (RFC3339, future and at most 366 days). The
 response returns the bearer key once; only its hash is stored. Revoke by POSTing
 the `id` to `/api/v1/access-keys/revoke`. The list endpoint returns metadata,
-never the key or hash. Scoped keys are ignored on the public listener and cannot
+never the key or stored hash. To update an existing key, POST `id`, `sources`,
+`expires_at` and the `expected_etag` from that list. A stale fingerprint or an
+expired key returns 409; expired keys must be reissued. The existing bearer is
+unchanged and is not returned. Scope changes apply to subsequent bearer and
+browser-session requests; requests already in progress can finish with their
+previous scope. Scoped keys are ignored on the public listener and cannot
 write, access history or use owner-only endpoints. Existing shared reader and
 Unix socket credentials still grant all private sources until separately changed.
 Key issuance upgrades the store to version 4, which older servers refuse to open.

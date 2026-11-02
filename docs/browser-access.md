@@ -40,7 +40,11 @@ before applying the session limit.
 
 Settings provide a separate owner-authenticated access-administration session
 for listing sources and issuing or revoking source-scoped reader keys. Its
-cookie cannot authorize GitHub administration, private reading, or article
+key list can also change a key's source scope without showing or rotating the
+bearer. Existing sessions use the new scope on their next request. A concurrent
+change or an expired key requires the administrator to refresh and review;
+expired keys must be reissued. The access-administration cookie cannot authorize
+GitHub administration, private reading, or article
 writes; the GitHub and reader cookies cannot manage keys. Login and mutations
 require the same HTTPS/loopback and same-origin protections described above.
 A new key is shown once and remains only in the current page's memory; save it

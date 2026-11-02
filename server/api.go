@@ -120,9 +120,10 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		var input struct {
-			ID      string   `json:"id"`
-			Sources []string `json:"sources"`
-			Expires string   `json:"expires_at"`
+			ID           string   `json:"id"`
+			Sources      []string `json:"sources"`
+			Expires      string   `json:"expires_at"`
+			ExpectedETag *string  `json:"expected_etag"`
 		}
 		if decodeBody(rw, r, &input) != nil {
 			apiError(rw, ErrInvalid)
@@ -131,6 +132,15 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		expiry, err := time.Parse(time.RFC3339Nano, input.Expires)
 		if err != nil {
 			apiError(rw, ErrInvalid)
+			return
+		}
+		if input.ExpectedETag != nil {
+			updated, err := w.Store.updateAccessKey(input.ID, input.Sources, expiry, *input.ExpectedETag)
+			if err != nil {
+				apiError(rw, err)
+				return
+			}
+			jsonResponse(rw, http.StatusOK, updated)
 			return
 		}
 		key, err := w.Store.createAccessKey(input.ID, input.Sources, expiry)
