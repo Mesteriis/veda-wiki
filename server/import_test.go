@@ -179,6 +179,85 @@ func TestImportIsAtomicIdempotentAndPersists(t *testing.T) {
 	}
 }
 
+func TestUnchangedImportRepairsMissingOrCorruptAssets(t *testing.T) {
+	for _, damage := range []string{"missing", "corrupt", "symlink"} {
+		t.Run(damage, func(t *testing.T) {
+			s := testStore(t)
+			b := testBatch()
+			b.Assets = map[string][]byte{"images/test.png": smallPNG(t)}
+			first, err := s.importBatch(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b = applyAgain(s, b)
+			ref := s.db.Sources[b.SourceID].Assets["images/test.png"]
+			filename := filepath.Join(s.dir, "blobs", ref.SHA)
+			if err = os.Remove(filename); err != nil {
+				t.Fatal(err)
+			}
+			switch damage {
+			case "corrupt":
+				err = os.WriteFile(filename, []byte("corrupt"), 0600)
+			case "symlink":
+				target := filepath.Join(t.TempDir(), "target")
+				if err = os.WriteFile(target, []byte("unchanged"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				err = os.Symlink(target, filename)
+				defer func() {
+					content, readErr := os.ReadFile(target)
+					if readErr != nil || string(content) != "unchanged" {
+						t.Error("symlink target modified", readErr)
+					}
+				}()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := s.importBatch(b)
+			if err != nil || result.Generation != first.Generation || result.Unchanged != 1 || result.Created != 0 || result.Updated != 0 || result.Conflicts != 0 {
+				t.Fatal("unchanged import failed", result, err)
+			}
+			if err = s.verifyAsset(ref); err != nil {
+				t.Fatal("asset not repaired", err)
+			}
+			media := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/media/handbook/images/test.png", "", true)
+			if media.Code != 200 || !bytes.Equal(media.Body.Bytes(), b.Assets["images/test.png"]) {
+				t.Fatal("repaired asset not served", media.Code)
+			}
+			article, err := s.article(b.SourceID, "README.md", false)
+			if err != nil || len(article.Versions) != 1 {
+				t.Fatal("article history changed", err)
+			}
+		})
+	}
+}
+
+func TestFailedAssetRepairDoesNotAdvanceObservation(t *testing.T) {
+	s := testStore(t)
+	b := testBatch()
+	b.Assets = map[string][]byte{"image.png": smallPNG(t)}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	b = applyAgain(s, b)
+	previous := s.observed[b.SourceID]
+	ref := s.db.Sources[b.SourceID].Assets["image.png"]
+	filename := filepath.Join(s.dir, "blobs", ref.SHA)
+	if err := os.Remove(filename); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filename, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.importBatch(b); err == nil {
+		t.Fatal("failed repair reported success")
+	}
+	if !s.observed[b.SourceID].Equal(previous) {
+		t.Fatal("failed repair advanced observation")
+	}
+}
+
 func TestConcurrentImportsRequireCurrentGeneration(t *testing.T) {
 	s := testStore(t)
 	initial := testBatch()

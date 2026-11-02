@@ -381,6 +381,54 @@ func imageRef(b []byte) (BlobRef, error) {
 func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
 	return s.applyImport(batch, nil, false)
 }
+
+// Write verified immutable blobs before advancing the observation or metadata.
+// A failed metadata commit may leave an unreferenced blob, but never a partial
+// file at a referenced digest. The caller holds the store lock.
+func (s *Store) storeImportAssets(refs map[string]BlobRef, assets map[string][]byte) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	directory := path.Join(s.dir, "blobs")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return err
+	}
+	changed := false
+	for name, ref := range refs {
+		if s.verifyAsset(ref) == nil {
+			continue
+		}
+		f, err := os.CreateTemp(directory, ".blob-")
+		if err != nil {
+			return err
+		}
+		_, err = f.Write(assets[name])
+		if err == nil {
+			err = f.Sync()
+		}
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+		if err == nil {
+			err = os.Rename(f.Name(), path.Join(directory, ref.SHA))
+		}
+		os.Remove(f.Name())
+		if err != nil {
+			return err
+		}
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	dir, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
 func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalOnly bool) (ImportResult, error) {
 	result := ImportResult{Withheld: batch.Withheld}
 	if !identifier.MatchString(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !commitID.MatchString(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
@@ -460,6 +508,9 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	if src.Kind != batch.Kind || src.ImportGeneration != *batch.ExpectedImport {
 		return result, ErrConflict
 	}
+	if e := s.storeImportAssets(refs, batch.Assets); e != nil {
+		return result, e
+	}
 	if proof == nil && exists && src.ImportGeneration == generation {
 		result.Generation = generation
 		result.Unchanged = len(batch.Files)
@@ -478,49 +529,6 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	// Immutable blobs are written before the metadata transaction. A failed commit
-	// may leave an unreferenced blob, never a reference to an incomplete file.
-	if len(refs) > 0 {
-		if e := os.MkdirAll(path.Join(s.dir, "blobs"), 0700); e != nil {
-			return result, e
-		}
-	}
-	for name, ref := range refs {
-		filename := path.Join(s.dir, "blobs", ref.SHA)
-		if b, e := os.ReadFile(filename); e == nil && digest(b) == ref.SHA {
-			continue
-		}
-		f, e := os.CreateTemp(path.Join(s.dir, "blobs"), ".blob-")
-		if e != nil {
-			return result, e
-		}
-		_, e = f.Write(batch.Assets[name])
-		if e == nil {
-			e = f.Sync()
-		}
-		closeErr := f.Close()
-		if e == nil {
-			e = closeErr
-		}
-		if e == nil {
-			e = os.Rename(f.Name(), filename)
-		}
-		os.Remove(f.Name())
-		if e != nil {
-			return result, e
-		}
-	}
-	if len(refs) > 0 {
-		dir, e := os.Open(path.Join(s.dir, "blobs"))
-		if e != nil {
-			return result, e
-		}
-		e = dir.Sync()
-		dir.Close()
-		if e != nil {
-			return result, e
-		}
-	}
 	paths := make([]string, 0, len(batch.Files))
 	for p := range batch.Files {
 		paths = append(paths, p)
