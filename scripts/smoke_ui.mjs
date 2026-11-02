@@ -53,7 +53,7 @@ for (const width of [1672, 390, 320]) {
   if (!await evaluate(`innerWidth === ${width} && document.documentElement.scrollWidth === ${width}`)) throw Error('layout overflow');
   if (width <= 390) {
     if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Меню]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('mobile menu button unreachable');
-    for (const title of ['GitHub', 'Настройки']) {
+    for (const title of ['Граф знаний', 'Избранное']) {
       await evaluate("document.querySelector('button[aria-label=Меню]').click()");
       await until("document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'true'");
       if (!await evaluate(`(() => { const b=[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()`)) throw Error('mobile navigation item unreachable');
@@ -144,6 +144,10 @@ for (const width of [1672, 390, 320]) {
     await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
     await until("!document.querySelector('dialog[open]')");
   }
+  await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
+  await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
+  await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
+  await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
   console.log(JSON.stringify({ width, article: true, search: true, collidingSources: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
 // Let Chrome close its profile and children before the temporary directory is removed.
