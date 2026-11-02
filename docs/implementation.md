@@ -33,6 +33,12 @@ public snapshot closes, and the second source remains public and unchanged.
 Both states survive reopening; a corrected first source can be synchronized
 again. This does not establish behavior for VEDA-stored real credentials.
 
+A separate two-source program-import test uses the same Markdown path and
+original text in a public and a private source. After SQLite reopen, each source
+retains its own Russian translation; importing a changed original into the
+public source hides its stale translation while the other source is unaffected.
+This checks versioning and visibility, not translation quality or a real model.
+
 Historical image bindings need more than retaining blobs. Today an article
 revision stores only Markdown and its text hash, while the source stores one
 current path-to-blob map. An image can change without the Markdown hash changing;
