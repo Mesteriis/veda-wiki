@@ -61,6 +61,20 @@ async def check_tls(base, key, cert, revoke):
                 raise RuntimeError('revoked key remained authorized')
 
 
+async def check_independent_revocation(base, key_dir, cert):
+    for name in ('codex', 'claude', 'opencode', 'hermes'):
+        params = StdioServerParameters(command=sys.executable, args=[str(ROOT / 'mcp/server.py'),
+            '--url', base, '--reader-key-file', str(key_dir / (name + '.key')), '--allow-remote-reader-https'],
+            env={**os.environ, 'SSL_CERT_FILE': str(cert)})
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool('veda_read_excerpt', {
+                    'source_id': 'allowed', 'path': 'guide.md', 'limit': 1})
+                if result.isError != (name == 'codex'):
+                    raise RuntimeError('revocation affected the wrong agent key')
+
+
 with tempfile.TemporaryDirectory(prefix='veda-mcp-tls-') as tmp:
     root = Path(tmp)
     data = root / 'data'
@@ -156,7 +170,8 @@ with tempfile.TemporaryDirectory(prefix='veda-mcp-tls-') as tmp:
         revoked = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
         if revoked.returncode == 0 or any(token.encode() in revoked.stdout + revoked.stderr for token in values):
             raise RuntimeError('four-agent check accepted a revoked key or exposed a key')
-        print('PASS: TLS MCP source scope, read, unsaved proposal, denial, revocation and four-agent checks')
+        asyncio.run(check_independent_revocation(f'https://127.0.0.1:{tls}', key_dir, cert))
+        print('PASS: TLS MCP source scope, read, unsaved proposal, denial, independent revocation and four-agent checks')
     finally:
         process.terminate()
         process.wait(timeout=10)
