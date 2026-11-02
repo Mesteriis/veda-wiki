@@ -210,6 +210,9 @@ process after a simulated lost push response and SQLite migration. It verifies
 that the already applied commit is acknowledged without a duplicate push. The
 GitHub service and credentials in that test are synthetic; it does not launch
 the production server binary or prove real credential recovery.
+The same fresh-process check covers a v17 move with a directory index mapped
+to a README: the source remains until the mapped bundle is observed, and the
+linked source document is retained after the move completes.
 
 Automated coverage uses a simulated GitHub service; anonymous public import has
 also been checked against a real public repository. Real authenticated App/PAT
