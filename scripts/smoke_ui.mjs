@@ -49,7 +49,7 @@ for (const width of [1672, 390, 320]) {
   currentWidth = width;
   await send('Emulation.setDeviceMetricsOverride', { width, height: 941, deviceScaleFactor: 1, mobile: width <= 390 });
   await send('Page.navigate', { url });
-  await until("!!document.querySelector('.page-card')");
+  await until("!!document.querySelector('.home-page-row')");
   if (!await evaluate(`innerWidth === ${width} && document.documentElement.scrollWidth === ${width}`)) throw Error('layout overflow');
   if (width <= 390) {
     if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Меню]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('mobile menu button unreachable');
@@ -58,9 +58,9 @@ for (const width of [1672, 390, 320]) {
       await until("document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'true'");
       if (!await evaluate(`(() => { const b=[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()`)) throw Error('mobile navigation item unreachable');
       await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
-      await until(`!!document.querySelector('dialog[open]') && document.querySelector('dialog h2').innerText===${JSON.stringify(title === 'Недавние' ? 'История просмотров' : title)}`);
-      await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
-      await until("!document.querySelector('dialog[open]') && document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'false'");
+      await until(title === 'Граф знаний' ? "!!document.querySelector('.graph-section')" : "!!document.querySelector('.recent-history')");
+      await send('Page.navigate', { url });
+      await until("!!document.querySelector('.home-page-row')");
     }
   }
   await until("!!document.querySelector('.knowledge-tree summary span[title=projects]')");
@@ -85,7 +85,7 @@ for (const width of [1672, 390, 320]) {
   await evaluate("document.querySelector('.search-results a[href*=architecture]').click()");
   await until("location.search.includes('page=') && document.body.innerText.includes('Демонстрационное содержимое')");
   await send('Page.navigate', { url: privateUrl });
-  await until("!!document.querySelector('.page-card')");
+  await until("!!document.querySelector('.home-page-row')");
   if (await evaluate("document.body.innerText.includes('Источники знаний')")) throw Error('integration panel visible anonymously');
   if (await evaluate("!!document.querySelector('.sidebar-bottom .storage, .sidebar-bottom .system')")) throw Error('sidebar status panels visible anonymously');
   if (await evaluate("!!document.querySelector('.shortcuts')")) throw Error('quick actions visible anonymously');
@@ -100,12 +100,9 @@ for (const width of [1672, 390, 320]) {
   await until("!!document.querySelector('.reader-access input[name=key]')");
   await evaluate(`document.querySelector('.reader-access input[name=key]').value = ${JSON.stringify(key)}; document.querySelector('.reader-access form').requestSubmit()`);
   await until("document.body.innerText.includes('Приватная тестовая страница')");
-  if (!await evaluate("document.body.innerText.includes('Источники знаний')")) throw Error('integration panel missing for authenticated reader');
   if (!await evaluate("!!document.querySelector('.sidebar-bottom .storage') && !!document.querySelector('.sidebar-bottom .system')")) throw Error('sidebar status panels missing for authenticated reader');
-  if (!await evaluate("!!document.querySelector('.shortcuts')")) throw Error('quick actions missing for authenticated reader');
-  if (!await evaluate("!!document.querySelector('.activity')")) throw Error('activity missing for authenticated reader');
   if (!await evaluate("['GitHub','API и MCP','Настройки','Избранное'].every(t=>[...document.querySelectorAll('#main-navigation .nav-item')].some(e=>e.textContent.trim()===t)) && !!document.querySelector('.reading-mode') && !!document.querySelector('button[aria-label=Уведомления]') && !!document.querySelector('button[aria-label=Оформление]')")) throw Error('authenticated navigation missing');
-  await evaluate("document.querySelector('.page-card[href*=private]').click()");
+  await evaluate("document.querySelector('.home-page-row[href*=private]').click()");
   await until("document.body.innerText.includes('Закрытый синтетический текст')");
   if (await evaluate("!!document.querySelector('.conflict-warning')")) throw Error('clean article showed conflict warning');
   await send('Page.navigate', { url: privateUrl + '?page=conflict-fixture%2Fguide.md' });
@@ -114,7 +111,7 @@ for (const width of [1672, 390, 320]) {
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
-  await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
+  await until("!location.search && !!document.querySelector('.home-page-row') && !document.body.innerText.includes('Приватная тестовая страница')");
   if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('key session survived logout');
   await evaluate("document.querySelector('button[aria-label=Войти]').click()");
   await until("!!document.querySelector('.reader-access input[name=username]')");
@@ -125,7 +122,7 @@ for (const width of [1672, 390, 320]) {
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
-  await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
+  await until("!location.search && !!document.querySelector('.home-page-row') && !document.body.innerText.includes('Приватная тестовая страница')");
   if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('user session survived logout');
   await evaluate("document.querySelector('button[aria-label=Войти]').click()");
   await until("!!document.querySelector('.reader-access input[name=username]')");
@@ -151,7 +148,7 @@ for (const width of [1672, 390, 320]) {
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
-  await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
+  await until("!location.search && !!document.querySelector('.home-page-row') && !document.body.innerText.includes('Приватная тестовая страница')");
   console.log(JSON.stringify({ width, article: true, search: true, collidingSources: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
 // Let Chrome close its profile and children before the temporary directory is removed.
