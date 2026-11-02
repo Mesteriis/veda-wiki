@@ -45,7 +45,10 @@ Read-only MCP clients can use `veda_prepare_translation` to return an unsaved
 proposal bound to the current original revision and SHA. It accepts program
 `docs/` articles visible to that client and rejects a stale revision. The
 server returns structural, Cyrillic-prose, unchanged-text and credential-pattern
-checks through `POST /api/v1/articles/translation-validate`. This POST is a
+checks through `POST /api/v1/articles/translation-validate`. The validation
+response and MCP proposal include source status from the same snapshot as the
+revision check; review coverage and sync warnings before acting. The updated
+MCP adapter requires a server that returns this status. This POST is a
 non-mutating exception for authenticated readers and the local reader socket;
 browser-origin and public-listener requests are refused. The checks cannot prove
 translation quality or completeness, and a successful result does not save a

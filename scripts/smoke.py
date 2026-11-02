@@ -265,6 +265,7 @@ async def main():
                             draft = json.loads(translation.content[0].text)
                             assert not translation.isError and draft["saved"] is False and draft["original_sha256"] == original["sha256"]
                             assert draft["validation"]["structural_valid"] is True and draft["validation"]["russian_prose"] is True
+                            assert draft["source_status"] == draft["validation"]["source_status"]
                             broken_translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Ошибка\nЗапустите `different`."})
                             assert not broken_translation.isError and json.loads(broken_translation.content[0].text)["validation"]["structural_valid"] is False
                             stale_translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 2, "text": "# Ошибка"})

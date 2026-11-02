@@ -101,3 +101,30 @@ func TestReaderTranslationValidationIsScopedAndNonMutating(t *testing.T) {
 		t.Fatal("revoked key accepted")
 	}
 }
+
+func TestTranslationValidationReportsPausedSource(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Guide\n\nRun `install`."})
+	connectFixture(t, s, f, false)
+	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := s.db.Articles["handbook/docs/guide.md"].Versions[0]
+	if err := s.pauseConnection("handbook", true); err != nil {
+		t.Fatal(err)
+	}
+	input := translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Руководство\n\nЗапустите `install`."}
+	body, _ := json.Marshal(input)
+	req := httptest.NewRequest("POST", "/api/v1/articles/translation-validate", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+key)
+	res := httptest.NewRecorder()
+	(Wiki{Store: s, Token: "owner"}).ServeHTTP(res, req)
+	var result struct {
+		SourceStatus contextStatus `json:"source_status"`
+		Saved        bool          `json:"saved"`
+	}
+	if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &result) != nil || result.SourceStatus.SyncIssue != "paused" || result.Saved {
+		t.Fatal("paused source not reported", res.Code)
+	}
+}

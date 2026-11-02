@@ -69,6 +69,7 @@ func (s *Store) validateTranslation(in translationRequest) (map[string]any, erro
 		"original_sha256": rev.SHA, "structural_valid": reflect.DeepEqual(protectedMarkdown(rev.Text), protectedMarkdown(in.Text)),
 		"russian_prose": containsRussianProse(in.Text), "unchanged": strings.TrimSpace(rev.Text) == strings.TrimSpace(in.Text),
 		"credential_like": secretContent.MatchString(in.Text), "saved": false,
+		"source_status": s.sourceStatusLocked(in.SourceID, src),
 	}, nil
 }
 
