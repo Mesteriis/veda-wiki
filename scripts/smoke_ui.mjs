@@ -130,6 +130,7 @@ for (const width of [1672, 390, 320]) {
   await until("!!document.querySelector('.reader-access input[name=username]')");
   await evaluate("document.querySelector('.reader-access input[name=username]').value='browser-user'; document.querySelector('.reader-access input[name=password]').value='synthetic fixture password'; document.querySelector('.reader-access form').requestSubmit()");
   await until("document.body.innerText.includes('Приватная тестовая страница')");
+  let issuedLink;
   for (const title of ['GitHub', 'Настройки']) {
     if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
     await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
@@ -151,8 +152,12 @@ for (const width of [1672, 390, 320]) {
       await evaluate("[...document.querySelectorAll('.settings-tabs button')].find(b=>b.innerText==='Ключи доступа').click()");
       await evaluate("document.querySelector('.settings-add').click()");
       await until("!!document.querySelector('.settings-modal[open] input[name=days]')");
-      await evaluate("document.querySelector('.settings-modal button[aria-label=Закрыть]').click()");
-      await until("!document.querySelector('.settings-modal[open]')");
+      await evaluate(`(() => { const form = document.querySelector('.settings-modal form'); form.querySelector('input[name=id]').value = 'browser-link-${width}'; form.querySelector('input[name=sources][value=fixture]').checked = true; form.requestSubmit(); })()`);
+      await until("!!document.querySelector('.access-issued textarea[aria-label=\"Новый ключ чтения\"]') && !document.querySelector('.settings-modal[open]')");
+      if (!await evaluate("(() => { const box=document.querySelector('.access-issued'); const key=box.querySelector('textarea[aria-label=\"Новый ключ чтения\"]').value; const link=new URL(box.querySelector('label textarea').value); return link.origin === location.origin && link.pathname === '/' && link.searchParams.get('key') === key && !!key; })()")) throw Error('issued link does not contain the new key');
+      issuedLink = await evaluate("document.querySelector('.access-issued label textarea').value");
+      await evaluate("document.querySelector('.access-issued button').click()");
+      await until("!document.querySelector('.access-issued')");
     }
     const writeStatus = await evaluate("(async () => (await fetch('/api/v1/articles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_id:'fixture',path:'browser-write.md',text:'# Synthetic',expected_revision:0})})).status)()");
     if (writeStatus !== 403 && writeStatus !== 404) throw Error('browser admin session allowed article write');
@@ -161,6 +166,12 @@ for (const width of [1672, 390, 320]) {
     await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`);
     await send('Page.navigate', { url: privateUrl });
     await until("!!document.querySelector('.home-page-row')");
+  }
+  if (width === 1672) {
+    await send('Page.navigate', { url: issuedLink });
+    await until("!new URL(location.href).searchParams.has('key') && !!document.querySelector('.home-page-row')");
+    if (await evaluate("(async () => (await fetch('/api/v1/articles?source_id=private-fixture&path=private.md')).status)()") !== 404) throw Error('issued link allowed out-of-scope article');
+    if (!await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('issued link did not create a session');
   }
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
