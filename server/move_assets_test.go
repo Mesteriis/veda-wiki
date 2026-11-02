@@ -173,6 +173,13 @@ func TestMoveImageWaitsForVerifiedBlobBeforeRemoteDeletion(t *testing.T) {
 	if f.writeCount() != 0 || f.contents()["guide.md"] == "" {
 		t.Fatal("source deleted despite corrupt image")
 	}
+	if err = s.verifyAsset(ref); err != nil {
+		t.Fatal("source image was not repaired", err)
+	}
+	syncFixtureSource(t, manager, "handbook")
+	if f.writeCount() != 1 {
+		t.Fatal("move did not resume after a fresh verification")
+	}
 }
 
 func TestMoveImageFromConnectedSourceToLocal(t *testing.T) {

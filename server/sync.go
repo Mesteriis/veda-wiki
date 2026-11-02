@@ -435,16 +435,19 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	source, exists := m.store.db.Sources[c.ID]
 	m.store.mu.RUnlock()
 	matchingVisibility := exists && (source.Visibility == "private") == c.Private
+	repairingAssets := false
 	if !exists && c.State == "skipped" && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
 		m.store.connectionStatusFor(c, "skipped", "verified", "", &info, time.Time{})
 		return
 	}
 	if matchingVisibility && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
-		if err := m.store.observeGitHubHead(c, head, c.TreeSHA); err != nil {
+		if err := m.store.observeGitHubHead(c, head, c.TreeSHA); err == nil {
+			m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
+			return
+		} else if !errors.Is(err, errImportedAssetUnavailable) {
 			return
 		}
-		m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
-		return
+		repairingAssets = true
 	}
 	tree, e := m.github.tree(ctx, c.Repository, head, token)
 	if e != nil {
@@ -482,6 +485,18 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	}
 	if _, e = m.store.applyImport(batch, &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: visibility, TreeSHA: tree.SHA}, false); e != nil {
 		fail(e)
+		return
+	}
+	if repairingAssets {
+		if err := m.store.observeGitHubHead(c, head, tree.SHA); errors.Is(err, errImportedAssetUnavailable) {
+			fail(&remoteError{Code: "asset_unavailable"})
+			return
+		} else if err != nil {
+			return
+		}
+		// A move or push must revalidate its dependencies in a later cycle.
+		state, code := m.store.sourceSyncState(c.ID)
+		m.store.connectionStatusFor(c, state, "verified", code, &info, time.Time{})
 		return
 	}
 	m.syncWrites(ctx, c, head, tree.SHA, token, info)

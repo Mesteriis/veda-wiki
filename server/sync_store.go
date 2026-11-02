@@ -34,6 +34,8 @@ type SyncJob struct {
 	Bundle         map[string]string  `json:"bundle,omitempty"`
 }
 
+var errImportedAssetUnavailable = errors.New("imported asset unavailable")
+
 // bundleContentsLocked checks the revisions that must be sent together.
 // Caller holds the store lock. Never substitute a newer local revision.
 func bundleContentsLocked(db Database, job SyncJob) (map[string]string, error) {
@@ -101,6 +103,11 @@ func (s *Store) observeGitHubHead(expected GitHubConnection, head, tree string) 
 	src, exists := s.db.Sources[expected.ID]
 	if s.invalid || !ok || !exists || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || c.Private != expected.Private || c.Verification != "verified" || c.LastPull != head || c.TreeSHA != tree || src.ConnectionID != c.ID || src.ImportCommit != head || (src.Visibility == "private") != c.Private {
 		return ErrConflict
+	}
+	for _, ref := range src.Assets {
+		if s.verifyAsset(ref) != nil {
+			return errImportedAssetUnavailable
+		}
 	}
 	s.markImportObserved(c.ID)
 	return nil

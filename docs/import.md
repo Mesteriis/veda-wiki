@@ -127,9 +127,12 @@ and verifies the blob digest before serving. No remote images are fetched.
 Blob garbage collection and historical image binding are still future work.
 When an import supplies images, VEDA verifies their stored blobs even if the
 snapshot is unchanged, and atomically repairs missing or corrupt blobs from the
-supplied bytes before reporting the observation as successful. An upstream
-head-only check does not supply blobs and cannot perform this repair. Images
-absent from a partial import are not checked or restored by that import.
+supplied bytes before reporting the observation as successful. Before accepting
+an unchanged GitHub head, VEDA checks current source image blobs; if any are
+missing or corrupt it reimports the repository snapshot. Images absent from a
+partial import are not restored by that import, and may require separate recovery.
+Queued moves and writes are deferred until a later synchronization cycle after
+repair, so their dependencies are checked again before any remote mutation.
 
 In the reader, relative Markdown links are resolved within the article's source;
 root-relative links start at that source's root. Links that escape the source
