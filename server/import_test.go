@@ -120,9 +120,12 @@ func TestCheckoutWithholdsUnmergedDocumentation(t *testing.T) {
 			gitTest(t, repo, "checkout", "-q", "-")
 			writeFixture(t, repo, "guide.md", "# Main")
 			gitTest(t, repo, "commit", "-qam", "Main")
-			merge := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "merge", "alternate")
+			merge := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "merge", "alternate")
 			if err := merge.Run(); err == nil {
 				t.Fatal("fixture merge did not conflict")
+			}
+			if out, err := exec.Command("git", "-C", repo, "ls-files", "--unmerged", "--", "guide.md").Output(); err != nil || len(out) == 0 {
+				t.Fatal("fixture has no unmerged index entry", err)
 			}
 			if removeWorkingFile {
 				if err := os.Remove(filepath.Join(repo, "guide.md")); err != nil {
@@ -161,8 +164,11 @@ func TestCheckoutRejectsUnmergedMetadata(t *testing.T) {
 	gitTest(t, repo, "checkout", "-q", "-")
 	writeFixture(t, repo, "veda.yaml", strings.Replace(metadataFixture, "Handbook", "Main", 1))
 	gitTest(t, repo, "commit", "-qam", "Main")
-	if err := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "merge", "alternate").Run(); err == nil {
+	if err := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "merge", "alternate").Run(); err == nil {
 		t.Fatal("fixture merge did not conflict")
+	}
+	if out, err := exec.Command("git", "-C", repo, "ls-files", "--unmerged", "--", "veda.yaml").Output(); err != nil || len(out) == 0 {
+		t.Fatal("fixture has no unmerged metadata entry", err)
 	}
 	if _, err := prepareCheckout(repo, "handbook"); !errors.Is(err, ErrConflict) {
 		t.Fatal("unmerged metadata accepted", err)
