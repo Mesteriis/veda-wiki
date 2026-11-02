@@ -135,7 +135,7 @@ def make_server(client):
             "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal and source status from one snapshot in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "text"]),
-        "veda_prepare_translation": ("Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article, with source status from the validation snapshot. The current revision and SHA are reread; stale revisions are refused. Validation cannot establish translation quality, save a draft, or approve publication.", {
+        "veda_prepare_translation": ("Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article, with source status and the current translation fingerprint from the validation snapshot. Pass the returned expected_translation_fingerprint to the authorized submission to reject concurrent translation changes. Stale original revisions are refused. Validation cannot establish translation quality, save a draft, or approve publication.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_create_source": ("Create an explicit local source; GitHub connection is not implied.", {
@@ -163,9 +163,9 @@ def make_server(client):
             ["source_id","source_path","expected_revision","destination_id","destination_path","confirm_move"]),
         "veda_translation_needed": ("List visible program documentation awaiting Russian translation, publication review, or import conflict resolution. Optionally filter by source_id. The blocked_conflict state must be resolved before translation; originals remain in veda_read. Results are limited to the client's authorized sources.", {
             "source_id": string, "limit": {"type":"integer","minimum":1,"maximum":100}, "offset":{"type":"integer","minimum":0}}, []),
-        "veda_translate_article": ("Submit a Russian translation of a specific original revision; preserve code and links. Public publication needs explicit approval.", {
+        "veda_translate_article": ("Submit a Russian translation of a specific original revision; preserve code and links. Pass expected_translation_fingerprint from preparation to reject concurrent translation changes. Public publication needs explicit approval.", {
             "source_id":string, "path":string, "expected_revision":{"type":"integer","minimum":1}, "original_sha256":string,
-            "text":{"type":"string","maxLength":MAX_ARTICLE_BYTES}, "confirm_publication":{"type":"boolean"}},
+            "text":{"type":"string","maxLength":MAX_ARTICLE_BYTES}, "confirm_publication":{"type":"boolean"}, "expected_translation_fingerprint":{"type":"string","pattern":"^(|[0-9a-f]{64})$"}},
             ["source_id","path","expected_revision","original_sha256","text"]),
         "veda_context": ("Read root and ancestor AGENTS.md articles and source status for a target within one source. For connected repositories inspect sync_state, sync_error, sync_verification, unconfirmed_write_jobs and prepared_unconfirmed_write_jobs. Prepared jobs may have reached the remote; do not discard them or assume their outcome. Status is not proof of live infrastructure.", {
             "source_id": string, "path": string}, ["source_id", "path"]),
@@ -266,7 +266,7 @@ def make_server(client):
                     "expected_revision": current["revision"], "original_sha256": current["sha256"], "text": proposed})
                 result = {"source_id": arguments["source_id"], "path": arguments["path"],
                           "expected_revision": current["revision"], "original_sha256": current["sha256"],
-                          "text": proposed, "validation": validation, "source_status": validation["source_status"], "saved": False,
+                          "text": proposed, "expected_translation_fingerprint": validation["translation_fingerprint"], "validation": validation, "source_status": validation["source_status"], "saved": False,
                           "note": "Proposal only; validation cannot establish translation quality. Review and an authorized translation submission are still required."}
             elif name == "veda_create_source":
                 result = await asyncio.to_thread(client.request, "POST", "/api/v1/sources", arguments)

@@ -23,18 +23,23 @@ type Translation struct {
 	PublicApproved bool   `json:"public_approved"`
 }
 type translationRequest struct {
-	SourceID           string `json:"source_id"`
-	Path               string `json:"path"`
-	ExpectedRevision   int    `json:"expected_revision"`
-	OriginalSHA        string `json:"original_sha256"`
-	Text               string `json:"text"`
-	ConfirmPublication bool   `json:"confirm_publication"`
+	SourceID                       string  `json:"source_id"`
+	Path                           string  `json:"path"`
+	ExpectedRevision               int     `json:"expected_revision"`
+	OriginalSHA                    string  `json:"original_sha256"`
+	Text                           string  `json:"text"`
+	ConfirmPublication             bool    `json:"confirm_publication"`
+	ExpectedTranslationFingerprint *string `json:"expected_translation_fingerprint,omitempty"`
+}
+
+func validTranslationFingerprint(value *string) bool {
+	return value == nil || *value == "" || (len(*value) == 64 && commitID.MatchString(*value))
 }
 
 // Validate a proposal against the same current revision and protected Markdown
 // used for submission, without storing it or approving publication.
 func (s *Store) validateTranslation(in translationRequest) (map[string]any, error) {
-	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) {
+	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) || !validTranslationFingerprint(in.ExpectedTranslationFingerprint) {
 		return nil, ErrInvalid
 	}
 	s.mu.RLock()
@@ -60,6 +65,9 @@ func (s *Store) validateTranslation(in translationRequest) (map[string]any, erro
 	if in.OriginalSHA != rev.SHA {
 		return nil, ErrConflict
 	}
+	if in.ExpectedTranslationFingerprint != nil && *in.ExpectedTranslationFingerprint != translationFingerprint(a.Translation) {
+		return nil, ErrConflict
+	}
 	for _, conflict := range a.Conflicts {
 		if conflict.Resolution == "" {
 			return nil, ErrConflict
@@ -67,7 +75,7 @@ func (s *Store) validateTranslation(in translationRequest) (map[string]any, erro
 	}
 	return map[string]any{
 		"source_id": in.SourceID, "path": in.Path, "expected_revision": in.ExpectedRevision,
-		"original_sha256": rev.SHA, "structural_valid": reflect.DeepEqual(protectedMarkdown(rev.Text), protectedMarkdown(in.Text)),
+		"original_sha256": rev.SHA, "translation_fingerprint": translationFingerprint(a.Translation), "structural_valid": reflect.DeepEqual(protectedMarkdown(rev.Text), protectedMarkdown(in.Text)),
 		"russian_prose": containsRussianProse(in.Text), "unchanged": strings.TrimSpace(rev.Text) == strings.TrimSpace(in.Text),
 		"credential_like": secretContent.MatchString(in.Text), "saved": false,
 		"source_status": s.sourceStatusLocked(in.SourceID, src),
@@ -143,7 +151,7 @@ func (s *Store) submitTranslation(in translationRequest) (Translation, error) {
 // Automatic translations of public articles remain private drafts until an
 // owner explicitly approves publication through submitTranslation.
 func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Translation, error) {
-	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) {
+	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) || !validTranslationFingerprint(in.ExpectedTranslationFingerprint) {
 		return Translation{}, ErrInvalid
 	}
 	s.mu.Lock()
@@ -168,6 +176,9 @@ func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Trans
 	}
 	rev := a.Versions[len(a.Versions)-1]
 	if in.OriginalSHA != rev.SHA {
+		return Translation{}, ErrConflict
+	}
+	if in.ExpectedTranslationFingerprint != nil && *in.ExpectedTranslationFingerprint != translationFingerprint(a.Translation) {
 		return Translation{}, ErrConflict
 	}
 	if privateDraft && a.Translation != nil && a.Translation.OriginalSHA == rev.SHA {

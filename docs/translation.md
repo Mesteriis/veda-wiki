@@ -35,8 +35,14 @@ state requires resolving an import conflict before translation or publication.
 The automatic worker skips blocked candidates. The
 owner can read each original and submit via `POST /api/v1/articles/translation` or `veda_translate_article`
 with `source_id`, `path`, `expected_revision`, `original_sha256`, `text` and
-optional `confirm_publication`. The original revision and SHA must still match;
-an unresolved import conflict also blocks validation and saving, even if the
+optional `confirm_publication`. The original revision and SHA must still match.
+to protect concurrent translation edits, pass `expected_translation_fingerprint`
+from a recent validation or MCP proposal. An empty string means no translation
+existed at preparation; a nonempty fingerprint identifies the entire stored
+translation including approval and provenance. A changed translation returns 409
+even if the original revision is unchanged. This precondition is optional for
+compatibility, so older submissions that omit it can still overwrite one another.
+An unresolved import conflict also blocks validation and saving, even if the
 local revision and hash remain unchanged. Resolve the conflict before saving.
 Code blocks, inline code, link and image
 destinations and raw HTML fragments must be retained in the same order. HTML
@@ -47,7 +53,8 @@ prove translation accuracy, preserve every kind of Markdown construct, or
 replace human review.
 
 Read-only MCP clients can use `veda_prepare_translation` to return an unsaved
-proposal bound to the current original revision and SHA. It accepts program
+proposal bound to the current original revision, SHA and translation
+fingerprint. It accepts program
 `docs/` articles visible to that client and rejects a stale revision. The
 server returns structural, Cyrillic-prose, unchanged-text and credential-pattern
 checks through `POST /api/v1/articles/translation-validate`. The validation

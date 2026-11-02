@@ -116,8 +116,12 @@ async def main():
                     filtered = await call("veda_translation_needed", {"source_id": "program"})
                     assert filtered["total"] == 1 and filtered["candidates"][0]["original_sha256"] == original["sha256"]
                     assert (await call("veda_translation_needed", {"source_id": "missing"}))["total"] == 0
-                    translated = await call("veda_translate_article", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "original_sha256": original["sha256"], "text": "# Установка\nЗапустите `install`."})
+                    translation_proposal = await call("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Установка\nЗапустите `install`."})
+                    assert translation_proposal["expected_translation_fingerprint"] == ""
+                    translated = await call("veda_translate_article", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "original_sha256": original["sha256"], "text": "# Установка\nЗапустите `install`.", "expected_translation_fingerprint": translation_proposal["expected_translation_fingerprint"]})
                     assert translated["language"] == "ru"
+                    stale_translation = await session.call_tool("veda_translate_article", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "original_sha256": original["sha256"], "text": "# Установка\nЗапустите `install`.", "expected_translation_fingerprint": translation_proposal["expected_translation_fingerprint"]})
+                    assert stale_translation.isError
                     unchanged = await call("veda_read", {"source_id": "program", "path": "docs/setup.md"})
                     assert unchanged["text"] == "# Setup\nRun `install`."
                     displayed = await call("veda_read_display", {"source_id": "program", "path": "docs/setup.md"})

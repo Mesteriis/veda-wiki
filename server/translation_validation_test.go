@@ -48,7 +48,7 @@ func TestReaderTranslationValidationIsScopedAndNonMutating(t *testing.T) {
 	}
 	r := call(in, key, "", false, false)
 	var result map[string]any
-	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &result) != nil || result["structural_valid"] != true || result["russian_prose"] != true || result["saved"] != false {
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &result) != nil || result["structural_valid"] != true || result["russian_prose"] != true || result["saved"] != false || result["translation_fingerprint"] != "" {
 		t.Fatal("valid proposal rejected", r.Code)
 	}
 	broken := in

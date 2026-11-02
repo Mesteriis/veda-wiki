@@ -101,7 +101,9 @@ loading from the existence of a configuration file.
 
 `veda_prepare_new_article` similarly returns an unsaved proposal and source
 status from the same snapshot without reserving its path. `veda_prepare_translation` validates a proposal without
-establishing translation quality or publishing it. Both remain subject to
+establishing translation quality or publishing it. Pass its
+`expected_translation_fingerprint` to an authorized translation submission so
+a concurrent translation change is rejected. Both remain subject to
 authorization, concurrent changes and the server's validation on submission.
 `veda_transfer_plan` lets a reader with access to both sources inspect linked
 articles, destination matches, both source statuses and credential-like warnings before asking an

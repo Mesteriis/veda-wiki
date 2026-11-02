@@ -35,7 +35,7 @@ The field is absent for public readers and for articles without a conflict.
 | PUT | `/api/v1/articles` | Update with the current expected revision |
 | GET | `/api/v1/articles/translation-needed` | List program documents needing translation, publication review, or conflict resolution, limited to authorized sources; optional `source_id`, `limit` and `offset` |
 | POST | `/api/v1/articles/translation-validate` | Validate a revision-bound translation without saving; owner or authorized reader, no browser Origin |
-| POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
+| POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only); optional `expected_translation_fingerprint` rejects concurrent translation changes |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |
 | GET/POST | `/api/v1/access-keys` | List, create or update a source-scoped read-only key (owner only) |
