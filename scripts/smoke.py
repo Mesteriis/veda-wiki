@@ -145,12 +145,12 @@ async def main():
                     await call("veda_write_article", {"source_id": "imported", "path": "README.md",
                         "text": "# Imported local edit", "expected_revision": 1})
                     proposed = await call("veda_prepare_update", {"source_id": "imported", "path": "README.md", "expected_revision": 2, "text": "# Proposed"})
-                    assert proposed["unresolved_conflict"] is False
+                    assert proposed["unresolved_conflict"] is False and proposed["source_status"]["unresolved_conflicts"] == 0
                     (checkout / "README.md").write_text("# Imported upstream edit")
                     imported = subprocess.run(command, check=True, capture_output=True, text=True)
                     assert json.loads(imported.stdout)["conflicts"] == 1
                     conflicted = await call("veda_prepare_update", {"source_id": "imported", "path": "README.md", "expected_revision": 2, "text": "# Proposed"})
-                    assert conflicted["unresolved_conflict"] is True and conflicted["saved"] is False
+                    assert conflicted["unresolved_conflict"] is True and conflicted["saved"] is False and conflicted["source_status"]["unresolved_conflicts"] == 1
                     rejected = await session.call_tool("veda_write_article", {"source_id": "imported", "path": "README.md", "text": proposed["text"], "expected_revision": proposed["expected_revision"]})
                     assert rejected.isError
                     pending = await call("veda_conflicts", {})

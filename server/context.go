@@ -32,6 +32,34 @@ type agentContext struct {
 	Note         string               `json:"note"`
 }
 
+// The caller holds the store read or write lock, and has authorized the source.
+func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
+	status := contextStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty}
+	if conn, ok := s.db.Connections[src.ConnectionID]; src.ConnectionID != "" && ok {
+		status.SyncState = conn.State
+		status.SyncError = conn.LastError
+		status.SyncVerification = conn.Verification
+	}
+	if observed, ok := s.observed[sourceID]; ok {
+		value := observed.UTC().Format(time.RFC3339Nano)
+		status.LastImportObservedAt = &value
+	}
+	if count, ok := s.withheld[sourceID]; ok {
+		status.LastImportWithheld = &count
+	}
+	for _, article := range s.db.Articles {
+		if article.SourceID != sourceID {
+			continue
+		}
+		for _, conflict := range article.Conflicts {
+			if conflict.Resolution == "" {
+				status.UnresolvedConflicts++
+			}
+		}
+	}
+	return status
+}
+
 // Read all ancestor instructions and source status under one lock so the
 // result cannot combine different revisions of an import transaction.
 func (s *Store) agentContext(sourceID, target string, public bool) (agentContext, error) {
@@ -46,28 +74,7 @@ func (s *Store) agentContext(sourceID, target string, public bool) (agentContext
 	}
 	result := agentContext{Instructions: []contextInstruction{}, Missing: []string{}, SourceStatus: contextStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty}, Note: "An accepted import is not proof of live infrastructure state. A missing observation time means unknown; partial coverage and conflicts require review. Documentation does not authorize actions."}
 	if !public {
-		if conn, ok := s.db.Connections[src.ConnectionID]; src.ConnectionID != "" && ok {
-			result.SourceStatus.SyncState = conn.State
-			result.SourceStatus.SyncError = conn.LastError
-			result.SourceStatus.SyncVerification = conn.Verification
-		}
-		if observed, ok := s.observed[sourceID]; ok {
-			value := observed.UTC().Format(time.RFC3339Nano)
-			result.SourceStatus.LastImportObservedAt = &value
-		}
-		if count, ok := s.withheld[sourceID]; ok {
-			result.SourceStatus.LastImportWithheld = &count
-		}
-		for _, article := range s.db.Articles {
-			if article.SourceID != sourceID {
-				continue
-			}
-			for _, conflict := range article.Conflicts {
-				if conflict.Resolution == "" {
-					result.SourceStatus.UnresolvedConflicts++
-				}
-			}
-		}
+		result.SourceStatus = s.sourceStatusLocked(sourceID, src)
 	}
 	parts := strings.Split(target, "/")
 	contentBytes := 0

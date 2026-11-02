@@ -1,6 +1,6 @@
 package main
 
-// proposalBase snapshots the original revision and conflict status together.
+// proposalBase snapshots the original revision and source status together.
 // Callers must authorize and scope the source before using it.
 func (s *Store) proposalBase(sourceID, path string) (map[string]any, error) {
 	s.mu.RLock()
@@ -24,5 +24,5 @@ func (s *Store) proposalBase(sourceID, path string) (map[string]any, error) {
 		}
 	}
 	rev := a.Versions[len(a.Versions)-1]
-	return map[string]any{"revision": rev.Number, "sha256": rev.SHA, "unresolved_conflict": unresolved}, nil
+	return map[string]any{"revision": rev.Number, "sha256": rev.SHA, "unresolved_conflict": unresolved, "source_status": s.sourceStatusLocked(sourceID, src)}, nil
 }

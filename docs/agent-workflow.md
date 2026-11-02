@@ -55,8 +55,9 @@ Restart or reconnect a client as required for it to discover updated tools.
    `veda_read_display_excerpt` can show an available translation with its
    provenance and hashes; proposals must be based on the original revision.
 4. Call `veda_prepare_update` with the original `expected_revision` and proposed
-   Markdown. It returns an unsaved proposal, base SHA and the observed conflict
-   flag. It does not reserve the revision or publish anything. If a conflict is
+   Markdown. It returns an unsaved proposal, base SHA, the observed conflict
+   flag and source status from the same snapshot. It does not reserve the revision
+   or publish anything. If a conflict is
    present, report it and have it resolved before an authorized write.
 5. Present the proposal and its source, path, revision and base SHA for review.
    An authorized writer may submit it through REST or the owner MCP interface.

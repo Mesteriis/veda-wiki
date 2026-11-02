@@ -136,6 +136,16 @@ func TestScopedContextReportsConnectionFailure(t *testing.T) {
 	if result.SourceStatus.SyncState != "error" || result.SourceStatus.SyncError != "upstream_unavailable" || result.SourceStatus.SyncVerification != "unknown" || result.SourceStatus.LastImportObservedAt == nil {
 		t.Fatal("connection failure not reflected in context", result.SourceStatus)
 	}
+	request := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path=AGENTS.md", nil)
+	request.Header.Set("Authorization", "Bearer "+key)
+	proposal := httptest.NewRecorder()
+	w.ServeHTTP(proposal, request)
+	var base struct {
+		SourceStatus contextStatus `json:"source_status"`
+	}
+	if proposal.Code != 200 || json.Unmarshal(proposal.Body.Bytes(), &base) != nil || base.SourceStatus.SyncState != "error" || base.SourceStatus.SyncVerification != "unknown" {
+		t.Fatal("connection failure not reflected in proposal", proposal.Code)
+	}
 	if call("other").Code != 404 {
 		t.Fatal("connection status escaped source scope")
 	}

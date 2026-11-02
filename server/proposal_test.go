@@ -60,6 +60,10 @@ func testProposalConflict(t *testing.T, sqlite bool) {
 	if response.Code != 200 || before["revision"] != float64(2) || before["unresolved_conflict"] != false {
 		t.Fatal("initial proposal base unavailable", response.Code)
 	}
+	initialStatus, ok := before["source_status"].(map[string]any)
+	if !ok || initialStatus["unresolved_conflicts"] != float64(0) {
+		t.Fatal("initial source status missing")
+	}
 	batch = applyAgain(s, batch)
 	batch.Files["README.md"] = "# Remote"
 	result, err := s.importBatch(batch)
@@ -69,6 +73,10 @@ func testProposalConflict(t *testing.T, sqlite bool) {
 	response, after := read(key, false)
 	if response.Code != 200 || after["revision"] != before["revision"] || after["sha256"] != before["sha256"] || after["unresolved_conflict"] != true {
 		t.Fatal("conflict status missing", response.Code)
+	}
+	conflictStatus, ok := after["source_status"].(map[string]any)
+	if !ok || conflictStatus["unresolved_conflicts"] != float64(1) || conflictStatus["last_import_observed_at"] == nil {
+		t.Fatal("proposal source status did not reflect import")
 	}
 	if _, err = s.put("handbook", "README.md", "# Proposed", 2); err != ErrConflict {
 		t.Fatal("write ignored unresolved conflict", err)
