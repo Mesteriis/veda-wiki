@@ -5,9 +5,9 @@ remain authoritative; a Russian translation is stored separately on the VEDA
 server and is not pushed into the source repository. The reader displays the
 translation only when it matches the exact original SHA; when the original
 changes it displays the original until a fresh translation is submitted.
-The article view labels the translation and shows both hashes. When no usable
-translation is visible, program documentation is labeled as the original with
-the translation unavailable; this does not disclose unpublished translations.
+The article view labels the translation and shows both hashes. When no usable translation is visible, program documentation is labeled as the
+original. An authenticated reader sees when an existing translation is stale;
+the public view reports it as unavailable without disclosing unpublished drafts.
 REST/MCP article
 reads return the original, allowing an agent to translate from the actual source.
 New drafts produced by the local worker retain `origin: local_model` across

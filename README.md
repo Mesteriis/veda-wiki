@@ -10,7 +10,8 @@ articles and images, have also passed a synthetic live test through an
 authenticated `gh` proxy; VEDA's own saved App/PAT credentials have not passed
 live acceptance. An optional local translation worker
 produces reviewable Russian drafts; model quality remains unverified. Scoped
-agent read keys are implemented; user/team accounts remain unfinished. This
+agent read keys and named reader users and teams are implemented; production
+account acceptance and per-agent OS isolation remain open. This
 repository contains no knowledge-base content,
 credentials, production configuration or deployment history.
 
@@ -37,7 +38,8 @@ and waits up to ten seconds for active requests and workers before exiting.
 An incomplete shutdown is logged as an error; durable outbox jobs are recovered
 on the next start.
 
-The browser can sign in with the separate reader key or a source-scoped key to view private content;
+The browser can sign in with a named reader account, the separate reader key or
+a source-scoped key to view private content;
 it cannot edit articles. See [browser access](docs/browser-access.md). Authenticated
 REST and MCP remain the writing paths. Do not expose the loopback service remotely until HTTPS and a suitable
 authentication boundary are configured. Host validation remains mandatory.
@@ -69,7 +71,7 @@ your checkout. stdio is the MCP transport; use `--url` to choose the loopback
 REST endpoint. For a local read-only agent, the service can instead expose a Unix socket in a
 private directory owned by the service user. Start VEDA with `--reader-socket
 /path/to/private/reader.sock`, then use the MCP adapter with `--reader-socket`
-pointing to that socket. This adapter advertises sources, search, read, context
+pointing to that socket. This adapter advertises sources, search, read, context,
 the scoped translation queue, and non-persistent preparation of new articles,
 updates and translations; it has no write/admin access. The socket's directory must
 be 0700 and owned by the server user. Anyone sharing that OS identity can read
@@ -111,18 +113,22 @@ make test
 .venv/bin/python scripts/smoke_large.py
 ```
 
-`make test` builds React, tests tree navigation, runs Go race tests and `go vet`. The smoke test uses
+The CI workflow builds from a clean checkout and runs the same checks. `make test`
+builds React, tests tree navigation, runs Go race tests and `go vet`. The smoke test uses
 temporary empty storage and the official MCP SDK against the actual Go server.
 It verifies REST/MCP write-through, revisions, actual CLI import, conflict
 resolution and public/private isolation.
 For frontend development run the Go server and `npm run dev` in `web/`; Vite
 proxies API requests to the default loopback endpoint.
 
-This initial store uses an atomic, fsynced JSON transaction file, bounded to
-64 MiB including revision history. Articles are bounded to 1 MiB of UTF-8;
+The default store uses an atomic, fsynced JSON transaction file, bounded to
+64 MiB including revision history. An opt-in SQLite backend removes that
+whole-store limit; migration and backup requirements are in [storage](docs/storage.md).
+Articles are bounded to 1 MiB of UTF-8;
 documents over 256,000 bytes require store format v13, which older binaries reject.
 There is no automatic history retention yet. Treat this
-as an early single-owner implementation, not a completed hosted multi-user wiki.
+as early software, not a completed hosted multi-user wiki. Named readers and
+teams have source-scoped read access; account recovery, MFA and SSO are not implemented.
 
 ## Import local repositories
 
