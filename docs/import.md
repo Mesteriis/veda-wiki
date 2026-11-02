@@ -23,6 +23,7 @@ To inspect the selected tracked checkout before connecting it, run:
 ./veda import --checkout /path/to/checkout --preview
 ```
 
+The command requires Git on the machine where the checkout is inspected.
 Preview reports only type, article and image counts, withheld count, completeness
 and dirty status. It does not contact VEDA, read an owner key, create a source,
 or list article names or content. It uses the same working-tree selection as a
