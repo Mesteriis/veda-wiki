@@ -490,9 +490,27 @@ func TestGitHubLostResponseRecoversWithoutDuplicatePush(t *testing.T) {
 }
 
 func TestLaterEditRetainsUncertainWriteUntilObserved(t *testing.T) {
+	for _, backend := range []string{"json", "sqlite"} {
+		t.Run(backend, func(t *testing.T) { testLaterEditRetainsUncertainWrite(t, backend == "sqlite") })
+	}
+}
+
+func testLaterEditRetainsUncertainWrite(t *testing.T, sqlite bool) {
+	t.Helper()
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
+	if sqlite {
+		if err := migrateSQLite(s.dir); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		s, err = openStore(s.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m = newSyncManager(s, f.client())
+	}
 	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
 		t.Fatal(err)
 	}
@@ -561,9 +579,27 @@ func TestLaterEditCannotOvertakeDeferredPreparedWrite(t *testing.T) {
 }
 
 func TestConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T) {
+	for _, backend := range []string{"json", "sqlite"} {
+		t.Run(backend, func(t *testing.T) { testConflictResolutionDoesNotDiscardPreparedWrite(t, backend == "sqlite") })
+	}
+}
+
+func testConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T, sqlite bool) {
+	t.Helper()
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
+	if sqlite {
+		if err := migrateSQLite(s.dir); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		s, err = openStore(s.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m = newSyncManager(s, f.client())
+	}
 	if _, err := s.put("handbook", "README.md", "# Local", 1); err != nil {
 		t.Fatal(err)
 	}
