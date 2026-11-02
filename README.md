@@ -126,7 +126,8 @@ resolution and public/private isolation.
 An optional browser smoke test needs Node 22+ and a trusted local Chrome or
 Chromium executable. It starts a temporary VEDA with synthetic public articles
 and a temporary browser profile; it checks article navigation, search and
-viewport overflow, plus a scoped reader login and logout on desktop and mobile.
+viewport overflow, plus scoped key and named-user login, source isolation and
+logout on desktop and mobile.
 It runs in CI with the hosted runner’s Chrome and does not exercise production
 credentials or GitHub connections:
 

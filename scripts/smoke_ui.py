@@ -74,6 +74,14 @@ def main():
             post('/api/v1/articles', {'source_id': 'private-fixture', 'path': 'private.md',
                  'text': '# Приватная тестовая страница\n\nЗакрытый синтетический текст.',
                  'expected_revision': 0})
+            post('/api/v1/sources', {'id': 'other-private', 'title': 'Недоступный пример',
+                                      'kind': 'wiki', 'visibility': 'private'})
+            post('/api/v1/articles', {'source_id': 'other-private', 'path': 'secret.md',
+                 'text': '# Недоступная тестовая страница\n\nСинтетический текст.',
+                 'expected_revision': 0})
+            post('/api/v1/teams', {'id': 'browser-team', 'sources': ['fixture', 'private-fixture']})
+            post('/api/v1/users', {'id': 'browser-user', 'teams': ['browser-team'],
+                                   'password': 'synthetic fixture password'})
             key = post('/api/v1/access-keys', {'id': 'browser-fixture',
                        'sources': ['fixture', 'private-fixture'],
                        'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})['key']

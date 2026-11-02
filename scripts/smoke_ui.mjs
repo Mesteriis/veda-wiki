@@ -30,7 +30,7 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
   ws.send(JSON.stringify({ id: next, method, params }));
 });
 const evaluate = async expression => {
-  const result = await send('Runtime.evaluate', { expression, returnByValue: true });
+  const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   if (result.exceptionDetails) throw Error('page evaluation failed');
   return result.result.value;
 };
@@ -70,8 +70,19 @@ for (const width of [1672, 390]) {
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
-  await until("!location.search && !!document.querySelector('.page-card')");
-  if (await evaluate("document.body.innerText.includes('Приватная тестовая страница')")) throw Error('private content visible after logout');
-  console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, privateLoginAndLogout: true, noHorizontalOverflow: true }));
+  await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
+  if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('key session survived logout');
+  await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
+  await until("!!document.querySelector('.reader-access input[name=username]')");
+  await evaluate("document.querySelector('.reader-access input[name=username]').value='browser-user'; document.querySelector('.reader-access input[name=password]').value='synthetic fixture password'; document.querySelector('.reader-access form').requestSubmit()");
+  await until("document.body.innerText.includes('Приватная тестовая страница')");
+  if (await evaluate("document.body.innerText.includes('Недоступная тестовая страница') || document.body.innerText.includes('Недоступный пример')")) throw Error('user saw out-of-scope source');
+  if (await evaluate("(async () => (await fetch('/api/v1/articles?source_id=other-private&path=secret.md')).status)()") !== 404) throw Error('out-of-scope article available');
+  await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
+  await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
+  await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
+  await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
+  if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('user session survived logout');
+  console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, noHorizontalOverflow: true }));
 }
 ws.close();
