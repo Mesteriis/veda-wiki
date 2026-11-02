@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -36,6 +37,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 			t.Fatal("fixture repository is not verified public")
 		}
 	}
+	var failWiki atomic.Bool
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "read only", http.StatusForbidden)
@@ -50,6 +52,10 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 		}
 		if !allowed {
 			http.Error(w, "route denied", http.StatusForbidden)
+			return
+		}
+		if failWiki.Load() && (route == "repos/"+repos[0] || strings.HasPrefix(route, "repos/"+repos[0]+"/")) {
+			http.Error(w, "synthetic outage", http.StatusServiceUnavailable)
 			return
 		}
 		body, err := exec.CommandContext(ctx, "gh", "api", route, "--method", "GET").Output()
@@ -124,6 +130,35 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	m = newSyncManager(s, &GitHubClient{base: proxy.URL, http: proxy.Client()})
+	m.Once(ctx)
+	if len(s.sources(true)) != 2 {
+		t.Fatal("reopened sources failed fresh verification")
+	}
+	before, err := s.article("wiki", wikiPath, false)
+	if err != nil {
+		t.Fatal("local wiki article unavailable")
+	}
+	failWiki.Store(true)
+	m.Once(ctx)
+	if _, err = s.page("wiki/"+wikiPath, true); err != ErrNotFound {
+		t.Fatal("outage left wiki publicly verified")
+	}
+	if _, err = s.page("program/"+programPath, true); err != nil {
+		t.Fatal("outage affected independent program source")
+	}
+	during, err := s.article("wiki", wikiPath, false)
+	if err != nil || len(before.Versions) != len(during.Versions) || before.Versions[len(before.Versions)-1].SHA != during.Versions[len(during.Versions)-1].SHA {
+		t.Fatal("outage changed local wiki revision")
+	}
+	failWiki.Store(false)
+	if err = s.retryConnection("wiki"); err != nil {
+		t.Fatal("wiki retry failed")
+	}
+	m.Once(ctx)
+	if _, err = s.page("wiki/"+wikiPath, true); err != nil {
+		t.Fatal("wiki did not recover after fresh verification")
+	}
 	server := httptest.NewServer(Wiki{Store: s, Token: "owner"})
 	defer server.Close()
 	keyPath := filepath.Join(t.TempDir(), "reader.key")
@@ -158,5 +193,5 @@ asyncio.run(main())`
 	if _, err := cmd.CombinedOutput(); err != nil {
 		t.Fatal("MCP acceptance failed")
 	}
-	t.Logf("public mixed-source import, image, SQLite restart and scoped MCP reads/proposals passed; %d pages", len(s.snapshot(false).Pages))
+	t.Logf("public mixed-source import, image, SQLite restart, simulated outage recovery and scoped MCP reads/proposals passed; %d pages", len(s.snapshot(false).Pages))
 }

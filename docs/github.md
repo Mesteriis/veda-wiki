@@ -64,7 +64,10 @@ VEDA_TEST_PUBLIC_WIKI_PROGRAM=1 VEDA_TEST_PUBLIC_PROGRAM_REPO=OWNER/REPO \
 An opt-in read-only GitHub API check imports that public wiki fixture and the
 public `Mesteriis/mac-tower` program repository into a disposable store. It
 verifies repository type, wiki metadata and image, program `docs/` boundaries,
-SQLite restart, and scoped MCP search, reads and unsaved proposals. `gh` must
+SQLite restart, a locally simulated outage and recovery of one source, and
+scoped MCP search, reads and unsaved proposals. During that simulated outage
+the other source remains available and the local wiki revision is retained.
+`gh` must
 already have Mesteriis selected; a local GET-only proxy uses its credential
 without passing a token to VEDA. This check performs no GitHub writes and does
 not establish that VEDA-stored credentials, private repositories, write-back or
