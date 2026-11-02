@@ -78,6 +78,7 @@ In the reader, relative Markdown links are resolved within the article's source;
 root-relative links start at that source's root. Links that escape the source
 root are not redirected to a different connected repository. External links and
 in-page fragments retain their normal behavior.
+Local Markdown image paths follow the same source-root and confinement rules.
 
 ## Concurrency and deletion
 

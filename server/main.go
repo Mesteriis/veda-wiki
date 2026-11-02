@@ -122,6 +122,23 @@ func (ids *unicodeIDs) Generate(value []byte, _ ast.NodeKind) []byte {
 	return []byte(id)
 }
 func (ids *unicodeIDs) Put(value []byte) { ids.used[string(value)] = true }
+
+// Resolve repository paths independently of the source ID so a document
+// cannot navigate into a different source using parent segments.
+func sourceTarget(pagePath, destination string) (string, string, bool) {
+	parts := strings.SplitN(pagePath, "/", 2)
+	if len(parts) != 2 || !identifier.MatchString(parts[0]) || destination == "" {
+		return "", "", false
+	}
+	var target string
+	if strings.HasPrefix(destination, "/") {
+		target = path.Clean(strings.TrimPrefix(destination, "/"))
+	} else {
+		target = path.Clean(path.Join(path.Dir(parts[1]), destination))
+	}
+	return parts[0], target, safeRelative(target)
+}
+
 func render(p Page) (template.HTML, template.HTML, error) {
 	source := []byte(p.Text)
 	doc := markdown.Parser().Parse(text.NewReader(source), parser.WithContext(parser.NewContext(parser.WithIDs(&unicodeIDs{used: map[string]bool{}}))))
@@ -133,34 +150,23 @@ func render(p Page) (template.HTML, template.HTML, error) {
 		if link, ok := n.(*ast.Link); ok {
 			u, e := url.Parse(string(link.Destination))
 			if e == nil && u.Scheme == "" && u.Host == "" && u.Path != "" {
-				parts := strings.SplitN(p.Path, "/", 2)
-				if len(parts) != 2 || !identifier.MatchString(parts[0]) {
+				sourceID, target, valid := sourceTarget(p.Path, u.Path)
+				if !valid {
 					link.Destination = nil
 				} else {
-					target := ""
-					if strings.HasPrefix(u.Path, "/") {
-						target = path.Clean(strings.TrimPrefix(u.Path, "/"))
-					} else {
-						target = path.Clean(path.Join(path.Dir(parts[1]), u.Path))
-					}
-					if !safeRelative(target) {
-						link.Destination = nil
-					} else {
-						link.Destination = []byte("/?page=" + url.QueryEscape(parts[0]+"/"+target))
-						if u.Fragment != "" {
-							link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
-						}
+					link.Destination = []byte("/?page=" + url.QueryEscape(sourceID+"/"+target))
+					if u.Fragment != "" {
+						link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
 					}
 				}
 			}
 		}
 		if image, ok := n.(*ast.Image); ok {
 			u, e := url.Parse(string(image.Destination))
-			parts := strings.SplitN(p.Path, "/", 2)
-			if e == nil && u.Scheme == "" && u.Host == "" && len(parts) == 2 {
-				target := path.Clean(path.Join(path.Dir(parts[1]), u.Path))
-				if safeRelative(target) {
-					image.Destination = []byte("/media/" + parts[0] + "/" + url.PathEscape(target))
+			if e == nil && u.Scheme == "" && u.Host == "" {
+				sourceID, target, valid := sourceTarget(p.Path, u.Path)
+				if valid {
+					image.Destination = []byte("/media/" + sourceID + "/" + url.PathEscape(target))
 				} else {
 					image.Destination = []byte("")
 				}

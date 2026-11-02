@@ -283,3 +283,20 @@ func TestMarkdownLinksStayInTheirSource(t *testing.T) {
 		t.Fatal("link escaped the source")
 	}
 }
+
+func TestMarkdownImagesStayInTheirSource(t *testing.T) {
+	p := Page{Path: "alpha/chapter/page.md", Text: "![Local](../images/a.png)\n\n![Root](/images/b.png)\n\n![Escape](../../beta/image.png)\n\n![Encoded](%2e%2e/%2e%2e/beta/image.png)"}
+	body, _, err := render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(body)
+	for _, expected := range []string{"/media/alpha/images%2Fa.png", "/media/alpha/images%2Fb.png"} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("missing expected image %q", expected)
+		}
+	}
+	if strings.Contains(html, "/media/beta/") || strings.Contains(html, "beta%2Fimage.png") {
+		t.Fatal("image escaped the source")
+	}
+}
