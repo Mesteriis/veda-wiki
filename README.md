@@ -25,7 +25,7 @@ make build
 ./veda
 ```
 
-For a dedicated Linux service account, see the [systemd example](docs/linux-service.md).
+For a portable Linux archive and dedicated service account, see the [packaging and systemd instructions](docs/linux-service.md).
 
 Open http://127.0.0.1:8080/. Both listeners show only public content without
 authorization. The separate public listener is http://127.0.0.1:8081/ and

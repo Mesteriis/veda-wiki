@@ -7,8 +7,17 @@ reader socket, TLS, remote access, GitHub accounts, a translation model, or
 backups. Review and adapt the unit for the host before installing it.
 
 For a Debian-family host with systemd, build the binary on a trusted build host
-for the target architecture. With the built `veda` binary in the current
-directory and this repository checked out, an administrator can install it:
+for the target architecture, or build an archive on a trusted build host:
+
+```sh
+python3 scripts/package_release.py --version dev --arch amd64
+```
+
+Choose `arm64` for Linux ARM64. The archive contains the embedded-interface
+binary, MCP adapter, pinned Python requirements, documentation and example unit;
+it contains no application data or credentials. Verify the printed SHA-256
+when transferring the archive. Extract it on the destination and run the
+following from the extracted directory:
 
 ```sh
 sudo useradd --system --user-group --home-dir /var/lib/veda --no-create-home --shell /usr/sbin/nologin veda
@@ -42,4 +51,4 @@ starting or retrying; do not remove migration artifacts blindly.
 
 Set up and test backups before relying on the service. Keep the executable and
 state versions compatible during restore; the example unit is not an automated
-backup or recovery mechanism. The repository does not ship prebuilt packages.
+backup or recovery mechanism. The archive is built locally; this repository does not yet publish prebuilt releases.
