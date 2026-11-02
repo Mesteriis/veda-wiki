@@ -30,7 +30,7 @@ Unknown translation origin is explicitly labelled in the interface.
 | GET | `/api/v1/articles?source_id=…&path=…&history=1` | All revisions (owner only; public callers still receive only current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
-| GET | `/api/v1/articles/translation-needed` | List program documents needing translation or publication review, limited to the reader's authorized sources |
+| GET | `/api/v1/articles/translation-needed` | List program documents needing translation, publication review, or conflict resolution, limited to the reader's authorized sources |
 | POST | `/api/v1/articles/translation-validate` | Validate a revision-bound translation without saving; owner or authorized reader, no browser Origin |
 | POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only) |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |

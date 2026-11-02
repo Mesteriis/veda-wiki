@@ -224,9 +224,6 @@ func (s *Store) translationCandidates() []translationCandidate {
 				break
 			}
 		}
-		if blocked {
-			continue
-		}
 		r := a.Versions[len(a.Versions)-1]
 		visibility := "private"
 		if sourcePublic(s.db, src, time.Now()) {
@@ -238,6 +235,9 @@ func (s *Store) translationCandidates() []translationCandidate {
 				continue
 			}
 			state = "publication_review"
+		}
+		if blocked {
+			state = "blocked_conflict"
 		}
 		out = append(out, translationCandidate{SourceID: a.SourceID, Path: a.Path, Revision: r.Number, OriginalSHA: r.SHA, Visibility: visibility, State: state})
 	}

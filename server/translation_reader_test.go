@@ -1,12 +1,62 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestBlockedTranslationQueueIsScopedAndWorkerContinues(t *testing.T) {
+	s := testStore(t)
+	for _, id := range []string{"alpha", "beta"} {
+		if err := s.addSource(Source{ID: id, Title: id, Kind: "program", Visibility: "private"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.put(id, "docs/setup.md", "# Setup", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.mu.Lock()
+	a := s.db.Articles["alpha/docs/setup.md"]
+	a.Conflicts = []ImportConflict{{}}
+	s.db.Articles["alpha/docs/setup.md"] = a
+	s.mu.Unlock()
+	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", "/api/v1/articles/translation-needed", nil)
+	r.Header.Set("Authorization", "Bearer "+key)
+	out := httptest.NewRecorder()
+	(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
+	var result struct {
+		Candidates []translationCandidate `json:"candidates"`
+		Total      int                    `json:"total"`
+	}
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &result) != nil || result.Total != 1 || len(result.Candidates) != 1 || result.Candidates[0].SourceID != "alpha" || result.Candidates[0].State != "blocked_conflict" || strings.Contains(out.Body.String(), "beta") {
+		t.Fatal("blocked candidate missing or source scope leaked", out.Code)
+	}
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		jsonResponse(w, 200, map[string]any{"done": true, "response": "# Установка"})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorker(s, srv.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	alpha, _ := s.article("alpha", "docs/setup.md", false)
+	beta, _ := s.article("beta", "docs/setup.md", false)
+	if calls != 1 || alpha.Translation != nil || beta.Translation == nil {
+		t.Fatal("worker did not skip blocked candidate and translate next")
+	}
+}
 
 func TestTranslationQueueRespectsReaderScope(t *testing.T) {
 	s := testStore(t)

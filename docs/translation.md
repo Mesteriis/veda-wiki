@@ -28,6 +28,9 @@ servers reject; back up and verify a compatible restore before upgrading.
 An owner or authenticated reader can list candidates with `GET /api/v1/articles/translation-needed`
 (`limit` 1–100 and `offset`) or `veda_translation_needed`. Scoped readers see
 only their authorized sources; anonymous callers cannot list the queue. The
+queue reports `needed`, `publication_review`, or `blocked_conflict`; the last
+state requires resolving an import conflict before translation or publication.
+The automatic worker skips blocked candidates. The
 owner can read each original and submit via `POST /api/v1/articles/translation` or `veda_translate_article`
 with `source_id`, `path`, `expected_revision`, `original_sha256`, `text` and
 optional `confirm_publication`. The original revision and SHA must still match;

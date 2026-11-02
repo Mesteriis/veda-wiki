@@ -126,8 +126,8 @@ func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
 			if _, err = s.saveTranslation(proposal, true); err != ErrConflict {
 				t.Fatal("conflicted automatic draft accepted", err)
 			}
-			if len(s.translationCandidates()) != 0 {
-				t.Fatal("conflicted article queued for translation")
+			if candidates := s.translationCandidates(); len(candidates) != 1 || candidates[0].State != "blocked_conflict" {
+				t.Fatal("conflicted translation did not report its blocker", candidates)
 			}
 			reopened, err := openStore(s.dir)
 			if err != nil {
