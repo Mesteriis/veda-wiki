@@ -25,10 +25,15 @@ historical image bindings, blob/history retention, database indexing, packaging 
 include actual multi-repository synchronization, failure recovery and all
 access paths, not just the existing unit tests.
 
-The SQLite write path still serializes all records on each transaction. A
-synthetic benchmark with 200 approximately 126 KiB documents measured about
-42 ms and 31.7 MB allocated per single-article update on an Apple M5 Max
+When no move is pending, SQLite article creation and update persist the changed
+article, outbox jobs, move states and metadata in one transaction. A pending
+move or another mutation uses the full transaction because reconciliation can
+change a second article. A synthetic benchmark with 200 approximately 126 KiB documents
+measured approximately 42 ms and 31.7 MB allocated per single-article update
+before the targeted write path, and approximately 2.3 ms and 0.9–1.2 MB afterwards
+on an Apple M5 Max
 (`cd server && go test -run '^$' -bench '^BenchmarkSQLiteSingleArticleUpdateLargeCorpus$' -benchmem -benchtime=3x`).
-This is not a production workload or a storage limit. Incremental persistence
-needs an explicit mutation-tracking design and recovery tests; shallow snapshots
-alone are not sufficient evidence that nested values cannot change in place.
+This is not a production workload or a storage limit. The specialized path is
+only for `put`; any future change to the categories it mutates must update that
+transaction and its recovery tests. Shallow snapshots alone are not sufficient
+evidence that nested values cannot change in place.

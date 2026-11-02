@@ -398,6 +398,12 @@ func (s *Store) validate() (*Store, error) {
 	return s, nil
 }
 func (s *Store) commit(db Database) error {
+	return s.commitWithArticle(db, "")
+}
+
+// articleKey is used only by put: that operation changes one article and may
+// update moves and outbox jobs. Other mutations must use a full transaction.
+func (s *Store) commitWithArticle(db Database, articleKey string) error {
 	if s.invalid {
 		return errors.New("store unavailable")
 	}
@@ -420,7 +426,13 @@ func (s *Store) commit(db Database) error {
 	}
 	db.Updated = time.Now().UTC().Format(time.RFC3339Nano)
 	if s.sqlite {
-		if err := s.commitSQLite(db); err != nil {
+		var err error
+		if articleKey != "" {
+			err = s.commitSQLiteArticle(db, articleKey)
+		} else {
+			err = s.commitSQLite(db)
+		}
+		if err != nil {
 			// Commit errors can be ambiguous. Reload the authoritative database;
 			// if recovery fails, fail closed until the process is restarted.
 			recovered := &Store{dir: s.dir}
@@ -580,7 +592,19 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	if src.ConnectionID != "" {
 		enqueueWrite(&db, article, rev)
 	}
-	if err := s.commit(db); err != nil {
+	// Reconciliation can delete another article when a pending move completes.
+	// Such writes must persist the whole state, not only this article.
+	articleKey := key
+	for _, move := range s.db.Moves {
+		switch move.State {
+		case "complete", "cancelled", "source_changed", "destination_changed":
+			continue
+		default:
+			articleKey = ""
+		}
+		break
+	}
+	if err := s.commitWithArticle(db, articleKey); err != nil {
 		return Revision{}, err
 	}
 	return rev, nil

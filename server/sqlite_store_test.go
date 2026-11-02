@@ -199,6 +199,158 @@ func TestSQLiteCommitFailureFailsClosed(t *testing.T) {
 	}
 }
 
+func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
+	connectFixture(t, s, f, true)
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sqliteDB(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`CREATE TRIGGER reject_job BEFORE INSERT ON records WHEN NEW.category='job' BEGIN SELECT RAISE(ABORT, 'fixture'); END`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err = s.put("handbook", "guide.md", "# Updated", 1); err == nil {
+		t.Fatal("job failure accepted")
+	}
+	article, err := s.article("handbook", "guide.md", false)
+	if err != nil || len(article.Versions) != 1 || article.Versions[0].Text != "# Original" || len(s.jobs()) != 0 {
+		t.Fatal("failed transaction changed article or outbox", err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	article, err = reopened.article("handbook", "guide.md", false)
+	if err != nil || len(article.Versions) != 1 || len(reopened.jobs()) != 0 {
+		t.Fatal("failed transaction survived restart", err)
+	}
+	db, err = sqliteDB(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("DROP TRIGGER reject_job"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err = s.put("handbook", "guide.md", "# Updated", 1); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	article, err = reopened.article("handbook", "guide.md", false)
+	if err != nil || len(article.Versions) != 2 || len(reopened.jobs()) != 1 || reopened.jobs()[0].SHA != article.Versions[1].SHA {
+		t.Fatal("successful article and job did not persist", err)
+	}
+	liveJSON, liveErr := json.Marshal(s.db)
+	restoredJSON, restoredErr := json.Marshal(reopened.db)
+	if liveErr != nil || restoredErr != nil || string(liveJSON) != string(restoredJSON) {
+		t.Fatal("in-memory and restored SQLite state differ")
+	}
+	if _, err = s.put("handbook", "guide.md", "# Updated again", 2); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := map[int]string{}
+	for _, job := range reopened.jobs() {
+		states[job.Revision] = job.State
+	}
+	if states[2] != "superseded" || states[3] != "pending" {
+		t.Fatal("outbox supersession not durable")
+	}
+}
+
+func TestSQLiteArticleUpdatePersistsMoveReconciliation(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	if err != nil || move.State != "waiting_source_delete" {
+		t.Fatal("fixture move not pending", err)
+	}
+	if err = migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.put("local", "copy.md", "# Changed destination", 1); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := reopened.article("local", "copy.md", false)
+	if err != nil || len(a.Versions) != 2 || reopened.moves()[0].State != "destination_changed" {
+		t.Fatal("article and move state not durable", err)
+	}
+}
+
+func TestSQLiteArticleUpdatePersistsOtherArticleWhenMoveCompletes(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	if _, err := s.put("local", "a.md", "# Source", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("local", "other.md", "# Other", 0); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true})
+	if err != nil || move.State != "waiting_destination" {
+		t.Fatal("fixture move not pending", err)
+	}
+	if err = migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	db := s.clone()
+	jobID := "handbook/moved.md@1"
+	job := db.Outbox[jobID]
+	job.State = "complete"
+	db.Outbox[jobID] = job
+	err = s.commit(db)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.put("local", "other.md", "# Changed", 1); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = reopened.article("local", "a.md", false); err != ErrNotFound || reopened.moves()[0].State != "complete" {
+		t.Fatal("completed move did not persist source deletion", err)
+	}
+	other, err := reopened.article("local", "other.md", false)
+	if err != nil || len(other.Versions) != 2 {
+		t.Fatal("unrelated update was not durable", err)
+	}
+}
+
 func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")

@@ -152,6 +152,56 @@ func (s *Store) commitSQLite(state Database) error {
 	return tx.Commit()
 }
 
+// put changes exactly one article, and may add or update outbox jobs and move
+// states. It does not remove jobs or moves or modify other record categories.
+// Keep the affected records in the same durable transaction as the metadata.
+func (s *Store) commitSQLiteArticle(state Database, key string) error {
+	article, ok := state.Articles[key]
+	if !ok {
+		return errors.New("missing article in SQLite update")
+	}
+	db, err := sqliteDB(s.dir)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	save, err := tx.Prepare(`INSERT INTO records(category,id,data) VALUES(?,?,?) ON CONFLICT(category,id) DO UPDATE SET data=excluded.data WHERE records.data<>excluded.data`)
+	if err != nil {
+		return err
+	}
+	defer save.Close()
+	put := func(category, id string, value any) error {
+		data, e := json.Marshal(value)
+		if e != nil {
+			return e
+		}
+		_, e = save.Exec(category, id, data)
+		return e
+	}
+	if err = put("meta", "state", sqliteMeta{state.Version, state.Updated}); err != nil {
+		return err
+	}
+	if err = put("article", key, article); err != nil {
+		return err
+	}
+	for id, job := range state.Outbox {
+		if err = put("job", id, job); err != nil {
+			return err
+		}
+	}
+	for id, move := range state.Moves {
+		if err = put("move", id, move); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) loadSQLite(marker []byte) error {
 	var m sqliteMarker
 	decoder := json.NewDecoder(bytes.NewReader(marker))
