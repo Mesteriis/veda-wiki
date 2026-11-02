@@ -10,6 +10,19 @@ head. An unchanged head avoids downloading the tree again, but repository
 visibility and the branch head are still checked on each sync. A new commit or
 a visibility change triggers a fresh tree inspection.
 
+An opt-in anonymous acceptance check imports the public VEDA program repository
+into a disposable local store, verifies `docs/`, checks one article against the
+recorded GitHub commit, and restarts the store. It makes no GitHub writes and
+does not use stored credentials:
+
+```sh
+VEDA_TEST_PUBLIC_GITHUB=1 .venv/bin/python scripts/smoke_public_github.py
+```
+
+This check requires outbound GitHub access and available anonymous API quota.
+It does not verify GitHub App or token authentication, private repositories,
+write-back, translation quality, or the connectivity of another host.
+
 For a public repository, start VEDA and connect it without credentials:
 
 ```sh
