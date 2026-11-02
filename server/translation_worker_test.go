@@ -481,3 +481,59 @@ func TestRealLocalMLXProjectDocumentation(t *testing.T) {
 		t.Fatalf("translated documentation rejected: %v", err)
 	}
 }
+
+func TestTranslationChunksSplitTopLevelParagraphsAndKeepProtectedBlocks(t *testing.T) {
+	original := strings.Repeat("Hello ", 3000) + "\n\n```sh\necho safe\n```\n\n" + strings.Repeat("Hello ", 3000) + "\n\n[Guide](guide.md)\n"
+	chunks, err := translationChunks(original, 32000)
+	if err != nil || len(chunks) < 2 || strings.Join(chunks, "") != original {
+		t.Fatal("safe blocks not split losslessly", err)
+	}
+	var protected []string
+	for _, chunk := range chunks {
+		if len(chunk) > 32000 {
+			t.Fatal("chunk exceeds limit")
+		}
+		protected = append(protected, protectedMarkdown(chunk)...)
+	}
+	if !reflect.DeepEqual(protectedMarkdown(original), protected) {
+		t.Fatal("protected Markdown changed")
+	}
+}
+
+func TestTranslationChunksRejectCrossChunkReferenceDefinition(t *testing.T) {
+	original := "[Guide][ref] " + strings.Repeat("Hello ", 3000) + "\n\n" + strings.Repeat("World ", 3000) + "\n\n[ref]: guide.md\n"
+	if _, err := translationChunks(original, 32000); err == nil {
+		t.Fatal("reference split accepted")
+	}
+}
+
+func TestLocalWorkerTranslatesLargeParagraphs(t *testing.T) {
+	s := testStore(t)
+	programSource(t, s, "program", "private")
+	original := strings.Repeat("Hello ", 3000) + "\n\n```sh\necho safe\n```\n\n" + strings.Repeat("Hello ", 3000)
+	if _, err := s.put("program", "docs/guide.md", original, 0); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Prompt string `json:"prompt"`
+		}
+		if json.NewDecoder(r.Body).Decode(&input) != nil {
+			t.Error("invalid request")
+			return
+		}
+		calls++
+		jsonResponse(w, 200, map[string]any{"done": true, "done_reason": "stop", "response": strings.ReplaceAll(input.Prompt, "Hello", "Привет")})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorker(s, srv.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	a, err := s.article("program", "docs/guide.md", false)
+	if err != nil || calls < 2 || a.Translation == nil || a.Translation.Origin != "local_model" || !reflect.DeepEqual(protectedMarkdown(original), protectedMarkdown(a.Translation.Text)) {
+		t.Fatal("large paragraph translation failed", err)
+	}
+}

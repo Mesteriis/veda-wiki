@@ -60,9 +60,11 @@ local service and model do not forward documents elsewhere. Configure
 `--translation-interval` between 5 seconds and 1 hour (default one minute).
 
 The worker processes one candidate per interval and retries failures after 15
-minutes. Documents over 32,000 bytes are split at top-level headings outside
-code fences, then validated and saved as one result. Large sections without a
-safe split and large documents containing HTML require manual handling and are
+minutes. Documents over 32,000 bytes are split at top-level paragraph or
+heading boundaries, then validated and saved as one result. A split is rejected
+if it changes how protected Markdown is parsed, including references whose
+definitions are in another chunk. Large blocks without a safe split and large
+documents containing HTML require manual handling and are
 skipped for 24 hours. It does not detect the original language or verify translation
 quality. It rejects unchanged output, truncated generation, stale revisions and
 changes to protected Markdown. The worker also requires at least three Cyrillic

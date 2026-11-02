@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -205,9 +206,14 @@ func (w *translationWorker) translate(ctx context.Context, original string) (str
 	return result.Response, nil
 }
 
-// Split only before top-level ATX headings outside fenced code blocks. If a
-// section is too large, fail closed instead of splitting code or paragraphs.
+// Split only at top-level paragraph or heading boundaries. Code blocks, lists,
+// tables and individual paragraphs stay intact. Reference-style Markdown can
+// depend on definitions in another block, so reject any split that changes the
+// sequence of protected Markdown when each chunk is parsed independently.
 func translationChunks(original string, limit int) ([]string, error) {
+	if limit <= 0 {
+		return nil, errors.New("invalid translation limit")
+	}
 	if len(original) <= limit {
 		return []string{original}, nil
 	}
@@ -223,44 +229,46 @@ func translationChunks(original string, limit int) ([]string, error) {
 	if hasHTML {
 		return nil, errors.New("large HTML-containing document requires manual handling")
 	}
-	lines := strings.SplitAfter(original, "\n")
-	var chunks []string
-	var current strings.Builder
-	var fence byte
-	fenceLength := 0
-	for _, line := range lines {
-		trimmed := strings.TrimLeft(line, " ")
-		indent := len(line) - len(trimmed)
-		if indent <= 3 && len(trimmed) >= 3 && (trimmed[0] == '`' || trimmed[0] == '~') {
-			count := 0
-			for count < len(trimmed) && trimmed[count] == trimmed[0] {
-				count++
-			}
-			if count >= 3 {
-				if fence == 0 {
-					fence, fenceLength = trimmed[0], count
-				} else if trimmed[0] == fence && count >= fenceLength && strings.TrimSpace(trimmed[count:]) == "" {
-					fence, fenceLength = 0, 0
-				}
-			}
+	boundaries := []int{0}
+	for node := root.FirstChild(); node != nil; node = node.NextSibling() {
+		if node.Kind() != ast.KindParagraph && node.Kind() != ast.KindHeading {
+			continue
 		}
-		if fence == 0 && indent == 0 && strings.HasPrefix(line, "#") {
-			count := 0
-			for count < len(line) && line[count] == '#' {
-				count++
-			}
-			if count <= 6 && count < len(line) && (line[count] == ' ' || line[count] == '\t') && current.Len() >= limit/2 {
-				chunks = append(chunks, current.String())
-				current.Reset()
-			}
+		if node.Lines().Len() == 0 {
+			continue
 		}
-		current.WriteString(line)
-		if current.Len() > limit {
-			return nil, errors.New("section exceeds translation limit")
+		pos := node.Lines().At(0).Start
+		if pos < 0 || pos > len(original) {
+			return nil, errors.New("invalid markdown boundary")
+		}
+		pos = strings.LastIndex(original[:pos], "\n") + 1
+		if pos > boundaries[len(boundaries)-1] {
+			boundaries = append(boundaries, pos)
 		}
 	}
-	if current.Len() > 0 {
-		chunks = append(chunks, current.String())
+	var chunks []string
+	for start := 0; start < len(original); {
+		end := len(original)
+		if end-start > limit {
+			end = start
+			for _, boundary := range boundaries {
+				if boundary > start && boundary-start <= limit {
+					end = boundary
+				}
+			}
+			if end == start {
+				return nil, errors.New("markdown block exceeds translation limit")
+			}
+		}
+		chunks = append(chunks, original[start:end])
+		start = end
+	}
+	var protected []string
+	for _, chunk := range chunks {
+		protected = append(protected, protectedMarkdown(chunk)...)
+	}
+	if !slices.Equal(protectedMarkdown(original), protected) {
+		return nil, errors.New("markdown references cross translation chunks")
 	}
 	return chunks, nil
 }
