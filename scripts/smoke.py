@@ -144,6 +144,30 @@ async def main():
                     assert "Imported original" not in preview.stdout and "untracked-private" not in preview.stdout
                     assert subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(checkout),
                                            "--preview", "--create"], capture_output=True).returncode != 0
+                    # A partial preview must not reveal withheld names or content.
+                    partial_checkout = Path(tmp) / "partial-checkout"
+                    partial_checkout.mkdir()
+                    (partial_checkout / "veda.yaml").write_text("schema_version: 1\nkind: wiki\ntitle: Fixture\n")
+                    (partial_checkout / "guide.md").write_text("# Safe fixture")
+                    (partial_checkout / "withheld-example.md").write_text("password=fixture-for-screening")
+                    (partial_checkout / "linked.md").symlink_to("guide.md")
+                    partial_git = ["git", "-C", str(partial_checkout)] + git[3:]
+                    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Fixture"]):
+                        subprocess.run(partial_git + args, check=True, capture_output=True)
+                    partial = subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(partial_checkout), "--preview"],
+                                             check=True, capture_output=True, text=True)
+                    partial_summary = json.loads(partial.stdout)
+                    assert partial_summary["withheld"] == 2 and partial_summary["complete"] is False
+                    assert "withheld-example" not in partial.stdout and "fixture-for-screening" not in partial.stdout
+                    empty_checkout = Path(tmp) / "no-docs"
+                    empty_checkout.mkdir()
+                    (empty_checkout / "README.md").write_text("# Program without docs")
+                    empty_git = ["git", "-C", str(empty_checkout)] + git[3:]
+                    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Fixture"]):
+                        subprocess.run(empty_git + args, check=True, capture_output=True)
+                    skipped = subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(empty_checkout), "--preview"],
+                                             check=True, capture_output=True, text=True)
+                    assert json.loads(skipped.stdout)["status"] == "skipped"
                     command = [str(ROOT / "veda"), "import", "--checkout", str(checkout),
                                "--source", "imported", "--url", f"http://127.0.0.1:{private_port}",
                                "--key-file", str(data / "owner.key")]
