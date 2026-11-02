@@ -71,7 +71,10 @@ the other source remains available and the local wiki revision is retained.
 already have Mesteriis selected; a local GET-only proxy uses its credential
 without passing a token to VEDA. This check performs no GitHub writes and does
 not establish that VEDA-stored credentials, private repositories, write-back or
-the deployment host's GitHub connectivity work:
+the deployment host's GitHub connectivity work. A separate anonymous test on
+the deployment host passed the same two repository types, metadata and image,
+`docs/` boundaries, SQLite restart and MCP search/read/proposals. It did not
+test outage recovery or credentials on that host:
 
 ```sh
 cd server
