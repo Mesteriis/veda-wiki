@@ -140,3 +140,12 @@ second experiment using shorter sections also failed structural validation.
 Masking code with markers was also tried: the model changed or omitted the
 markers on the same project document, so the experiment was not retained.
 This does not establish model quality, production security or LXC availability.
+
+A further local experiment used the Qwen3-4B MLX 4-bit model at revision
+`52a5ab34fa604bc8af6d3ce0cac0cab10b7eb495`. The synthetic example passed,
+while translation of the public `docs/import.md` changed protected Markdown
+and was rejected. Splitting that document into sections of at most 4,000 bytes
+also failed the structural check on the first section. The reproducible opt-in
+section test is `TestRealLocalMLXProjectDocumentationSections`. These results
+apply to this model configuration and fixture only; no private documents were
+used, and the model was not enabled on the production server.
