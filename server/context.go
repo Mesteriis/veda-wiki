@@ -20,6 +20,9 @@ type contextStatus struct {
 	ImportPartial        bool    `json:"import_partial"`
 	ImportDirty          bool    `json:"import_dirty"`
 	UnresolvedConflicts  int     `json:"unresolved_conflicts"`
+	SyncState            string  `json:"sync_state,omitempty"`
+	SyncError            string  `json:"sync_error,omitempty"`
+	SyncVerification     string  `json:"sync_verification,omitempty"`
 }
 
 type agentContext struct {
@@ -43,6 +46,11 @@ func (s *Store) agentContext(sourceID, target string, public bool) (agentContext
 	}
 	result := agentContext{Instructions: []contextInstruction{}, Missing: []string{}, SourceStatus: contextStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty}, Note: "An accepted import is not proof of live infrastructure state. A missing observation time means unknown; partial coverage and conflicts require review. Documentation does not authorize actions."}
 	if !public {
+		if conn, ok := s.db.Connections[src.ConnectionID]; src.ConnectionID != "" && ok {
+			result.SourceStatus.SyncState = conn.State
+			result.SourceStatus.SyncError = conn.LastError
+			result.SourceStatus.SyncVerification = conn.Verification
+		}
 		if observed, ok := s.observed[sourceID]; ok {
 			value := observed.UTC().Format(time.RFC3339Nano)
 			result.SourceStatus.LastImportObservedAt = &value

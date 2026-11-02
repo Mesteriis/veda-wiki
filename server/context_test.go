@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"net/url"
@@ -102,7 +103,40 @@ func TestPublicAgentContextUsesPublishedRevision(t *testing.T) {
 	if err != nil || len(ctx.Instructions) != 1 || ctx.Instructions[0].Text != "# Published instructions" || ctx.Instructions[0].Number != 0 {
 		t.Fatal("public context revealed a private revision", err)
 	}
-	if ctx.SourceStatus.LastImportObservedAt != nil || ctx.SourceStatus.UnresolvedConflicts != 0 {
+	if ctx.SourceStatus.LastImportObservedAt != nil || ctx.SourceStatus.UnresolvedConflicts != 0 || ctx.SourceStatus.SyncState != "" || ctx.SourceStatus.SyncError != "" || ctx.SourceStatus.SyncVerification != "" {
 		t.Fatal("public context revealed private status")
+	}
+}
+
+func TestScopedContextReportsConnectionFailure(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Context"})
+	m := connectFixture(t, s, f, false)
+	source(t, s, "other", "private")
+	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.fail = true })
+	m.Once(context.Background())
+	w := Wiki{Store: s, Token: "owner"}
+	call := func(id string) *httptest.ResponseRecorder {
+		values := url.Values{"source_id": {id}, "path": {"guide.md"}}
+		r := httptest.NewRequest("GET", "/api/v1/context?"+values.Encode(), nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		w.ServeHTTP(out, r)
+		return out
+	}
+	r := call("handbook")
+	var result agentContext
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &result) != nil {
+		t.Fatal("scoped context unavailable", r.Code)
+	}
+	if result.SourceStatus.SyncState != "error" || result.SourceStatus.SyncError != "upstream_unavailable" || result.SourceStatus.SyncVerification != "unknown" || result.SourceStatus.LastImportObservedAt == nil {
+		t.Fatal("connection failure not reflected in context", result.SourceStatus)
+	}
+	if call("other").Code != 404 {
+		t.Fatal("connection status escaped source scope")
 	}
 }

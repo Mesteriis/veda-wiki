@@ -99,6 +99,8 @@ async def run(key, expected):
     assert article['text']==('# Shared public\nPublic fixture' if source=='one' else '# Shared private\nPrivate fixture')
     context=await call('veda_context',{'source_id':source,'path':'docs/guide.md'})
     assert context['source_status']['last_import_observed_at'] is not None
+    assert context['source_status']['sync_state']=='ready'
+    assert context['source_status']['sync_verification']=='verified'
     proposal=await call('veda_prepare_update',{'source_id':source,'path':'docs/guide.md','expected_revision':article['revision'],'text':'# Proposed'})
     assert proposal['saved'] is False and proposal['base_sha256']==article['sha256']
    if expected=={'one'}:

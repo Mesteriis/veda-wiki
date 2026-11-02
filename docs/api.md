@@ -227,7 +227,12 @@ of paths outside a curated import's scope. The count is kept in memory and is
 absent after restart until another import; a head-only check does not create it.
 `import_partial` and `import_dirty` indicate known coverage and source-state limits. These fields
 are omitted from public-only listings where applicable. MCP `veda_context`
-returns the same status alongside scope instructions.
+returns the same status alongside scope instructions. For authenticated access
+to a connected source, it also includes `sync_state`, `sync_verification` and,
+when present, the sanitized `sync_error` code. A failed, paused or unverified
+connection can leave the local copy stale even when an earlier observation time
+is present. These connection fields are omitted from public context responses
+and from local disconnected sources.
 The context endpoint reads all ancestor `AGENTS.md` articles and status under
 one lock, subject to the caller's source permissions and published revisions.
 Missing instructions only mean they are absent from the visible dataset; a
