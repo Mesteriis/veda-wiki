@@ -428,8 +428,8 @@ repeat until it is false and inspect blocked paths and the destination outbox.
 A timeout or interruption may leave earlier transactions committed: check the
 state and retry, which is idempotent. Reconciliation persists baselines using
 store format v18; older binaries reject this store. Maintain a compatible backup
-before invoking it. This endpoint initiates one pass; periodic scheduling is not
-yet configured.
+before invoking it. This endpoint initiates one pass; periodic scheduling is
+separately configured as described below.
 
 ### Periodic private reconciliation
 
