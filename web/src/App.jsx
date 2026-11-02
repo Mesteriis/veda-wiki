@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { buildTree, buildMergedTree } from "./tree.js";
+import { catalogPages } from "./catalog.js";
+import { readVisits, recordVisit, saveVisits, clearVisits, visibleVisits } from "./recent.js";
 import { githubErrorMessage, githubVisibilityLabel } from "./githubErrors.js";
 import { githubSourceId } from "./githubSourceId.js";
 import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
@@ -94,11 +96,10 @@ function Sidebar({ v }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const nav = [
     ["home", "Главная", "/"],
-    ["search", "Поиск", "/?q=документация"],
     ["notes", "Все страницы", "/?env=all"],
-    ["affiliate", "Граф знаний", null, "graph"],
+    ["affiliate", "Граф знаний", "/?graph=1"],
     ["star", "Избранное", null, "favorites"],
-    ["clock", "Недавние", null, "recent"],
+    ["clock", "Недавние", "/?recent=1"],
     ["brand-github", "GitHub", null, "github"],
     ["api", "API и MCP", null, "api"],
     ["settings", "Настройки", null, "settings"],
@@ -118,7 +119,7 @@ function Sidebar({ v }) {
             <a
               className={
                 "nav-item " +
-                (href === "/" && !v.Query && !v.Selected && !v.Page
+                ((href === "/" && !v.Query && !v.Selected && !v.Page && !v.GraphView && !v.RecentView) || (href === "/?env=all" && !!v.Selected && !v.Query && !v.Page) || (href === "/?graph=1" && v.GraphView) || (href === "/?recent=1" && v.RecentView)
                   ? "selected"
                   : "")
               }
@@ -187,8 +188,8 @@ function Header({ v }) {
   return (
     <header className="masthead">
       <div className="masthead-title">
-        <h1>Вики</h1>
-        <p>Ваше единое место для знаний, проектов и документации</p>
+        <h1>{v.RecentView ? "Недавние" : v.GraphView ? "Граф знаний" : v.Selected && !v.Query && !v.Page ? "Все статьи" : "Вики VEDA"}</h1>
+        <p>{v.RecentView ? "Страницы, которые вы недавно открывали" : v.GraphView ? "Связи между статьями базы знаний по источникам" : v.Selected && !v.Query && !v.Page ? "Полный каталог статей базы знаний" : "База знаний для работы, проектов и документации"}</p>
       </div>
       <form action="/" className="global-search" role="search">
         <label className="sr" htmlFor="search">
@@ -493,26 +494,74 @@ function Shortcuts() {
   );
 }
 function Dashboard({ v }) {
+  const groups = v.Groups || [];
+  const covers = ["collection-dunes.jpg", "collection-leaf.jpg", "collection-mountains.jpg"];
+  const pageCountLabel = (count) => `${count} ${new Intl.PluralRules("ru").select(count) === "one" ? "страница" : new Intl.PluralRules("ru").select(count) === "few" ? "страницы" : "страниц"}`;
   return (
-    <div className="dashboard">
-      <div className="center-column">
-        <BrowseCards />
-        {v.Count === 0 ? <Panel title="База знаний пока пуста"><p className="data-note">Добавьте источник и статьи через REST API или MCP. Веб-интерфейс предназначен для чтения.</p></Panel> : <PageCards cards={v.Cards || []} />}
-        <div className="lower-grid">
-          <Tree groups={v.Groups || []} />
-          <div className="lower-right">
-            <MorePages cards={v.Cards || []} pages={v.Pages || []} />
-            {!v.Public && <Activity />}
-          </div>
-        </div>
+    <div className="dashboard home-dashboard">
+      <div className="home-content">
+        {groups.length > 0 && <section className="collections" aria-labelledby="collections-title">
+          <h2 id="collections-title">Коллекции знаний</h2>
+          <p>Быстрый доступ к разделам базы знаний</p>
+          <div className="collection-grid">{groups.slice(0, 3).map((group, index) => <a className="collection" href={'/?env=' + encodeURIComponent(group.ID)} key={group.ID}>
+            <img src={'/assets/' + covers[index]} alt="" />
+            <span className="collection-copy"><I name="folder" /><span><strong>{group.Name}</strong><small>{group.Description || pageCountLabel(group.Count)}</small></span><I name="arrow-right" /></span>
+          </a>)}</div>
+        </section>}
+        <section className="home-recent" aria-labelledby="home-recent-title">
+          <div className="home-section-heading"><div><h2 id="home-recent-title">Недавние страницы</h2><p>Недавно обновлённые материалы</p></div>{v.Count > 0 && <a href="/?env=all">Все страницы <I name="arrow-right" /></a>}</div>
+          {v.Count === 0 ? <p className="home-empty">Здесь появятся доступные статьи базы знаний.</p> : <div className="home-page-list">{(v.Cards || []).map((card) => <a className="home-page-row" href={pageHref(card.Page.path)} key={card.Page.path}>
+            <span className="home-page-icon"><I name="notes" /></span><strong title={card.Page.title}>{card.Page.title}</strong><span className="home-page-path">{card.Page.path}</span><time dateTime={card.Page.updated_at || undefined}>{updatedLabel(card.Page.updated_at)}</time>
+          </a>)}</div>}
+        </section>
       </div>
-      <aside className="right-column">
-        {!v.Public && <Integrations isPublic={v.Public} githubCount={v.GitHubCount || 0} />}
-        <Statistics count={v.Count} groups={(v.Groups || []).length} isPublic={v.Public} />
-        {!v.Public && <Shortcuts />}
+      <aside className="home-tree">
+        <Tree groups={groups} />
       </aside>
     </div>
   );
+}
+function Graph({ v }) {
+  const [selected, setSelected] = useState(null);
+  const [scale, setScale] = useState(1);
+  const [sourceID, setSourceID] = useState("");
+  const [pageIndex, setPageIndex] = useState(0);
+  const available = v.Groups || [];
+  const groups = sourceID ? available.filter((group) => group.ID === sourceID) : available.slice(0, 6);
+  const pageCount = Math.max(1, ...groups.map((group) => Math.ceil((group.Pages || []).length / 12)));
+  const currentPage = Math.min(pageIndex, pageCount - 1);
+  const position = (index) => ({ x: groups.length === 3 && index === 2 ? 255 : (index % 2) * 480 + 15, y: Math.floor(index / 2) * 285 + 8 });
+  const nodes = groups.flatMap((group, groupIndex) => {
+    const pages = (group.Pages || []).slice(currentPage * 12, currentPage * 12 + 12);
+    const origin = position(groupIndex);
+    const spaced = pages.length <= 3;
+    const points = pages.length === 1 ? [[145, 110]] : pages.length === 2 ? [[55, 110], [240, 110]] : [[145, 65], [35, 150], [255, 150]];
+    return pages.map((page, index) => ({ ...page, group: group.Name, groupIndex, width: spaced ? 164 : 132, x: origin.x + (spaced ? points[index][0] : 30 + (index % 3) * 145), y: origin.y + (spaced ? points[index][1] : 62 + Math.floor(index / 3) * 48) }));
+  });
+  const byPath = new Map(nodes.map((node) => [node.path, node]));
+  const edges = (v.GraphEdges || []).filter((edge) => byPath.has(edge.from) && byPath.has(edge.to));
+  const chosen = byPath.get(selected);
+  const allPages = new Map(available.flatMap((group) => group.Pages || []).map((page) => [page.path, page]));
+  const related = chosen ? (v.GraphEdges || []).filter((edge) => edge.from === chosen.path || edge.to === chosen.path).map((edge) => ({ path: edge.from === chosen.path ? edge.to : edge.from, incoming: edge.to === chosen.path })).filter((item) => allPages.has(item.path)) : [];
+  const height = Math.max(310, Math.ceil(groups.length / 2) * 285);
+  return <section className="graph-section" aria-label="Граф связей статей">
+    <div className="graph-filter"><label>Источник <select value={sourceID} onChange={(event) => { setSourceID(event.target.value); setPageIndex(0); setSelected(null); }}><option value="">Все источники</option>{available.map((group) => <option key={group.ID} value={group.ID}>{group.Name}</option>)}</select></label>{pageCount > 1 && <div><button disabled={currentPage === 0} onClick={() => { setPageIndex(currentPage - 1); setSelected(null); }}>Назад</button><span>Страница {currentPage + 1} из {pageCount}</span><button disabled={currentPage + 1 === pageCount} onClick={() => { setPageIndex(currentPage + 1); setSelected(null); }}>Вперёд</button></div>}</div>
+    {(v.Count > nodes.length) && <p className="graph-note">Показано {nodes.length} из {v.Count} доступных статей. Выберите источник и страницу, чтобы увидеть остальные; линии показаны только между видимыми узлами.</p>}
+    {!nodes.length ? <p className="graph-note">Нет доступных статей для отображения.</p> : <>
+      <div className={'graph-canvas-shell' + (groups.length === 3 && scale === 1 ? ' graph-three-groups' : '')}><div className="graph-viewport" tabIndex={0} aria-label="Область графа">
+        <div className="graph-stage" style={{ width: 960 * scale, height: height * scale }}>
+          <div className="graph-inner" style={{ width: 960, height, transform: `scale(${scale})` }}>
+            {groups.map((group, i) => <div className={'graph-cluster graph-cluster-' + (i % 3)} key={group.ID} style={{ left: position(i).x, top: position(i).y }}><strong>{group.Name}</strong></div>)}
+            <svg className="graph-lines" width="960" height={height} aria-hidden="true">{edges.map((edge) => { const from = byPath.get(edge.from), to = byPath.get(edge.to); return <line key={edge.from + '\0' + edge.to} x1={from.x + from.width / 2} y1={from.y + 22} x2={to.x + to.width / 2} y2={to.y + 22} />; })}</svg>
+            {nodes.map((node) => <button key={node.path} title={node.title} className={'graph-node graph-node-' + (node.groupIndex % 3) + (selected === node.path ? ' selected' : '')} style={{ left: node.x, top: node.y, width: node.width }} onClick={() => setSelected(node.path)}><I name="file-text" /><span>{node.title}</span></button>)}
+          </div>
+        </div>
+      </div>
+      <div className="graph-tools"><div className="graph-legend"><strong>Легенда</strong><span><I name="file-text" />Статья</span><span><I name="folder" />Источник</span><span><I name="affiliate" />Связь между статьями</span></div><div className="graph-zoom"><button aria-label="Уменьшить" onClick={() => setScale((s) => Math.max(.6, +(s - .2).toFixed(1)))}>−</button><span>{Math.round(scale * 100)}%</span><button aria-label="Увеличить" onClick={() => setScale((s) => Math.min(1.6, +(s + .2).toFixed(1)))}>+</button></div></div></div>
+      <div className="graph-detail">{chosen ? <><I name="file-text" /><span><strong>{chosen.title}</strong><small>{chosen.group} / {chosen.path}</small></span><a href={pageHref(chosen.path)}>Открыть статью <I name="arrow-right" /></a></> : <p>Выберите статью на графе, чтобы открыть её.</p>}</div>
+      {chosen && <section className="graph-related" aria-label="Связанные статьи"><h2>Связанные статьи</h2>{related.length ? <ul>{related.map((item) => <li key={(item.incoming ? 'in:' : 'out:') + item.path}><span>{item.incoming ? 'Ссылается на эту статью' : 'Ссылка из этой статьи'}:</span> <a href={pageHref(item.path)}>{allPages.get(item.path).title}</a></li>)}</ul> : <p>Связей с доступными статьями не найдено.</p>}</section>}
+    </>}
+  </section>;
 }
 function Reading({ data }) {
   const v = data.view;
@@ -545,7 +594,48 @@ function Reading({ data }) {
     </div>
   );
 }
+function Recent({ v }) {
+  const [entries, setEntries] = useState(() => { try { return readVisits(window.sessionStorage); } catch { return []; } });
+  const pages = visibleVisits(entries, v.Groups || []);
+  function clear() { try { clearVisits(window.sessionStorage); } catch { /* Storage may be unavailable. */ } setEntries([]); }
+  return <section className="recent-history panel" aria-labelledby="recent-history-title">
+    <div className="recent-history-heading"><div><h2 id="recent-history-title">История просмотров</h2><p>История хранится в этой вкладке и очищается при выходе.</p></div>{pages.length > 0 && <button onClick={clear}>Очистить историю</button>}</div>
+    {pages.length ? <div className="recent-history-list">{pages.map((page) => <a className="recent-history-row" key={page.path} href={pageHref(page.path)}><span className="home-page-icon"><I name="file-text" /></span><span className="recent-history-title"><strong>{page.title}</strong><small>{page.sourceName} / {page.path}</small></span><time dateTime={new Date(page.visitedAt).toISOString()}>{new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(page.visitedAt)}</time><I name="arrow-right" /></a>)}</div> : <div className="recent-history-empty"><I name="clock" /><h3>Здесь пока пусто</h3><p>Откройте статью, и она появится в истории этой вкладки.</p><a href="/?env=all">Перейти к статьям <I name="arrow-right" /></a></div>}
+  </section>;
+}
 function Results({ v }) {
+  const [selectedFolder, setSelectedFolder] = useState(() => {
+    const group = v.Selected && v.Selected !== "all" && (v.Groups || []).find((item) => item.ID === v.Selected);
+    return group ? { sourceID: group.ID, prefix: group.ID + "/", label: group.Name } : null;
+  });
+  if (!v.Query) {
+    const groups = v.Groups || [];
+    const selection = selectedFolder && groups.find((group) => group.ID === selectedFolder.sourceID) ? selectedFolder : null;
+    const pages = catalogPages(groups, groups.flatMap((group) => group.Pages || []), selection);
+    return <div className="catalog">
+      <aside className="catalog-tree panel" aria-label="Источники и папки">
+        <h2>Источники и папки</h2>
+        <button className={!selection ? "catalog-folder active" : "catalog-folder"} onClick={() => setSelectedFolder(null)}><I name="notes" />Все статьи</button>
+        {groups.map((group) => <details className="catalog-branch" key={group.ID} open>
+          <summary><I name="chevron-right" /><I name="folder" /><span>{group.Name}</span></summary>
+          <button className={selection?.prefix === group.ID + "/" ? "catalog-folder active" : "catalog-folder"} onClick={() => setSelectedFolder({ sourceID: group.ID, prefix: group.ID + "/", label: group.Name })}>Все статьи источника</button>
+          <CatalogFolders node={buildTree(group.ID, group.Pages || [])} sourceID={group.ID} prefix={group.ID + "/"} selection={selection} onSelect={setSelectedFolder} parents={[group.Name]} />
+        </details>)}
+        {!groups.length && <p className="catalog-empty">Доступных разделов пока нет.</p>}
+      </aside>
+      <section className="catalog-content panel">
+        <div className="catalog-breadcrumb"><I name="folder" />{selection ? selection.label : "База знаний"}</div>
+        <h2>{selection ? selection.label.split(" / ").at(-1) : "Все статьи"}</h2>
+        <div className="catalog-table-head"><span>Название статьи</span><span>Путь в базе знаний</span><span>Обновлено</span></div>
+        <div className="catalog-list">{pages.map((page) => <a className="catalog-row" href={pageHref(page.path)} key={page.path}>
+          <span className="catalog-title"><span className="home-page-icon"><I name="notes" /></span><strong>{page.title}</strong></span>
+          <span className="catalog-path" title={page.path}>{page.path}</span>
+          <time dateTime={page.updated_at || undefined}>{updatedLabel(page.updated_at)}</time>
+        </a>)}</div>
+        {!pages.length && <p className="catalog-empty">В этом разделе пока нет доступных статей.</p>}
+      </section>
+    </div>;
+  }
   return (
     <Panel
       className="search-results"
@@ -567,6 +657,16 @@ function Results({ v }) {
       </div>
     </Panel>
   );
+}
+function CatalogFolders({ node, sourceID, prefix, selection, onSelect, parents = [] }) {
+  return [...node.folders.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, child]) => {
+    const folderPrefix = prefix + name + "/";
+    const label = [...parents, name];
+    return <details className="catalog-branch catalog-subfolder" key={folderPrefix}>
+      <summary><I name="chevron-right" /><button className={selection?.prefix === folderPrefix ? "catalog-folder active" : "catalog-folder"} onClick={(event) => { event.preventDefault(); onSelect({ sourceID, prefix: folderPrefix, label: label.join(" / ") }); event.currentTarget.closest("details").open = true; }}><I name="folder" /><span>{name}</span></button></summary>
+      <CatalogFolders node={child} sourceID={sourceID} prefix={folderPrefix} selection={selection} onSelect={onSelect} parents={label} />
+    </details>;
+  });
 }
 function ReaderAccess() {
   const [status, setStatus] = useState(null);
@@ -609,6 +709,7 @@ function ReaderAccess() {
     try {
       const response = await fetch("/api/session/logout", { method: "POST" });
       if (!response.ok) throw Error();
+      try { clearVisits(window.sessionStorage); } catch { /* Storage may be unavailable. */ }
       window.location.assign("/");
     } catch { setMessage("Не удалось завершить сеанс."); }
   }
@@ -934,6 +1035,10 @@ export function App() {
     document.getElementById(id)?.scrollIntoView({ block: "start" });
   }, [data?.view.Page?.path]);
   useEffect(() => {
+    if (!data?.view.Page?.path) return;
+    try { const storage = window.sessionStorage; saveVisits(storage, recordVisit(readVisits(storage), data.view.Page.path, Date.now())); } catch { /* The article remains readable without storage. */ }
+  }, [data?.view.Page?.path]);
+  useEffect(() => {
     const listener = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -952,14 +1057,15 @@ export function App() {
         {error && <a href="/">Вернуться на главную</a>}
       </div>
     );
-  const v = data.view;
+  const params = new URLSearchParams(window.location.search);
+  const v = { ...data.view, GraphView: params.get("graph") === "1" && !data.view.Query && !data.view.Page, RecentView: params.get("recent") === "1" && !data.view.Query && !data.view.Page };
   return (
     <Features.Provider value={setFeature}>
       <Sidebar v={v} />
       <main>
         <Header v={v} />
         <SourceWarnings view={v} />
-        {v.Page ? (
+        {v.RecentView ? <Recent v={v} /> : v.GraphView ? <Graph v={v} /> : v.Page ? (
           <Reading data={data} />
         ) : v.Query || v.Selected ? (
           <Results v={v} />

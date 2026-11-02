@@ -129,3 +129,14 @@ its setup token. The user can then sign in to the GitHub administration dialog
 with their username and password. Root access to the socket is required; a
 browser, non-root socket peer, public listener or origin-bearing request cannot
 create an administrator. Back up the v20 store and retain a compatible binary.
+
+### Recently viewed pages
+
+The browser's Recent view keeps up to 50 source-qualified paths and visit times
+in `sessionStorage` for the current tab. Titles are not stored there: the view
+matches paths against the current authorized state, so pages that are no longer
+visible are not displayed. Signing out through the profile clears this tab's
+history, and the user can clear it manually. The history is not shared between
+normal independent tabs or synchronized across devices. Browser storage may be
+unavailable; that does not prevent reading articles. A tab opened with an opener
+may receive a browser-created initial copy of session storage.

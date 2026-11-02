@@ -324,6 +324,47 @@ func connectFixture(t *testing.T, s *Store, f *fakeGitHub, write bool) *SyncMana
 	return m
 }
 
+func TestBackgroundSyncImportsChangedGitHubHead(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	f.modify(func() { f.private = true })
+	m := connectFixture(t, s, f, false)
+	initialVerification := s.connections()[0].VerifiedAt
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); m.Run(ctx, 20*time.Millisecond) }()
+	defer func() { cancel(); <-done }()
+
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for s.connections()[0].VerifiedAt == initialVerification {
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatal("initial background check did not complete")
+		}
+	}
+	remote := f.contents()
+	remote["guide.md"] = "# Updated upstream"
+	f.advance(remote)
+	for {
+		page, err := s.page("handbook/guide.md", false)
+		if err == nil && page.Text == "# Updated upstream" {
+			if _, err := s.page("handbook/guide.md", true); err == nil {
+				t.Fatal("private updated article exposed publicly")
+			}
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatal("background sync did not import updated head")
+		}
+	}
+}
+
 func TestStaleSyncCannotReverifyAfterPauseResume(t *testing.T) {
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})

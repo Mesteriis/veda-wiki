@@ -77,6 +77,7 @@ type SourceWarning struct {
 	LastImportObservedAt string `json:",omitempty"`
 }
 type View struct {
+	GraphEdges     []GraphEdge
 	Cards          []Card
 	SourceWarnings []SourceWarning
 
@@ -461,6 +462,9 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	v := View{Public: w.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
+	if r.URL.Query().Get("graph") == "1" {
+		v.GraphEdges = graphEdges(s.Pages)
+	}
 	terms := searchTerms(query)
 	scores := map[string]int{}
 	w.Store.mu.RLock()

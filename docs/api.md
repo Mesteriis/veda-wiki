@@ -470,3 +470,14 @@ logical store format v19; older binaries reject it. Back up the data with a
 compatible version before enabling. A changed or public repository, an offline
 source, errors and conflicting paths stop the affected work rather than making
 it public. This applies only after explicitly configuring the source pair.
+
+### Browser knowledge graph
+
+`GET /api/state?graph=1` additionally returns `view.GraphEdges`, a list of
+`from` and `to` source-qualified article paths. The graph is derived from
+relative Markdown links in the displayed versions of the articles in the same
+authorized snapshot used by the page. Directory targets resolve to visible
+`README.md` or `index.md`; missing or inaccessible targets, external links,
+images, fragments without a path, and duplicate edges are excluded. Links are
+resolved inside the originating source, as in article rendering. This endpoint
+does not infer semantic relationships or parse unsupported wiki-link syntax.
