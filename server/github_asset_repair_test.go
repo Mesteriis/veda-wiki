@@ -67,3 +67,28 @@ func TestGitHubAssetRepairFailureDoesNotObserveHead(t *testing.T) {
 		t.Fatal("failed repair was not reported", conn.State)
 	}
 }
+
+func TestGitHubPartialSnapshotReportsUnrecoverableRetainedAsset(t *testing.T) {
+	s := testStore(t)
+	image := smallPNG(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "image.png": string(image)})
+	f.modify(func() { f.private = true })
+	m := connectFixture(t, s, f, false)
+	ref := s.db.Sources["handbook"].Assets["image.png"]
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "bad.md": string([]byte{0xff})})
+	syncFixtureSource(t, m, "handbook")
+	if source := s.db.Sources["handbook"]; !source.ImportPartial || source.Assets["image.png"] != ref {
+		t.Fatal("fixture did not retain partial asset")
+	}
+	if err := os.Remove(filepath.Join(s.dir, "blobs", ref.SHA)); err != nil {
+		t.Fatal(err)
+	}
+	syncFixtureSource(t, m, "handbook")
+	if conn := s.connections()[0]; conn.State != "error" || conn.LastError != "asset_unavailable" {
+		t.Fatal("unrecoverable retained asset not reported", conn.State, conn.LastError)
+	}
+	ctx, err := s.agentContext("handbook", "guide.md", false)
+	if err != nil || ctx.SourceStatus.SyncIssue != "error" || ctx.SourceStatus.SyncError != "asset_unavailable" || !ctx.SourceStatus.ImportPartial {
+		t.Fatal("agent did not receive source failure", err)
+	}
+}

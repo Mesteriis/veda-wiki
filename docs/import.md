@@ -131,6 +131,8 @@ supplied bytes before reporting the observation as successful. Before accepting
 an unchanged GitHub head, VEDA checks current source image blobs; if any are
 missing or corrupt it reimports the repository snapshot. Images absent from a
 partial import are not restored by that import, and may require separate recovery.
+When a retained image remains unavailable after a GitHub reimport, the connection
+reports `asset_unavailable`; authorized agent context includes the sync error.
 Queued moves and writes are deferred until a later synchronization cycle after
 repair, so their dependencies are checked again before any remote mutation.
 
