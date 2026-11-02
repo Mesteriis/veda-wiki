@@ -149,3 +149,9 @@ also failed the structural check on the first section. The reproducible opt-in
 section test is `TestRealLocalMLXProjectDocumentationSections`. These results
 apply to this model configuration and fixture only; no private documents were
 used, and the model was not enabled on the production server.
+A separate exploratory run sent only individual prose fragments from the same
+public document as JSON arrays, with no Markdown reconstruction or saving.
+The model returned 29 strings for a batch of 30; using six batches of five,
+one batch still failed the exact-count check. Because fragment alignment is
+not reliable in this trial, this approach is not enabled. Valid array lengths
+alone would not establish correct ordering, context or translation quality.
