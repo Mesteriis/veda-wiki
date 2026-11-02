@@ -102,6 +102,5 @@ behavior, production key provisioning or separate operating-system identities.
 The disposable browser smoke now also provisions a synthetic named administrator
 and signs in through the profile form. In the wide layout, GitHub and settings
 recognize that reader session without a second login; the same smoke exercises
-guest direct links and mobile layouts separately. The browser step passed in
-both Linux CI runs for `22996cd`; the remaining jobs were still running at the
-observation. This does not verify the production account or deployment.
+guest direct links and mobile layouts separately. Both Linux CI runs for `22996cd` completed successfully, including the browser
+step. This does not verify the production account or deployment.
