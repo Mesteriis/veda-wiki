@@ -127,6 +127,15 @@ with tempfile.TemporaryDirectory(prefix='veda-mcp-tls-') as tmp:
         checked = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
         if checked.returncode or any(token.encode() in checked.stdout + checked.stderr for token in values):
             raise RuntimeError('four-agent reader check failed or exposed a key')
+        duplicate_dir = root / 'duplicate-agents'
+        duplicate_dir.mkdir(mode=0o700)
+        for index, name in enumerate(('codex', 'claude', 'opencode', 'hermes')):
+            save_reader_key(duplicate_dir / (name + '.key'), values[0] if index == 1 else values[index])
+        duplicate = command.copy()
+        duplicate[duplicate.index('--key-dir') + 1] = str(duplicate_dir)
+        rejected_duplicate = subprocess.run(duplicate, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        if rejected_duplicate.returncode == 0 or any(token.encode() in rejected_duplicate.stdout + rejected_duplicate.stderr for token in values):
+            raise RuntimeError('four-agent check accepted duplicate keys or exposed a key')
         wrong_source = command.copy()
         wrong_source[wrong_source.index('--source') + 1] = 'hidden'
         denied = subprocess.run(wrong_source, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)

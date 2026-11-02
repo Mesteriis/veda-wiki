@@ -2,6 +2,7 @@
 """Check four scoped VEDA reader keys without printing keys or wiki content."""
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -20,14 +21,28 @@ def validate_key_metadata(directory):
     directory = Path(directory)
     if not directory.is_absolute():
         raise ValueError('Key directory must be absolute')
-    info = directory.lstat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
-        raise ValueError('Key directory must be owner-only')
-    for agent in AGENTS:
-        info = (directory / (agent + '.key')).lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
-            raise ValueError('Agent key file must be an owner-only regular file')
-
+    dir_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    fingerprints = set()
+    try:
+        info = os.fstat(dir_fd)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+            raise ValueError('Key directory must be owner-only')
+        for agent in AGENTS:
+            fd = os.open(agent + '.key', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+                    raise ValueError('Agent key file must be an owner-only regular file')
+                token = os.read(fd, 65)
+                if len(token) != 64 or any(c not in b'0123456789abcdef' for c in token):
+                    raise ValueError('Invalid agent key')
+                fingerprints.add(hashlib.sha256(token).digest())
+            finally:
+                os.close(fd)
+        if len(fingerprints) != len(AGENTS):
+            raise ValueError('Agent keys must be distinct')
+    finally:
+        os.close(dir_fd)
 
 def response_json(result):
     if result.isError:

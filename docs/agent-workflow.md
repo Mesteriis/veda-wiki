@@ -56,9 +56,9 @@ files and requires access to exactly the chosen private source; public sources
 may also be visible. It reads a bounded excerpt and prepares an unsaved synthetic
 proposal without printing their contents or the keys. Use an existing article
 path if the source has no root `AGENTS.md`. This checks the credentials and
-adapter, not whether each agent's model can discover or invoke them, and does
-not prove that four files contain distinct keys. Verify each client after its
-configuration changes.
+adapter and checks that the files contain four distinct keys. It does not prove
+that each agent's model can discover or invoke the tools; verify each client
+after its configuration changes.
 
 These examples are for a server on the same machine. Loopback addresses inside
 another host or container are not reachable from the client machine. For a
