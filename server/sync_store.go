@@ -198,7 +198,7 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 				retainedLinks[p] = sha
 			}
 		}
-		if job.SourceID == a.SourceID && job.Path == a.Path && (job.State == "pending" || job.State == "retry" || (job.State == "blocked" && job.LastError == "credential_like_content" && job.PreparedCommit == "" && len(job.Bundle) == 0)) {
+		if job.SourceID == a.SourceID && job.Path == a.Path && job.PreparedCommit == "" && len(job.Bundle) == 0 && (job.State == "pending" || job.State == "retry" || (job.State == "blocked" && job.LastError == "credential_like_content")) {
 			job.State = "superseded"
 			db.Outbox[id] = job
 		}

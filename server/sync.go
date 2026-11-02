@@ -677,8 +677,21 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 	return false, nil
 }
 func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head, treeSHA, token string) error {
-	for _, job := range m.store.jobs() {
+	jobs := m.store.jobs()
+	uncertain := map[string]int{}
+	for _, job := range jobs {
+		if job.SourceID == c.ID && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" {
+			if previous, ok := uncertain[job.Path]; !ok || job.Revision < previous {
+				uncertain[job.Path] = job.Revision
+			}
+		}
+	}
+	for _, job := range jobs {
 		if job.SourceID != c.ID || job.State == "complete" || job.State == "superseded" {
+			continue
+		}
+		// A later revision must not overtake an unresolved prepared ref update.
+		if revision, ok := uncertain[job.Path]; ok && job.Revision > revision {
 			continue
 		}
 		if job.State == "conflict" {

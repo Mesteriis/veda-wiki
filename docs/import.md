@@ -178,6 +178,9 @@ supplies source ID, path, conflict index, expected local revision and either
 `local` or `upstream`. Stale decisions return 409. Original local revisions and
 incoming conflict records remain in history. MCP exposes `veda_conflicts` and
 `veda_resolve_conflict` through the same endpoints.
+Resolution also returns 409 while a prepared GitHub write or an active linked
+bundle for that article remains unresolved; those jobs must not be silently
+discarded. See [GitHub synchronization](github.md) for the recovery limitation.
 Ordinary article writes are rejected while that article has an unresolved
 import conflict, even when its local revision matches. Resolve the conflict
 first. A read-only agent can still prepare an unsaved proposal; the proposal

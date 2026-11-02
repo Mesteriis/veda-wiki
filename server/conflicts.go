@@ -71,6 +71,11 @@ func (s *Store) resolveConflict(sourceID, p string, index, expected int, resolut
 	if expected != len(a.Versions) || index >= len(a.Conflicts) || a.Conflicts[index].Resolution != "" {
 		return ErrConflict
 	}
+	for _, job := range s.db.Outbox {
+		if job.SourceID == sourceID && job.Path == p && (job.PreparedCommit != "" || len(job.Bundle) != 0) && job.State != "complete" && job.State != "superseded" {
+			return ErrConflict
+		}
+	}
 	for _, c := range a.Conflicts[index+1:] {
 		if c.Resolution == "" {
 			return ErrConflict

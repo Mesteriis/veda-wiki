@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -485,6 +486,109 @@ func TestGitHubLostResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	newSyncManager(reopened, f.client()).Once(context.Background())
 	if f.writeCount() != 1 || reopened.jobs()[0].State != "complete" {
 		t.Fatal("ambiguous push duplicated or lost", reopened.jobs())
+	}
+}
+
+func TestLaterEditRetainsUncertainWriteUntilObserved(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	m := connectFixture(t, s, f, true)
+	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.loseResponse = true })
+	m.Once(context.Background())
+	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].State != "retry" || jobs[0].PreparedCommit == "" || f.writeCount() != 1 {
+		t.Fatal("fixture did not create an uncertain write", jobs)
+	}
+	if _, err := s.put("handbook", "README.md", "# Second edit", 2); err != nil {
+		t.Fatal(err)
+	}
+	jobs := s.jobs()
+	if len(jobs) != 2 || jobs[0].State != "retry" || jobs[0].PreparedCommit == "" || jobs[1].State != "pending" {
+		t.Fatal("later edit discarded uncertain write", jobs)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	m = newSyncManager(reopened, f.client())
+	m.Once(context.Background())
+	m.Once(context.Background())
+	jobs = reopened.jobs()
+	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 2 {
+		t.Fatal("writes were not independently confirmed", jobs, f.writeCount())
+	}
+	if got := f.contents()["README.md"]; got != "# Second edit" {
+		t.Fatal("latest edit not written")
+	}
+}
+
+func TestLaterEditCannotOvertakeDeferredPreparedWrite(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original", "other.md": "# Other"})
+	m := connectFixture(t, s, f, true)
+	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.reject = true })
+	m.Once(context.Background())
+	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].PreparedCommit == "" || jobs[0].State != "retry" {
+		t.Fatal("fixture write not deferred", jobs)
+	}
+	if _, err := s.put("handbook", "README.md", "# Second edit", 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("handbook", "other.md", "# Other edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.reject = false })
+	// Force a long retry delay so only an incorrect later-job dispatch can write.
+	s.mu.Lock()
+	first := s.db.Outbox["handbook/README.md@2"]
+	first.NextAttempt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
+	s.db.Outbox[first.ID] = first
+	s.mu.Unlock()
+	if err := m.pushPending(context.Background(), s.connections()[0], f.head, f.commits[f.head].tree, fixtureAccess); err != nil {
+		t.Fatal(err)
+	}
+	if f.writeCount() != 1 || f.contents()["README.md"] != "# Original" || f.contents()["other.md"] != "# Other edit" {
+		t.Fatal("later revision overtook prepared write or unrelated article stalled")
+	}
+}
+
+func TestConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	m := connectFixture(t, s, f, true)
+	if _, err := s.put("handbook", "README.md", "# Local", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.reject = true })
+	m.Once(context.Background())
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Different upstream"})
+	if err := s.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	conflicts, jobs := s.conflicts(), s.jobs()
+	if len(conflicts) != 1 || len(jobs) != 1 || jobs[0].PreparedCommit == "" {
+		t.Fatal("fixture lacks conflict and prepared write", conflicts, jobs)
+	}
+	for _, choice := range []string{"local", "upstream"} {
+		if err := s.resolveConflict("handbook", "README.md", conflicts[0].Index, 2, choice); !errors.Is(err, ErrConflict) {
+			t.Fatal("uncertain write was discarded", choice, err)
+		}
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reopened.conflicts()) != 1 || reopened.jobs()[0].PreparedCommit == "" || reopened.jobs()[0].State == "superseded" {
+		t.Fatal("uncertain write or conflict lost after restart")
 	}
 }
 func TestGitHubPrivateVisibilityAndUnpublishedEdits(t *testing.T) {

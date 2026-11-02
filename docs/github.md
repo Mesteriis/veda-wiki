@@ -146,7 +146,15 @@ to 1 hour). Local writes to connected sources are committed with an outbox
 entry, and pushed as non-force commits after pulling and conflict checks. The
 GitHub reference update requires the exact previously observed branch head;
 an intervening branch rewind is rejected as well as an ordinary concurrent push.
-If its response is uncertain, a subsequent complete pull resolves the outbox.
+If its response is uncertain, a subsequent complete pull can confirm the write
+when it observes the expected content and dependencies. A later local edit does
+not discard that prepared job or overtake it on the same path. If the upstream
+content instead conflicts, VEDA retains both the conflict and the uncertain
+job; conflict resolution is refused until the prepared outcome is reconciled.
+There is currently no automatic resolution for every divergent or ambiguous
+history; an administrator must investigate rather than discard the job.
+Jobs already marked superseded by an older VEDA version are not automatically
+restored or treated as proof of a remote outcome.
 Transferred relative images are committed with their article in the same Git
 commit. An existing image must match, and a partial import or repository size
 limit blocks the bundle. A complete pull must observe every image before the
