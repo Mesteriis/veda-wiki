@@ -59,12 +59,21 @@ for (const width of [1672, 390, 320]) {
       await until("!document.querySelector('dialog[open]') && document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'false'");
     }
   }
-  await evaluate("document.querySelector('.page-card[href*=architecture]').click()");
+  await until("!!document.querySelector('.knowledge-tree summary span[title=projects]')");
+  await evaluate("document.querySelector('.knowledge-tree summary span[title=projects]').closest('summary').click()");
+  if (!await evaluate("(() => { const a=[...document.querySelectorAll('.knowledge-tree details[open] a')].map(x=>decodeURIComponent(x.getAttribute('href'))); return a.some(x=>x.includes('fixture/projects/architecture.md')) && a.some(x=>x.includes('mirror/projects/architecture.md')); })()")) throw Error('merged tree lost colliding source paths');
+  await evaluate("document.querySelector('.knowledge-tree a[title=\"mirror/projects/architecture.md\"]').click()");
+  await until("location.search.includes('page=') && document.body.innerText.includes('Архитектура второго источника')");
+  await evaluate("location.assign('/')");
+  await until("!!document.querySelector('.knowledge-tree summary span[title=projects]')");
+  await evaluate("document.querySelector('.knowledge-tree summary span[title=projects]').closest('summary').click()");
+  await evaluate("document.querySelector('.knowledge-tree a[title=\"fixture/projects/architecture.md\"]').click()");
   await until("location.search.includes('page=') && document.body.innerText.includes('Демонстрационное содержимое')");
   if (!await evaluate("document.body.innerText.includes('Тестовая архитектура')")) throw Error('article title missing');
   await evaluate("let input=document.querySelector('#search'); input.value='архитектура'; input.form.requestSubmit()");
   await until("location.search.includes('q=') && document.body.innerText.includes('Результаты поиска')");
-  if (!await evaluate("document.body.innerText.includes('Тестовая архитектура') && !document.body.innerText.includes('Тестовые заметки')")) throw Error('search results mismatch');
+  if (!await evaluate("document.body.innerText.includes('Тестовая архитектура') && document.body.innerText.includes('Архитектура второго источника') && !document.body.innerText.includes('Тестовые заметки')")) throw Error('search results mismatch');
+  if (!await evaluate("(() => { const a=[...document.querySelectorAll('.search-results a')].map(x=>decodeURIComponent(x.getAttribute('href'))); return a.some(x=>x.includes('fixture/projects/architecture.md')) && a.some(x=>x.includes('mirror/projects/architecture.md')); })()")) throw Error('search merged colliding articles');
   await evaluate("document.querySelector('.search-results a[href*=architecture]').click()");
   await until("location.search.includes('page=') && document.body.innerText.includes('Демонстрационное содержимое')");
   await send('Page.navigate', { url: privateUrl });
@@ -109,7 +118,7 @@ for (const width of [1672, 390, 320]) {
     await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
     await until("!document.querySelector('dialog[open]')");
   }
-  console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
+  console.log(JSON.stringify({ width, article: true, search: true, collidingSources: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
 // Let Chrome close its profile and children before the temporary directory is removed.
 ws.send(JSON.stringify({ id: ++id, method: 'Browser.close' }));

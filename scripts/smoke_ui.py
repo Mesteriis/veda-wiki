@@ -63,6 +63,11 @@ def main():
 
             post('/api/v1/sources', {'id': 'fixture', 'title': 'Тестовый источник',
                                       'kind': 'wiki', 'visibility': 'public'})
+            post('/api/v1/sources', {'id': 'mirror', 'title': 'Второй источник',
+                                      'kind': 'wiki', 'visibility': 'public'})
+            post('/api/v1/articles', {'source_id': 'mirror', 'path': 'projects/architecture.md',
+                 'text': '# Архитектура второго источника\n\nДемонстрационное содержимое для проверки интерфейса.',
+                 'expected_revision': 0})
             for path, title in [('projects/architecture.md', 'Тестовая архитектура'),
                                 ('infra/setup.md', 'Настройка примера'),
                                 ('guides/intro.md', 'Начало работы'),
