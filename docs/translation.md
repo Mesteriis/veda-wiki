@@ -177,3 +177,9 @@ private content was used, and the model was not enabled on the server.
 The same 8B configuration also failed the protected Markdown check on the
 first section when the guide was split into pieces of at most 4,000 bytes
 (`TestRealLocalMLXProjectDocumentationSections`).
+A fragment experiment with the 8B model returned all 191 identified public
+prose fragments after three split retries (45 calls), and reconstructed Markdown
+retained the 56 protected elements. Inspection nevertheless found untranslated
+English and a fragment that reversed the meaning of a negation. Structural
+checks and ID alignment do not detect those errors, so this method remains
+experimental and is not enabled.
