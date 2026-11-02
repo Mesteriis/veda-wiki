@@ -134,15 +134,17 @@ for (const width of [1672, 390, 320]) {
   await until("document.body.innerText.includes('Приватная тестовая страница')");
   if (await evaluate("document.body.innerText.includes('Недоступная тестовая страница') || document.body.innerText.includes('Недоступный пример')")) throw Error('user saw out-of-scope source');
   if (await evaluate("(async () => (await fetch('/api/v1/articles?source_id=other-private&path=secret.md')).status)()") !== 404) throw Error('out-of-scope article available');
-  await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
-  await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
-  await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
-  await until("!location.search && !!document.querySelector('.home-page-row') && !document.body.innerText.includes('Приватная тестовая страница')");
-  if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('user session survived logout');
-  await evaluate("document.querySelector('button[aria-label=Войти]').click()");
-  await until("!!document.querySelector('.reader-access input[name=username]')");
-  await evaluate("document.querySelector('.reader-access input[name=username]').value='browser-user'; document.querySelector('.reader-access input[name=password]').value='synthetic fixture password'; document.querySelector('.reader-access form').requestSubmit()");
-  await until("document.body.innerText.includes('Приватная тестовая страница')");
+  if (width !== 1672) {
+    await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
+    await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
+    await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
+    await until("!location.search && !!document.querySelector('.home-page-row') && !document.body.innerText.includes('Приватная тестовая страница')");
+    if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('user session survived logout');
+    await evaluate("document.querySelector('button[aria-label=Войти]').click()");
+    await until("!!document.querySelector('.reader-access input[name=username]')");
+    await evaluate("document.querySelector('.reader-access input[name=username]').value='browser-user'; document.querySelector('.reader-access input[name=password]').value='synthetic fixture password'; document.querySelector('.reader-access form').requestSubmit()");
+    await until("document.body.innerText.includes('Приватная тестовая страница')");
+  }
   let issuedLink;
   for (const title of ['GitHub', 'Настройки']) {
     if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
@@ -202,7 +204,25 @@ for (const width of [1672, 390, 320]) {
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
   await until("!location.search && !!document.querySelector('.home-page-row') && !document.body.innerText.includes('Приватная тестовая страница')");
-  console.log(JSON.stringify({ width, article: true, search: true, collidingSources: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
+  if (width === 1672) {
+    await until("!!document.querySelector('button[aria-label=Войти]')");
+    await evaluate("document.querySelector('button[aria-label=Войти]').click()");
+    await until("!!document.querySelector('.reader-access input[name=username]')");
+    await evaluate("document.querySelector('.reader-access input[name=username]').value='browser-admin'; document.querySelector('.reader-access input[name=password]').value='synthetic admin password'; document.querySelector('.reader-access form').requestSubmit()");
+    await until("!!document.querySelector('button[aria-label=Профиль]')");
+    for (const [query, scope] of [['?github=1', '.github-page'], ['?settings=1', '.settings-page']]) {
+      await send('Page.navigate', { url: privateUrl + query });
+      await until(`!!document.querySelector(${JSON.stringify(scope)})?.textContent.includes('Вход выполнен через учётную запись')`);
+      if (await evaluate(`!!document.querySelector(${JSON.stringify(scope)} + ' input[name=key]')`)) throw Error('admin key form visible');
+    }
+    await send('Page.navigate', { url: privateUrl });
+    await until("!!document.querySelector('button[aria-label=Профиль]')");
+    await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
+    await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
+    await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
+    await until("!!document.querySelector('button[aria-label=Войти]')");
+  }
+  console.log(JSON.stringify({ width, article: true, search: true, collidingSources: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, namedAdminLogin: width === 1672, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
 // Let Chrome close its profile and children before the temporary directory is removed.
 ws.send(JSON.stringify({ id: ++id, method: 'Browser.close' }));
