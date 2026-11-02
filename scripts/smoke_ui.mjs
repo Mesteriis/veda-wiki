@@ -93,6 +93,12 @@ for (const width of [1672, 390, 320]) {
   if (await evaluate("[...document.querySelectorAll('#main-navigation .nav-item')].some(e=>['GitHub','API и MCP','Настройки','Избранное'].includes(e.textContent.trim())) || !!document.querySelector('.reading-mode, button[aria-label=Уведомления], button[aria-label=Оформление]') || !document.querySelector('button[aria-label=Войти]')")) throw Error('anonymous navigation visibility incorrect');
   if (await evaluate("document.body.innerText.includes('Приватная тестовая страница')")) throw Error('private content visible anonymously');
   if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Войти]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return getComputedStyle(b).display !== 'none' && r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('profile button is not visible or reachable');
+  if (width === 1672) {
+    await send('Page.navigate', { url: privateUrl + '?key=invalid-one&key=invalid-two&page=missing' });
+    await until("!new URL(location.href).searchParams.has('key') && document.body.innerText.includes('Страница не найдена') && document.querySelector('[role=alert]')?.innerText.includes('Не удалось войти по ссылке')");
+    await send('Page.navigate', { url: privateUrl });
+    await until("!!document.querySelector('.home-page-row')");
+  }
   await evaluate("document.querySelector('button[aria-label=Войти]').click()");
   await until("!!document.querySelector('.reader-access button')");
   if (!await evaluate("document.querySelector('dialog h2')?.innerText === 'Вход'")) throw Error('login dialog title missing');

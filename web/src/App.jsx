@@ -1081,6 +1081,7 @@ export function App({ linkLoginError = false }) {
         <img src="/assets/veda-logo.png" alt="" />
         <h1>VEDA</h1>
         <p>{error || "Загружаем базу знаний…"}</p>
+        {linkLoginError && <p role="alert">Не удалось войти по ссылке. Проверьте ключ и адрес подключения.</p>}
         {error && <a href="/">Вернуться на главную</a>}
       </div>
     );
