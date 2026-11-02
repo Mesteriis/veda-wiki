@@ -124,6 +124,12 @@ temporary empty storage and the official MCP SDK against the actual Go server.
 It verifies REST/MCP write-through, revisions, actual CLI import, conflict
 resolution and public/private isolation.
 
+CI also runs `python3 scripts/check_tracked_secrets.py` against tracked regular
+working-tree files. It checks a small set of common private-key, token and
+credential-URL shapes without printing matching values. It does not scan Git
+history, untracked files, symlink targets or every possible secret and is not a
+substitute for review.
+
 An optional browser smoke test needs Node 22+ and a trusted local Chrome or
 Chromium executable. It starts a temporary VEDA with synthetic public articles
 and a temporary browser profile; it checks article navigation, search and

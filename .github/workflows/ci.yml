@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: python -m unittest discover -s scripts -p test_check_tracked_secrets.py -v
+      - run: python scripts/check_tracked_secrets.py
       - run: python -m unittest discover -s scripts -p test_package_release.py -v
       - run: python -m unittest discover -s scripts -p test_save_reader_key.py -v
       - run: make test
