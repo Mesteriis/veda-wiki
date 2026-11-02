@@ -1,4 +1,5 @@
 """Exercise authenticated translation through the actual binary using fixtures only."""
+import argparse
 import json
 import socket
 import subprocess
@@ -20,6 +21,9 @@ def port():
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--protocol', choices=('ollama', 'openai'), default='ollama')
+    protocol = parser.parse_args().protocol
     expected = ['Bearer synthetic-first']
     received = []
 
@@ -28,7 +32,8 @@ def main():
             pass
 
         def do_POST(self):
-            if self.path != '/api/generate' or self.headers.get('Authorization') != expected[0]:
+            path = '/api/generate' if protocol == 'ollama' else '/v1/chat/completions'
+            if self.path != path or self.headers.get('Authorization') != expected[0]:
                 self.send_error(403)
                 return
             size = int(self.headers.get('Content-Length', '0'))
@@ -36,12 +41,21 @@ def main():
                 self.send_error(413)
                 return
             data = json.loads(self.rfile.read(size))
-            translated = {'# First': '# Первый', '# Second': '# Второй'}.get(data.get('prompt'))
+            if protocol == 'openai':
+                messages = data.get('messages', [])
+                if data.get('model') != 'synthetic' or data.get('stream') is not False or len(messages) != 2 or messages[0].get('role') != 'system' or messages[1].get('role') != 'user' or 'chat_template_kwargs' in data:
+                    self.send_error(400)
+                    return
+                prompt = messages[1].get('content')
+            else:
+                prompt = data.get('prompt')
+            translated = {'# First': '# Первый', '# Second': '# Второй'}.get(prompt)
             if translated is None:
                 self.send_error(400)
                 return
-            received.append(data['prompt'])
-            payload = json.dumps({'done': True, 'response': translated}).encode()
+            received.append(prompt)
+            result = {'done': True, 'response': translated} if protocol == 'ollama' else {'choices': [{'finish_reason': 'stop', 'message': {'content': translated}}]}
+            payload = json.dumps(result).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(payload)))
@@ -61,7 +75,7 @@ def main():
         private, public = port(), port()
         proc = subprocess.Popen([str(ROOT / 'veda'), '--data', tmp, '--listen', f'127.0.0.1:{private}',
             '--public-listen', f'127.0.0.1:{public}', '--translation-local-url', f'http://127.0.0.1:{model.server_port}',
-            '--translation-model', 'synthetic', '--translation-token-file', str(root / 'model-token'),
+            '--translation-model', 'synthetic', '--translation-protocol', protocol, '--translation-token-file', str(root / 'model-token'),
             '--translation-interval', '5s'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         opener = build_opener(ProxyHandler({}))
 
@@ -123,7 +137,7 @@ def main():
                 raise RuntimeError('VEDA not ready after restart')
             wait_translation('docs/one.md', '# Первый')
             wait_translation('docs/two.md', '# Второй')
-            print('PASS: actual binary, local fixture model, bearer rotation and restart')
+            print(f'PASS: actual binary, {protocol} local fixture, bearer rotation and restart')
         finally:
             if proc.poll() is None:
                 proc.terminate()
