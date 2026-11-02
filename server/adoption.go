@@ -5,6 +5,8 @@ import (
 	"errors"
 )
 
+var errLocalImportActive = errors.New("local importer is configured for source")
+
 // adoptionSnapshotLocked captures exactly the local state whose baselines will
 // change. Callers hold the store lock. Pending operations and tombstones need
 // separate reconciliation before the source can be adopted safely.

@@ -8,7 +8,30 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
+
+type adoptionDeadlineWriter struct {
+	*httptest.ResponseRecorder
+	deadline time.Time
+}
+
+func (w *adoptionDeadlineWriter) SetWriteDeadline(t time.Time) error { w.deadline = t; return nil }
+
+func TestAdoptRequestExtendsWriteDeadline(t *testing.T) {
+	s := testStore(t)
+	m := newSyncManager(s, newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture}).client())
+	m.localImportSource = "handbook"
+	w := Wiki{Store: s, Token: "test-owner", Sync: m}
+	r := httptest.NewRequest("POST", "/api/v1/github/connections", strings.NewReader(`{"id":"handbook","repository":"org/handbook","account_id":"operator","adopt_existing":true}`))
+	r.Header.Set("Authorization", "Bearer test-owner")
+	out := &adoptionDeadlineWriter{ResponseRecorder: httptest.NewRecorder()}
+	w.ServeHTTP(out, r)
+	remaining := time.Until(out.deadline)
+	if out.Code != 409 || remaining < 5*time.Minute || remaining > 6*time.Minute {
+		t.Fatal("adoption write deadline not extended", out.Code, remaining)
+	}
+}
 
 func TestAdoptPrivateSourcePreservesLocalData(t *testing.T) {
 	s := testStore(t)
@@ -235,5 +258,91 @@ func TestAdoptRejectsIncompleteOrWrongKind(t *testing.T) {
 				t.Fatal("unsafe import was not rejected", err)
 			}
 		})
+	}
+}
+
+func TestAdoptConfiguredLocalImporterIsRejected(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.importBatch(testBatch()); err != nil {
+		t.Fatal(err)
+	}
+	m := newSyncManager(s, newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture}).client())
+	m.localImportSource = "handbook"
+	w := Wiki{Store: s, Token: "test-owner", Sync: m}
+	body := `{"id":"handbook","repository":"org/handbook","account_id":"operator","adopt_existing":true}`
+	r := request(w, "POST", "/api/v1/github/connections", body, true)
+	if r.Code != 409 || !strings.Contains(r.Body.String(), "local_import_active") || len(s.connections()) != 0 {
+		t.Fatal("configured importer not protected", r.Code)
+	}
+}
+
+func TestAdoptCancellationBeforeCommitPreservesSource(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.importBatch(testBatch()); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
+	f.modify(func() { f.private = true })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var mu sync.Mutex
+	heads := 0
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/git/ref/heads/") {
+			mu.Lock()
+			heads++
+			if heads == 2 {
+				cancel()
+			}
+			mu.Unlock()
+		}
+		f.serve(w, r)
+	}))
+	defer proxy.Close()
+	client := &GitHubClient{base: proxy.URL, http: proxy.Client()}
+	m := newSyncManager(s, client)
+	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.adoptionSnapshot("handbook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.connect(ctx, connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", AdoptExisting: true})
+	after, snapshotErr := s.adoptionSnapshot("handbook")
+	if err == nil || snapshotErr != nil || before != after || len(s.connections()) != 0 {
+		t.Fatal("cancelled request changed source")
+	}
+}
+
+func TestAdoptionCommitChecksCancellation(t *testing.T) {
+	s := testStore(t)
+	initial := testBatch()
+	if _, err := s.importBatch(initial); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Remote"})
+	f.modify(func() { f.private = true })
+	if _, err := s.saveAccount(context.Background(), f.client(), "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.adoptionSnapshot("handbook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := s.db.Accounts["operator"]
+	b := testBatch()
+	b.Create = false
+	b.Files["README.md"] = "# Remote"
+	gen := s.db.Sources["handbook"].ImportGeneration
+	b.ExpectedImport = &gen
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	conn := GitHubConnection{ID: "handbook", AccountID: "operator", Private: true, ConfigRevision: 1}
+	proof := &remoteProof{ConnectionID: "handbook", ConfigRevision: 1, Visibility: "private", Adoption: &adoptionProof{Connection: conn, Account: account, Snapshot: before, Context: ctx}}
+	_, err = s.applyImport(b, proof, false)
+	after, snapshotErr := s.adoptionSnapshot("handbook")
+	if !errors.Is(err, context.Canceled) || snapshotErr != nil || before != after || len(s.connections()) != 0 {
+		t.Fatal("cancelled adoption committed", err)
 	}
 }

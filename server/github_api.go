@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Browser administration is restricted to GitHub account and connection
@@ -135,6 +137,14 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		if e := decodeBody(rw, r, &in); e != nil {
 			apiError(rw, ErrInvalid)
 			return
+		}
+		if in.AdoptExisting {
+			// Adoption downloads and verifies a complete tree before committing.
+			// Give that request a bounded window without changing other routes.
+			_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(6 * time.Minute))
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+			defer cancel()
+			r = r.WithContext(ctx)
 		}
 		c, e := w.Sync.connect(r.Context(), in)
 		if e != nil {

@@ -783,6 +783,11 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		conn.TreeSHA = proof.TreeSHA
 		db.Connections[conn.ID] = conn
 	}
+	if proof != nil && proof.Adoption != nil {
+		if err := proof.Adoption.Context.Err(); err != nil {
+			return ImportResult{}, err
+		}
+	}
 	if e := s.commit(db); e != nil {
 		return ImportResult{}, e
 	}

@@ -131,6 +131,7 @@ func main() {
 	defer stop()
 	var workers sync.WaitGroup
 	manager := newSyncManager(store, newGitHubClient())
+	manager.localImportSource = *localImportSource
 	if *translationURL != "" {
 		worker, err := newTranslationWorkerProtocol(store, *translationURL, *translationModel, *translationProtocol)
 		if err != nil {

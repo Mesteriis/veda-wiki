@@ -18,10 +18,11 @@ import (
 )
 
 type SyncManager struct {
-	store  *Store
-	github *GitHubClient
-	mu     sync.Mutex
-	wake   chan struct{}
+	store             *Store
+	github            *GitHubClient
+	localImportSource string
+	mu                sync.Mutex
+	wake              chan struct{}
 }
 
 func newSyncManager(s *Store, g *GitHubClient) *SyncManager {
@@ -210,6 +211,9 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 	}
 	var snapshot string
 	if in.AdoptExisting {
+		if in.ID == m.localImportSource {
+			return GitHubConnection{}, errLocalImportActive
+		}
 		if in.AccountID == "" {
 			return GitHubConnection{}, ErrInvalid
 		}
@@ -284,8 +288,11 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 		if currentHead != head {
 			return GitHubConnection{}, ErrConflict
 		}
+		if err := ctx.Err(); err != nil {
+			return GitHubConnection{}, err
+		}
 		c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		proof := &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: "private", TreeSHA: tree.SHA, Adoption: &adoptionProof{Connection: c, Account: account, Snapshot: snapshot}}
+		proof := &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: "private", TreeSHA: tree.SHA, Adoption: &adoptionProof{Connection: c, Account: account, Snapshot: snapshot, Context: ctx}}
 		if _, err = m.store.applyImport(batch, proof, false); err != nil {
 			return GitHubConnection{}, err
 		}

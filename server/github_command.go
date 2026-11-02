@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"time"
 )
 
 func githubCommand(args []string) error {
@@ -69,6 +70,9 @@ func githubCommand(args []string) error {
 	case "connect":
 		if !identifier.MatchString(*id) || *repo == "" {
 			return ErrInvalid
+		}
+		if *adopt {
+			client.http.Timeout = 6 * time.Minute
 		}
 		if e = client.request("POST", "/api/v1/github/connections", connectRequest{ID: *id, Repository: *repo, AccountID: *account, Branch: *branch, Write: *write, AdoptExisting: *adopt}, &result); e != nil {
 			return e

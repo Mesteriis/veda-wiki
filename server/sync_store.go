@@ -73,6 +73,7 @@ type adoptionProof struct {
 	Connection GitHubConnection
 	Account    GitHubAccount
 	Snapshot   string
+	Context    context.Context
 }
 
 func sourcePublic(db Database, src Source, now time.Time) bool {

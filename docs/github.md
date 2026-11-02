@@ -297,5 +297,7 @@ before the connection and import are committed together.
 Matching articles retain their revision history. Different versions become
 conflicts, repository-only articles are imported, and local-only articles remain
 local; attachment does not queue them for upload. Resolve conflicts and review
-local-only material before any subsequent write. A local checkout importer must
-be retired or reconfigured after attachment: it cannot update a connected source.
+local-only material before any subsequent write. A source configured with `--local-import-source` cannot be attached: first
+retire or reconfigure that importer, because it cannot update a connected source.
+Adoption has a five-minute server deadline; client or network interruption can
+leave the response uncertain, so inspect connection status before retrying.

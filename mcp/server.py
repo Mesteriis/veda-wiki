@@ -63,6 +63,7 @@ class Client:
         return token
 
     def request(self, method, route, body=None):
+        timeout = 360 if method == "POST" and route == "/api/v1/github/connections" and isinstance(body, dict) and body.get("adopt_existing") is True else 15
         if self.socket_path is not None:
             parent = os.lstat(self.socket_path.parent)
             info = os.lstat(self.socket_path)
@@ -72,9 +73,9 @@ class Client:
             class UnixConnection(http.client.HTTPConnection):
                 def connect(connection):
                     connection.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    connection.sock.settimeout(15)
+                    connection.sock.settimeout(timeout)
                     connection.sock.connect(str(self.socket_path))
-            connection = UnixConnection("localhost", timeout=15)
+            connection = UnixConnection("localhost", timeout=timeout)
             try:
                 data = None if body is None else json.dumps(body).encode()
                 headers = {"Content-Type": "application/json"}
@@ -95,7 +96,7 @@ class Client:
         req = Request(self.base + route, data=data, method=method,
                       headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
         try:
-            with self.opener.open(req, timeout=15) as response:
+            with self.opener.open(req, timeout=timeout) as response:
                 payload = response.read(MAX_RESPONSE_BYTES + 1)
                 if len(payload) > MAX_RESPONSE_BYTES:
                     raise ValueError("Response exceeds MCP limit")
