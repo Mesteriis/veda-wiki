@@ -218,6 +218,26 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/articles/new-proposal-base":
+		if !owner && !reader {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
+		if !identifier.MatchString(sourceID) || !safePath(p) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.newProposalBase(sourceID, p)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, result)
 	case "/api/v1/articles/proposal-base":
 		if !owner && !reader {
 			http.NotFound(rw, r)

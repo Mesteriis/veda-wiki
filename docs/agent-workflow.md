@@ -65,7 +65,7 @@ Restart or reconnect a client as required for it to discover updated tools.
    rejection reread the current context and prepare a new proposal. Never infer
    permission to publish private content from a repository visibility change.
 
-`veda_prepare_new_article` similarly prepares an unsaved proposal without
-reserving its path. `veda_prepare_translation` validates a proposal without
+`veda_prepare_new_article` similarly returns an unsaved proposal and source
+status from the same snapshot without reserving its path. `veda_prepare_translation` validates a proposal without
 establishing translation quality or publishing it. Both remain subject to
 authorization, concurrent changes and the server's validation on submission.

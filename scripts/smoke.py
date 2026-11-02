@@ -250,7 +250,9 @@ async def main():
                             forbidden = await scoped.call_tool("veda_prepare_update", {"source_id": "copy", "path": "copied.md", "expected_revision": 1, "text": "# Forbidden"})
                             assert forbidden.isError
                             new_article = await scoped.call_tool("veda_prepare_new_article", {"source_id": "closed", "path": "new.md", "text": "# Proposed new article"})
-                            assert not new_article.isError and json.loads(new_article.content[0].text)["expected_revision"] == 0 and json.loads(new_article.content[0].text)["saved"] is False
+                            new_draft = json.loads(new_article.content[0].text)
+                            assert not new_article.isError and new_draft["expected_revision"] == 0 and new_draft["saved"] is False
+                            assert new_draft["source_status"]["unresolved_conflicts"] == 0
                             exists = await scoped.call_tool("veda_prepare_new_article", {"source_id": "closed", "path": "README.md", "text": "# Existing"})
                             assert exists.isError
                             missing = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "new.md"})

@@ -21,6 +21,7 @@ Unknown translation origin is explicitly labelled in the interface.
 | GET | `/api/v1/articles/display?source_id=&path=` | Read the displayed Markdown, translation status and original SHA under the caller's source permissions |
 | GET | `/api/v1/articles/display-excerpt?source_id=&path=&offset=&limit=&expected_sha256=&expected_original_sha256=` | Read up to 16,000 Unicode code points of displayed Markdown; continuation requires both hashes from the first response |
 | GET | `/api/v1/articles/proposal-base?source_id=&path=` | Authenticated source-scoped revision, SHA, unresolved import-conflict flag and source status in one snapshot |
+| GET | `/api/v1/articles/new-proposal-base?source_id=&path=` | Authenticated source-scoped visible-path check and source status in one snapshot; does not reserve the path |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
 | GET | `/api/v1/context?source_id=…&path=…` | Visible ancestor instructions and source status in one snapshot |
 | POST | `/api/v1/sources` | Create a local source (owner only) |
@@ -106,7 +107,10 @@ An unresolved import conflict also causes a write to return 409 even if the
 local revision has not changed. Resolve the conflict first; prepared MCP
 proposals report the conflict and source status observed during preparation,
 which may change before a write. The MCP adapter requires a server that returns
-this status in the proposal-base response.
+this status in the proposal-base response. New-article proposals use
+`new-proposal-base`; the path check and source status come from one snapshot.
+Deleted history remains hidden and can still cause a later write conflict.
+The updated adapter requires a server supporting this endpoint.
 Responses include `revision`, `sha256`, `created_at` and the saved `text`.
 Creation returns 201; update returns 200. Revision mismatch returns 409;
 unavailable/unauthorized article returns 404; invalid input returns 400;

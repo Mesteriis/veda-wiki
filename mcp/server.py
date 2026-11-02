@@ -4,7 +4,6 @@ import asyncio
 import hashlib
 import json
 import http.client
-import posixpath
 import socket
 import os
 import stat
@@ -133,7 +132,7 @@ def make_server(client):
         "veda_prepare_update": ("Prepare a non-persistent proposed article update using the current revision, SHA and source status from one snapshot. It does not save or publish the proposed text. Check coverage and sync status; unresolved import conflicts must be resolved before a write. Stale revisions are refused.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "expected_revision", "text"]),
-        "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
+        "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal and source status from one snapshot in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "text"]),
         "veda_prepare_translation": ("Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article. The current revision and SHA are reread; stale revisions are refused. Validation cannot establish translation quality, save a draft, or approve publication.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
@@ -239,26 +238,14 @@ def make_server(client):
                           "note": ("Proposal only; resolve the import conflict before an authorized write." if current["unresolved_conflict"]
                                    else "Proposal only; review and an authorized write are still required. Conflict status may change before writing.")}
             elif name == "veda_prepare_new_article":
-                sources = await asyncio.to_thread(client.request, "GET", "/api/v1/sources")
-                source = next((item for item in sources if item["id"] == arguments["source_id"]), None)
                 path, proposed = arguments["path"], arguments["text"]
-                if (source is None or not isinstance(path, str) or not path or len(path.encode("utf-8")) > 512
-                        or path.startswith("/") or posixpath.normpath(path) != path
-                        or any(part.startswith(".") for part in path.split("/"))
-                        or any(c in path for c in "\\\x00\r\n") or not path.lower().endswith((".md", ".markdown"))
-                        or (source.get("kind") == "program" and not path.startswith("docs/"))
-                        or not isinstance(proposed, str) or len(proposed.encode("utf-8")) > MAX_ARTICLE_BYTES):
+                if not isinstance(proposed, str) or len(proposed.encode("utf-8")) > MAX_ARTICLE_BYTES:
                     raise ValueError("Invalid new article proposal")
-                try:
-                    await asyncio.to_thread(read, arguments["source_id"], path)
-                except ValueError as exc:
-                    if "HTTP 404" not in str(exc):
-                        raise
-                else:
-                    raise ValueError("Article already exists")
+                params = {"source_id": arguments["source_id"], "path": path}
+                current = await asyncio.to_thread(client.request, "GET", "/api/v1/articles/new-proposal-base?" + urlencode(params))
                 result = {"source_id": arguments["source_id"], "path": path, "expected_revision": 0,
                           "proposed_sha256": hashlib.sha256(proposed.encode("utf-8")).hexdigest(),
-                          "text": proposed, "saved": False,
+                          "text": proposed, "saved": False, "source_status": current["source_status"],
                           "note": "Proposal only; deleted history or concurrent writes may cause a conflict. The path is not reserved and an authorized write is still required."}
             elif name == "veda_prepare_translation":
                 sources = await asyncio.to_thread(client.request, "GET", "/api/v1/sources")

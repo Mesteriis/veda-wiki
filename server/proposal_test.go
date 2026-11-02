@@ -109,3 +109,55 @@ func testProposalConflict(t *testing.T, sqlite bool) {
 		t.Fatal("resolved write not durable", err)
 	}
 }
+
+func TestNewProposalBaseChecksScopeAndVisiblePath(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "alpha", "private")
+	source(t, s, "other", "private")
+	if _, err := s.put("alpha", "exists.md", "# Existing", 0); err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(route, token string, public bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/v1/articles/new-proposal-base?"+route, nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		res := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner", Public: public}).ServeHTTP(res, req)
+		return res
+	}
+	result := call("source_id=alpha&path=new.md", key, false)
+	var payload struct {
+		SourceStatus contextStatus `json:"source_status"`
+	}
+	if result.Code != 200 || json.Unmarshal(result.Body.Bytes(), &payload) != nil || payload.SourceStatus.LastImportObservedAt != nil {
+		t.Fatal("new proposal status unavailable", result.Code)
+	}
+	if call("source_id=alpha&path=exists.md", key, false).Code != 409 {
+		t.Fatal("existing article accepted")
+	}
+	if call("source_id=other&path=new.md", key, false).Code != 404 {
+		t.Fatal("scope bypass")
+	}
+	if call("source_id=alpha&path=new.md", "owner", true).Code != 404 {
+		t.Fatal("public listener exposed proposal")
+	}
+	if call("source_id=alpha&path=..%2Fbad.md", key, false).Code != 400 {
+		t.Fatal("invalid path accepted")
+	}
+	s.mu.Lock()
+	a := s.db.Articles["alpha/exists.md"]
+	a.Deleted = true
+	s.db.Articles["alpha/exists.md"] = a
+	s.mu.Unlock()
+	if call("source_id=alpha&path=exists.md", key, false).Code != 200 {
+		t.Fatal("deleted history disclosed")
+	}
+	if _, err := s.put("alpha", "exists.md", "# New", 0); err != ErrConflict {
+		t.Fatal("tombstoned history overwritten")
+	}
+}

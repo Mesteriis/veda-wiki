@@ -26,3 +26,21 @@ func (s *Store) proposalBase(sourceID, path string) (map[string]any, error) {
 	rev := a.Versions[len(a.Versions)-1]
 	return map[string]any{"revision": rev.Number, "sha256": rev.SHA, "unresolved_conflict": unresolved, "source_status": s.sourceStatusLocked(sourceID, src)}, nil
 }
+
+// newProposalBase observes the visible path and source status under one lock.
+// Tombstoned history stays hidden; a later write may still conflict.
+func (s *Store) newProposalBase(sourceID, path string) (map[string]any, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src, ok := s.db.Sources[sourceID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if !articlePath(path, src.Kind) {
+		return nil, ErrInvalid
+	}
+	if a, exists := s.db.Articles[sourceID+"/"+path]; exists && !a.Deleted && len(a.Versions) > 0 {
+		return nil, ErrConflict
+	}
+	return map[string]any{"source_status": s.sourceStatusLocked(sourceID, src)}, nil
+}
