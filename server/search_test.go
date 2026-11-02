@@ -16,26 +16,26 @@ func TestSearchTermsAndRanking(t *testing.T) {
 	if len(terms) != 2 {
 		t.Fatal("unexpected tokens", terms)
 	}
-	if score := searchScore("создай контейнер на моём VPS", "vps_ru/docs/setup.md", "Deploy an LXC guest", terms); score == 0 {
+	if score := searchScore("создай контейнер на моём VPS", "example-vps/docs/setup.md", "Deploy an LXC guest", terms); score == 0 {
 		t.Fatal("alias and source match missing")
 	}
 	qTypo := "создай контейнер на моем VSP"
-	if score := searchScore(qTypo, "vps_ru/docs/setup.md", "Deploy an LXC guest", searchTerms(qTypo)); score == 0 {
+	if score := searchScore(qTypo, "example-vps/docs/setup.md", "Deploy an LXC guest", searchTerms(qTypo)); score == 0 {
 		t.Fatal("VSP alias did not find VPS documentation")
 	}
-	if score := searchScore(qTypo, "vps_ru/docs/docker.md", "Docker service", searchTerms(qTypo)); score == 0 {
+	if score := searchScore(qTypo, "example-vps/docs/docker.md", "Docker service", searchTerms(qTypo)); score == 0 {
 		t.Fatal("container request did not find Docker documentation")
 	}
-	if score := searchScore("lxc vps", "vps_ru/docs/docker.md", "Docker service", searchTerms("lxc vps")); score != 0 {
+	if score := searchScore("lxc vps", "example-vps/docs/docker.md", "Docker service", searchTerms("lxc vps")); score != 0 {
 		t.Fatal("specific LXC request matched Docker-only documentation")
 	}
-	if score := searchScore("создай контейнер на моём VPS", "vps_ru/docs/backup.md", "Backup instructions", terms); score != 0 {
+	if score := searchScore("создай контейнер на моём VPS", "example-vps/docs/backup.md", "Backup instructions", terms); score != 0 {
 		t.Fatal("single token matched a multiword query")
 	}
 	q := "container VPS"
 	ts := searchTerms(q)
 	exact := searchScore(q, "container VPS setup", "", ts)
-	partial := searchScore(q, "vps_ru/setup.md", "LXC setup", ts)
+	partial := searchScore(q, "example-vps/setup.md", "LXC setup", ts)
 	if exact <= partial || partial == 0 {
 		t.Fatal("unexpected ranking", exact, partial)
 	}
