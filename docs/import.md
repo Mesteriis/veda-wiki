@@ -34,6 +34,25 @@ local import, so untracked files are excluded and `dirty` covers tracked changes
 only. It does not compare against an existing VEDA source, predict conflicts or
 deletions, verify repository visibility, or preview GitHub synchronization.
 
+For a wiki checkout, optionally compare its eligible articles against a visible
+wiki source using a read-only numeric-loopback HTTP endpoint that accepts the
+current caller without a credential:
+
+```sh
+./veda import --checkout /path/to/checkout --preview --source handbook \
+  --compare-url http://127.0.0.1:8080
+```
+
+The output adds aggregate `same`, `different`, `checkout_only`, and `veda_only`
+counts; it does not include names or contents, send the checkout to VEDA, or
+change either side. It uses current article hashes, not import-base revisions,
+and the two systems can change during the comparison. Withheld and untracked
+files are excluded, so `veda_only` does not imply deletion and `different` does
+not establish a conflict. Images and metadata are not compared. Program sources
+are refused because their displayed hashes can refer to translations. The endpoint
+must be independently authorized and trusted; the comparison does not read or
+send a key, use a proxy, or follow redirects.
+
 ## Type detection
 
 A wiki must have a regular root `veda.yaml` file:
