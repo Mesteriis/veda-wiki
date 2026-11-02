@@ -155,3 +155,8 @@ The model returned 29 strings for a batch of 30; using six batches of five,
 one batch still failed the exact-count check. Because fragment alignment is
 not reliable in this trial, this approach is not enabled. Valid array lengths
 alone would not establish correct ordering, context or translation quality.
+An exploratory alternative attached explicit IDs to each fragment and required
+exactly one response per ID. On the public fixture, 37 of 39 groups passed
+that alignment check and two were rejected. This did not reconstruct Markdown
+or check semantic quality; retry/fallback behavior remains untested. The
+fragment method remains experimental and is not part of the worker.
