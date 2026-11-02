@@ -27,6 +27,12 @@ historical image bindings, blob/history retention, database indexing, packaging 
 include actual multi-repository synchronization, failure recovery and all
 access paths, not just the existing unit tests.
 
+A two-repository synthetic GitHub test also covers an invalid `docs` entry in
+one source after SQLite migration: its local article remains available, its
+public snapshot closes, and the second source remains public and unchanged.
+Both states survive reopening; a corrected first source can be synchronized
+again. This does not establish behavior for VEDA-stored real credentials.
+
 Historical image bindings need more than retaining blobs. Today an article
 revision stores only Markdown and its text hash, while the source stores one
 current path-to-blob map. An image can change without the Markdown hash changing;

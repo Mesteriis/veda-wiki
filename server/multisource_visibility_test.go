@@ -95,3 +95,71 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 		t.Fatal("other private source was republished", err)
 	}
 }
+
+func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
+	s := testStore(t)
+	first := newFakeGitHub(t, map[string]string{"docs/guide.md": "# First source"})
+	second := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Second source"})
+	second.modify(func() { second.name = "org/second"; second.repoID = 42 })
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
+			second.serve(w, r)
+		} else {
+			first.serve(w, r)
+		}
+	}))
+	defer gateway.Close()
+	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	manager := newSyncManager(s, client)
+	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
+		if _, err := manager.connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager.Once(context.Background())
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherGeneration := s.db.Sources["two"].ImportGeneration
+	first.advance(map[string]string{"docs": "not a directory"})
+	newSyncManager(s, client).Once(context.Background())
+	if _, err := s.page("one/docs/guide.md", true); err != ErrNotFound {
+		t.Fatal("invalid source remained public", err)
+	}
+	if page, err := s.page("one/docs/guide.md", false); err != nil || page.Text != "# First source" {
+		t.Fatal("invalid source lost local article", err)
+	}
+	if page, err := s.page("two/docs/guide.md", true); err != nil || page.Text != "# Second source" {
+		t.Fatal("other repository affected", err)
+	}
+	if s.db.Sources["two"].ImportGeneration != otherGeneration {
+		t.Fatal("other source generation changed")
+	}
+	out := request(Wiki{Store: s, Public: true}, "GET", "/api/v1/search?q=source", "", false)
+	if out.Code != 200 || strings.Contains(out.Body.String(), "First source") || !strings.Contains(out.Body.String(), "Second source") {
+		t.Fatal("merged public search violated isolation", out.Code)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.page("one/docs/guide.md", true); err != ErrNotFound {
+		t.Fatal("invalid source exposed after restart", err)
+	}
+	if _, err := s.page("two/docs/guide.md", true); err != nil {
+		t.Fatal("other source unavailable after restart", err)
+	}
+	first.advance(map[string]string{"docs/guide.md": "# First source"})
+	if err := s.retryConnection("one"); err != nil {
+		t.Fatal(err)
+	}
+	newSyncManager(s, client).Once(context.Background())
+	if _, err := s.page("one/docs/guide.md", true); err != nil {
+		t.Fatal("corrected source did not recover", err)
+	}
+}
