@@ -112,7 +112,7 @@ function Sidebar({ v }) {
         </span>
       </a>
       <nav id="main-navigation" className={menuOpen ? "mobile-open" : ""} aria-label="Основная навигация" onClick={(event) => { if (event.target.closest(".nav-item")) setMenuOpen(false); }}>
-        {nav.filter(([, , , feature]) => !v.Public || !['github', 'api', 'settings'].includes(feature)).map(([icon, label, href, feature]) =>
+        {nav.filter(([, , , feature]) => !v.Public || !['github', 'api', 'settings', 'favorites'].includes(feature)).map(([icon, label, href, feature]) =>
           href ? (
             <a
               className={
