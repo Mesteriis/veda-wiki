@@ -410,8 +410,12 @@ preconditions, conflict behavior, and local-only article handling.
 
 `POST /api/v1/sources/reconcile` (owner only) accepts `source_id`,
 `destination_id` and an optional `limit` from 1 to 50 (default 20). It requires
-a disconnected private source and a fully observed, verified, writable private
+a private source and a fully observed, verified, writable private
 GitHub destination of the same kind. Source identities remain separate.
+For a connected source, its private visibility and complete imported head must
+be recently verified, its connection must be healthy and unpaused, and each
+copied revision must match the observed upstream revision. The source and
+destination cannot refer to the same repository and branch.
 Matching article and referenced-asset observations establish an owner-only
 baseline. New articles and safe updates relative to that baseline are queued
 using the existing copy/outbox safeguards. Missing images referenced by equal
@@ -437,7 +441,7 @@ separately configured as described below.
 `POST` to the same endpoint accepts `source_id`, `destination_id`, `enabled`,
 and `expected_revision`: use revision 0 to create a configuration and the
 returned revision for later changes. A destination can have one configured
-source. Enabling requires the same private-source and verified, writable private
+source. Enabled mirror relationships cannot form cycles. Enabling requires the same private-source and verified, writable private
 GitHub conditions as manual reconciliation. After each GitHub sync pass VEDA
 runs a bounded reconciliation and wakes the worker for additional batches or
 queued writes. A changed (including asset-only) or conflicting root-only local import also wakes an

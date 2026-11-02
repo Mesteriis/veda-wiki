@@ -4,7 +4,22 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"time"
 )
+
+// Connected sources must have a complete, recently verified private snapshot.
+// Disconnected sources may be partial: individual unsafe paths are withheld.
+func reconcileSourceReady(db Database, src Source, dst GitHubConnection) bool {
+	if src.Visibility != "private" {
+		return false
+	}
+	if src.ConnectionID == "" {
+		return true
+	}
+	c, ok := db.Connections[src.ConnectionID]
+	return ok && c.ID == src.ID && c.Private && !src.ImportPartial && sourceSyncIssue(db, src, time.Now()) == "" &&
+		c.RepositoryID != 0 && dst.RepositoryID != 0 && (c.RepositoryID != dst.RepositoryID || c.Branch != dst.Branch)
+}
 
 // ReconcileBase is an owner-only, versioned observation shared by two sources.
 // It is not copy provenance: equal pre-existing articles can establish a base.
@@ -85,7 +100,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 		return result, ErrNotFound
 	}
 	conn, connected := s.db.Connections[dst.ConnectionID]
-	if src.Visibility != "private" || src.ConnectionID != "" || dst.Visibility != "private" || src.Kind != dst.Kind || !connected || conn.ID != dst.ID || !conn.Private || conn.Verification != "verified" || conn.Paused || !conn.Write || conn.LastPull == "" || dst.ImportPartial {
+	if dst.Visibility != "private" || src.Kind != dst.Kind || !connected || conn.ID != dst.ID || !conn.Private || conn.Verification != "verified" || conn.Paused || !conn.Write || conn.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(s.db, src, conn) {
 		return result, ErrConflict
 	}
 	paths := []string{}
@@ -112,7 +127,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 				unsafe = true
 			}
 		}
-		if unsafe || pendingReconcilePath(s.db, src.ID, p) || pendingReconcilePath(s.db, dst.ID, p) {
+		if unsafe || (src.ConnectionID != "" && a.UpstreamHash != rev.SHA) || pendingReconcilePath(s.db, src.ID, p) || pendingReconcilePath(s.db, dst.ID, p) {
 			result.Blocked = append(result.Blocked, p)
 			continue
 		}
@@ -232,7 +247,8 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 				safe := planErr == nil && len(plan.Articles) <= in.Limit-changes
 				if safe {
 					for _, item := range plan.Articles {
-						if item.CredentialLike || item.DirectoryIndex || item.Destination == "conflict" {
+						linked := s.db.Articles[src.ID+"/"+item.SourcePath]
+						if item.CredentialLike || item.DirectoryIndex || item.Destination == "conflict" || pendingReconcilePath(s.db, src.ID, item.SourcePath) || pendingReconcilePath(s.db, dst.ID, item.DestinationPath) || (src.ConnectionID != "" && linked.UpstreamHash != item.SHA) {
 							safe = false
 							break
 						}

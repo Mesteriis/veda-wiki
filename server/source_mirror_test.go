@@ -570,3 +570,97 @@ func TestMirrorQueuedPrivateWriteNeverPublishesAfterVisibilityChange(t *testing.
 		t.Fatal("private mirror write reached public repository")
 	}
 }
+
+func TestMirrorConnectedSourcesAndCycleGuard(t *testing.T) {
+	s, m, first, second := connectedMoveFixtures(t)
+	files := second.contents()
+	files["README.md"] = "# Source"
+	second.advance(files)
+	m.Once(context.Background())
+	enabled, revision := true, 0
+	in := mirrorRequest{SourceID: "one", DestinationID: "two", Enabled: &enabled, ExpectedRevision: &revision}
+	if _, err := s.configureMirror(context.Background(), in); err != nil {
+		t.Fatal("connected source rejected", err)
+	}
+	m.Once(context.Background())
+	files = first.contents()
+	files["README.md"] = "# Changed upstream"
+	first.advance(files)
+	for i := 0; i < 4; i++ {
+		m.Once(context.Background())
+	}
+	if second.contents()["README.md"] != "# Changed upstream" {
+		t.Fatal("connected source change not confirmed")
+	}
+	if _, err := s.configureMirror(context.Background(), mirrorRequest{SourceID: "two", DestinationID: "one", Enabled: &enabled, ExpectedRevision: &revision}); !errors.Is(err, ErrConflict) {
+		t.Fatal("cycle accepted", err)
+	}
+	first.modify(func() { first.private = false })
+	m.Once(context.Background())
+	if s.mirrors()[0].State != "error" {
+		t.Fatal("source visibility change not rejected")
+	}
+}
+
+func TestConnectedMirrorRejectsUnverifiedAndPartialSource(t *testing.T) {
+	for _, condition := range []string{"paused", "unverified", "partial", "same-repository"} {
+		t.Run(condition, func(t *testing.T) {
+			s, _, _, _ := connectedMoveFixtures(t)
+			s.mu.Lock()
+			src := s.db.Sources["one"]
+			c := s.db.Connections[src.ConnectionID]
+			switch condition {
+			case "paused":
+				c.Paused = true
+			case "unverified":
+				c.Verification = "unknown"
+			case "partial":
+				src.ImportPartial = true
+			case "same-repository":
+				c.RepositoryID = s.db.Connections["two"].RepositoryID
+				c.Branch = s.db.Connections["two"].Branch
+			}
+			s.db.Sources["one"] = src
+			s.db.Connections[src.ConnectionID] = c
+			s.mu.Unlock()
+			enabled, revision := true, 0
+			if _, err := s.configureMirror(context.Background(), mirrorRequest{SourceID: "one", DestinationID: "two", Enabled: &enabled, ExpectedRevision: &revision}); !errors.Is(err, ErrConflict) {
+				t.Fatal("unsafe source accepted", err)
+			}
+			if _, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "one", DestinationID: "two"}); !errors.Is(err, ErrConflict) {
+				t.Fatal("unsafe source reconciled", err)
+			}
+		})
+	}
+}
+
+func TestMirrorCycleIncludesLongerChains(t *testing.T) {
+	db := Database{SourceMirrors: map[string]SourceMirror{
+		"b": {SourceID: "a", Enabled: true},
+		"c": {SourceID: "b", Enabled: true},
+	}}
+	if !mirrorWouldCycle(db, "c", "a") || mirrorWouldCycle(db, "a", "c") {
+		t.Fatal("invalid cycle detection")
+	}
+}
+
+func TestConnectedReconcileBlocksUnobservedLinkedArticle(t *testing.T) {
+	s, m, first, _ := connectedMoveFixtures(t)
+	files := first.contents()
+	files["new.md"] = "[Linked](linked.md)"
+	files["linked.md"] = "# Linked"
+	first.advance(files)
+	m.Once(context.Background())
+	s.mu.Lock()
+	linked := s.db.Articles["one/linked.md"]
+	linked.UpstreamHash = ""
+	s.db.Articles["one/linked.md"] = linked
+	s.mu.Unlock()
+	r, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "one", DestinationID: "two"})
+	if err != nil || !containsPath(r.Blocked, "new.md") || !containsPath(r.Blocked, "linked.md") {
+		t.Fatal("unobserved linked revision accepted", r, err)
+	}
+	if _, ok := s.db.Articles["two/new.md"]; ok {
+		t.Fatal("linked graph copied despite unobserved revision")
+	}
+}

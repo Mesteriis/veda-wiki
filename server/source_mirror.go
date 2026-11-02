@@ -51,6 +51,23 @@ func (s *Store) hasEnabledMirror(sourceID string) bool {
 	}
 	return false
 }
+
+// Each destination has at most one incoming edge; reject cycles before saving.
+func mirrorWouldCycle(db Database, sourceID, destinationID string) bool {
+	seen := map[string]bool{}
+	for sourceID != "" {
+		if sourceID == destinationID || seen[sourceID] {
+			return true
+		}
+		seen[sourceID] = true
+		m, ok := db.SourceMirrors[sourceID]
+		if !ok || !m.Enabled {
+			break
+		}
+		sourceID = m.SourceID
+	}
+	return false
+}
 func (s *Store) configureMirror(ctx context.Context, in mirrorRequest) (SourceMirror, error) {
 	if !identifier.MatchString(in.SourceID) || !identifier.MatchString(in.DestinationID) || in.SourceID == in.DestinationID || in.Enabled == nil || in.ExpectedRevision == nil || *in.ExpectedRevision < 0 {
 		return SourceMirror{}, ErrInvalid
@@ -71,7 +88,7 @@ func (s *Store) configureMirror(ctx context.Context, in mirrorRequest) (SourceMi
 	}
 	if *in.Enabled {
 		c, ok := s.db.Connections[dst.ConnectionID]
-		if src.Visibility != "private" || src.ConnectionID != "" || dst.Visibility != "private" || src.Kind != dst.Kind || !ok || c.ID != dst.ID || !c.Private || c.Verification != "verified" || c.Paused || !c.Write || c.LastPull == "" || dst.ImportPartial {
+		if dst.Visibility != "private" || src.Kind != dst.Kind || !ok || c.ID != dst.ID || !c.Private || c.Verification != "verified" || c.Paused || !c.Write || c.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(s.db, src, c) || mirrorWouldCycle(s.db, src.ID, dst.ID) {
 			return SourceMirror{}, ErrConflict
 		}
 	}
