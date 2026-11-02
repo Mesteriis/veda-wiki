@@ -20,6 +20,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m unittest discover -s scripts -p test_package_release.py -v
+      - run: python -m unittest discover -s scripts -p test_save_reader_key.py -v
       - run: make test
       - run: cd server && go build -o ../veda .
       - run: python scripts/smoke_superuser.py

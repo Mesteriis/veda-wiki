@@ -30,6 +30,25 @@ opencode mcp add --global veda -- /absolute/venv/bin/python /absolute/veda/mcp/s
 hermes mcp add veda --command /absolute/venv/bin/python --args /absolute/veda/mcp/server.py --reader-key-file /private/hermes.key
 ```
 
+### Saving a reader key on the client
+
+An administrator can issue a separate scoped reader key for each agent in
+Settings → Keys. The secret is shown once. To place it in an owner-only file
+without putting it in command arguments or shell history, prepare an owner-only
+directory and run the interactive helper from a trusted local terminal:
+
+```sh
+install -d -m 700 "$HOME/.local/share/veda/agent-keys"
+python scripts/save_reader_key.py --out "$HOME/.local/share/veda/agent-keys/codex.key"
+```
+
+Paste the key itself at the hidden prompt. Repeat with distinct file names and
+keys for the other agents. The helper refuses a non-private destination,
+invalid key or existing file and never prints the secret. If saving is not
+confirmed, inspect the file metadata before retrying; a partial file may exist.
+Do not paste credentials into chat. A file can be read by other processes with
+the same operating-system identity, so separate files are not process isolation.
+
 These examples are for a server on the same machine. Loopback addresses inside
 another host or container are not reachable from the client machine. For a
 trusted directly reachable HTTPS VEDA instance, pass `--url https://VEDA-HOST

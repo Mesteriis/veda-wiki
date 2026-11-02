@@ -14,6 +14,7 @@ import time
 import urllib.request
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from save_reader_key import save_reader_key
 
 ROOT = Path(__file__).resolve().parents[1]
 BINARY = os.environ.get('VEDA_TEST_BINARY', str(ROOT / 'veda'))
@@ -106,8 +107,7 @@ with tempfile.TemporaryDirectory(prefix='veda-mcp-tls-') as tmp:
         issued = owner_post('/api/v1/access-keys', {'id': 'tls-agent', 'sources': ['allowed'],
             'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
         key = root / 'agent.key'
-        key.write_text(issued['key'])
-        key.chmod(0o600)
+        save_reader_key(key, issued['key'])
         asyncio.run(check_tls(f'https://127.0.0.1:{tls}', key, cert,
             lambda: owner_post('/api/v1/access-keys/revoke', {'id': 'tls-agent'})))
         print('PASS: TLS MCP source scope, read, unsaved proposal, denial and revocation')
