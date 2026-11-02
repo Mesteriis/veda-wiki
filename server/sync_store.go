@@ -80,6 +80,11 @@ func sourcePublic(db Database, src Source, now time.Time) bool {
 // Publication decisions still use sourcePublic, but readers fail closed until
 // the import is complete. Sources without an import are not partial.
 func sourcePublicReadable(db Database, src Source, now time.Time) bool {
+	if src.ConnectionID != "" && db.Connections[src.ConnectionID].State == "syncing" {
+		// A fresh visibility check alone does not prove the previously
+		// imported head still describes the repository. Wait for the pull.
+		return false
+	}
 	return sourcePublic(db, src, now) && !src.ImportPartial
 }
 

@@ -120,7 +120,13 @@ access is enabled. Pausing hides that source's public articles while its GitHub
 visibility is not being verified; a network request already in flight may finish.
 The server rejects sync status and visibility observations made using an older
 connection configuration, including after pause and resume. A fresh verification
-is required before public content reappears.
+is required before public content reappears. While synchronization checks the
+remote head and imports its snapshot, public content is temporarily unavailable;
+private readers retain their local copy. If an imported repository changes type,
+or a wiki loses `veda.yaml` and has no `docs/`, synchronization reports
+`repository_type_changed` and keeps its local history. Restore the original
+repository structure and retry to resume. Automatic source type conversion is
+not supported.
 Outbox status changes also require the same connection revision and an unchanged
 job identity and visibility. A prepared commit is retained for recovery if the
 connection changes during an uncertain remote write.

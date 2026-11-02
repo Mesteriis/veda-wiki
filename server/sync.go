@@ -460,12 +460,20 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 				fail(err)
 			}
 		} else {
-			_ = m.store.connectionStatusFor(c, "skipped", "verified", "", &info, time.Time{})
+			// A previously imported wiki no longer has its identifying
+			// manifest. Its old snapshot cannot be confirmed as current.
+			fail(&remoteError{Code: "repository_type_changed"})
 		}
 		return
 	}
 	if e != nil {
 		fail(e)
+		return
+	}
+	if exists && source.Kind != batch.Kind {
+		// Reclassifying a source would invalidate stored article paths and
+		// translations. Keep its local history and require explicit recovery.
+		fail(&remoteError{Code: "repository_type_changed"})
 		return
 	}
 	visibility := "public"
