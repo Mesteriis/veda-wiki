@@ -1,8 +1,8 @@
 # Private browser reading
 
-Use the profile button to sign in with a named user and password, the separately
-generated `reader.key`, or a source-scoped reader key created through the owner
-API. Named users receive the union of the source scopes of their teams; a user
+Use the profile button to sign in with a named user and password. A separately
+generated `reader.key` or source-scoped reader key can also be exchanged for a
+reader session by opening `https://YOUR-VEDA-HOST/?key=READER_KEY`. Named users receive the union of the source scopes of their teams; a user
 without teams sees no private sources. Team membership and source permissions
 are checked on each request. Password changes and disabling a user invalidate
 all of that user's existing sessions; changing team permissions takes effect on
@@ -13,7 +13,12 @@ cannot manage accounts, GitHub or articles. The shared
 key grants current content of all private sources. A scoped key grants current
 content only from its explicitly authorized sources; its validity and scope are
 checked on every request. Neither grants writing or administration. Keep keys
-private and never put them in URLs.
+private. A key-bearing URL is itself a credential: the initial request can be
+recorded by browsers, proxies, servers and monitoring systems before VEDA can
+remove the parameter. Use only trusted HTTPS routes, do not share such URLs
+through untrusted channels, and revoke a key if a URL is exposed. VEDA removes
+the parameter from the address before exchanging the key, preserves other query
+parameters and does not forward it to the state API.
 
 Login is allowed only over a direct HTTPS connection to the private listener,
 or HTTP on loopback from the local machine. For direct HTTPS configure both

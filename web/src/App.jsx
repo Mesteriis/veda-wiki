@@ -671,7 +671,6 @@ function CatalogFolders({ node, sourceID, prefix, selection, onSelect, parents =
 function ReaderAccess() {
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState("");
-  const [mode, setMode] = useState("user");
   const [canChangePassword, setCanChangePassword] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
@@ -685,7 +684,7 @@ function ReaderAccess() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const credentials = mode === "user" ? { username: data.get("username"), password: data.get("password") } : { key: data.get("key") };
+    const credentials = { username: data.get("username"), password: data.get("password") };
     setMessage("");
     try {
       const response = await fetch("/api/session/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(credentials) });
@@ -716,7 +715,7 @@ function ReaderAccess() {
   return (
     <div className="reader-access">
       {status === true ? <><p>Приватное чтение включено. Сеанс действует до 8 часов.</p>{canChangePassword && <form onSubmit={changePassword}><h3>Изменить пароль</h3><label>Текущий пароль<input name="current_password" type="password" autoComplete="current-password" required /></label><label>Новый пароль<input name="new_password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><label>Повторите новый пароль<input name="confirm_password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button>Изменить пароль</button></form>}<button onClick={logout}>Выйти</button></> : status === false ?
-        <><button type="button" onClick={() => { setMode(mode === "user" ? "key" : "user"); setMessage(""); }}>{mode === "user" ? "Войти по ключу" : "Войти по имени"}</button><form key={mode} onSubmit={submit}>{mode === "user" ? <><p>Войдите в свою учётную запись.</p><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label></> : <><p>Введите ключ чтения.</p><label>Ключ чтения<input name="key" type="password" autoComplete="off" required /></label></>}<button type="submit">Войти</button></form></> : null}
+        <form onSubmit={submit}><p>Войдите в свою учётную запись.</p><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button type="submit">Войти</button></form> : null}
       {message && <p role="alert">{message}</p>}
     </div>
   );
@@ -841,7 +840,7 @@ function AccessSettings() {
         {accessTab === "teams" && <div className="settings-list">{teams.length ? teams.map((team) => <div className="settings-row" key={team.id}><div><strong>{team.id}</strong><small>Команда</small></div><span>{team.sources.join(", ")}</span><span></span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("teamSources", team)}>Изменить источники</button></div></div>) : <p>Команд пока нет.</p>}</div>}
         {accessTab === "keys" && <div className="settings-list">{keys.length ? keys.map((key) => <div className="settings-row" key={key.id}><div><strong>{key.id}</strong><small>Ключ чтения</small></div><span>{key.sources.join(", ")}</span><span>До {new Date(key.expires_at).toLocaleString("ru-RU")}</span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("keySources", key)}>Изменить доступ</button><button disabled={busy} onClick={() => revoke(key.id)}>Отозвать</button></div></div>) : <p>Ключей пока нет.</p>}</div>}
       </section>
-      {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
+      {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><label>Ссылка для входа<textarea readOnly value={`${window.location.origin}/?key=${encodeURIComponent(issued.key)}`} rows="3" onFocus={(e) => e.target.select()} /></label><p>Ссылка содержит ключ доступа. Передавайте её только доверенному получателю.</p><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
       <dialog className="settings-modal" ref={accessModalRef} onClose={closeModal} onCancel={closeModal} onClick={(event) => { if (event.target === accessModalRef.current) accessModalRef.current.close(); }}><div className="dialog-head"><h2>{modalTitle[accessModal?.type] || "Настройки"}</h2><button type="button" aria-label="Закрыть" onClick={() => accessModalRef.current.close()}><I name="x" /></button></div>
         {accessModal?.type === "user" && <form onSubmit={createUser}><label>Имя пользователя<input name="id" required placeholder="reader-one" /></label><label>Начальный пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><p>Передайте начальный пароль безопасно; пользователь сможет его сменить.</p><fieldset><legend>Команды пользователя</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} /> {team.id}</label>)}</fieldset><button disabled={busy}>Создать пользователя</button></form>}
         {accessModal?.type === "team" && <form onSubmit={saveTeam}><label>Идентификатор<input name="id" required placeholder="team-ops" /></label><fieldset><legend>Источники команды</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy || !sources.length}>Создать команду</button></form>}
@@ -1022,7 +1021,7 @@ function GitHubConnect() {
     {message && <p role="status">{message}</p>}
   </div>;
 }
-export function App() {
+export function App({ linkLoginError = false }) {
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [feature, setFeature] = useState(null);
@@ -1092,6 +1091,7 @@ export function App() {
       <Sidebar v={v} />
       <main>
         <Header v={v} />
+        {linkLoginError && <p role="alert">Не удалось войти по ссылке. Проверьте ключ и адрес подключения.</p>}
         <SourceWarnings view={v} />
         {v.SettingsView ? <AccessSettings /> : v.GitHubView ? <GitHubConnect /> : v.RecentView ? <Recent v={v} /> : v.GraphView ? <Graph v={v} /> : v.Page ? (
           <Reading data={data} />

@@ -96,10 +96,12 @@ for (const width of [1672, 390, 320]) {
   await evaluate("document.querySelector('button[aria-label=Войти]').click()");
   await until("!!document.querySelector('.reader-access button')");
   if (!await evaluate("document.querySelector('dialog h2')?.innerText === 'Вход'")) throw Error('login dialog title missing');
-  await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Войти по ключу').click()");
-  await until("!!document.querySelector('.reader-access input[name=key]')");
-  await evaluate(`document.querySelector('.reader-access input[name=key]').value = ${JSON.stringify(key)}; document.querySelector('.reader-access form').requestSubmit()`);
+  if (await evaluate("document.querySelector('.reader-access').innerText.includes('Войти по ключу')")) throw Error('key login control still visible');
+  await send('Page.navigate', { url: privateUrl + '?key=' + encodeURIComponent(key) + '&example=1' });
+  await until("!new URL(location.href).searchParams.has('key') && new URL(location.href).searchParams.get('example') === '1'");
   await until("document.body.innerText.includes('Приватная тестовая страница')");
+  if (await evaluate("document.body.innerText.includes('Недоступная тестовая страница') || document.body.innerText.includes('Недоступный пример')")) throw Error('scoped link session showed out-of-scope source');
+  if (await evaluate("(async () => (await fetch('/api/v1/articles?source_id=other-private&path=secret.md')).status)()") !== 404) throw Error('scoped link session allowed out-of-scope article');
   if (!await evaluate("!!document.querySelector('.sidebar-bottom .storage') && !!document.querySelector('.sidebar-bottom .system')")) throw Error('sidebar status panels missing for authenticated reader');
   if (!await evaluate("['GitHub','API и MCP','Настройки','Избранное'].every(t=>[...document.querySelectorAll('#main-navigation .nav-item')].some(e=>e.textContent.trim()===t)) && !!document.querySelector('.reading-mode') && !!document.querySelector('button[aria-label=Уведомления]') && !!document.querySelector('button[aria-label=Оформление]')")) throw Error('authenticated navigation missing');
   await evaluate("document.querySelector('.home-page-row[href*=private]').click()");
