@@ -245,6 +245,9 @@ imported snapshot. The latter does not re-download every blob. A failed import
 or stale connection observation does not advance it. The value is kept in
 memory and is absent after restart until another successful import; it is not
 a claim that the upstream checkout or infrastructure is currently correct.
+The reader interface shows this time in source warnings; when it is absent or
+invalid, it reports the observation time as unknown. It is not a freshness
+guarantee, including when an unchanged import refreshed the observation.
 `unresolved_conflicts` counts pending conflicts. `last_import_withheld`, when
 present for an authenticated reader, reports the number of items withheld or
 unavailable in the last accepted import attempt. It is not an exhaustive count

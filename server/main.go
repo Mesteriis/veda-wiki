@@ -65,13 +65,14 @@ type Group struct {
 	SourceURL   string `json:",omitempty"`
 }
 type SourceWarning struct {
-	ID        string
-	Name      string
-	Partial   bool
-	Dirty     bool
-	Conflicts int
-	Withheld  *int
-	SyncIssue string `json:",omitempty"`
+	ID                   string
+	Name                 string
+	Partial              bool
+	Dirty                bool
+	Conflicts            int
+	Withheld             *int
+	SyncIssue            string `json:",omitempty"`
+	LastImportObservedAt string `json:",omitempty"`
 }
 type View struct {
 	Cards          []Card
@@ -419,7 +420,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	for _, source := range w.Store.sources(w.Public) {
 		sources[source.ID] = source.Source
 		if !w.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0 || source.syncIssue != "") {
-			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld, SyncIssue: source.syncIssue})
+			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld, SyncIssue: source.syncIssue, LastImportObservedAt: source.LastImportObservedAt})
 		}
 	}
 	for _, p := range s.Pages {

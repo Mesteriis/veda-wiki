@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { buildTree, buildMergedTree } from "./tree.js";
 import { githubErrorMessage, githubVisibilityLabel } from "./githubErrors.js";
-import { syncWarning } from "./sourceWarnings.js";
+import { observationLabel, syncWarning } from "./sourceWarnings.js";
 const Features = createContext(() => {});
 const descriptions = {
   github: [
@@ -84,7 +84,7 @@ function SourceWarnings({ view }) {
   return <section className="source-warnings" aria-label="Состояние источников">
     {warnings.map((source) => <div className="source-warning" key={source.ID} role="status">
       <strong>{source.Name}:</strong>{" "}
-      {[source.Partial && "импорт неполный", source.Withheld > 0 && `удержано или недоступно: ${source.Withheld}`, source.Dirty && "в источнике есть изменения вне коммита", source.Conflicts > 0 && `конфликты: ${source.Conflicts}`, syncWarning(source.SyncIssue)].filter(Boolean).join(" · ")}.
+      {[source.Partial && "импорт неполный", source.Withheld > 0 && `удержано или недоступно: ${source.Withheld}`, source.Dirty && "в источнике есть изменения вне коммита", source.Conflicts > 0 && `конфликты: ${source.Conflicts}`, syncWarning(source.SyncIssue), observationLabel(source.LastImportObservedAt)].filter(Boolean).join(" · ")}.
       {" "}{source.SyncIssue && "Локальная копия может быть неактуальна. "}Проверяйте актуальное состояние перед действиями.
     </div>)}
   </section>;

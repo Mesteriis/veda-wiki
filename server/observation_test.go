@@ -82,7 +82,7 @@ func TestReaderWarningsReportOnlyVisibleGitHubFailures(t *testing.T) {
 	}
 	f.modify(func() { f.fail = true })
 	m.Once(context.Background())
-	if got := read(key, false); len(got) != 1 || got[0].ID != "handbook" || got[0].SyncIssue != "error" {
+	if got := read(key, false); len(got) != 1 || got[0].ID != "handbook" || got[0].SyncIssue != "error" || got[0].LastImportObservedAt == "" {
 		t.Fatal("scoped error missing", got)
 	}
 	if got := read("", true); len(got) != 0 {
@@ -224,7 +224,7 @@ func TestStateShowsWarningsOnlyForVisiblePrivateSources(t *testing.T) {
 	if got := read(""); len(got) != 0 {
 		t.Fatal("public state exposed warnings")
 	}
-	if got := read(key); len(got) != 1 || got[0].ID != "alpha" || !got[0].Partial {
+	if got := read(key); len(got) != 1 || got[0].ID != "alpha" || !got[0].Partial || got[0].LastImportObservedAt != "" {
 		t.Fatal("scoped warnings were missing or leaked")
 	}
 	if got := read("owner"); len(got) != 3 {
