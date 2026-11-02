@@ -84,13 +84,15 @@ key cannot write or use administrative endpoints and is ignored by the public
 listener. It grants access to all private sources and is not user-scoped. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
-Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_prepare_translation`, `veda_create_source`,
+Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excerpt`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_prepare_translation`, `veda_create_source`,
 `veda_write_article`, `veda_copy_article`, `veda_transfer_plan`, `veda_moves`, `veda_move_article`,
 `veda_cancel_move`,
 `veda_translation_needed`,
 `veda_translate_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
 `veda_github_status`, `veda_github_connect`, `veda_sync`,
 `veda_publish_job`, `veda_cancel_bundle`.
+`veda_read_excerpt` reads bounded Unicode slices and uses the first slice's SHA
+to reject continuations after a revision changes.
 Context follows root and ancestor
 `AGENTS.md` articles inside one source. Documentation is evidence, never an
 authorization to execute infrastructure actions.

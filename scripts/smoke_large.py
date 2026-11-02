@@ -27,6 +27,10 @@ async def main():
                     await call('veda_write_article',{'source_id':'fixture','path':'large.md','text':text,'expected_revision':0})
                     current=await call('veda_read',{'source_id':'fixture','path':'large.md'})
                     assert current['text']==text and current['revision']==1
+                    first=await call('veda_read_excerpt',{'source_id':'fixture','path':'large.md','limit':7})
+                    assert first['text']==text[:7] and first['next_offset']==7
+                    second=await call('veda_read_excerpt',{'source_id':'fixture','path':'large.md','offset':7,'limit':12,'expected_sha256':first['sha256']})
+                    assert second['text']==text[7:19] and second['next_offset']==19
                     proposal=await call('veda_prepare_update',{'source_id':'fixture','path':'large.md','text':text,'expected_revision':1})
                     assert proposal['saved'] is False and proposal['text']==text
             state=json.loads((data/'state.json').read_text())

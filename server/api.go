@@ -146,6 +146,65 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/articles/excerpt":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		q := r.URL.Query()
+		sourceID, p, expected := q.Get("source_id"), q.Get("path"), q.Get("expected_sha256")
+		if !identifier.MatchString(sourceID) || p == "" || (expected != "" && len(expected) != 64) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if expected != "" {
+			if _, err := hexKey(expected); err != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+		}
+		offset, limit := 0, 8000
+		if q.Has("offset") {
+			n, err := strconv.Atoi(q.Get("offset"))
+			if err != nil || n < 0 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			offset = n
+		}
+		if q.Has("limit") {
+			n, err := strconv.Atoi(q.Get("limit"))
+			if err != nil || n < 1 || n > 16000 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			limit = n
+		}
+		if offset > 0 && expected == "" {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		a, err := w.Store.article(sourceID, p, !owner && !reader)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		revision := a.Versions[len(a.Versions)-1]
+		if expected != "" && revision.SHA != expected {
+			apiError(rw, ErrConflict)
+			return
+		}
+		text := []rune(revision.Text)
+		if offset > len(text) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		end := offset + min(limit, len(text)-offset)
+		var next *int
+		if end < len(text) {
+			next = &end
+		}
+		jsonResponse(rw, 200, map[string]any{"source_id": sourceID, "path": p, "revision": revision.Number, "sha256": revision.SHA, "offset": offset, "next_offset": next, "total_characters": len(text), "text": string(text[offset:end])})
 	case "/api/v1/context":
 		if r.Method != "GET" {
 			rw.WriteHeader(405)
