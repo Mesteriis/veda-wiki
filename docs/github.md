@@ -227,6 +227,15 @@ cd server
 VEDA_LIVE_GITHUB_MOVE=1 go test -count=1 -run '^TestLiveGitHubBranchMove$' -v .
 ```
 
+Add `VEDA_LIVE_GITHUB_RECOVERY=1` to the same command to create a synthetic
+article through the REST handler, simulate an upstream outage, migrate and
+reopen the local store as SQLite, and verify that the queued write reaches the
+source branch and is observed after recovery before continuing the move test.
+With an explicit `VEDA_LIVE_GITHUB_TARGET=Mesteriis/mac-tower`, this passed on
+2026-11-02 across two public repositories. The test uses a `gh` proxy and a
+synthetic VEDA token; it does not test VEDA-stored credentials, a full process
+restart, private repositories, or the deployment host's connectivity.
+
 Each run creates two public fixture branches and retains them for inspection;
 the test does not change an existing branch or use production wiki data.
 Setting `VEDA_LIVE_GITHUB_TARGET=Mesteriis/mac-tower` explicitly runs the

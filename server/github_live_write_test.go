@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -69,7 +70,13 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	if login != "Mesteriis" && login != "mesteriis" {
 		t.Fatal("fixture requires the Mesteriis account")
 	}
-	nodeIDs := []string{api("repos/"+repo, nil)["node_id"].(string), api("repos/"+targetRepo, nil)["node_id"].(string)}
+	infoSource, infoTarget := api("repos/"+repo, nil), api("repos/"+targetRepo, nil)
+	for _, info := range []map[string]any{infoSource, infoTarget} {
+		if info["private"] != false || info["visibility"] != "public" {
+			t.Fatal("fixture repository is not verified public")
+		}
+	}
+	nodeIDs := []string{infoSource["node_id"].(string), infoTarget["node_id"].(string)}
 	base := api("repos/"+repo+"/commits/588ff21", nil)["sha"].(string)
 	imageSHA := api("repos/"+repo+"/git/blobs", map[string]string{"content": base64.StdEncoding.EncodeToString(image), "encoding": "base64"})["sha"].(string)
 	tree := api("repos/"+repo+"/git/trees", map[string]any{"tree": []map[string]string{
@@ -124,7 +131,12 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		api("repos/"+repos[i]+"/git/refs", map[string]string{"ref": "refs/heads/" + b, "sha": commits[i]})
 	}
 
+	var outage atomic.Bool
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if outage.Load() {
+			http.Error(w, "synthetic outage", http.StatusServiceUnavailable)
+			return
+		}
 		route := strings.TrimPrefix(r.URL.RequestURI(), "/")
 		allowedRepo := false
 		for _, allowed := range repos {
@@ -216,6 +228,60 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		}
 	}
 	manager.Once(ctx)
+	if os.Getenv("VEDA_LIVE_GITHUB_RECOVERY") == "1" {
+		const draftPath, draftText = "synthetic-created.md", "# Synthetic API-created article\n"
+		body, _ := json.Marshal(map[string]any{"source_id": "source", "path": draftPath, "text": draftText, "expected_revision": 0})
+		response := request(Wiki{Store: store, Token: "test-owner"}, "POST", "/api/v1/articles", string(body), true)
+		if response.Code != http.StatusCreated {
+			t.Fatal("REST fixture creation failed", response.Code)
+		}
+		outage.Store(true)
+		syncFixtureSource(t, manager, "source")
+		article, err := store.article("source", draftPath, false)
+		if err != nil || article.Versions[0].Text != draftText {
+			t.Fatal("local write unavailable during outage", err)
+		}
+		if err := migrateSQLite(store.dir); err != nil {
+			t.Fatal("fixture migration failed", err)
+		}
+		store, err = openStore(store.dir)
+		if err != nil {
+			t.Fatal("fixture reopen failed", err)
+		}
+		article, err = store.article("source", draftPath, false)
+		if err != nil || article.Versions[0].Text != draftText {
+			t.Fatal("local write lost after restart", err)
+		}
+		outage.Store(false)
+		manager = newSyncManager(store, client)
+		if err := store.retryConnection("source"); err != nil {
+			t.Fatal("retry failed", err)
+		}
+		completed := false
+		for i := 0; i < 6; i++ {
+			syncFixtureSource(t, manager, "source")
+			for _, job := range store.jobs() {
+				if job.SourceID == "source" && job.Path == draftPath && job.State == "complete" {
+					completed = true
+				}
+			}
+			if completed {
+				break
+			}
+		}
+		if !completed {
+			t.Fatal("queued write not observed after recovery")
+		}
+		ref := api("repos/"+repo+"/git/ref/heads/"+branches[0], nil)
+		head := ref["object"].(map[string]any)["sha"].(string)
+		remoteTree, err := client.tree(ctx, repo, head, fixtureAccess)
+		if err != nil {
+			t.Fatal("recovered tree unavailable", err)
+		}
+		if _, err := verifiedTreeFile(remoteTree, draftPath, draftText); err != nil {
+			t.Fatal("remote fixture does not match local write")
+		}
+	}
 	if _, err := store.moveArticle(moveRequest{SourceID: "source", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: destinationPath, ConfirmMove: true, IncludeLinked: true}); err != nil {
 		t.Fatalf("move: %v", err)
 	}
