@@ -56,7 +56,7 @@ func main() {
 	translationURL := flag.String("translation-local-url", "", "Optional numeric loopback translation service URL")
 	translationModel := flag.String("translation-model", "", "Local model for Russian documentation drafts")
 	translationTokenFile := flag.String("translation-token-file", "", "Optional private file containing the local translation service bearer")
-	translationProtocol := flag.String("translation-protocol", "ollama", "Local translation protocol: ollama or mlx")
+	translationProtocol := flag.String("translation-protocol", "ollama", "Local translation protocol: ollama, mlx or openai")
 	translationInterval := flag.Duration("translation-interval", time.Minute, "Local translation check interval (5s to 1h)")
 	flag.Parse()
 	if *readerKeyRequired && *readerSocket == "" {
@@ -65,7 +65,7 @@ func main() {
 	if *translationTokenFile != "" && (*translationURL == "" || !filepath.IsAbs(*translationTokenFile) || filepath.Clean(*translationTokenFile) != *translationTokenFile) {
 		log.Fatal("invalid local translation credential configuration")
 	}
-	if (*translationURL == "") != (*translationModel == "") || (*translationProtocol != "ollama" && *translationProtocol != "mlx") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
+	if (*translationURL == "") != (*translationModel == "") || (*translationProtocol != "ollama" && *translationProtocol != "mlx" && *translationProtocol != "openai") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
 		log.Fatal("invalid local translation configuration")
 	}
 	if *localImportSource != "" && (*readerSocket == "" || !identifier.MatchString(*localImportSource)) {

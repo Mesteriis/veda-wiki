@@ -68,7 +68,9 @@ uses store format version 5; older binaries cannot open the upgraded store.
 An optional background worker can use a separately installed Ollama service on
 the same host, for example `--translation-local-url http://127.0.0.1:11434
 --translation-model MODEL`. Alternatively, use a local MLX LM server and set
-`--translation-protocol mlx`; the default protocol is `ollama`. Both URL and
+`--translation-protocol mlx`. For a local service supporting OpenAI-compatible
+chat completions, use `--translation-protocol openai`; this sends no MLX-specific
+request options. The default protocol is `ollama`. Both URL and
 model flags are required; the worker is disabled by
 default. Its URL must use a numeric loopback address, HTTP, and an explicit port;
 HTTP proxies and redirects are disabled. The operator must verify that the
