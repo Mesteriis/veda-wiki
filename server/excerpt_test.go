@@ -83,3 +83,74 @@ func TestExcerptPublicUsesPublishedRevision(t *testing.T) {
 		t.Fatal("public excerpt exposed a draft", out.Code)
 	}
 }
+
+func TestDisplayExcerptTranslationScopeAndRevision(t *testing.T) {
+	s := testStore(t)
+	for _, id := range []string{"alpha", "beta"} {
+		if err := s.addSource(Source{ID: id, Title: id, Kind: "program", Visibility: "private"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.put(id, "docs/setup.md", "# Setup", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, err := s.article("alpha", "docs/setup.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := translationRequest{SourceID: "alpha", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка 😀"}
+	if _, err = s.submitTranslation(in); err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(query string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/v1/articles/display-excerpt?"+query, nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, req)
+		return out
+	}
+	var first struct {
+		Text       string `json:"text"`
+		SHA        string `json:"sha256"`
+		Original   string `json:"original_sha256"`
+		Next       *int   `json:"next_offset"`
+		Translated bool   `json:"translated"`
+	}
+	r := call("source_id=alpha&path=docs%2Fsetup.md&limit=3")
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &first) != nil || first.Text != "# У" || first.Next == nil || *first.Next != 3 || !first.Translated || first.Original != in.OriginalSHA {
+		t.Fatal("invalid first slice", r.Code)
+	}
+	query := fmt.Sprintf("source_id=alpha&path=docs%%2Fsetup.md&offset=3&expected_sha256=%s&expected_original_sha256=%s", first.SHA, first.Original)
+	tail := call(query)
+	if tail.Code != 200 || !strings.Contains(tail.Body.String(), "становка 😀") {
+		t.Fatal("invalid continuation", tail.Code)
+	}
+	if call("source_id=alpha&path=docs%2Fsetup.md&offset=3&expected_sha256="+first.SHA).Code != 400 || call("source_id=beta&path=docs%2Fsetup.md").Code != 404 {
+		t.Fatal("missing revision or scope bypass")
+	}
+	in.Text = "# Настройка 😀"
+	if _, err = s.submitTranslation(in); err != nil {
+		t.Fatal(err)
+	}
+	if call(query).Code != 409 {
+		t.Fatal("changed translation accepted")
+	}
+	var nextFirst struct {
+		SHA      string `json:"sha256"`
+		Original string `json:"original_sha256"`
+	}
+	if err = json.Unmarshal(call("source_id=alpha&path=docs%2Fsetup.md&limit=3").Body.Bytes(), &nextFirst); err != nil {
+		t.Fatal(err)
+	}
+	sameTextQuery := fmt.Sprintf("source_id=alpha&path=docs%%2Fsetup.md&offset=3&expected_sha256=%s&expected_original_sha256=%s", nextFirst.SHA, nextFirst.Original)
+	if _, err = s.put("alpha", "docs/setup.md", in.Text, 1); err != nil {
+		t.Fatal(err)
+	}
+	if call(sameTextQuery).Code != 409 {
+		t.Fatal("changed original accepted even though displayed bytes match")
+	}
+}

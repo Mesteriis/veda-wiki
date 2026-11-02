@@ -19,6 +19,7 @@ Unknown translation origin is explicitly labelled in the interface.
 | GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/articles/excerpt?source_id=&path=&offset=&limit=&expected_sha256=` | Read up to 16,000 Unicode code points of the current visible revision; continuation requires the first response's SHA |
 | GET | `/api/v1/articles/display?source_id=&path=` | Read the displayed Markdown, translation status and original SHA under the caller's source permissions |
+| GET | `/api/v1/articles/display-excerpt?source_id=&path=&offset=&limit=&expected_sha256=&expected_original_sha256=` | Read up to 16,000 Unicode code points of displayed Markdown; continuation requires both hashes from the first response |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
 | GET | `/api/v1/context?source_id=…&path=…` | Visible ancestor instructions and source status in one snapshot |
 | POST | `/api/v1/sources` | Create a local source (owner only) |

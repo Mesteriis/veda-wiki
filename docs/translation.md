@@ -15,6 +15,9 @@ to the caller, including a currently visible Russian translation when available,
 its state and hashes. They do not return an editable revision; use `veda_read`
 and the original revision for update proposals. Unapproved translations remain
 private, and stale translations are never returned as the displayed text.
+For large documents, `veda_read_display_excerpt` reads up to 16,000 Unicode
+code points at a time. Continue with both the displayed and original hashes
+from the first response; a change to either produces a conflict.
 New drafts produced by the local worker retain `origin: local_model` across
 restart, copying, moving, and unchanged approval. The reader labels those
 translations as automatic. An edited submission has unknown origin; older

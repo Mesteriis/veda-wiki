@@ -239,19 +239,27 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			"translated": page.Translated, "translation_state": page.TranslationState,
 			"translation_origin": page.TranslationOrigin, "program_documentation": page.ProgramDocumentation,
 		})
-	case "/api/v1/articles/excerpt":
+	case "/api/v1/articles/excerpt", "/api/v1/articles/display-excerpt":
 		if r.Method != "GET" {
 			rw.WriteHeader(405)
 			return
 		}
 		q := r.URL.Query()
 		sourceID, p, expected := q.Get("source_id"), q.Get("path"), q.Get("expected_sha256")
+		display := r.URL.Path == "/api/v1/articles/display-excerpt"
+		expectedOriginal := q.Get("expected_original_sha256")
 		if !identifier.MatchString(sourceID) || p == "" || (expected != "" && len(expected) != 64) {
 			apiError(rw, ErrInvalid)
 			return
 		}
 		if expected != "" {
 			if _, err := hexKey(expected); err != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+		}
+		if display && expectedOriginal != "" {
+			if _, err := hexKey(expectedOriginal); err != nil {
 				apiError(rw, ErrInvalid)
 				return
 			}
@@ -273,8 +281,31 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			}
 			limit = n
 		}
-		if offset > 0 && expected == "" {
+		if offset > 0 && (expected == "" || (display && expectedOriginal == "")) {
 			apiError(rw, ErrInvalid)
+			return
+		}
+		if display {
+			page, err := w.Store.page(sourceID+"/"+p, !owner && !reader)
+			if err != nil {
+				apiError(rw, err)
+				return
+			}
+			if (expected != "" && page.SHA != expected) || (expectedOriginal != "" && page.OriginalSHA != expectedOriginal) {
+				apiError(rw, ErrConflict)
+				return
+			}
+			text := []rune(page.Text)
+			if offset > len(text) {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			end := offset + min(limit, len(text)-offset)
+			var next *int
+			if end < len(text) {
+				next = &end
+			}
+			jsonResponse(rw, 200, map[string]any{"source_id": sourceID, "path": p, "sha256": page.SHA, "original_sha256": page.OriginalSHA, "translated": page.Translated, "translation_state": page.TranslationState, "translation_origin": page.TranslationOrigin, "program_documentation": page.ProgramDocumentation, "offset": offset, "next_offset": next, "total_characters": len(text), "text": string(text[offset:end])})
 			return
 		}
 		a, err := w.Store.article(sourceID, p, !owner && !reader)
