@@ -74,6 +74,13 @@ func sourcePublic(db Database, src Source, now time.Time) bool {
 	verified, e := time.Parse(time.RFC3339Nano, c.VerifiedAt)
 	return ok && !c.Paused && c.Verification == "verified" && !c.Private && e == nil && !verified.After(now.Add(time.Minute)) && now.Sub(verified) < 10*time.Minute
 }
+
+// A partial GitHub snapshot cannot establish which previously imported paths
+// remain public. Keep publication decisions based on sourcePublic, but hide
+// the entire source from public readers until a complete snapshot is imported.
+func sourcePublicReadable(db Database, src Source, now time.Time) bool {
+	return sourcePublic(db, src, now) && (src.ConnectionID == "" || !src.ImportPartial)
+}
 func (s *Store) retryConnection(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

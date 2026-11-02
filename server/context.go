@@ -34,7 +34,7 @@ func (s *Store) agentContext(sourceID, target string, public bool) (agentContext
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	src, ok := s.db.Sources[sourceID]
-	if !ok || (public && !sourcePublic(s.db, src, time.Now())) {
+	if !ok || (public && !sourcePublicReadable(s.db, src, time.Now())) {
 		return agentContext{}, ErrNotFound
 	}
 	if !articlePath(target, src.Kind) {

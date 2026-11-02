@@ -578,6 +578,10 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			if _, present := batch.Files[a.Path]; present {
 				continue
 			}
+			if proof != nil && proof.Visibility == "public" && !a.PublishedLocal {
+				a.Published = nil
+				db.Articles[key] = a
+			}
 			latest := a.Versions[len(a.Versions)-1].SHA
 			if latest != a.UpstreamHash {
 				if hasImportConflict(a, "", true) {

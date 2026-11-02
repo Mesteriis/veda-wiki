@@ -81,6 +81,11 @@ The reading interface refreshes its state periodically and when the dialog is
 opened or closed, so imported pages appear without a browser reload. Anonymous
 GitHub API limits can delay verification; while verification is unavailable,
 public visibility fails closed until a successful retry.
+If a connected public repository yields an incomplete import (for example an
+invalid or withheld file), public readers cannot access that source until a
+complete snapshot has been imported. Private readers retain the local data.
+When a complete public snapshot confirms an upstream deletion, its old imported
+publication is withdrawn even if a conflicting local draft must be retained.
 When GitHub reports a rate limit, VEDA persists the source's next retry time,
 honoring `Retry-After` and the primary rate-limit reset with a one-minute
 minimum and a 24-hour cap. Manual retry cannot bypass this deadline. The same

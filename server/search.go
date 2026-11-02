@@ -46,7 +46,7 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 			continue
 		}
 		src, ok := s.db.Sources[a.SourceID]
-		if !ok || (public && !sourcePublic(s.db, src, now)) {
+		if !ok || (public && !sourcePublicReadable(s.db, src, now)) {
 			continue
 		}
 		rev := a.Versions[len(a.Versions)-1]

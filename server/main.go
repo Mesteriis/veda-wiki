@@ -335,7 +335,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	scores := map[string]int{}
 	w.Store.mu.RLock()
 	for _, source := range w.Store.db.Sources {
-		if source.ConnectionID != "" && (!w.Public || sourcePublic(w.Store.db, source, time.Now())) {
+		if source.ConnectionID != "" && (!w.Public || sourcePublicReadable(w.Store.db, source, time.Now())) {
 			v.GitHubCount++
 		}
 	}

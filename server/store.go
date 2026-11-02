@@ -547,7 +547,7 @@ func (s *Store) sources(public bool) []SourceView {
 		}
 	}
 	for _, src := range s.db.Sources {
-		if !public || sourcePublic(s.db, src, time.Now()) {
+		if !public || sourcePublicReadable(s.db, src, time.Now()) {
 			if public {
 				src.ConnectionID = ""
 			}
@@ -584,7 +584,7 @@ func (s *Store) snapshot(public bool) Snapshot {
 			continue
 		}
 		src := s.db.Sources[a.SourceID]
-		if public && !sourcePublic(s.db, src, time.Now()) {
+		if public && !sourcePublicReadable(s.db, src, time.Now()) {
 			continue
 		}
 		rev := a.Versions[len(a.Versions)-1]
@@ -612,7 +612,7 @@ func (s *Store) page(key string, public bool) (Page, error) {
 		return Page{}, ErrNotFound
 	}
 	src := s.db.Sources[a.SourceID]
-	if public && !sourcePublic(s.db, src, time.Now()) {
+	if public && !sourcePublicReadable(s.db, src, time.Now()) {
 		return Page{}, ErrNotFound
 	}
 	r := a.Versions[len(a.Versions)-1]
@@ -638,7 +638,7 @@ func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 		return Article{}, ErrNotFound
 	}
 	src := s.db.Sources[a.SourceID]
-	if public && !sourcePublic(s.db, src, time.Now()) {
+	if public && !sourcePublicReadable(s.db, src, time.Now()) {
 		return Article{}, ErrNotFound
 	}
 	a.Versions = append([]Revision(nil), a.Versions...)
