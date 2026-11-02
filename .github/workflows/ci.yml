@@ -27,4 +27,5 @@ jobs:
       - run: python scripts/smoke.py
       - run: python scripts/smoke_translation_auth.py
       - run: python scripts/smoke_translation_auth.py --protocol openai
+      - run: python scripts/smoke_directory_restore.py
       - run: cd server && VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^TestMultiSourceMCPAfterSQLiteRestart$' -v .
