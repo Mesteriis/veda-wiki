@@ -345,6 +345,36 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 			return b, nil
 		}
 	}
+	// During adoption, reuse the existing private source only when its bytes
+	// match the authenticated repository's exact Git object and declared size.
+	// The adoption transaction separately revalidates the complete local state.
+	if c.Private {
+		m.store.mu.RLock()
+		src, exists := m.store.db.Sources[c.ID]
+		var local []byte
+		var ref BlobRef
+		if exists && src.Visibility == "private" && src.ConnectionID == "" {
+			if a, ok := m.store.db.Articles[c.ID+"/"+entry.Path]; ok && !a.Deleted && len(a.Versions) > 0 {
+				local = []byte(a.Versions[len(a.Versions)-1].Text)
+			}
+			ref = src.Assets[entry.Path]
+		}
+		m.store.mu.RUnlock()
+		if ref.SHA != "" {
+			if image, err := m.store.readAsset(ref); err == nil {
+				local = image
+			}
+		}
+		if int64(len(local)) == entry.Size && gitBlobDigest(local, len(entry.SHA)) == entry.SHA {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if err := atomicPrivateFile(dir, entry.SHA, local); err != nil {
+				return nil, err
+			}
+			return local, nil
+		}
+	}
 	b, e := m.github.blob(ctx, c.Repository, entry.SHA, token)
 	if e != nil {
 		return nil, e
