@@ -524,6 +524,11 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			rw.WriteHeader(405)
 			return
 		}
+		sourceID := r.URL.Query().Get("source_id")
+		if sourceID != "" && !identifier.MatchString(sourceID) {
+			apiError(rw, ErrInvalid)
+			return
+		}
 		limit, offset := 30, 0
 		if r.URL.Query().Has("limit") {
 			n, e := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -542,6 +547,15 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			offset = n
 		}
 		all := w.Store.translationCandidates()
+		if sourceID != "" {
+			filtered := make([]translationCandidate, 0)
+			for _, candidate := range all {
+				if candidate.SourceID == sourceID {
+					filtered = append(filtered, candidate)
+				}
+			}
+			all = filtered
+		}
 		start := min(offset, len(all))
 		end := min(start+limit, len(all))
 		jsonResponse(rw, 200, map[string]any{"candidates": all[start:end], "total": len(all), "offset": offset})

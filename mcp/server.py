@@ -160,8 +160,8 @@ def make_server(client):
             "source_id":string,"source_path":string,"expected_revision":{"type":"integer","minimum":1},
             "destination_id":string,"destination_path":string,"confirm_move":{"type":"boolean","const":True},"confirm_publication":{"type":"boolean"},"include_linked":{"type":"boolean"}},
             ["source_id","source_path","expected_revision","destination_id","destination_path","confirm_move"]),
-        "veda_translation_needed": ("List visible program documentation awaiting Russian translation, publication review, or import conflict resolution. The blocked_conflict state must be resolved before translation; originals remain in veda_read. Results are limited to the client's authorized sources.", {
-            "limit": {"type":"integer","minimum":1,"maximum":100}, "offset":{"type":"integer","minimum":0}}, []),
+        "veda_translation_needed": ("List visible program documentation awaiting Russian translation, publication review, or import conflict resolution. Optionally filter by source_id. The blocked_conflict state must be resolved before translation; originals remain in veda_read. Results are limited to the client's authorized sources.", {
+            "source_id": string, "limit": {"type":"integer","minimum":1,"maximum":100}, "offset":{"type":"integer","minimum":0}}, []),
         "veda_translate_article": ("Submit a Russian translation of a specific original revision; preserve code and links. Public publication needs explicit approval.", {
             "source_id":string, "path":string, "expected_revision":{"type":"integer","minimum":1}, "original_sha256":string,
             "text":{"type":"string","maxLength":MAX_ARTICLE_BYTES}, "confirm_publication":{"type":"boolean"}},

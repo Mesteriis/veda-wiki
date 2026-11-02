@@ -103,6 +103,9 @@ async def main():
                     original = await call("veda_write_article", {"source_id": "program", "path": "docs/setup.md", "text": "# Setup\nRun `install`.", "expected_revision": 0})
                     waiting = await call("veda_translation_needed", {})
                     assert any(c["source_id"] == "program" and c["original_sha256"] == original["sha256"] for c in waiting["candidates"])
+                    filtered = await call("veda_translation_needed", {"source_id": "program"})
+                    assert filtered["total"] == 1 and filtered["candidates"][0]["original_sha256"] == original["sha256"]
+                    assert (await call("veda_translation_needed", {"source_id": "missing"}))["total"] == 0
                     translated = await call("veda_translate_article", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "original_sha256": original["sha256"], "text": "# Установка\nЗапустите `install`."})
                     assert translated["language"] == "ru"
                     unchanged = await call("veda_read", {"source_id": "program", "path": "docs/setup.md"})
@@ -275,6 +278,10 @@ async def main():
                             assert not queue.isError
                             candidates = json.loads(queue.content[0].text)
                             assert candidates["total"] == 1 and candidates["candidates"][0]["source_id"] == "program" and candidates["candidates"][0]["path"] == "docs/pending.md"
+                            allowed_queue = await scoped.call_tool("veda_translation_needed", {"source_id": "program"})
+                            assert not allowed_queue.isError and json.loads(allowed_queue.content[0].text)["total"] == 1
+                            hidden_queue = await scoped.call_tool("veda_translation_needed", {"source_id": "hidden-program"})
+                            assert not hidden_queue.isError and json.loads(hidden_queue.content[0].text)["total"] == 0
                             allowed = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not allowed.isError
                             displayed = await scoped.call_tool("veda_read_display", {"source_id": "program", "path": "docs/setup.md"})

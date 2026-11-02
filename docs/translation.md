@@ -26,7 +26,9 @@ Recording this provenance upgrades the store to version 11, which older
 servers reject; back up and verify a compatible restore before upgrading.
 
 An owner or authenticated reader can list candidates with `GET /api/v1/articles/translation-needed`
-(`limit` 1–100 and `offset`) or `veda_translation_needed`. Scoped readers see
+(`source_id`, `limit` 1–100 and `offset`) or `veda_translation_needed`. The
+optional source filter applies before pagination; an inaccessible or unknown
+source has an empty result, without confirming whether it exists. Scoped readers see
 only their authorized sources; anonymous callers cannot list the queue. The
 queue reports `needed`, `publication_review`, or `blocked_conflict`; the last
 state requires resolving an import conflict before translation or publication.

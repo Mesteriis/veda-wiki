@@ -106,6 +106,52 @@ func TestTranslationQueueRespectsReaderScope(t *testing.T) {
 	}
 }
 
+func TestTranslationQueueSourceFilterBeforePagination(t *testing.T) {
+	s := testStore(t)
+	for _, id := range []string{"alpha", "beta"} {
+		if err := s.addSource(Source{ID: id, Title: id, Kind: "program", Visibility: "private"}); err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{"docs/a.md", "docs/b.md"} {
+			if _, err := s.put(id, path, "# Setup", 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	key, err := s.createAccessKey("scoped", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(token, query string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/v1/articles/translation-needed?"+query, nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
+		return out
+	}
+	filtered := call("owner", "source_id=beta&offset=1&limit=1")
+	var result struct {
+		Candidates []translationCandidate `json:"candidates"`
+		Total      int                    `json:"total"`
+	}
+	if filtered.Code != 200 || json.Unmarshal(filtered.Body.Bytes(), &result) != nil || result.Total != 2 || len(result.Candidates) != 1 || result.Candidates[0].SourceID != "beta" || result.Candidates[0].Path != "docs/b.md" {
+		t.Fatal("source filtering or pagination failed", filtered.Code)
+	}
+	for _, source := range []string{"beta", "missing"} {
+		response := call(key, "source_id="+source)
+		var empty struct {
+			Candidates []translationCandidate `json:"candidates"`
+			Total      int                    `json:"total"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &empty) != nil || empty.Total != 0 || len(empty.Candidates) != 0 {
+			t.Fatal("inaccessible source exposed", response.Code)
+		}
+	}
+	if call("owner", "source_id=../bad").Code != 400 {
+		t.Fatal("invalid source filter accepted")
+	}
+}
+
 func TestDisplayArticleTranslationVisibilityAndStaleness(t *testing.T) {
 	s := testStore(t)
 	for _, id := range []string{"alpha", "beta"} {
