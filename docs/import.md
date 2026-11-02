@@ -17,6 +17,19 @@ The command reads the owner key from its private file without printing it,
 disables HTTP proxies and refuses redirects. It uploads through the same REST
 service as other writers; it never opens the server database directly.
 
+To inspect the selected tracked checkout before connecting it, run:
+
+```sh
+./veda import --checkout /path/to/checkout --preview
+```
+
+Preview reports only type, article and image counts, withheld count, completeness
+and dirty status. It does not contact VEDA, read an owner key, create a source,
+or list article names or content. It uses the same working-tree selection as a
+local import, so untracked files are excluded and `dirty` covers tracked changes
+only. It does not compare against an existing VEDA source, predict conflicts or
+deletions, verify repository visibility, or preview GitHub synchronization.
+
 ## Type detection
 
 A wiki must have a regular root `veda.yaml` file:

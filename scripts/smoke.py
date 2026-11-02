@@ -134,6 +134,16 @@ async def main():
                            "-c", "user.email=fixture@example.invalid"]
                     for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Fixture"]):
                         subprocess.run(git + args, check=True, capture_output=True)
+                    (checkout / "untracked-private.md").write_text("synthetic excluded content")
+                    preview = subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(checkout),
+                                              "--preview", "--url", "http://127.0.0.1:1", "--key-file", str(data / "absent.key")],
+                                             check=True, capture_output=True, text=True)
+                    summary = json.loads(preview.stdout)
+                    assert summary == {"status": "preview", "kind": "wiki", "articles": 1, "assets": 0,
+                                       "withheld": 0, "complete": True, "dirty": False}
+                    assert "Imported original" not in preview.stdout and "untracked-private" not in preview.stdout
+                    assert subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(checkout),
+                                           "--preview", "--create"], capture_output=True).returncode != 0
                     command = [str(ROOT / "veda"), "import", "--checkout", str(checkout),
                                "--source", "imported", "--url", f"http://127.0.0.1:{private_port}",
                                "--key-file", str(data / "owner.key")]
@@ -168,6 +178,11 @@ async def main():
                                    "-c", "commit.gpgsign=false", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
                     for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Fixture"]):
                         subprocess.run(program_git + args, check=True, capture_output=True)
+                    preview_program = subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(program_checkout), "--preview"],
+                                                     check=True, capture_output=True, text=True)
+                    program_summary = json.loads(preview_program.stdout)
+                    assert program_summary["kind"] == "program" and program_summary["articles"] == 1
+                    assert "# Original" not in preview_program.stdout
                     program_import = [str(ROOT / "veda"), "import", "--checkout", str(program_checkout),
                                       "--source", "imported-program", "--url", f"http://127.0.0.1:{private_port}",
                                       "--key-file", str(data / "owner.key")]
