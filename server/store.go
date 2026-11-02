@@ -616,12 +616,16 @@ func (s *Store) sources(public bool) []SourceView {
 	return out
 }
 func title(text, p string) string {
-	for _, line := range strings.Split(text, "\n") {
+	for {
+		line, remaining, more := strings.Cut(text, "\n")
 		if strings.HasPrefix(line, "# ") {
 			return strings.TrimSpace(line[2:])
 		}
+		if !more {
+			return path.Base(p)
+		}
+		text = remaining
 	}
-	return path.Base(p)
 }
 func (s *Store) snapshot(public bool) Snapshot {
 	s.mu.RLock()
