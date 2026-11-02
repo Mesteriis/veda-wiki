@@ -17,6 +17,8 @@ import (
 )
 
 const maxStoreBytes = 64 << 20
+const legacyArticleBytes = 256000
+const maxArticleBytes = 1 << 20
 
 var ErrInvalid = errors.New("invalid input")
 var ErrConflict = errors.New("revision conflict")
@@ -117,7 +119,7 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
-	if (s.db.Version < 1 || s.db.Version > 12) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version < 1 || s.db.Version > 13) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -192,7 +194,7 @@ func openStore(dir string) (*Store, error) {
 		}
 		for i, revision := range article.Versions {
 			sum := sha256.Sum256([]byte(revision.Text))
-			if revision.Number != i+1 || len(revision.Text) > 256000 || !utf8.ValidString(revision.Text) || revision.SHA != hex.EncodeToString(sum[:]) {
+			if revision.Number != i+1 || len(revision.Text) > maxArticleBytes || (len(revision.Text) > legacyArticleBytes && s.db.Version < 13) || !utf8.ValidString(revision.Text) || revision.SHA != hex.EncodeToString(sum[:]) {
 				return nil, errors.New("invalid stored revision")
 			}
 		}
@@ -201,7 +203,7 @@ func openStore(dir string) (*Store, error) {
 			if tr.Origin != "" && (tr.Origin != "local_model" || s.db.Version < 11) {
 				return nil, errors.New("invalid translation origin")
 			}
-			if src.Kind != "program" || tr.Language != "ru" || len(tr.Text) == 0 || len(tr.Text) > 256000 || !utf8.ValidString(tr.Text) || digest([]byte(tr.Text)) != tr.SHA || len(tr.OriginalSHA) != 64 {
+			if src.Kind != "program" || tr.Language != "ru" || len(tr.Text) == 0 || len(tr.Text) > maxArticleBytes || (len(tr.Text) > legacyArticleBytes && s.db.Version < 13) || !utf8.ValidString(tr.Text) || digest([]byte(tr.Text)) != tr.SHA || len(tr.OriginalSHA) != 64 {
 				return nil, errors.New("invalid stored translation")
 			}
 			if _, e := hex.DecodeString(tr.OriginalSHA); e != nil {
@@ -220,12 +222,12 @@ func openStore(dir string) (*Store, error) {
 		}
 		if article.Published != nil {
 			p := article.Published
-			if len(p.Text) > 256000 || !utf8.ValidString(p.Text) || digest([]byte(p.Text)) != p.SHA {
+			if len(p.Text) > maxArticleBytes || (len(p.Text) > legacyArticleBytes && s.db.Version < 13) || !utf8.ValidString(p.Text) || digest([]byte(p.Text)) != p.SHA {
 				return nil, errors.New("invalid publication snapshot")
 			}
 		}
 		for _, c := range article.Conflicts {
-			if !commitID.MatchString(c.Commit) || (c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) || (!c.Deleted && (digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > 256000)) {
+			if !commitID.MatchString(c.Commit) || (c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) || (!c.Deleted && (digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > maxArticleBytes || (len(c.Incoming) > legacyArticleBytes && s.db.Version < 13))) {
 				return nil, errors.New("invalid stored conflict")
 			}
 		}
@@ -371,6 +373,23 @@ func openStore(dir string) (*Store, error) {
 	return s, nil
 }
 func (s *Store) commit(db Database) error {
+	// Old binaries reject the upgraded store before reading a large revision.
+	if db.Version < 13 {
+		for _, article := range db.Articles {
+			large := article.Published != nil && len(article.Published.Text) > legacyArticleBytes
+			large = large || article.Translation != nil && len(article.Translation.Text) > legacyArticleBytes
+			for _, revision := range article.Versions {
+				large = large || len(revision.Text) > legacyArticleBytes
+			}
+			for _, conflict := range article.Conflicts {
+				large = large || len(conflict.Incoming) > legacyArticleBytes
+			}
+			if large {
+				db.Version = 13
+				break
+			}
+		}
+	}
 	db.Updated = time.Now().UTC().Format(time.RFC3339Nano)
 	b, err := json.Marshal(db)
 	if err != nil {
@@ -469,7 +488,7 @@ func articlePath(p string, kind string) bool {
 	return kind != "program" || strings.HasPrefix(p, "docs/")
 }
 func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
-	if len(text) > 256000 || !utf8.ValidString(text) || expected < 0 {
+	if len(text) > maxArticleBytes || !utf8.ValidString(text) || expected < 0 {
 		return Revision{}, ErrInvalid
 	}
 	s.mu.Lock()

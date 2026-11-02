@@ -181,7 +181,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		var in translationRequest
-		if decodeBody(rw, r, &in) != nil {
+		if decodeLimited(rw, r, &in, 7<<20) != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
@@ -328,7 +328,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		var in translationRequest
-		if decodeBody(rw, r, &in) != nil {
+		if decodeLimited(rw, r, &in, 7<<20) != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
@@ -528,7 +528,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 				Text     string `json:"text"`
 				Expected *int   `json:"expected_revision"`
 			}
-			if err := decodeBody(rw, r, &input); err != nil {
+			if err := decodeLimited(rw, r, &input, 7<<20); err != nil {
 				apiError(rw, ErrInvalid)
 				return
 			}

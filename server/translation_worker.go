@@ -98,7 +98,7 @@ func (w *translationWorker) Once(ctx context.Context) {
 			if output.Len() > 0 {
 				output.WriteString("\n\n")
 			}
-			if output.Len()+len(translated) > 256000 {
+			if output.Len()+len(translated) > maxArticleBytes {
 				err = errors.New("translation exceeds article limit")
 				break
 			}
@@ -199,7 +199,7 @@ func (w *translationWorker) translate(ctx context.Context, original string) (str
 		}
 		result.Response, result.Done, result.DoneReason = result.Choices[0].Message.Content, true, "stop"
 	}
-	if !result.Done || (result.DoneReason != "" && result.DoneReason != "stop") || len(result.Response) == 0 || len(result.Response) > 256000 || (strings.Contains(result.Response, "<think>") && !strings.Contains(original, "<think>")) {
+	if !result.Done || (result.DoneReason != "" && result.DoneReason != "stop") || len(result.Response) == 0 || len(result.Response) > maxArticleBytes || (strings.Contains(result.Response, "<think>") && !strings.Contains(original, "<think>")) {
 		return "", errors.New("invalid translation response")
 	}
 	return result.Response, nil

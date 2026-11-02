@@ -45,7 +45,9 @@ translation is not yet configured.
 
 ## Bounds and provenance
 
-Markdown must be UTF-8 and at most 256,000 bytes per file. Raster images are
+Markdown must be UTF-8 and at most 1 MiB per file. Persisting a document larger
+than 256,000 bytes upgrades the store to v13; older binaries reject it. Preserve
+and test a compatible backup before rollback. Raster images are
 limited to 4 MiB each and MIME-checked (PNG/JPEG/WebP/GIF). Total content is
 limited to 16 MiB and 2,000 files; traversal is bounded to 20,000 entries.
 Hidden directories, node_modules, vendor and dist are excluded. Symlinks are

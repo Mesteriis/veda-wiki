@@ -349,7 +349,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		if !markdown && !image {
 			continue
 		}
-		if entry.Mode != "100644" && entry.Mode != "100755" || entry.Size > 4<<20 || markdown && entry.Size > 256000 {
+		if entry.Mode != "100644" && entry.Mode != "100755" || entry.Size > 4<<20 || markdown && entry.Size > maxArticleBytes {
 			batch.Withheld++
 			batch.Complete = false
 			continue
@@ -767,7 +767,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 		if !markdown && !image {
 			continue
 		}
-		if (entry.Mode != "100644" && entry.Mode != "100755") || entry.Size < 0 || entry.Size > 4<<20 || (markdown && entry.Size > 256000) {
+		if (entry.Mode != "100644" && entry.Mode != "100755") || entry.Size < 0 || entry.Size > 4<<20 || (markdown && entry.Size > maxArticleBytes) {
 			return nil, ErrConflict
 		}
 		count++

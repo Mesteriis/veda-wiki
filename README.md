@@ -106,6 +106,7 @@ the path; deleted history or a concurrent write can still prevent creation.
 ```sh
 make test
 .venv/bin/python scripts/smoke.py
+.venv/bin/python scripts/smoke_large.py
 ```
 
 `make test` builds React, tests tree navigation, runs Go race tests and `go vet`. The smoke test uses
@@ -116,7 +117,8 @@ For frontend development run the Go server and `npm run dev` in `web/`; Vite
 proxies API requests to the default loopback endpoint.
 
 This initial store uses an atomic, fsynced JSON transaction file, bounded to
-64 MiB including revision history. Articles are bounded to 256,000 UTF-8 bytes.
+64 MiB including revision history. Articles are bounded to 1 MiB of UTF-8;
+documents over 256,000 bytes require store format v13, which older binaries reject.
 There is no automatic history retention yet. Treat this
 as an early single-owner implementation, not a completed hosted multi-user wiki.
 

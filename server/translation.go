@@ -32,7 +32,7 @@ type translationRequest struct {
 // Validate a proposal against the same current revision and protected Markdown
 // used for submission, without storing it or approving publication.
 func (s *Store) validateTranslation(in translationRequest) (map[string]any, error) {
-	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > 256000 || !utf8.ValidString(in.Text) {
+	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) {
 		return nil, ErrInvalid
 	}
 	s.mu.RLock()
@@ -118,7 +118,7 @@ func (s *Store) submitTranslation(in translationRequest) (Translation, error) {
 // Automatic translations of public articles remain private drafts until an
 // owner explicitly approves publication through submitTranslation.
 func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Translation, error) {
-	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > 256000 || !utf8.ValidString(in.Text) {
+	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) {
 		return Translation{}, ErrInvalid
 	}
 	s.mu.Lock()

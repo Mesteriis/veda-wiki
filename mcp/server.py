@@ -18,6 +18,9 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, CallToolResult
 
+MAX_ARTICLE_BYTES = 1 << 20
+MAX_RESPONSE_BYTES = 24 << 20
+
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -80,10 +83,10 @@ class Client:
                     headers["Authorization"] = "Bearer " + self._read_key()
                 connection.request(method, route, body=data, headers=headers)
                 response = connection.getresponse()
-                payload = response.read(2_000_001)
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
                 if response.status >= 300:
                     raise ValueError(f"VEDA refused request (HTTP {response.status})")
-                if len(payload) > 2_000_000:
+                if len(payload) > MAX_RESPONSE_BYTES:
                     raise ValueError("Response exceeds MCP limit")
                 return json.loads(payload)
             finally:
@@ -94,8 +97,8 @@ class Client:
                       headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
         try:
             with self.opener.open(req, timeout=15) as response:
-                payload = response.read(2_000_001)
-                if len(payload) > 2_000_000:
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(payload) > MAX_RESPONSE_BYTES:
                     raise ValueError("Response exceeds MCP limit")
                 return json.loads(payload)
         except HTTPError as exc:
@@ -119,17 +122,17 @@ def make_server(client):
         "veda_read": ("Read the current article and its revision.", {"source_id": string, "path": string}, ["source_id", "path"]),
         "veda_prepare_update": ("Prepare a non-persistent proposed article update after rereading the current revision. Returns the base revision and SHA for review; it does not save or publish the proposed text. Stale revisions are refused.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
-            "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "expected_revision", "text"]),
+            "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
-            "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "text"]),
+            "source_id": string, "path": string, "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "text"]),
         "veda_prepare_translation": ("Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article. The current revision and SHA are reread; stale revisions are refused. Validation cannot establish translation quality, save a draft, or approve publication.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
-            "text": {"type": "string", "maxLength": 256000}}, ["source_id", "path", "expected_revision", "text"]),
+            "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_create_source": ("Create an explicit local source; GitHub connection is not implied.", {
             "id": string, "title": string, "kind": {"enum": ["wiki", "program"]},
             "visibility": {"enum": ["private", "public"]}}, ["id", "title", "kind", "visibility"]),
         "veda_write_article": ("Create (revision 0) or update an article with optimistic concurrency.", {
-            "source_id": string, "path": string, "text": {"type": "string", "maxLength": 256000},
+            "source_id": string, "path": string, "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES},
             "expected_revision": {"type": "integer", "minimum": 0}},
             ["source_id", "path", "text", "expected_revision"]),
         "veda_copy_article": ("Copy a specific revision to a new destination, retaining the source. Supported relative images are copied. With include_linked, recursively copy linked articles to a standalone local or connected GitHub destination; conflicts are rejected. A GitHub group is queued as one commit and requires a complete pull for confirmation. Otherwise linked articles must already exist at the destination with the same revision. Private-to-public copying requires explicit user approval for the whole graph. Inspect the outbox for remote confirmation.", {
@@ -152,7 +155,7 @@ def make_server(client):
             "limit": {"type":"integer","minimum":1,"maximum":100}, "offset":{"type":"integer","minimum":0}}, []),
         "veda_translate_article": ("Submit a Russian translation of a specific original revision; preserve code and links. Public publication needs explicit approval.", {
             "source_id":string, "path":string, "expected_revision":{"type":"integer","minimum":1}, "original_sha256":string,
-            "text":{"type":"string","maxLength":256000}, "confirm_publication":{"type":"boolean"}},
+            "text":{"type":"string","maxLength":MAX_ARTICLE_BYTES}, "confirm_publication":{"type":"boolean"}},
             ["source_id","path","expected_revision","original_sha256","text"]),
         "veda_context": ("Read root and ancestor AGENTS.md articles for a target within one source.", {
             "source_id": string, "path": string}, ["source_id", "path"]),
@@ -209,7 +212,7 @@ def make_server(client):
             elif name == "veda_prepare_update":
                 current = await asyncio.to_thread(read, arguments["source_id"], arguments["path"])
                 proposed = arguments["text"]
-                if (not isinstance(proposed, str) or len(proposed.encode("utf-8")) > 256000
+                if (not isinstance(proposed, str) or len(proposed.encode("utf-8")) > MAX_ARTICLE_BYTES
                         or current["revision"] != arguments["expected_revision"]):
                     raise ValueError("Invalid or stale proposal")
                 result = {"source_id": arguments["source_id"], "path": arguments["path"],
@@ -226,7 +229,7 @@ def make_server(client):
                         or any(part.startswith(".") for part in path.split("/"))
                         or any(c in path for c in "\\\x00\r\n") or not path.lower().endswith((".md", ".markdown"))
                         or (source.get("kind") == "program" and not path.startswith("docs/"))
-                        or not isinstance(proposed, str) or len(proposed.encode("utf-8")) > 256000):
+                        or not isinstance(proposed, str) or len(proposed.encode("utf-8")) > MAX_ARTICLE_BYTES):
                     raise ValueError("Invalid new article proposal")
                 try:
                     await asyncio.to_thread(read, arguments["source_id"], path)
@@ -246,7 +249,7 @@ def make_server(client):
                     raise ValueError("Program documentation required")
                 current = await asyncio.to_thread(read, arguments["source_id"], arguments["path"])
                 proposed = arguments["text"]
-                if (not isinstance(proposed, str) or not proposed or len(proposed.encode("utf-8")) > 256000
+                if (not isinstance(proposed, str) or not proposed or len(proposed.encode("utf-8")) > MAX_ARTICLE_BYTES
                         or current["revision"] != arguments["expected_revision"]):
                     raise ValueError("Invalid or stale translation proposal")
                 validation = await asyncio.to_thread(client.request, "POST", "/api/v1/articles/translation-validate", {

@@ -303,7 +303,7 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		if !markdown && !image {
 			return nil
 		}
-		limit := int64(256000)
+		limit := int64(maxArticleBytes)
 		if image {
 			limit = 4 << 20
 		}
@@ -383,7 +383,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	}
 	total := 0
 	for p, text := range batch.Files {
-		if !articlePath(p, batch.Kind) || len(text) > 256000 || !utf8.ValidString(text) || secretContent.MatchString(text) {
+		if !articlePath(p, batch.Kind) || len(text) > maxArticleBytes || !utf8.ValidString(text) || secretContent.MatchString(text) {
 			return result, ErrInvalid
 		}
 		total += len(text)
