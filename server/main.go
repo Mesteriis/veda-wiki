@@ -133,10 +133,24 @@ func render(p Page) (template.HTML, template.HTML, error) {
 		if link, ok := n.(*ast.Link); ok {
 			u, e := url.Parse(string(link.Destination))
 			if e == nil && u.Scheme == "" && u.Host == "" && u.Path != "" {
-				target := path.Clean(path.Join(path.Dir(p.Path), u.Path))
-				link.Destination = []byte("/?page=" + url.QueryEscape(target))
-				if u.Fragment != "" {
-					link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
+				parts := strings.SplitN(p.Path, "/", 2)
+				if len(parts) != 2 || !identifier.MatchString(parts[0]) {
+					link.Destination = nil
+				} else {
+					target := ""
+					if strings.HasPrefix(u.Path, "/") {
+						target = path.Clean(strings.TrimPrefix(u.Path, "/"))
+					} else {
+						target = path.Clean(path.Join(path.Dir(parts[1]), u.Path))
+					}
+					if !safeRelative(target) {
+						link.Destination = nil
+					} else {
+						link.Destination = []byte("/?page=" + url.QueryEscape(parts[0]+"/"+target))
+						if u.Fragment != "" {
+							link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
+						}
+					}
 				}
 			}
 		}

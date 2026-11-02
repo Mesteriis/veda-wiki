@@ -74,6 +74,11 @@ reference to a partially written image. The media route applies source visibilit
 and verifies the blob digest before serving. No remote images are fetched.
 Blob garbage collection and historical image binding are still future work.
 
+In the reader, relative Markdown links are resolved within the article's source;
+root-relative links start at that source's root. Links that escape the source
+root are not redirected to a different connected repository. External links and
+in-page fragments retain their normal behavior.
+
 ## Concurrency and deletion
 
 Import batches include `expected_import`, the source's previous import generation.

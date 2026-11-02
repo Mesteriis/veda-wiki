@@ -266,3 +266,20 @@ func TestUnicodeHeadingFragments(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownLinksStayInTheirSource(t *testing.T) {
+	p := Page{Path: "alpha/chapter/page.md", Text: "[Local](../guide.md#part)\n\n[Root](/docs/start.md)\n\n[Escape](../../beta/secret.md)\n\n[Encoded](%2e%2e/%2e%2e/beta/secret.md)\n\n[Outside](https://example.com/page)"}
+	body, _, err := render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(body)
+	for _, expected := range []string{"page=alpha%2Fguide.md#part", "page=alpha%2Fdocs%2Fstart.md", "https://example.com/page"} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("missing expected link %q", expected)
+		}
+	}
+	if strings.Contains(html, "page=beta") || strings.Contains(html, "beta%2Fsecret.md") {
+		t.Fatal("link escaped the source")
+	}
+}
