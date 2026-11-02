@@ -3,7 +3,7 @@ import fs from 'node:fs';
 const [port, url, privateUrl, keyFile] = process.argv.slice(2);
 const key = fs.readFileSync(keyFile, 'utf8');
 let pages;
-for (let i = 0; i < 100; i++) {
+for (let i = 0; i < 400; i++) {
   try {
     pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
     break;
