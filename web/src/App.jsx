@@ -90,6 +90,7 @@ function SourceWarnings({ view }) {
   </section>;
 }
 function Sidebar({ v }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const nav = [
     ["home", "Главная", "/"],
     ["search", "Поиск", "/?q=документация"],
@@ -102,7 +103,7 @@ function Sidebar({ v }) {
     ["settings", "Настройки", null, "settings"],
   ];
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" onKeyDown={(event) => { if (event.key === "Escape" && menuOpen) setMenuOpen(false); }}>
       <a className="brand" href="/">
         <img src="/assets/veda-logo.png" alt="" className="brand-mark" />
         <span>
@@ -110,7 +111,7 @@ function Sidebar({ v }) {
           <small>KNOWLEDGE BASE</small>
         </span>
       </a>
-      <nav aria-label="Основная навигация">
+      <nav id="main-navigation" className={menuOpen ? "mobile-open" : ""} aria-label="Основная навигация" onClick={(event) => { if (event.target.closest(".nav-item")) setMenuOpen(false); }}>
         {nav.map(([icon, label, href, feature]) =>
           href ? (
             <a
@@ -134,6 +135,9 @@ function Sidebar({ v }) {
           ),
         )}
       </nav>
+      <button type="button" className="mobile-menu-toggle" aria-label="Меню" aria-controls="main-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
+        <I name={menuOpen ? "x" : "dots"} />
+      </button>
       <div className="sidebar-bottom">
         <section className="storage panel">
           <div>

@@ -42,11 +42,23 @@ const until = async expression => {
   throw Error('page condition timed out');
 };
 await send('Page.enable');
-for (const width of [1672, 390]) {
-  await send('Emulation.setDeviceMetricsOverride', { width, height: 941, deviceScaleFactor: 1, mobile: width === 390 });
+for (const width of [1672, 390, 320]) {
+  await send('Emulation.setDeviceMetricsOverride', { width, height: 941, deviceScaleFactor: 1, mobile: width <= 390 });
   await send('Page.navigate', { url });
   await until("!!document.querySelector('.page-card')");
   if (!await evaluate(`innerWidth === ${width} && document.documentElement.scrollWidth === ${width}`)) throw Error('layout overflow');
+  if (width <= 390) {
+    if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Меню]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('mobile menu button unreachable');
+    for (const title of ['GitHub', 'Настройки']) {
+      await evaluate("document.querySelector('button[aria-label=Меню]').click()");
+      await until("document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'true'");
+      if (!await evaluate(`(() => { const b=[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()`)) throw Error('mobile navigation item unreachable');
+      await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
+      await until(`!!document.querySelector('dialog[open]') && document.querySelector('dialog h2').innerText===${JSON.stringify(title)}`);
+      await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
+      await until("!document.querySelector('dialog[open]') && document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'false'");
+    }
+  }
   await evaluate("document.querySelector('.page-card[href*=architecture]').click()");
   await until("location.search.includes('page=') && document.body.innerText.includes('Демонстрационное содержимое')");
   if (!await evaluate("document.body.innerText.includes('Тестовая архитектура')")) throw Error('article title missing');
@@ -83,6 +95,6 @@ for (const width of [1672, 390]) {
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
   await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
   if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('user session survived logout');
-  console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, noHorizontalOverflow: true }));
+  console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
 ws.close();

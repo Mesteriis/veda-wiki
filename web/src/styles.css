@@ -161,6 +161,9 @@ summary:focus-visible {
   letter-spacing: 0.6px;
   white-space: nowrap;
 }
+.mobile-menu-toggle {
+  display: none;
+}
 .sidebar nav {
   display: flex;
   flex-direction: column;
@@ -1808,6 +1811,38 @@ dialog > p {
   }
   .sidebar nav span {
     display: none;
+  }
+  .mobile-menu-toggle {
+    display: grid;
+    place-items: center;
+    width: 37px;
+    height: 37px;
+    border: 1px solid #104b60;
+    border-radius: 6px;
+    flex: none;
+  }
+  .sidebar nav.mobile-open {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 4;
+    flex-direction: column;
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+    padding: 8px 12px;
+    border: 1px solid #026985;
+    background: #001017;
+  }
+  .sidebar nav.mobile-open .nav-item {
+    display: flex;
+    width: 100%;
+    height: 43px;
+    padding: 0 14px;
+    border: 0;
+  }
+  .sidebar nav.mobile-open span {
+    display: inline;
   }
   .sidebar-bottom {
     display: none;
