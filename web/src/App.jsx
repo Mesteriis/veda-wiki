@@ -824,8 +824,7 @@ function AccessSettings() {
     catch { setMessage("Не удалось завершить сеанс."); }
     finally { setBusy(false); }
   }
-  const selected = connections.find((connection) => connection.id === selectedConnection) || connections[0];
-  return <div className="github-connect github-page reader-access">
+  return <div className="github-connect reader-access">
     <p>Ключи дают только чтение выбранных источников. Для агентов и пользователей можно выдавать отдельные ключи.</p>
     {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти в управление доступом</button></form><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></>}
     {status === true && <>
