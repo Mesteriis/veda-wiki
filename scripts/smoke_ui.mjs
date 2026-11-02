@@ -120,7 +120,7 @@ for (const width of [1672, 390, 320]) {
     if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
     await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
     await until("!!document.querySelector('dialog[open] .reader-access input[name=key]')");
-    await evaluate(`document.querySelector('dialog input[name=key]').value=${JSON.stringify('d'.repeat(64))}; document.querySelector('dialog .reader-access form').requestSubmit()`);
+    await evaluate(`document.querySelector('dialog input[name=key]').value=${JSON.stringify('d'.repeat(64))}; document.querySelector('dialog input[name=key]').closest('form').requestSubmit()`);
     const expected = title === 'GitHub' ? 'Подключить репозиторий' : 'Новый ключ чтения';
     await until(`document.querySelector('dialog').innerText.includes(${JSON.stringify(expected)})`);
     if (title === 'GitHub' && !await evaluate("!!document.querySelector('dialog .github-connect input[name=source]') && !!document.querySelector('dialog .github-connect select[name=destination]') && document.querySelector('dialog').innerText.includes('Фоновое согласование')")) throw Error('mirror configuration controls missing');

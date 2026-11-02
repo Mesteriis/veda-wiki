@@ -36,7 +36,7 @@ def main():
         while private == public:
             public = port()
         server = subprocess.Popen(
-            [str(ROOT / 'veda'), '--data', str(data), '--listen', f'127.0.0.1:{private}',
+            [os.environ.get('VEDA_TEST_BINARY', str(ROOT / 'veda')), '--data', str(data), '--listen', f'127.0.0.1:{private}',
              '--public-listen', f'127.0.0.1:{public}'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
