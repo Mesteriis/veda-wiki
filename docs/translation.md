@@ -102,6 +102,11 @@ line. HTML blocks themselves are preserved verbatim. It does not detect the orig
 quality. It rejects unchanged output, truncated generation, stale revisions and
 changes to protected Markdown, including heading levels and list nesting, type, starting number and item
 count. This does not prove that translated prose preserves meaning.
+Table rows, column structure and alignment, and task-list checkbox states must
+also remain unchanged. As with other structural checks, this cannot detect a
+translation that changes the meaning or order of ordinary prose within cells.
+The stricter check applies to new validation and submissions; previously saved
+translations are not automatically revalidated or hidden.
 The worker also requires at least three Cyrillic
 letters and at least 40% Cyrillic among Latin and Cyrillic letters in parsed
 prose; code blocks, inline code, autolinks and raw HTML do not count. This is

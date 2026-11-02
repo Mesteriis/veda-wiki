@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark/ast"
+	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -84,6 +85,9 @@ func protectedMarkdown(value string) []string {
 			if _, ok := node.(*ast.List); ok {
 				result = append(result, "list:end")
 			}
+			if _, ok := node.(*extast.Table); ok {
+				result = append(result, "table:end")
+			}
 			return ast.WalkContinue, nil
 		}
 		switch n := node.(type) {
@@ -93,6 +97,16 @@ func protectedMarkdown(value string) []string {
 			result = append(result, fmt.Sprintf("list:%t:%d", n.IsOrdered(), n.Start))
 		case *ast.ListItem:
 			result = append(result, "list:item")
+		case *extast.TaskCheckBox:
+			result = append(result, fmt.Sprintf("task:%t", n.IsChecked))
+		case *extast.Table:
+			result = append(result, "table:start")
+		case *extast.TableHeader:
+			result = append(result, "table:header")
+		case *extast.TableRow:
+			result = append(result, "table:row")
+		case *extast.TableCell:
+			result = append(result, "table:cell:"+n.Alignment.String())
 		case *ast.FencedCodeBlock:
 			info := ""
 			if n.Info != nil {

@@ -5,6 +5,42 @@ import (
 	"testing"
 )
 
+func TestTranslationPreservesTablesAndTaskStates(t *testing.T) {
+	s := testStore(t)
+	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	original := "# Guide\n\n| Host | State |\n| :--- | ---: |\n| Alpha | Ready |\n| Beta | Waiting |\n\n- [x] Backup\n- [ ] Deploy\n"
+	rev, err := s.put("program", "docs/guide.md", original, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	translation := "# Руководство\n\n| Узел | Состояние |\n| :--- | ---: |\n| Альфа | Готов |\n| Бета | Ожидание |\n\n- [x] Резервная копия\n- [ ] Развёртывание\n"
+	in := translationRequest{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: translation}
+	for name, text := range map[string]string{
+		"removed table row": strings.Replace(translation, "| Бета | Ожидание |\n", "", 1),
+		"removed column":    strings.Replace(translation, "| Узел | Состояние |\n| :--- | ---: |\n| Альфа | Готов |\n| Бета | Ожидание |", "| Узел |\n| :--- |\n| Альфа |\n| Бета |", 1),
+		"changed alignment": strings.Replace(translation, "| :--- | ---: |", "| :--- | :--- |", 1),
+		"changed checkbox":  strings.Replace(translation, "- [ ] Развёртывание", "- [x] Развёртывание", 1),
+		"removed checkbox":  strings.Replace(translation, "- [ ] Развёртывание", "- Развёртывание", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			broken := in
+			broken.Text = text
+			result, err := s.validateTranslation(broken)
+			if err != nil || result["structural_valid"] != false {
+				t.Fatal("invalid proposal passed structural validation", err)
+			}
+			if _, err := s.submitTranslation(broken); err != ErrInvalid {
+				t.Fatal("invalid translation accepted", err)
+			}
+		})
+	}
+	if _, err = s.submitTranslation(in); err != nil {
+		t.Fatal("valid translation rejected", err)
+	}
+}
+
 func TestTranslationPreservesRawHTML(t *testing.T) {
 	s := testStore(t)
 	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
