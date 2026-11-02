@@ -53,8 +53,9 @@ Before changing client registrations, use the MCP virtual environment to run
 `scripts/check_agent_readers.py --url https://VEDA-HOST --source SOURCE_ID
 --article AGENTS.md --key-dir /absolute/private/agent-keys`. It checks all four
 files and requires access to exactly the chosen private source; public sources
-may also be visible. It reads a bounded excerpt and prepares an unsaved synthetic
-proposal without printing their contents or the keys. Use an existing article
+may also be visible. It reads a bounded excerpt and source context, then prepares
+unsaved synthetic new-article and revision-bound update proposals without
+printing their contents or the keys. Use an existing article
 path if the source has no root `AGENTS.md`. This checks the credentials and
 adapter and checks that the files contain four distinct keys. It does not prove
 that each agent's model can discover or invoke the tools; verify each client

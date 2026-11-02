@@ -19,7 +19,8 @@ READER_TOOLS = frozenset(('veda_sources', 'veda_search', 'veda_find', 'veda_read
     'veda_read_display', 'veda_read_display_excerpt', 'veda_read_excerpt', 'veda_context',
     'veda_prepare_update', 'veda_prepare_new_article', 'veda_prepare_translation',
     'veda_translation_needed', 'veda_transfer_plan'))
-REQUIRED_TOOLS = frozenset(('veda_sources', 'veda_read_excerpt', 'veda_prepare_new_article'))
+REQUIRED_TOOLS = frozenset(('veda_sources', 'veda_read_excerpt', 'veda_context',
+                            'veda_prepare_update', 'veda_prepare_new_article'))
 
 
 def validate_reader_tools(names):
@@ -77,14 +78,24 @@ async def verify_agent(agent, key, base, source, article):
                 private_ids = {item['id'] for item in result['sources'] if item.get('visibility') == 'private'}
                 if private_ids != {source}:
                     raise ValueError('Private source scope does not match the expected source')
-                response_json(await session.call_tool('veda_read_excerpt', {
+                excerpt = response_json(await session.call_tool('veda_read_excerpt', {
                     'source_id': source, 'path': article, 'limit': 1}))
+                context = response_json(await session.call_tool('veda_context', {
+                    'source_id': source, 'path': article}))
+                if not isinstance(context.get('source_status'), dict):
+                    raise ValueError('Source context unavailable')
+                update = response_json(await session.call_tool('veda_prepare_update', {
+                    'source_id': source, 'path': article, 'expected_revision': excerpt['revision'],
+                    'text': '# Synthetic unsaved proposal\n'}))
+                if (update.get('saved') is not False or update.get('expected_revision') != excerpt['revision']
+                        or update.get('base_sha256') != excerpt['sha256']):
+                    raise ValueError('Update proposal does not match the read revision')
                 proposal = response_json(await session.call_tool('veda_prepare_new_article', {
                     'source_id': source, 'path': 'agent-check-' + uuid.uuid4().hex + '.md',
                     'text': '# Synthetic unsaved proposal\n'}))
                 if proposal.get('saved') is not False or proposal.get('expected_revision') != 0:
                     raise ValueError('Proposal was not marked unsaved')
-    print(agent + ': reader scope, article and unsaved proposal verified')
+    print(agent + ': reader scope, context and unsaved proposals verified')
 
 
 async def run(args):
