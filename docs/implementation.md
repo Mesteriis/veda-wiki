@@ -24,3 +24,11 @@ retain unknown origin),
 historical image bindings, blob/history retention, database indexing, packaging and whole-product acceptance. Future verification must
 include actual multi-repository synchronization, failure recovery and all
 access paths, not just the existing unit tests.
+
+The SQLite write path still serializes all records on each transaction. A
+synthetic benchmark with 200 approximately 126 KiB documents measured about
+42 ms and 31.7 MB allocated per single-article update on an Apple M5 Max
+(`cd server && go test -run '^$' -bench '^BenchmarkSQLiteSingleArticleUpdateLargeCorpus$' -benchmem -benchtime=3x`).
+This is not a production workload or a storage limit. Incremental persistence
+needs an explicit mutation-tracking design and recovery tests; shallow snapshots
+alone are not sufficient evidence that nested values cannot change in place.
