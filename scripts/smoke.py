@@ -92,6 +92,7 @@ async def main():
                         "expected_revision": 1, "destination_id": "open", "destination_path": "unsafe.md"})
                     assert len(plan["articles"]) == 1 and plan["articles"][0]["credential_like"] is True
                     assert "synthetic-fixture-only" not in json.dumps(plan)
+                    assert plan["source_status"]["last_import_observed_at"] is None and plan["destination_status"]["last_import_observed_at"] is None
                     current = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert current["revision"] == 1 and current["text"] == "# Private canary"
                     await call("veda_write_article", {"source_id": "closed", "path": "README.md",

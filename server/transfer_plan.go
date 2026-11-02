@@ -38,7 +38,9 @@ func (s *Store) directoryTransferSource(sourceID, articlePath, destination strin
 }
 
 type transferPlan struct {
-	Articles []transferPlanItem `json:"articles"`
+	Articles          []transferPlanItem `json:"articles"`
+	SourceStatus      contextStatus      `json:"source_status"`
+	DestinationStatus contextStatus      `json:"destination_status"`
 }
 
 func (s *Store) planTransfer(in copyRequest) (transferPlan, error) {
@@ -77,7 +79,7 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 	pending := []pair{{from: in.SourcePath, to: in.DestinationPath}}
 	mappedFrom, mappedTo := map[string]string{}, map[string]string{}
 	indexMapped := map[string]bool{}
-	result := transferPlan{Articles: []transferPlanItem{}}
+	result := transferPlan{Articles: []transferPlanItem{}, SourceStatus: s.sourceStatusLocked(in.SourceID, src), DestinationStatus: s.sourceStatusLocked(in.DestinationID, dst)}
 	edges := 0
 	for len(pending) > 0 {
 		current := pending[len(pending)-1]

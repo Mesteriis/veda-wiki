@@ -168,3 +168,47 @@ func TestTransferPlanMarksCredentialLikeRevisionsWithoutEchoingContent(t *testin
 		t.Fatal("incorrect credential-like annotations or content echoed")
 	}
 }
+
+func TestTransferPlanIncludesBothAuthorizedSourceStatuses(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "private")
+	if _, err := s.put("from", "root.md", "# Root", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("from", "other.md", "# Other", 0); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	db := s.clone()
+	from := db.Sources["from"]
+	from.ImportDirty = true
+	db.Sources["from"] = from
+	to := db.Sources["to"]
+	to.ImportPartial = true
+	db.Sources["to"] = to
+	a := db.Articles["from/other.md"]
+	a.Conflicts = []ImportConflict{{}}
+	db.Articles["from/other.md"] = a
+	err := s.commit(db)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.createAccessKey("plan-status", []string{"from", "to"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"source_id":"from","source_path":"root.md","expected_revision":1,"destination_id":"to","destination_path":"root.md"}`
+	req := httptest.NewRequest("POST", "/api/v1/articles/transfer-plan", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+key)
+	out := httptest.NewRecorder()
+	(Wiki{Store: s, Token: "test-owner"}).ServeHTTP(out, req)
+	var plan transferPlan
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &plan) != nil {
+		t.Fatal("plan unavailable", out.Code)
+	}
+	if !plan.SourceStatus.ImportDirty || plan.SourceStatus.UnresolvedConflicts != 1 || plan.SourceStatus.LastImportObservedAt != nil || !plan.DestinationStatus.ImportPartial || plan.DestinationStatus.LastImportObservedAt != nil {
+		t.Fatal("incomplete or incorrect source status", plan.SourceStatus, plan.DestinationStatus)
+	}
+}

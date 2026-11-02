@@ -230,7 +230,10 @@ source and destination identifiers, paths, and expected source revision. They
 return the recursively linked Markdown articles with their current revisions,
 digests, mapped paths, destination status (`missing`, `matching`, or
 `conflict`) and a `credential_like` heuristic for each article without exposing
-its text. The heuristic can miss secrets or flag harmless examples. Cycles are
+its text. It also includes `source_status` and `destination_status` from the same
+authorized snapshot, including partial/dirty flags, observation time, conflicts
+and applicable sync status. An observation is not proof of live state. The
+heuristic can miss secrets or flag harmless examples. Cycles are
 included once; ambiguous path mappings are rejected.
 The plan is a read-only snapshot, not a reservation or a guarantee that a
 copy or move will succeed. It does not inspect images, embedded HTML,
