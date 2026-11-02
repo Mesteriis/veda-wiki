@@ -363,27 +363,49 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 			return b, nil
 		}
 	}
-	// During adoption, reuse the existing private source only when its bytes
-	// match the authenticated repository's exact Git object and declared size.
-	// The adoption transaction separately revalidates the complete local state.
+	// An authenticated private repository can reuse identical bytes from any
+	// disconnected private source. The repository tree supplies the exact Git
+	// object and length; source identities and article state stay independent.
 	if c.Private {
 		m.store.mu.RLock()
-		src, exists := m.store.db.Sources[c.ID]
-		var local []byte
-		var ref BlobRef
-		if exists && src.Visibility == "private" && src.ConnectionID == "" {
-			if a, ok := m.store.db.Articles[c.ID+"/"+entry.Path]; ok && !a.Deleted && len(a.Versions) > 0 {
-				local = []byte(a.Versions[len(a.Versions)-1].Text)
+		var articles []string
+		var images []BlobRef
+		for id, src := range m.store.db.Sources {
+			if src.Visibility != "private" || src.ConnectionID != "" {
+				continue
 			}
-			ref = src.Assets[entry.Path]
+			if a, ok := m.store.db.Articles[id+"/"+entry.Path]; ok && !a.Deleted && len(a.Versions) > 0 {
+				articles = append(articles, a.Versions[len(a.Versions)-1].Text)
+			}
+			if ref, ok := src.Assets[entry.Path]; ok {
+				images = append(images, ref)
+			}
 		}
 		m.store.mu.RUnlock()
-		if ref.SHA != "" {
-			if image, err := m.store.readAsset(ref); err == nil {
-				local = image
+		var local []byte
+		matched := false
+		for _, text := range articles {
+			if int64(len(text)) != entry.Size {
+				continue
+			}
+			candidate := []byte(text)
+			if gitBlobDigest(candidate, len(entry.SHA)) == entry.SHA {
+				local = candidate
+				matched = true
+				break
 			}
 		}
-		if int64(len(local)) == entry.Size && gitBlobDigest(local, len(entry.SHA)) == entry.SHA {
+		if !matched {
+			for _, ref := range images {
+				image, err := m.store.readAsset(ref)
+				if err == nil && int64(len(image)) == entry.Size && gitBlobDigest(image, len(entry.SHA)) == entry.SHA {
+					local = image
+					matched = true
+					break
+				}
+			}
+		}
+		if matched {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}

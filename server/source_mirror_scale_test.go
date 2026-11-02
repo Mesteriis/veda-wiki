@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -76,7 +79,23 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	}
 	f := newFakeGitHub(t, remote)
 	f.modify(func() { f.private = true })
-	connectFixture(t, s, f, true)
+	var requests atomic.Int32
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/git/blobs/") {
+			requests.Add(1)
+		}
+		f.serve(w, r)
+	}))
+	defer gateway.Close()
+	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	m := newSyncManager(s, client)
+	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", Write: true}); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +108,7 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	if _, err = s.configureMirror(context.Background(), mirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &yes, ExpectedRevision: &version}); err != nil {
 		t.Fatal(err)
 	}
-	m := newSyncManager(s, f.client())
+	m = newSyncManager(s, client)
 	passes := 0
 	peak := uint64(0)
 	for passes < 40 {
@@ -123,6 +142,9 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	}
 	if baselines != 534 || len(s.db.Sources["handbook"].Assets) != 147 || len(f.contents()) != 1+611+147 {
 		t.Fatal("scale state mismatch", baselines)
+	}
+	if requests.Load() != 78 {
+		t.Fatal("unexpected remote blob downloads", requests.Load())
 	}
 	for _, i := range []int{524, 525} {
 		name := fmt.Sprintf("pages/page-%03d.md", i)

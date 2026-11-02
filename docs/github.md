@@ -293,10 +293,11 @@ all existing source assets must be present with identical contents. Tombstones,
 unresolved conflicts, pending operations, or a concurrent source change reject
 the attachment. Repository identity, privacy and branch head are checked again
 before the connection and import are committed together.
-For a private attachment, existing local article and image bytes can be reused
-when their size and Git object digest match the authenticated repository tree.
-Other content is fetched and checked normally. The complete local source is
-checked again before attachment, including when local bytes were reused.
+For a verified private repository, article and image bytes from disconnected
+private sources can be reused when their path, size and Git object digest match
+the authenticated repository tree. Source identities remain separate. Other
+content is fetched and checked normally. During attachment, the complete local
+source is checked again before committing, including when bytes were reused.
 
 Matching articles retain their revision history. Different versions become
 conflicts, repository-only articles are imported, and local-only articles remain
