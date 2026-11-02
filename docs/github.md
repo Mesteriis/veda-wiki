@@ -50,6 +50,17 @@ VEDA_TEST_PUBLIC_CHECKOUT_MULTI=1 VEDA_TEST_PUBLIC_REPO_ONE=OWNER/REPO1 \
   VEDA_TEST_PUBLIC_REPO_TWO=OWNER/REPO2 .venv/bin/python scripts/smoke_public_checkout_multisource.py
 ```
 
+A separate opt-in check clones the existing synthetic public wiki fixture branch
+and an explicitly supplied public program repository. It verifies `veda.yaml`,
+an image, `docs/` boundaries, exact article bytes, SQLite restart and MCP
+reads/proposals. It makes no GitHub writes and does not exercise the GitHub API;
+the existing fixture branch must remain available:
+
+```sh
+VEDA_TEST_PUBLIC_WIKI_PROGRAM=1 VEDA_TEST_PUBLIC_PROGRAM_REPO=OWNER/REPO \
+  .venv/bin/python scripts/smoke_public_wiki_program_checkout.py
+```
+
 The local integration test uses two fake GitHub repositories, including one
 private source, and the MCP SDK to verify merged search, source-scoped reads,
 proposals and denial after SQLite restart. Run it with a Python environment that
