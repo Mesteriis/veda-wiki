@@ -1,5 +1,6 @@
 // Connect only to the temporary Chrome DevTools port and synthetic VEDA URLs.
 const [port, url, repo] = process.argv.slice(2);
+const sourceId = (`github-${repo.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`).slice(0, 64).replace(/-+$/, '');
 let pages;
 for (let i = 0; i < 400; i++) {
   try {
@@ -42,12 +43,18 @@ const until = async expression => {
 await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 await send('Page.navigate', {url});
-await until("!!document.querySelector('#main-navigation .nav-item')");
+await until("!!document.querySelector('button[aria-label=Войти]')");
+await evaluate("document.querySelector('button[aria-label=Войти]').click()");
+await until("!!document.querySelector('.reader-access button')");
+await evaluate("[...document.querySelectorAll('.reader-access button')].find(b=>b.innerText==='Войти по ключу').click()");
+await until("!!document.querySelector('.reader-access input[name=key]')");
+await evaluate(`document.querySelector('.reader-access input[name=key]').value=${JSON.stringify('e'.repeat(64))};document.querySelector('.reader-access form').requestSubmit()`);
+await until("!![...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText==='GitHub')");
 await evaluate("[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText==='GitHub').click()");
 await until("!!document.querySelector('dialog[open] .github-connect input[name=key]')");
 await evaluate(`document.querySelector('dialog input[name=key]').value=${JSON.stringify('d'.repeat(64))};document.querySelector('dialog input[name=key]').closest('form').requestSubmit()`);
 await until("!!document.querySelector('dialog input[name=repository]')");
-await evaluate(`(() => {const r=document.querySelector('dialog input[name=repository]'), f=r.form; if(f.querySelector('input[name=write]').checked) throw Error('write unexpectedly selected'); r.value=${JSON.stringify(repo)}; f.querySelector('input[name=id]').value='live-program'; f.requestSubmit();})()`);
+await evaluate(`(() => {const r=document.querySelector('dialog input[name=repository]'), f=r.form; if(f.querySelector('input[name=write]').checked) throw Error('write unexpectedly selected'); r.value=${JSON.stringify(repo)}; f.requestSubmit();})()`);
 await until("document.querySelector('dialog').innerText.includes('Репозиторий подключён')");
 let ready=false;
 for(let i=0;i<180;i++) {
@@ -56,9 +63,9 @@ for(let i=0;i<180;i++) {
   await new Promise(resolve=>setTimeout(resolve,500));
 }
 if(!ready) throw Error('GitHub source did not become ready');
-const connection=await evaluate("(async () => {const c=await (await fetch('/api/admin/github/connections')).json(); const v=c.find(x=>x.id==='live-program'); return v ? {write:v.write,account:v.account_id || ''} : null;})()");
+const connection=await evaluate(`(async () => {const c=await (await fetch('/api/admin/github/connections')).json(); const v=c.find(x=>x.id===${JSON.stringify(sourceId)}); return v ? {write:v.write,account:v.account_id || ''} : null;})()`);
 if(!connection || connection.write !== false || connection.account !== '') throw Error('connection is not anonymous read-only');
-const result=await evaluate("(async () => { const s=await (await fetch('/api/v1/sources')).json(); const p=await (await fetch('/api/v1/articles')).json(); return {source:s.find(x=>x.id==='live-program')?.kind, count:p.length, docsOnly:p.every(x=>x.environment==='live-program' && x.path.startsWith('live-program/docs/'))}; })()");
+const result=await evaluate(`(async () => { const s=await (await fetch('/api/v1/sources')).json(); const p=await (await fetch('/api/v1/articles')).json(); const id=${JSON.stringify(sourceId)}; return {source:s.find(x=>x.id===id)?.kind, count:p.length, docsOnly:p.every(x=>x.environment===id && x.path.startsWith(id+'/docs/'))}; })()`);
 if(result.source!=='program' || !result.count || !result.docsOnly) throw Error('program import mismatch');
 await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
 await evaluate("location.assign('/?env=all')");
