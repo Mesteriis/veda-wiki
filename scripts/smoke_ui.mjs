@@ -88,6 +88,7 @@ for (const width of [1672, 390, 320]) {
   await until("!!document.querySelector('.page-card')");
   if (await evaluate("document.body.innerText.includes('Источники знаний')")) throw Error('integration panel visible anonymously');
   if (await evaluate("!!document.querySelector('.sidebar-bottom .storage, .sidebar-bottom .system')")) throw Error('sidebar status panels visible anonymously');
+  if (await evaluate("!!document.querySelector('.shortcuts')")) throw Error('quick actions visible anonymously');
   if (await evaluate("document.body.innerText.includes('Приватная тестовая страница')")) throw Error('private content visible anonymously');
   if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Профиль]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return getComputedStyle(b).display !== 'none' && r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('profile button is not visible or reachable');
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
@@ -98,6 +99,7 @@ for (const width of [1672, 390, 320]) {
   await until("document.body.innerText.includes('Приватная тестовая страница')");
   if (!await evaluate("document.body.innerText.includes('Источники знаний')")) throw Error('integration panel missing for authenticated reader');
   if (!await evaluate("!!document.querySelector('.sidebar-bottom .storage') && !!document.querySelector('.sidebar-bottom .system')")) throw Error('sidebar status panels missing for authenticated reader');
+  if (!await evaluate("!!document.querySelector('.shortcuts')")) throw Error('quick actions missing for authenticated reader');
   await evaluate("document.querySelector('.page-card[href*=private]').click()");
   await until("document.body.innerText.includes('Закрытый синтетический текст')");
   if (await evaluate("!!document.querySelector('.conflict-warning')")) throw Error('clean article showed conflict warning');
