@@ -130,6 +130,9 @@ only when the account has the required repository permission. No account is
 automatically guessed. The private browser interface also offers GitHub App or
 token account registration and repository connection. An already signed-in
 named administrator can use this dialog without another login.
+The connection form derives a source ID from the repository address and
+selects an existing account when there is exactly one; the owner can choose
+another account or set an explicit source ID in advanced settings.
 The administrator session grants GitHub account, connection, configuration,
 manual sync and pause/resume endpoints, not article editing or the general owner API. It is accepted only over direct
 HTTPS or loopback HTTP. A reader session grants these permissions only to a

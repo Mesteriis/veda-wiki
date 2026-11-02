@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { buildTree, buildMergedTree } from "./tree.js";
 import { githubErrorMessage, githubVisibilityLabel } from "./githubErrors.js";
+import { githubSourceId } from "./githubSourceId.js";
 import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
 const Features = createContext(() => {});
 const descriptions = {
@@ -743,11 +744,15 @@ function GitHubConnect() {
   const [status, setStatus] = useState(null);
   const [sharedSession, setSharedSession] = useState(false);
   const [accounts, setAccounts] = useState([]);
+  const [repoAccount, setRepoAccount] = useState(null);
   const [connections, setConnections] = useState([]);
   const [mirrors, setMirrors] = useState([]);
   const [accountKind, setAccountKind] = useState("app");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (repoAccount === null && accounts.length > 0) setRepoAccount(accounts.length === 1 ? accounts[0].id : "");
+  }, [accounts, repoAccount]);
   async function json(route, options = {}) {
     const response = await fetch(route, options);
     if (!response.ok) {
@@ -803,10 +808,17 @@ function GitHubConnect() {
   async function connect(event) {
     event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
     const account = data.get("account");
-    setBusy(true); setMessage("");
+    const repository = String(data.get("repository") || "").trim();
+    const generatedId = githubSourceId(repository);
+    if (!generatedId) { setMessage("Укажите адрес GitHub в виде owner/repository или https://github.com/owner/repository."); return; }
+    const customId = String(data.get("id") || "").trim();
+    const sourceId = customId || generatedId;
+    const adopted = data.has("adopt_existing");
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(sourceId) || (adopted && !customId)) { setMessage("Укажите корректный идентификатор: строчные латинские буквы, цифры, дефис или подчёркивание. Для привязки существующего источника нужен его идентификатор."); return; }
+    setBusy(true); setMessage("Проверяем доступ к репозиторию и его ветке…");
     try {
-      await send("/api/admin/github/connections", { id: data.get("id"), repository: data.get("repository"), account_id: account, branch: data.get("branch"), write: data.has("write"), adopt_existing: data.has("adopt_existing") });
-      const adopted = data.has("adopt_existing"); form.reset(); setMessage(adopted ? "Источник привязан. Проверьте конфликты и отключите прежний локальный импорт." : "Репозиторий подключён; импорт выполняется в фоне."); refresh().catch(() => setMessage("Репозиторий подключён, но не удалось обновить список."));
+      await send("/api/admin/github/connections", { id: sourceId, repository, account_id: account, branch: data.get("branch"), write: data.has("write"), adopt_existing: adopted });
+      form.reset(); setMessage(adopted ? "Источник привязан. Проверьте конфликты и отключите прежний локальный импорт." : `Репозиторий подключён как ${sourceId}; импорт выполняется в фоне.`); refresh().catch(() => setMessage("Репозиторий подключён, но не удалось обновить список."));
     } catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось подключить репозиторий. Проверьте адрес, ветку и права аккаунта.")); }
     finally { setBusy(false); }
   }
@@ -861,7 +873,7 @@ function GitHubConnect() {
     {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти</button></form><details><summary>Первый вход — установить пароль</summary><form onSubmit={setup}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Одноразовый код<input name="token" type="password" autoComplete="off" required /></label><label>Новый пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><label>Повторите пароль<input name="confirm" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Установить пароль</button></form></details><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></>}
     {status === true && <>
       <form onSubmit={addAccount}><h3>Аккаунт GitHub</h3><label>Идентификатор<input name="id" required placeholder="personal" /></label><label>Способ подключения<select value={accountKind} onChange={(e) => setAccountKind(e.target.value)}><option value="app">GitHub App</option><option value="token">Токен</option></select></label>{accountKind === "app" ? <><label>App ID<input name="app_id" type="number" min="1" step="1" required /></label><label>Installation ID<input name="installation_id" type="number" min="1" step="1" required /></label><label>Приватный ключ App<textarea name="private_key" autoComplete="off" required rows="4" /></label></> : <label>Токен<input name="token" type="password" autoComplete="off" required /></label>}<button disabled={busy}>Сохранить аккаунт</button></form>
-      <form onSubmit={connect}><h3>Подключить репозиторий</h3><label>Идентификатор источника<input name="id" required placeholder="handbook" /></label><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" defaultValue=""><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><label className="github-write"><input type="checkbox" name="adopt_existing" /> Привязать существующий приватный источник</label><p>Укажите его идентификатор и аккаунт. Различия станут конфликтами; локальные статьи сохранятся без отправки. После привязки прежний локальный импорт нужно перенастроить.</p><button disabled={busy}>Подключить</button></form>
+      <form onSubmit={connect}><h3>Подключить репозиторий</h3><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" value={repoAccount || ""} onChange={(event) => setRepoAccount(event.target.value)}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><p>Идентификатор источника будет выбран автоматически; импорт и наблюдение начнутся после подключения.</p><details><summary>Дополнительные настройки источника</summary><label>Идентификатор источника<input name="id" placeholder="автоматически" /></label><label className="github-write"><input type="checkbox" name="adopt_existing" /> Привязать существующий приватный источник</label><p>Для привязки укажите его идентификатор и аккаунт. Локальные статьи сохранятся без автоматической отправки; прежний импорт нужно перенастроить.</p></details><button disabled={busy}>{busy ? "Проверяем…" : "Подключить"}</button></form>
       <h3>Источники</h3>{connections.length ? <ul>{connections.map((c) => {
         const limited = c.last_error === "rate_limited" && Date.parse(c.next_attempt) > Date.now();
         const detail = limited ? `Лимит GitHub, повтор после ${new Date(c.next_attempt).toLocaleString()}` : c.last_error ? githubErrorMessage(c.last_error, 0, "Проверьте состояние источника.") : "";

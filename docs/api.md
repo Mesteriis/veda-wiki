@@ -264,13 +264,22 @@ local reader socket. Copying and moving remain owner-only.
 
 On Linux, the optional `--local-import-source ID` works only with
 `--reader-socket`. The kernel must identify the Unix socket peer as UID 0. It
-accepts only `POST /api/v1/import` without a browser Origin, and only a partial
+accepts `POST /api/v1/import` without a browser Origin, and only a partial
 batch (`complete: false`) for that exact existing, private, disconnected local
 source. It cannot create sources, operate GitHub, write individual articles or
 change visibility. The same generation and conflict rules apply. Non-root peers
 remain read-only; HTTP headers cannot supply peer identity. On other operating
 systems this import channel is unavailable. A privileged process can already
 access local files; do not treat this mechanism as per-user authorization.
+
+The same root-only Unix socket accepts `POST /api/local/remove-imported-source`
+with `expected_generation` and `confirm: true`, to remove the configured
+disconnected private local source and its article records. Stop the external
+importer first and keep a verified backup. A changed generation, connected
+source or retained record depending on the source causes a conflict. The
+operation does not delete blobs or remote repositories and is unavailable to
+browser and non-root clients. A lost response requires checking current state
+before retrying.
 
 ## Import observation
 

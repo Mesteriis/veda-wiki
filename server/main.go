@@ -316,6 +316,23 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		w.browserAccessAPI(rw, r)
 		return
 	}
+	if w.Store != nil && w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/local/remove-imported-source" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
+		var in struct {
+			Generation string `json:"expected_generation"`
+			Confirm    bool   `json:"confirm"`
+		}
+		if decodeLimited(rw, r, &in, 1024) != nil || !in.Confirm {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		count, err := w.Store.removeLocalImportedSource(w.LocalImportSource, in.Generation)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]any{"source_id": w.LocalImportSource, "articles_removed": count})
+		return
+	}
 	if w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/v1/import" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
 		var batch ImportBatch
 		if decodeImport(rw, r, &batch) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
