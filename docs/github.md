@@ -91,6 +91,22 @@ has the MCP SDK:
 cd server && VEDA_TEST_MCP_PYTHON=/path/to/python go test -run '^TestMultiSourceMCPAfterSQLiteRestart$' -v .
 ```
 
+An opt-in browser acceptance test connects one explicitly chosen public program
+repository through the GitHub administration dialog in a disposable VEDA store.
+It verifies the connection is anonymous and read-only, waits for synchronization,
+checks that only `docs/` articles appear, and opens the article list. It requires
+Node 22+, a trusted Chrome or Chromium binary and at least 20 anonymous GitHub
+API requests remaining; larger repositories may need more. It does not run in
+CI or test saved credentials, private access, write-back, translation quality,
+or connectivity from another host. The public `Mesteriis/mac-tower` repository
+passed this check on a workstation with six articles on 2026-11-02:
+
+```sh
+make build
+VEDA_TEST_GITHUB_BROWSER=1 VEDA_TEST_CHROME=/absolute/path/to/chrome \
+  VEDA_TEST_PUBLIC_PROGRAM_REPO=OWNER/REPOSITORY python3 scripts/smoke_public_github_browser.py
+```
+
 For a public repository, start VEDA and connect it without credentials:
 
 ```sh
