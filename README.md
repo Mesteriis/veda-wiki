@@ -69,7 +69,9 @@ python3 -m venv .venv
 ```
 
 Register that command with your MCP client, using absolute paths appropriate to
-your checkout. stdio is the MCP transport; use `--url` to choose the loopback
+your checkout. For read-only Codex, Claude Code, OpenCode and Hermes examples
+and the proposal workflow, see [agent setup](docs/agent-workflow.md). stdio is
+the MCP transport; use `--url` to choose the loopback
 REST endpoint. For a local read-only agent, the service can instead expose a Unix socket in a
 private directory owned by the service user. Start VEDA with `--reader-socket
 /path/to/private/reader.sock`, then use the MCP adapter with `--reader-socket`
