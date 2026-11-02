@@ -54,6 +54,10 @@ func pendingReconcilePath(db Database, source, p string) bool {
 // either side, never infers a baseline from unequal content, and only queues
 // writes to a verified private GitHub destination. Caller must be an owner.
 func (s *Store) reconcileSources(ctx context.Context, in reconcileRequest) (reconcileResult, error) {
+	return s.reconcileSourcesExpected(ctx, in, nil)
+}
+
+func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileRequest, mirrorRevision *int) (reconcileResult, error) {
 	result := reconcileResult{Blocked: []string{}}
 	if !identifier.MatchString(in.SourceID) || !identifier.MatchString(in.DestinationID) || in.SourceID == in.DestinationID {
 		return result, ErrInvalid
@@ -66,6 +70,12 @@ func (s *Store) reconcileSources(ctx context.Context, in reconcileRequest) (reco
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if mirrorRevision != nil {
+		mirror, ok := s.db.SourceMirrors[in.DestinationID]
+		if !ok || !mirror.Enabled || mirror.Revision != *mirrorRevision || mirror.SourceID != in.SourceID {
+			return result, ErrConflict
+		}
+	}
 	src, ok := s.db.Sources[in.SourceID]
 	if !ok {
 		return result, ErrNotFound

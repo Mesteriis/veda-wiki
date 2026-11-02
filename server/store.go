@@ -68,17 +68,18 @@ type Article struct {
 	PublishedLocal bool             `json:"published_local,omitempty"`
 }
 type Database struct {
-	Version     int                         `json:"version"`
-	Updated     string                      `json:"updated_at"`
-	Sources     map[string]Source           `json:"sources"`
-	Articles    map[string]Article          `json:"articles"`
-	Accounts    map[string]GitHubAccount    `json:"github_accounts,omitempty"`
-	Connections map[string]GitHubConnection `json:"github_connections,omitempty"`
-	Outbox      map[string]SyncJob          `json:"outbox,omitempty"`
-	Moves       map[string]Move             `json:"moves,omitempty"`
-	AccessKeys  map[string]AccessKey        `json:"access_keys,omitempty"`
-	Users       map[string]WikiUser         `json:"users,omitempty"`
-	Teams       map[string]WikiTeam         `json:"teams,omitempty"`
+	Version       int                         `json:"version"`
+	Updated       string                      `json:"updated_at"`
+	Sources       map[string]Source           `json:"sources"`
+	Articles      map[string]Article          `json:"articles"`
+	Accounts      map[string]GitHubAccount    `json:"github_accounts,omitempty"`
+	Connections   map[string]GitHubConnection `json:"github_connections,omitempty"`
+	Outbox        map[string]SyncJob          `json:"outbox,omitempty"`
+	Moves         map[string]Move             `json:"moves,omitempty"`
+	AccessKeys    map[string]AccessKey        `json:"access_keys,omitempty"`
+	Users         map[string]WikiUser         `json:"users,omitempty"`
+	Teams         map[string]WikiTeam         `json:"teams,omitempty"`
+	SourceMirrors map[string]SourceMirror     `json:"source_mirrors,omitempty"`
 }
 
 // One server process owns the data directory. All writes are serialized and
@@ -143,7 +144,7 @@ func openStore(dir string) (*Store, error) {
 }
 
 func (s *Store) validate() (*Store, error) {
-	if (s.db.Version < 1 || s.db.Version > 18) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version < 1 || s.db.Version > 19) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -157,6 +158,38 @@ func (s *Store) validate() (*Store, error) {
 	}
 	if s.db.Moves == nil {
 		s.db.Moves = map[string]Move{}
+	}
+	if s.db.SourceMirrors == nil {
+		s.db.SourceMirrors = map[string]SourceMirror{}
+	}
+	for id, mirror := range s.db.SourceMirrors {
+		if s.db.Version < 19 || id != mirror.DestinationID || mirror.SourceID == id || !identifier.MatchString(mirror.SourceID) || !identifier.MatchString(id) || mirror.Revision < 1 {
+			return nil, errors.New("invalid source mirror")
+		}
+		if _, ok := s.db.Sources[mirror.SourceID]; !ok {
+			return nil, errors.New("mirror source unavailable")
+		}
+		if _, ok := s.db.Sources[id]; !ok {
+			return nil, errors.New("mirror destination unavailable")
+		}
+		validState := mirror.State == "pending" || mirror.State == "ready" || mirror.State == "blocked" || mirror.State == "syncing" || mirror.State == "paused" || mirror.State == "error"
+		validError := mirror.LastError == "" || mirror.LastError == "source_unavailable" || mirror.LastError == "interrupted" || mirror.LastError == "storage_unavailable"
+		if !validState || !validError || mirror.Blocked < 0 || (mirror.Enabled && mirror.State == "paused") || (!mirror.Enabled && mirror.State != "paused") {
+			return nil, errors.New("invalid mirror status")
+		}
+		if len(mirror.BlockedPaths) > 50 || len(mirror.BlockedPaths) > mirror.Blocked {
+			return nil, errors.New("invalid mirror blocked paths")
+		}
+		for _, p := range mirror.BlockedPaths {
+			if !articlePath(p, s.db.Sources[mirror.SourceID].Kind) {
+				return nil, errors.New("invalid mirror blocked path")
+			}
+		}
+		if mirror.LastRun != "" {
+			if _, err := time.Parse(time.RFC3339Nano, mirror.LastRun); err != nil {
+				return nil, errors.New("invalid mirror observation time")
+			}
+		}
 	}
 	if s.db.Version == 1 && len(s.db.Moves) > 0 {
 		return nil, errors.New("move records require store version 2")
@@ -515,6 +548,11 @@ func (s *Store) clone() Database {
 	db.Moves = make(map[string]Move, len(s.db.Moves))
 	for k, v := range s.db.Moves {
 		db.Moves[k] = v
+	}
+	db.SourceMirrors = make(map[string]SourceMirror, len(s.db.SourceMirrors))
+	for k, v := range s.db.SourceMirrors {
+		v.BlockedPaths = append([]string(nil), v.BlockedPaths...)
+		db.SourceMirrors[k] = v
 	}
 	db.AccessKeys = make(map[string]AccessKey, len(s.db.AccessKeys))
 	for k, v := range s.db.AccessKeys {

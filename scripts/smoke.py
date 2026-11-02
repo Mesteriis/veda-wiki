@@ -64,7 +64,7 @@ async def main():
                     tools = await session.list_tools()
                     assert {tool.name for tool in tools.tools} == {
                         "veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_create_source",
-                        "veda_write_article", "veda_copy_article", "veda_transfer_plan", "veda_reconcile_sources", "veda_moves", "veda_cancel_move",
+                        "veda_write_article", "veda_copy_article", "veda_transfer_plan", "veda_reconcile_sources", "veda_source_mirrors", "veda_configure_source_mirror", "veda_moves", "veda_cancel_move",
                         "veda_move_article", "veda_translation_needed", "veda_translate_article", "veda_context",
                         "veda_conflicts", "veda_resolve_conflict", "veda_github_status", "veda_github_connect",
                         "veda_sync", "veda_publish_job", "veda_cancel_bundle"}

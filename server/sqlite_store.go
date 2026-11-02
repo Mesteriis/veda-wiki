@@ -131,6 +131,11 @@ func (s *Store) commitSQLite(state Database) error {
 			return err
 		}
 	}
+	for id, v := range state.SourceMirrors {
+		if err = put("source_mirror", id, v); err != nil {
+			return err
+		}
+	}
 	for id, v := range state.AccessKeys {
 		if err = put("access_key", id, v); err != nil {
 			return err
@@ -230,7 +235,7 @@ func (s *Store) loadSQLite(marker []byte) error {
 		return err
 	}
 	defer rows.Close()
-	result := Database{Sources: map[string]Source{}, Articles: map[string]Article{}, Accounts: map[string]GitHubAccount{}, Connections: map[string]GitHubConnection{}, Outbox: map[string]SyncJob{}, Moves: map[string]Move{}, AccessKeys: map[string]AccessKey{}, Users: map[string]WikiUser{}, Teams: map[string]WikiTeam{}}
+	result := Database{Sources: map[string]Source{}, Articles: map[string]Article{}, Accounts: map[string]GitHubAccount{}, Connections: map[string]GitHubConnection{}, Outbox: map[string]SyncJob{}, Moves: map[string]Move{}, AccessKeys: map[string]AccessKey{}, Users: map[string]WikiUser{}, Teams: map[string]WikiTeam{}, SourceMirrors: map[string]SourceMirror{}}
 	metaFound := false
 	for rows.Next() {
 		var category, id string
@@ -271,6 +276,10 @@ func (s *Store) loadSQLite(marker []byte) error {
 			var v Move
 			err = json.Unmarshal(data, &v)
 			result.Moves[id] = v
+		case "source_mirror":
+			var v SourceMirror
+			err = json.Unmarshal(data, &v)
+			result.SourceMirrors[id] = v
 		case "access_key":
 			var v AccessKey
 			err = json.Unmarshal(data, &v)

@@ -294,6 +294,9 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			apiError(rw, err)
 			return
 		}
+		if w.Sync != nil && (result.Generation != *batch.ExpectedImport || result.Conflicts > 0) && w.Store.hasEnabledMirror(batch.SourceID) {
+			w.Sync.Wake()
+		}
 		jsonResponse(rw, 200, result)
 		return
 	}

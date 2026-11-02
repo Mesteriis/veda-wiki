@@ -96,6 +96,7 @@ Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_displ
 `veda_translation_needed`,
 `veda_translate_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
 `veda_github_status`, `veda_github_connect`, `veda_sync`, `veda_reconcile_sources`,
+`veda_source_mirrors`, `veda_configure_source_mirror`,
 `veda_publish_job`, `veda_cancel_bundle`.
 `veda_read_excerpt` reads bounded Unicode slices and uses the first slice's SHA
 to reject continuations after a revision changes.

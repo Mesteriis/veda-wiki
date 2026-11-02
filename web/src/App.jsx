@@ -744,6 +744,7 @@ function GitHubConnect() {
   const [status, setStatus] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [connections, setConnections] = useState([]);
+  const [mirrors, setMirrors] = useState([]);
   const [accountKind, setAccountKind] = useState("app");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -756,8 +757,8 @@ function GitHubConnect() {
     return response.json();
   }
   async function refresh() {
-    const [a, c] = await Promise.all([json("/api/admin/github/accounts"), json("/api/admin/github/connections")]);
-    setAccounts(a); setConnections(c);
+    const [a, c, m] = await Promise.all([json("/api/admin/github/accounts"), json("/api/admin/github/connections"), json("/api/admin/github/mirrors")]);
+    setAccounts(a); setConnections(c); setMirrors(m);
   }
   useEffect(() => {
     const controller = new AbortController();
@@ -803,7 +804,7 @@ function GitHubConnect() {
   }
   async function logout() {
     setBusy(true); setMessage("");
-    try { await send("/api/admin/session/logout", {}); setStatus(false); setAccounts([]); setConnections([]); }
+    try { await send("/api/admin/session/logout", {}); setStatus(false); setAccounts([]); setConnections([]); setMirrors([]); }
     catch { setMessage("Не удалось завершить сеанс."); }
     finally { setBusy(false); }
   }
@@ -838,6 +839,15 @@ function GitHubConnect() {
       refresh().catch(() => setMessage((previous) => `${previous} Не удалось обновить список.`));
     } finally { setBusy(false); }
   }
+  async function configureMirror(source, destination, enabled, revision) {
+    setBusy(true); setMessage("");
+    try {
+      await send("/api/admin/github/mirrors", { source_id: source, destination_id: destination, enabled, expected_revision: revision });
+      setMessage(enabled ? "Фоновое согласование включено. Проверьте состояние и конфликты." : "Согласование приостановлено; уже ожидающие отправки изменения сохраняются.");
+      await refresh();
+    } catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось изменить согласование. Проверьте приватность и права записи источников.")); }
+    finally { setBusy(false); }
+  }
   return <div className="github-connect reader-access">
     <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
     {status === false && <form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form>}
@@ -849,6 +859,14 @@ function GitHubConnect() {
         const detail = limited ? `Лимит GitHub, повтор после ${new Date(c.next_attempt).toLocaleString()}` : c.last_error ? githubErrorMessage(c.last_error, 0, "Проверьте состояние источника.") : "";
         return <li key={c.id}>{c.id}: {c.repository} · {githubVisibilityLabel(c)} · {stateLabels[c.state] || c.state}{detail ? ` (${detail})` : ""} <button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button> <button type="button" disabled={busy} onClick={() => pauseConnection(c)} aria-label={`${c.paused ? "Возобновить" : "Приостановить"} синхронизацию ${c.id}`}>{c.paused ? "Возобновить" : "Приостановить"}</button><details><summary>Настроить подключение {c.id}</summary><form key={c.config_revision} onSubmit={(e) => configureConnection(e, c)}><label>Аккаунт<select name="account" defaultValue={c.account_id || ""}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" defaultChecked={c.write} /> Разрешить запись в репозиторий</label><button disabled={busy}>Сохранить настройки</button></form></details></li>;
       })}</ul> : <p>Репозитории ещё не подключены.</p>}
+      <h3>Фоновое согласование</h3>
+      <p>Локальный приватный источник и приватный репозиторий остаются раздельными. Расхождения требуют проверки; удаление не выполняется. Для включения нужна совместимая резервная копия: формат хранилища обновится.</p>
+      <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); configureMirror(d.get("source"), d.get("destination"), true, 0); }}>
+        <label>Локальный источник<input name="source" required placeholder="infra" /></label>
+        <label>Репозиторий<select name="destination" required defaultValue=""><option value="">Выберите источник GitHub</option>{connections.filter((c) => c.write && c.private && !mirrors.some((m) => m.destination_id === c.id)).map((c) => <option key={c.id} value={c.id}>{c.id} · {c.repository}</option>)}</select></label>
+        <button disabled={busy}>Включить согласование</button>
+      </form>
+      {mirrors.length > 0 && <ul>{mirrors.map((m) => <li key={m.destination_id}>{m.source_id} → {m.destination_id} · {({pending:"Ожидает",ready:"Проход завершён",syncing:"Синхронизация",blocked:"Требует внимания",error:"Ошибка",paused:"Приостановлено"})[m.state] || "Состояние неизвестно"}{m.blocked ? ` · ожидают или требуют проверки: ${m.blocked}` : ""} <button type="button" disabled={busy} onClick={() => configureMirror(m.source_id, m.destination_id, !m.enabled, m.revision)}>{m.enabled ? "Приостановить" : "Возобновить"}</button>{m.blocked_paths?.length > 0 && <details><summary>Показать статьи</summary><ul>{m.blocked_paths.map((p) => <li key={p}>{p}</li>)}</ul>{m.blocked > m.blocked_paths.length && <p>Показаны первые {m.blocked_paths.length} из {m.blocked}.</p>}</details>}</li>)}</ul>}
       <p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена. Во время проверки и на паузе публичные статьи источника временно скрыты; локальная копия остаётся доступной авторизованным читателям.</p>
       <button onClick={logout} disabled={busy}>Выйти из управления</button>
     </>}

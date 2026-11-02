@@ -16,7 +16,7 @@ func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" && r.URL.Path != "/api/admin/github/sync" && r.URL.Path != "/api/admin/github/pause" {
+	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" && r.URL.Path != "/api/admin/github/sync" && r.URL.Path != "/api/admin/github/pause" && r.URL.Path != "/api/admin/github/mirrors" {
 		http.NotFound(rw, r)
 		return
 	}
@@ -29,6 +29,13 @@ func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request := r.Clone(r.Context())
+	if r.URL.Path == "/api/admin/github/mirrors" {
+		request.URL.Path = "/api/v1/sources/mirrors"
+		request.Header = r.Header.Clone()
+		request.Header.Del("Origin") // same-origin was checked above for writes
+		w.api(rw, request, true, false)
+		return
+	}
 	request.URL.Path = strings.Replace(r.URL.Path, "/api/admin/github/", "/api/v1/github/", 1)
 	w.githubAPI(rw, request, true)
 }

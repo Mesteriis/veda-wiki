@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -78,6 +79,23 @@ func (m *SyncManager) Once(ctx context.Context) {
 		jobCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		m.syncSource(jobCtx, c)
 		cancel()
+	}
+	for _, mirror := range m.store.mirrors() {
+		if ctx.Err() != nil {
+			return
+		}
+		if !mirror.Enabled {
+			continue
+		}
+		jobCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		result, err := m.store.reconcileSourcesExpected(jobCtx, reconcileRequest{SourceID: mirror.SourceID, DestinationID: mirror.DestinationID, Limit: 20}, &mirror.Revision)
+		cancel()
+		if saveErr := m.store.recordMirrorResult(mirror, result, err); saveErr != nil {
+			log.Print("source mirror status could not be saved")
+		}
+		if err == nil && (result.More || result.Created > 0 || result.Updated > 0) {
+			m.Wake()
+		}
 	}
 }
 

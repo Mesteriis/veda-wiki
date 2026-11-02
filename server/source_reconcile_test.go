@@ -360,3 +360,36 @@ func TestOldBinaryRejectsReconciliationSQLite(t *testing.T) {
 		t.Fatal("old binary changed SQLite v18 state")
 	}
 }
+
+func TestConcurrentReconcileDoesNotDuplicateWrites(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "local", "private")
+	s.put("local", "same.md", "# Same", 0)
+	s.put("local", "new.md", "# New", 0)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "same.md": "# Same"})
+	f.modify(func() { f.private = true })
+	connectFixture(t, s, f, true)
+	type outcome struct {
+		result reconcileResult
+		err    error
+	}
+	out := make(chan outcome, 8)
+	for i := 0; i < 8; i++ {
+		go func() {
+			r, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook"})
+			out <- outcome{r, err}
+		}()
+	}
+	baselines, created := 0, 0
+	for i := 0; i < 8; i++ {
+		r := <-out
+		if r.err != nil {
+			t.Fatal(r.err)
+		}
+		baselines += r.result.Baselines
+		created += r.result.Created
+	}
+	if baselines != 1 || created != 1 || len(s.jobs()) != 1 || len(s.db.Articles["handbook/new.md"].Versions) != 1 {
+		t.Fatal("concurrent reconciliations duplicated writes")
+	}
+}

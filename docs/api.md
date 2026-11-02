@@ -50,6 +50,7 @@ The field is absent for public readers and for articles without a conflict.
 | POST | `/api/access/keys/revoke` | Revoke a scoped key in that browser session |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
 | POST | `/api/v1/sources/reconcile` | Reconcile bounded changes between separate private sources (owner only) |
+| GET, POST | `/api/v1/sources/mirrors` | Inspect or configure periodic private reconciliation (owner only) |
 | POST | `/api/v1/articles/transfer-plan` | Inspect recursive relative article links and destination matches; owner or scoped reader with access to both sources, no browser Origin |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
@@ -429,3 +430,30 @@ state and retry, which is idempotent. Reconciliation persists baselines using
 store format v18; older binaries reject this store. Maintain a compatible backup
 before invoking it. This endpoint initiates one pass; periodic scheduling is not
 yet configured.
+
+### Periodic private reconciliation
+
+`GET /api/v1/sources/mirrors` lists owner-only configurations and sanitized status.
+`POST` to the same endpoint accepts `source_id`, `destination_id`, `enabled`,
+and `expected_revision`: use revision 0 to create a configuration and the
+returned revision for later changes. A destination can have one configured
+source. Enabling requires the same private-source and verified, writable private
+GitHub conditions as manual reconciliation. After each GitHub sync pass VEDA
+runs a bounded reconciliation and wakes the worker for additional batches or
+queued writes. A changed (including asset-only) or conflicting root-only local import also wakes an
+enabled mirror; unchanged imports do not. `ready`, `syncing`, `blocked`, `error`, and `paused` report the
+latest pass; `blocked` counts paths requiring review and pending work may be
+reported while it is synchronizing. Status is not proof of remote durability:
+inspect the GitHub outbox and its observed commit.
+The owner-only status includes up to 50 blocked paths; the count may be larger.
+
+The private GitHub administration interface offers the same settings through
+its restricted admin session. An interrupted configuration request may have
+committed; reload the status before retrying with its current revision.
+
+Pausing stops future reconciliation passes, but does not cancel writes already
+queued. Source content is never deleted by this feature. The configuration uses
+logical store format v19; older binaries reject it. Back up the data with a
+compatible version before enabling. A changed or public repository, an offline
+source, errors and conflicting paths stop the affected work rather than making
+it public. This applies only after explicitly configuring the source pair.

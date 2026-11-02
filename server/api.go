@@ -600,6 +600,40 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		jsonResponse(rw, 200, plan)
+	case "/api/v1/sources/mirrors":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method == "GET" {
+			jsonResponse(rw, 200, w.Store.mirrors())
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in mirrorRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if in.Enabled != nil && *in.Enabled && w.Sync == nil {
+			jsonResponse(rw, http.StatusServiceUnavailable, map[string]string{"error": "sync_unavailable"})
+			return
+		}
+		_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(2 * time.Minute))
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		mirror, err := w.Store.configureMirror(ctx, in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		if w.Sync != nil && mirror.Enabled {
+			w.Sync.Wake()
+		}
+		jsonResponse(rw, 200, mirror)
 	case "/api/v1/sources/reconcile":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)

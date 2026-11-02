@@ -27,7 +27,8 @@ class MCPTimeoutTests(unittest.TestCase):
         client.request('POST', '/api/v1/github/connections', {'id': 'test'})
         client.request('GET', '/api/v1/github/connections')
         client.request('POST', '/api/v1/sources/reconcile', {'source_id': 'one', 'destination_id': 'two'})
-        self.assertEqual(client.opener.timeouts, [360, 15, 15, 120])
+        client.request('POST', '/api/v1/sources/mirrors', {'source_id': 'one', 'destination_id': 'two'})
+        self.assertEqual(client.opener.timeouts, [360, 15, 15, 120, 120])
 
 
 if __name__ == '__main__':
