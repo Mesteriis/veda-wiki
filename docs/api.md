@@ -269,9 +269,11 @@ The reader interface shows this time in source warnings; when it is absent or
 invalid, it reports the observation time as unknown. It is not a freshness
 guarantee, including when an unchanged import refreshed the observation.
 `unresolved_conflicts` counts pending conflicts. `last_import_withheld`, when
-present for an authenticated reader, reports the number of items withheld or
-unavailable in the last accepted import attempt. It is not an exhaustive count
-of paths outside a curated import's scope. The count is kept in memory and is
+present for an authenticated reader, reports the importing client's count of
+withheld or unavailable observations in the last accepted import attempt.
+Combined importers may count the same item in more than one check, so this is
+not necessarily a count of unique files or an exhaustive count of paths outside
+a curated import's scope. The count is kept in memory and is
 absent after restart until another import; a head-only check does not create it.
 `import_partial` and `import_dirty` indicate known coverage and source-state limits. These fields
 are omitted from public-only listings where applicable. MCP `veda_context`
