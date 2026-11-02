@@ -102,6 +102,9 @@ In the reader, relative Markdown links are resolved within the article's source;
 root-relative links start at that source's root. Links that escape the source
 root are not redirected to a different connected repository. External links and
 in-page fragments retain their normal behavior.
+Links to a directory open its visible `README.md`, or `index.md` when no
+README is visible. An exact page match takes precedence. Resolution stays
+within the selected source and uses the reader's access permissions.
 Local Markdown image paths follow the same source-root and confinement rules.
 
 ## Concurrency and deletion

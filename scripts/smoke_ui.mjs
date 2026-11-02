@@ -70,6 +70,10 @@ for (const width of [1672, 390, 320]) {
   await evaluate("document.querySelector('.knowledge-tree a[title=\"fixture/projects/architecture.md\"]').click()");
   await until("location.search.includes('page=') && document.body.innerText.includes('Демонстрационное содержимое')");
   if (!await evaluate("document.body.innerText.includes('Тестовая архитектура')")) throw Error('article title missing');
+  await evaluate("[...document.querySelectorAll('.markdown a')].find(a => a.innerText === 'Документация проекта').click()");
+  await until("document.body.innerText.includes('Синтетическая страница раздела')");
+  await evaluate("history.back()");
+  await until("document.body.innerText.includes('Тестовая архитектура') && !!document.querySelector('.markdown')");
   await evaluate("let input=document.querySelector('#search'); input.value='архитектура'; input.form.requestSubmit()");
   await until("location.search.includes('q=') && document.body.innerText.includes('Результаты поиска')");
   if (!await evaluate("document.body.innerText.includes('Тестовая архитектура') && document.body.innerText.includes('Архитектура второго источника') && !document.body.innerText.includes('Тестовые заметки')")) throw Error('search results mismatch');

@@ -74,8 +74,10 @@ def main():
                                 ('guides/intro.md', 'Начало работы'),
                                 ('notes/ideas.md', 'Тестовые заметки')]:
                 post('/api/v1/articles', {'source_id': 'fixture', 'path': path,
-                     'text': '# ' + title + '\n\nДемонстрационное содержимое для проверки интерфейса.',
+                     'text': '# ' + title + '\n\nДемонстрационное содержимое для проверки интерфейса.' + ('\n\n[Документация проекта](./)' if path == 'projects/architecture.md' else ''),
                      'expected_revision': 0})
+            post('/api/v1/articles', {'source_id': 'fixture', 'path': 'projects/README.md',
+                 'text': '# Руководство проекта\n\nСинтетическая страница раздела.', 'expected_revision': 0})
             post('/api/v1/sources', {'id': 'private-fixture', 'title': 'Приватный пример',
                                       'kind': 'wiki', 'visibility': 'private'})
             post('/api/v1/articles', {'source_id': 'private-fixture', 'path': 'private.md',

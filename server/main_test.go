@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,45 @@ func request(w Wiki, method, url, body string, auth bool) *httptest.ResponseReco
 	rw := httptest.NewRecorder()
 	w.ServeHTTP(rw, r)
 	return rw
+}
+
+func TestDirectoryLinksResolveWithinVisibleSource(t *testing.T) {
+	s := testStore(t)
+	for _, item := range []struct{ id, visibility string }{{"alpha", "public"}, {"beta", "private"}} {
+		source(t, s, item.id, item.visibility)
+		for name, text := range map[string]string{"README.md": "# Root " + item.id, "docs/README.md": "# Preferred " + item.id, "docs/index.md": "# Index " + item.id, "index-only/index.md": "# Index only " + item.id, "guide.md": "# Guide\n\n[Docs](docs/)\n\n[Root](./)"} {
+			if _, err := s.put(item.id, name, text, 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	page, err := s.page("alpha/guide.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := render(page)
+	if err != nil || !strings.Contains(string(body), "page=alpha%2Fdocs") || !strings.Contains(string(body), "page=alpha%2F") {
+		t.Fatal("directory links were not source qualified")
+	}
+	w := Wiki{Store: s, Token: "test-owner", Public: true}
+	for _, tc := range []struct {
+		path, want string
+		status     int
+	}{
+		{"alpha/docs", "Preferred alpha", 200},
+		{"alpha/docs/", "Preferred alpha", 200},
+		{"alpha/docs/index.md", "Index alpha", 200},
+		{"alpha/index-only", "Index only alpha", 200},
+		{"alpha/", "Root alpha", 200},
+		{"beta/docs", "", 404},
+		{"alpha/missing", "", 404},
+		{"alpha/../beta/docs", "", 404},
+	} {
+		r := request(w, "GET", "/api/state?page="+url.QueryEscape(tc.path), "", false)
+		if r.Code != tc.status || (tc.want != "" && !strings.Contains(r.Body.String(), tc.want)) || strings.Contains(r.Body.String(), "Preferred beta") {
+			t.Fatalf("directory resolution failed for %s: %d", tc.path, r.Code)
+		}
+	}
 }
 func TestPersistenceAndOptimisticConcurrency(t *testing.T) {
 	s := testStore(t)

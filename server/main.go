@@ -177,6 +177,18 @@ func render(p Page) (template.HTML, template.HTML, error) {
 			if e == nil && u.Scheme == "" && u.Host == "" && u.Path != "" {
 				sourceID, target, valid := sourceTarget(p.Path, u.Path)
 				if !valid {
+					parts := strings.SplitN(p.Path, "/", 2)
+					if len(parts) == 2 && identifier.MatchString(parts[0]) {
+						resolved := path.Clean(path.Join(path.Dir(parts[1]), u.Path))
+						if strings.HasPrefix(u.Path, "/") {
+							resolved = path.Clean(strings.TrimPrefix(u.Path, "/"))
+						}
+						if resolved == "." {
+							sourceID, target, valid = parts[0], "", true
+						}
+					}
+				}
+				if !valid {
 					link.Destination = nil
 				} else {
 					link.Destination = []byte("/?page=" + url.QueryEscape(sourceID+"/"+target))
@@ -355,6 +367,23 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	env := r.URL.Query().Get("env")
 	name := r.URL.Query().Get("page")
+	// Resolve directory links only against the already authorized snapshot.
+	// Exact page names win, then GitHub-style README, then index.
+	if name != "" {
+		visible := make(map[string]bool, len(s.Pages))
+		for _, page := range s.Pages {
+			visible[page.Path] = true
+		}
+		if !visible[name] {
+			base := strings.TrimSuffix(name, "/")
+			for _, suffix := range []string{"/README.md", "/index.md"} {
+				if visible[base+suffix] {
+					name = base + suffix
+					break
+				}
+			}
+		}
+	}
 	v := View{Public: w.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
 	terms := searchTerms(query)
 	scores := map[string]int{}
