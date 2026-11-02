@@ -130,13 +130,21 @@ func sourceTarget(pagePath, destination string) (string, string, bool) {
 	if len(parts) != 2 || !identifier.MatchString(parts[0]) || destination == "" {
 		return "", "", false
 	}
+	target, valid := repositoryTarget(parts[1], destination)
+	return parts[0], target, valid
+}
+
+func repositoryTarget(articlePath, destination string) (string, bool) {
+	if destination == "" {
+		return "", false
+	}
 	var target string
 	if strings.HasPrefix(destination, "/") {
 		target = path.Clean(strings.TrimPrefix(destination, "/"))
 	} else {
-		target = path.Clean(path.Join(path.Dir(parts[1]), destination))
+		target = path.Clean(path.Join(path.Dir(articlePath), destination))
 	}
-	return parts[0], target, safeRelative(target)
+	return target, safeRelative(target)
 }
 
 func render(p Page) (template.HTML, template.HTML, error) {

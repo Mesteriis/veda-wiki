@@ -146,11 +146,11 @@ func retainedPendingAssets(value, articlePath string, candidates map[string]Blob
 			return ast.WalkContinue, nil
 		}
 		u, err := url.Parse(string(image.Destination))
-		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" || strings.HasPrefix(u.Path, "/") {
+		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
 			return ast.WalkContinue, nil
 		}
-		name := path.Clean(path.Join(path.Dir(articlePath), u.Path))
-		if ref, found := candidates[name]; found {
+		name, valid := repositoryTarget(articlePath, u.Path)
+		if ref, found := candidates[name]; valid && found {
 			refs[name] = ref
 		}
 		return ast.WalkContinue, nil
@@ -170,11 +170,11 @@ func retainedPendingLinks(value, articlePath string, candidates map[string]strin
 			return ast.WalkContinue, nil
 		}
 		u, err := url.Parse(string(link.Destination))
-		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" || strings.HasPrefix(u.Path, "/") {
+		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
 			return ast.WalkContinue, nil
 		}
-		name := path.Clean(path.Join(path.Dir(articlePath), u.Path))
-		if sha, found := candidates[name]; found {
+		name, valid := repositoryTarget(articlePath, u.Path)
+		if sha, found := candidates[name]; valid && found {
 			refs[name] = sha
 		}
 		return ast.WalkContinue, nil
@@ -314,13 +314,13 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		if parsed.Scheme != "" || parsed.Host != "" || parsed.Path == "" {
 			return ast.WalkContinue, nil
 		}
-		if strings.HasPrefix(parsed.Path, "/") || (target.ConnectionID == "" && target.ImportGeneration != "") {
+		if target.ConnectionID == "" && target.ImportGeneration != "" {
 			failure = ErrInvalid
 			return ast.WalkStop, nil
 		}
-		from := path.Clean(path.Join(path.Dir(sourcePath), parsed.Path))
-		to := path.Clean(path.Join(path.Dir(targetPath), parsed.Path))
-		if !safeRelative(from) || !safeRelative(to) || (target.Kind == "program" && !strings.HasPrefix(to, "docs/")) {
+		from, fromOK := repositoryTarget(sourcePath, parsed.Path)
+		to, toOK := repositoryTarget(targetPath, parsed.Path)
+		if !fromOK || !toOK || (target.Kind == "program" && !strings.HasPrefix(to, "docs/")) {
 			failure = ErrInvalid
 			return ast.WalkStop, nil
 		}

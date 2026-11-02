@@ -2,9 +2,7 @@ package main
 
 import (
 	"net/url"
-	"path"
 	"sort"
-	"strings"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
@@ -112,13 +110,9 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 			if u.Scheme != "" || u.Host != "" || u.Path == "" {
 				return ast.WalkContinue, nil
 			}
-			if strings.HasPrefix(u.Path, "/") {
-				parseErr = ErrInvalid
-				return ast.WalkStop, nil
-			}
-			from := path.Clean(path.Join(path.Dir(current.from), u.Path))
-			to := path.Clean(path.Join(path.Dir(current.to), u.Path))
-			if !articlePath(from, src.Kind) || !articlePath(to, dst.Kind) {
+			from, fromOK := repositoryTarget(current.from, u.Path)
+			to, toOK := repositoryTarget(current.to, u.Path)
+			if !fromOK || !toOK || !articlePath(from, src.Kind) || !articlePath(to, dst.Kind) {
 				parseErr = ErrInvalid
 				return ast.WalkStop, nil
 			}

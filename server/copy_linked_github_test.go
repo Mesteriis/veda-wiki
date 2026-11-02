@@ -170,3 +170,34 @@ func TestLinkedBundleDoesNotOverwriteConcurrentRemoteArticle(t *testing.T) {
 		t.Fatal("concurrent remote article was overwritten")
 	}
 }
+
+func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	fixtureAsset(t, s, "from", "img/icon.png")
+	if _, err := s.put("from", "guide.md", "# Guide", 0); err != nil {
+		t.Fatal(err)
+	}
+	text := "[Guide](/guide.md)\n\n![Icon](/img/icon.png)"
+	if _, err := s.put("from", "chapter/a.md", text, 0); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	manager := connectFixture(t, s, f, true)
+	in := copyRequest{SourceID: "from", SourcePath: "chapter/a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "other/b.md", IncludeLinked: true}
+	if _, err := s.copyArticle(in); err != ErrInvalid {
+		t.Fatal("unconfirmed publication accepted", err)
+	}
+	in.ConfirmPublication = true
+	if _, err := s.copyArticle(in); err != nil {
+		t.Fatal(err)
+	}
+	manager.Once(context.Background())
+	if f.writeCount() != 1 || f.contents()["other/b.md"] != text || f.contents()["guide.md"] != "# Guide" || f.contents()["img/icon.png"] == "" {
+		t.Fatal("root dependencies were not committed together")
+	}
+	manager.Once(context.Background())
+	if s.jobs()[0].State != "complete" {
+		t.Fatal("root bundle was not observed", s.jobs()[0].State)
+	}
+}

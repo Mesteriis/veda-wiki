@@ -208,11 +208,11 @@ The first graph move to a connected destination upgrades the store to v10;
 older binaries reject it. Production v10 restore has not been verified.
 Manually maintained local sources and synchronized,
 writable GitHub sources are accepted; independent local imports are not.
-Relative Markdown images can be copied with the article into a standalone local
+Relative and repository-root Markdown images can be copied with the article into a standalone local
 or writable GitHub target; existing images at the target path must have the
 same digest. The GitHub outbox commits the Markdown and its images together,
 then confirms them in a complete pull before allowing source deletion. A partial
-target import blocks the bundle. A relative article link is accepted when its
+target import blocks the bundle. A relative or repository-root article link is accepted when its
 destination path already has the same current article revision; a public target
 also requires that revision to be published. The linked article is checked
 again before source deletion. Other relative links and embedded HTML remain
