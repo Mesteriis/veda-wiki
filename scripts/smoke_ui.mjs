@@ -93,6 +93,13 @@ for (const width of [1672, 390, 320]) {
   if (await evaluate("[...document.querySelectorAll('#main-navigation .nav-item')].some(e=>['GitHub','API и MCP','Настройки','Избранное'].includes(e.textContent.trim())) || !!document.querySelector('.reading-mode, button[aria-label=Уведомления], button[aria-label=Оформление]') || !document.querySelector('button[aria-label=Войти]')")) throw Error('anonymous navigation visibility incorrect');
   if (await evaluate("document.body.innerText.includes('Приватная тестовая страница')")) throw Error('private content visible anonymously');
   if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Войти]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return getComputedStyle(b).display !== 'none' && r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('profile button is not visible or reachable');
+  for (const query of ['?settings=1', '?github=1']) {
+    await send('Page.navigate', { url: privateUrl + query });
+    await until("!!document.querySelector('.home-page-row')");
+    if (await evaluate("!!document.querySelector('.settings-page, .github-page') || document.body.innerText.includes('Вход с ключом администратора')")) throw Error('admin view exposed anonymously');
+  }
+  await send('Page.navigate', { url: privateUrl });
+  await until("!!document.querySelector('.home-page-row')");
   if (width === 1672) {
     await send('Page.navigate', { url: privateUrl + '?key=invalid-one&key=invalid-two&page=missing' });
     await until("!new URL(location.href).searchParams.has('key') && document.body.innerText.includes('Страница не найдена') && document.querySelector('[role=alert]')?.innerText.includes('Не удалось войти по ссылке')");
@@ -141,11 +148,14 @@ for (const width of [1672, 390, 320]) {
     if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
     await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
     const scope = title === 'GitHub' ? '.github-page' : '.settings-page';
-    try { await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`); }
+    try { await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=username]')})`); }
     catch (error) { throw Error(`admin login unavailable: ${title}, path=${await evaluate('location.pathname + location.search')}, page=${await evaluate("!!document.querySelector('.github-page')")}, dialog=${await evaluate("!!document.querySelector('dialog[open]')")}`); }
-    await evaluate(`document.querySelector(${JSON.stringify(scope + ' input[name=key]')}).value=${JSON.stringify('d'.repeat(64))}; document.querySelector(${JSON.stringify(scope + ' input[name=key]')}).closest('form').requestSubmit()`);
+    if (await evaluate(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`)) throw Error('admin key form is still visible');
+    const sessionRoute = title === 'GitHub' ? '/api/admin/session/login' : '/api/access/session/login';
+    if (!await evaluate(`(async () => (await fetch(${JSON.stringify(sessionRoute)}, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:${JSON.stringify('d'.repeat(64))}})})).ok)()`)) throw Error('synthetic admin session failed');
+    await send('Page.navigate', { url: privateUrl + (title === 'GitHub' ? '?github=1' : '?settings=1') });
     const expected = title === 'GitHub' ? 'Подключить репозиторий' : 'Пользователи';
-    await until(`document.querySelector(${JSON.stringify(scope)}).textContent.includes(${JSON.stringify(expected)})`);
+    await until(`!!document.querySelector(${JSON.stringify(scope)})?.textContent.includes(${JSON.stringify(expected)})`);
     if (title === 'GitHub' && !await evaluate("!!document.querySelector('.github-page input[name=source]') && !!document.querySelector('.github-page select[name=destination]') && document.querySelector('.github-page').textContent.includes('Фоновое согласование')")) throw Error('mirror configuration controls missing');
     if (title === 'GitHub') {
       await evaluate("[...document.querySelectorAll('.github-page-actions button')].find(b=>b.innerText==='Подключить репозиторий').click()");
@@ -178,7 +188,7 @@ for (const width of [1672, 390, 320]) {
     if (writeStatus !== 403 && writeStatus !== 404) throw Error('browser admin session allowed article write');
     await until(`[...document.querySelectorAll(${JSON.stringify(scope + ' button')})].some(b => b.innerText.startsWith('Выйти из управления') && !b.disabled)`);
     await evaluate(`[...document.querySelectorAll(${JSON.stringify(scope + ' button')})].find(b=>b.innerText.startsWith('Выйти из управления')).click()`);
-    await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`);
+    await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=username]')})`);
     await send('Page.navigate', { url: privateUrl });
     await until("!!document.querySelector('.home-page-row')");
   }

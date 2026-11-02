@@ -47,10 +47,11 @@ the reader key in the private data directory and restarting the service.
 An authenticated named administrator can open GitHub and access management
 using the existing reader session. Role removal, disablement, password changes,
 logout and expiry invalidate this access; ordinary readers and reader keys do
-not gain administration. The GitHub dialog also accepts the owner key for a
-separate administrator session;
-the key is sent only over direct HTTPS or loopback HTTP and is not stored in the
-browser. The administrator session is limited to GitHub account registration
+not gain administration. Unauthenticated direct links to GitHub or settings
+show the public dashboard; sign in before opening those views. The interface
+does not offer an owner-key login form. The existing session API can accept an
+owner key for a separate administrator session over direct HTTPS or loopback
+HTTP. The administrator session is limited to GitHub account registration
 and connection, and cannot authorize article writes or other owner APIs. It
 uses its own HttpOnly, SameSite=Strict cookie, expires after eight hours, and
 is revoked on logout or restart. The reader-only Unix socket does not expose

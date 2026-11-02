@@ -758,9 +758,9 @@ function AccessSettings() {
     return () => controller.abort();
   }, []);
   async function login(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const key = data.get("key");
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
     setBusy(true); setMessage("");
-    try { await send("/api/access/session/login", key ? { key } : { username: data.get("username"), password: data.get("password") }); setStatus(true); await refresh(); }
+    try { await send("/api/access/session/login", { username: data.get("username"), password: data.get("password") }); setStatus(true); await refresh(); }
     catch { setMessage("Не удалось войти или загрузить источники. Проверьте подключение."); }
     finally { form.reset(); setBusy(false); }
   }
@@ -831,7 +831,7 @@ function AccessSettings() {
   const closeModal = () => { setAccessModal(null); setEditing(null); setEditingTeam(null); setEditingUser(null); setResettingUser(null); };
   const modalTitle = { user: "Новый пользователь", team: "Новая команда", key: "Новый ключ чтения", userTeams: "Изменить команды", password: "Сменить пароль", teamSources: "Источники команды", keySources: "Доступ ключа" };
   return <div className="settings-page reader-access">
-    {status === false && <div className="panel settings-login"><p>Для управления доступом войдите как администратор.</p><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти в управление доступом</button></form><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></div>}
+    {status === false && <div className="panel settings-login"><p>Для управления доступом войдите как администратор.</p><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти в управление доступом</button></form></div>}
     {status === true && <>
       <div className="settings-tabs" aria-label="Разделы настроек">{[["users", "Пользователи", "user"], ["teams", "Команды", "users-group"], ["keys", "Ключи доступа", "key"]].map(([id,label,icon]) => <button type="button" aria-pressed={accessTab === id} key={id} onClick={() => setAccessTab(id)}><I name={icon} />{label}</button>)}</div>
       <section className={`settings-section settings-${accessTab}`}>
@@ -902,9 +902,9 @@ function GitHubConnect() {
     return json(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
   }
   async function login(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const key = data.get("key");
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
     setBusy(true); setMessage("");
-    try { await send("/api/admin/session/login", key ? { key } : { username: data.get("username"), password: data.get("password") }); setStatus(true); refresh().catch(() => setMessage("Вход выполнен, но не удалось загрузить настройки.")); }
+    try { await send("/api/admin/session/login", { username: data.get("username"), password: data.get("password") }); setStatus(true); refresh().catch(() => setMessage("Вход выполнен, но не удалось загрузить настройки.")); }
     catch { setMessage("Не удалось войти. Проверьте данные и подключение."); }
     finally { form.reset(); setBusy(false); }
   }
@@ -992,7 +992,7 @@ function GitHubConnect() {
   const selected = connections.find((connection) => connection.id === selectedConnection) || connections[0];
   return <div className="github-connect github-page reader-access">
     <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
-    {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти</button></form><details><summary>Первый вход — установить пароль</summary><form onSubmit={setup}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Одноразовый код<input name="token" type="password" autoComplete="off" required /></label><label>Новый пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><label>Повторите пароль<input name="confirm" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Установить пароль</button></form></details><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></>}
+    {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти</button></form><details><summary>Первый вход — установить пароль</summary><form onSubmit={setup}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Одноразовый код<input name="token" type="password" autoComplete="off" required /></label><label>Новый пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><label>Повторите пароль<input name="confirm" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Установить пароль</button></form></details></>}
     {status === true && <>
       <div className="github-page-actions"><button type="button" className="github-action secondary" onClick={() => { setMessage(""); setGithubDialog("account"); }}>Добавить аккаунт</button><button type="button" className="github-action primary" onClick={() => { setMessage(""); setGithubDialog("repository"); }}>Подключить репозиторий</button></div>
       <dialog className="github-action-dialog" ref={githubDialogRef} onClose={() => setGithubDialog(null)} onCancel={() => setGithubDialog(null)} onClick={(event) => { if (event.target === githubDialogRef.current) githubDialogRef.current.close(); }}>
@@ -1086,7 +1086,7 @@ export function App({ linkLoginError = false }) {
       </div>
     );
   const params = new URLSearchParams(window.location.search);
-  const v = { ...data.view, SettingsView: params.get("settings") === "1" && !data.view.Query && !data.view.Page, GitHubView: params.get("github") === "1" && !data.view.Query && !data.view.Page, GraphView: params.get("graph") === "1" && !data.view.Query && !data.view.Page, RecentView: params.get("recent") === "1" && !data.view.Query && !data.view.Page };
+  const v = { ...data.view, SettingsView: !data.view.Public && params.get("settings") === "1" && !data.view.Query && !data.view.Page, GitHubView: !data.view.Public && params.get("github") === "1" && !data.view.Query && !data.view.Page, GraphView: params.get("graph") === "1" && !data.view.Query && !data.view.Page, RecentView: params.get("recent") === "1" && !data.view.Query && !data.view.Page };
   return (
     <Features.Provider value={setFeature}>
       <Sidebar v={v} />
@@ -1115,7 +1115,7 @@ export function App({ linkLoginError = false }) {
             <I name="x" />
           </button>
         </div>
-        {feature === "profile" ? <ReaderAccess /> : feature === "github" ? <GitHubConnect /> : feature === "settings" ? <AccessSettings /> : <p>{descriptions[feature]?.[1]}</p>}
+        {feature === "profile" ? <ReaderAccess /> : feature === "github" && !v.Public ? <GitHubConnect /> : feature === "settings" && !v.Public ? <AccessSettings /> : <p>{descriptions[feature]?.[1]}</p>}
       </dialog>
     </Features.Provider>
   );
