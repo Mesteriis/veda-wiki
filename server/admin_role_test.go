@@ -361,3 +361,49 @@ func TestNamedAdministratorReaderSessionGrantsAdminWithoutSecondLogin(t *testing
 		t.Fatal("logout did not revoke admin", r.Code)
 	}
 }
+
+func TestReaderLogoutRevokesIndependentAdminCookies(t *testing.T) {
+	s := testStore(t)
+	groups := []string{}
+	password := "synthetic password"
+	u, err := s.saveUser("admin", &groups, &password, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.setUserAdmin("admin", true, u.Revision); err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, newFakeGitHub(t, map[string]string{}).client())}
+	call := func(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:1"
+		if method == "POST" {
+			r.Header.Set("Origin", "http://localhost:8080")
+		}
+		for _, c := range cookies {
+			r.AddCookie(c)
+		}
+		o := httptest.NewRecorder()
+		w.ServeHTTP(o, r)
+		return o
+	}
+	login := func(path, body string) *http.Cookie {
+		r := call("POST", path, body)
+		if r.Code != 200 {
+			t.Fatal("login failed", r.Code)
+		}
+		return r.Result().Cookies()[0]
+	}
+	a := login("/api/admin/session/login", `{"key":"owner"}`)
+	x := login("/api/access/session/login", `{"key":"owner"}`)
+	r := login("/api/session/login", `{"username":"admin","password":"synthetic password"}`)
+	if out := call("POST", "/api/session/logout", `{}`, r, a, x); out.Code != 200 || len(out.Result().Cookies()) != 3 {
+		t.Fatal("logout did not clear all cookies")
+	}
+	if out := call("GET", "/api/admin/github/accounts", "", a); out.Code != 404 {
+		t.Fatal("admin cookie survived logout", out.Code)
+	}
+	if out := call("GET", "/api/access/users", "", x); out.Code != 404 {
+		t.Fatal("access cookie survived logout", out.Code)
+	}
+}

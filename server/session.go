@@ -235,15 +235,24 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == prefix+"logout" {
-		if c, e := r.Cookie(cookie); e == nil {
-			hash := sha256.Sum256([]byte(c.Value))
-			sessions.mu.Lock()
-			delete(sessions.active, hash)
-			delete(sessions.scoped, hash)
-			delete(sessions.users, hash)
-			sessions.mu.Unlock()
+		clear := func(store *readerSessions, name string) {
+			if store != nil {
+				if c, e := r.Cookie(name); e == nil {
+					hash := sha256.Sum256([]byte(c.Value))
+					store.mu.Lock()
+					delete(store.active, hash)
+					delete(store.scoped, hash)
+					delete(store.users, hash)
+					store.mu.Unlock()
+				}
+			}
+			http.SetCookie(rw, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
 		}
-		http.SetCookie(rw, &http.Cookie{Name: cookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
+		clear(sessions, cookie)
+		if prefix == "/api/session/" {
+			clear(w.AdminSessions, adminSessionCookie)
+			clear(w.AccessSessions, accessSessionCookie)
+		}
 		jsonResponse(rw, 200, map[string]bool{"authenticated": false})
 		return
 	}
