@@ -66,8 +66,10 @@ contain only the token, without a newline. The final path cannot be a symlink.
 The file is read again on each request to allow rotation. An inaccessible or
 invalid file stops that translation attempt without sending the document or
 the token; credentials are not placed in command arguments or logs. Supplying
-this option requires the translation URL and model. Configure
-`--translation-interval` between 5 seconds and 1 hour (default one minute).
+this option requires the translation URL and model. The CI smoke test runs the
+actual VEDA binary with a synthetic loopback service, checks bearer rotation and
+reopens both saved translations after restart; it does not exercise a real model.
+Configure `--translation-interval` between 5 seconds and 1 hour (default one minute).
 
 The worker processes one candidate per interval and retries failures after 15
 minutes. Documents over 32,000 bytes are split at top-level paragraph or
