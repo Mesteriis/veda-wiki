@@ -484,6 +484,11 @@ func (s *Store) jobs() []SyncJob {
 	defer s.mu.RUnlock()
 	out := []SyncJob{}
 	for _, j := range s.db.Outbox {
+		// Older versions stored a successful ref-update response here before
+		// re-reading the branch. Only completed jobs have a confirmed pull.
+		if j.State != "complete" {
+			j.ObservedCommit = ""
+		}
 		out = append(out, j)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -582,7 +587,7 @@ func (s *Store) connectionStatusFor(observed GitHubConnection, state, verificati
 	}
 	return s.commit(db)
 }
-func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, code, prepared, observed string) error {
+func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, code, prepared string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j, ok := s.db.Outbox[original.ID]
@@ -597,9 +602,6 @@ func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, co
 	j.LastError = code
 	if prepared != "" {
 		j.PreparedCommit = prepared
-	}
-	if observed != "" {
-		j.ObservedCommit = observed
 	}
 	if code != "" {
 		j.Attempts++

@@ -410,7 +410,7 @@ func TestStaleOutboxObservationCannotUndoPublicationApproval(t *testing.T) {
 	j.Visibility = "public"
 	s.db.Outbox[key] = j
 	s.mu.Unlock()
-	if err := s.setJobFor(c, old, "blocked", "publication_confirmation_required", "", ""); err != ErrConflict {
+	if err := s.setJobFor(c, old, "blocked", "publication_confirmation_required", ""); err != ErrConflict {
 		t.Fatal("changed visibility was overwritten", err)
 	}
 	if s.jobs()[0].State != "pending" {
@@ -422,7 +422,7 @@ func TestStaleOutboxObservationCannotUndoPublicationApproval(t *testing.T) {
 	j.State = "conflict"
 	s.db.Outbox[key] = j
 	s.mu.Unlock()
-	if err := s.setJobFor(c, old, "retry", "upstream_unavailable", "", ""); err != ErrConflict {
+	if err := s.setJobFor(c, old, "retry", "upstream_unavailable", ""); err != ErrConflict {
 		t.Fatal("conflict state was overwritten", err)
 	}
 }
@@ -463,8 +463,20 @@ func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	if f.contents()["docs/guide.md"] != "# Saved locally" || f.contents()["src/main.go"] != "package original" || f.force {
 		t.Fatal("unsafe remote write")
 	}
+	job := reopened.jobs()[0]
+	if job.State != "prepared" || job.PreparedCommit == "" || job.ObservedCommit != "" {
+		t.Fatal("write response must not be reported as a subsequent observation", job)
+	}
+	reopened, e = openStore(s.dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if reopened.jobs()[0].ObservedCommit != "" || reopened.db.Outbox[job.ID].ObservedCommit != "" {
+		t.Fatal("unconfirmed observation after restart", e)
+	}
+	m = newSyncManager(reopened, f.client())
 	m.Once(context.Background())
-	if reopened.jobs()[0].State != "complete" {
+	if reopened.jobs()[0].State != "complete" || reopened.jobs()[0].ObservedCommit == "" {
 		t.Fatal(reopened.jobs())
 	}
 }
@@ -486,6 +498,17 @@ func TestGitHubLostResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	newSyncManager(reopened, f.client()).Once(context.Background())
 	if f.writeCount() != 1 || reopened.jobs()[0].State != "complete" {
 		t.Fatal("ambiguous push duplicated or lost", reopened.jobs())
+	}
+}
+
+func TestLegacyUnconfirmedObservedCommitIsNotReported(t *testing.T) {
+	s := testStore(t)
+	s.mu.Lock()
+	s.db.Outbox = map[string]SyncJob{}
+	s.db.Outbox["fixture"] = SyncJob{ID: "fixture", State: "prepared", ObservedCommit: strings.Repeat("a", 40)}
+	s.mu.Unlock()
+	if got := s.jobs(); len(got) != 1 || got[0].ObservedCommit != "" {
+		t.Fatal("legacy unconfirmed commit was exposed as an observation")
 	}
 }
 

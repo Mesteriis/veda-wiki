@@ -698,7 +698,7 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			continue
 		}
 		if !c.Write {
-			if err := m.store.setJobFor(c, job, "blocked", "write_not_enabled", "", ""); err != nil {
+			if err := m.store.setJobFor(c, job, "blocked", "write_not_enabled", ""); err != nil {
 				return err
 			}
 			continue
@@ -717,13 +717,13 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			return ErrInvalid
 		}
 		if secretContent.MatchString(a.Versions[job.Revision-1].Text) {
-			if err := m.store.setJobFor(c, job, "blocked", "credential_like_content", "", ""); err != nil {
+			if err := m.store.setJobFor(c, job, "blocked", "credential_like_content", ""); err != nil {
 				return err
 			}
 			continue
 		}
 		if job.Visibility != "public" && !c.Private {
-			if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", "", ""); err != nil {
+			if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", ""); err != nil {
 				return err
 			}
 			continue
@@ -736,7 +736,7 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			}
 		}
 		if pending {
-			if err := m.store.setJobFor(c, job, "conflict", "source_conflict", "", ""); err != nil {
+			if err := m.store.setJobFor(c, job, "conflict", "source_conflict", ""); err != nil {
 				return err
 			}
 			continue
@@ -750,39 +750,38 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 				return e
 			}
 			if !*info.Private {
-				if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", "", ""); err != nil {
+				if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", ""); err != nil {
 					return err
 				}
 				return &remoteError{Code: "publication_confirmation_required"}
 			}
 		}
-		var commit string
 		var e error
 		directoryIndex := a.CopiedFrom != nil && a.CopiedFrom.DirectoryIndex
 		if len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0 && !directoryIndex {
-			commit, e = m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
+			_, e = m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
 		} else {
 			var files map[string][]byte
 			files, e = m.pendingBundle(ctx, c, head, treeSHA, token, job, a)
 			if e == nil && bundleHasCredentialLikeText(files) {
-				if err := m.store.setJobFor(c, job, "blocked", "credential_like_content", "", ""); err != nil {
+				if err := m.store.setJobFor(c, job, "blocked", "credential_like_content", ""); err != nil {
 					return err
 				}
 				continue
 			}
 			if e == nil {
-				commit, e = m.github.pushFiles(ctx, c.Repository, c.Branch, head, treeSHA, files, token, prepared)
+				_, e = m.github.pushFiles(ctx, c.Repository, c.Branch, head, treeSHA, files, token, prepared)
 			}
 		}
 		if e != nil {
-			if err := m.store.setJobFor(c, job, "retry", errorCode(e), "", ""); err != nil {
+			if err := m.store.setJobFor(c, job, "retry", errorCode(e), ""); err != nil {
 				return err
 			}
 			return e
 		}
 		// Do not optimistically acknowledge the remote update. The next pull must
 		// observe the actual blob, which also recovers a lost update response.
-		if err := m.store.setJobFor(c, job, "prepared", "", "", commit); err != nil {
+		if err := m.store.setJobFor(c, job, "prepared", "", ""); err != nil {
 			return err
 		}
 		m.Wake()

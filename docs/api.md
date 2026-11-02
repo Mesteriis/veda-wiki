@@ -220,6 +220,8 @@ cannot receive a linked batch. Copy never deletes the source.
 For a connected destination, the group is persisted locally in store format v9 or newer,
 which older binaries reject. The outbox job is complete only after a complete,
 non-withheld pull observes every article and image at the expected digest.
+The outbox exposes `observed_commit` only for a completed job; a successful
+ref-update response alone does not establish that a subsequent pull observed it.
 The group cannot be locally edited or moved while pending. An owner can cancel
 a never-prepared group with `POST /api/v1/github/cancel-bundle` (`job_id`,
 `confirm_cancel: true`) or `veda_cancel_bundle`; local copies remain. Once a
