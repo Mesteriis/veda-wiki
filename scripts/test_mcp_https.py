@@ -16,6 +16,9 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('veda_mcp_adapter', Path(__file__).resolve().parents[1] / 'mcp' / 'server.py')
 adapter = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(adapter)
+reader_spec = importlib.util.spec_from_file_location('check_agent_readers', Path(__file__).with_name('check_agent_readers.py'))
+reader_check = importlib.util.module_from_spec(reader_spec)
+reader_spec.loader.exec_module(reader_check)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -98,9 +101,8 @@ class ReaderHTTPSTests(unittest.TestCase):
                         async with ClientSession(read, write) as session:
                             await session.initialize()
                             names = {tool.name for tool in (await session.list_tools()).tools}
-                            self.assertIn('veda_sources', names)
-                            self.assertIn('veda_prepare_new_article', names)
-                            self.assertNotIn('veda_write_article', names)
+                            self.assertEqual(names, reader_check.READER_TOOLS)
+                            reader_check.validate_reader_tools(names)
                             response = await session.call_tool('veda_sources', {})
                             self.assertFalse(response.isError)
                 asyncio.run(sdk_check())
