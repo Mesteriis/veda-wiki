@@ -27,6 +27,20 @@ historical image bindings, blob/history retention, database indexing, packaging 
 include actual multi-repository synchronization, failure recovery and all
 access paths, not just the existing unit tests.
 
+Historical image bindings need more than retaining blobs. Today an article
+revision stores only Markdown and its text hash, while the source stores one
+current path-to-blob map. An image can change without the Markdown hash changing;
+the current map therefore cannot reconstruct earlier images. A future storage
+format must record an image snapshot independently of the text hash, preserve
+the distinction between an unknown legacy snapshot and an intentionally empty
+one, and update it atomically with the applicable import or write. It must also
+cover published snapshots, transfers, conflict resolution, translations and
+restart/restore. Older revisions cannot safely be backfilled from the current
+map as though it were historical evidence. A revision-specific media route must
+check access to the source and revision before serving a blob, rather than
+exposing arbitrary content by digest. Until those paths are implemented and
+tested together, revision history is text history only.
+
 When no move is pending, SQLite article creation and update persist the changed
 article, outbox jobs, move states and metadata in one transaction. A pending
 move or another mutation uses the full transaction because reconciliation can
