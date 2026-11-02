@@ -62,6 +62,12 @@ func (w *translationWorker) Run(ctx context.Context, interval time.Duration) {
 // One bounded request per pass; failures back off by revision so one bad
 // document does not prevent other articles from being translated.
 func (w *translationWorker) Once(ctx context.Context) {
+	w.store.mu.RLock()
+	invalid := w.store.invalid
+	w.store.mu.RUnlock()
+	if invalid {
+		return
+	}
 	for key, retryAt := range w.retry {
 		if !time.Now().Before(retryAt) {
 			delete(w.retry, key)

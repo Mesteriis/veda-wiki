@@ -50,6 +50,12 @@ func (m *SyncManager) Run(ctx context.Context, interval time.Duration) {
 func (m *SyncManager) Once(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.store.mu.RLock()
+	invalid := m.store.invalid
+	m.store.mu.RUnlock()
+	if invalid {
+		return
+	}
 	for _, initial := range m.store.connections() {
 		if ctx.Err() != nil {
 			return

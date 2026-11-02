@@ -7,7 +7,7 @@ an individual slice is not completion of the whole application.
 | --- | --- |
 | Standalone OSS React + Go, no private corpus/config | Published source-only repository; empty-store browser check |
 | Reading-only frontend; authors use REST/MCP/repositories | No article editor or creation controls; shared REST/MCP write service |
-| Local durable articles, revisions and independent source identity | Store/restart/race/concurrency tests; bounded JSON engine currently |
+| Local durable articles, revisions and independent source identity | Store/restart/race/concurrency tests; optional SQLite migration and >64 MiB synthetic test added, production migration and restore acceptance pending |
 | Merge multiple sources for reading while keeping them distinct | Source-keyed index/search and synchronization; synthetic live transfer across two public repositories passed via a `gh` proxy; acceptance with VEDA-stored credentials remains pending |
 | Wiki metadata in veda.yaml and hierarchical Markdown | Strict schema, checkout import and nested frontend folder navigation |
 | Program docs/ only, no docs means skip | Originals and version-bound Russian translations stored separately; optional loopback Ollama worker requires live-model and translation-quality acceptance |
@@ -21,7 +21,6 @@ an individual slice is not completion of the whole application.
 Additional engineering work: richer translation provenance and stale-state handling
 (new local-model drafts are labelled; older and externally submitted translations
 retain unknown origin),
-historical image bindings, blob/history retention, scale-appropriate database
-migration, packaging and whole-product acceptance. Future verification must
+historical image bindings, blob/history retention, database indexing, retention and production migration, packaging and whole-product acceptance. Future verification must
 include actual multi-repository synchronization, failure recovery and all
 access paths, not just the existing unit tests.

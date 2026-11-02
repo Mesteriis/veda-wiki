@@ -84,18 +84,26 @@ type Store struct {
 	dir      string
 	db       Database
 	observed map[string]time.Time
+	sqlite   bool
+	invalid  bool
 }
 
-func openStore(dir string) (*Store, error) {
+func privateDataDir(dir string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return nil, err
+		return err
 	}
 	info, err := os.Lstat(dir)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("data directory must be private (0700)")
+		return errors.New("data directory must be private (0700)")
+	}
+	return nil
+}
+func openStore(dir string) (*Store, error) {
+	if err := privateDataDir(dir); err != nil {
+		return nil, err
 	}
 	s := &Store{dir: dir, db: Database{Version: 1, Sources: map[string]Source{}, Articles: map[string]Article{}}}
 	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
@@ -119,6 +127,15 @@ func openStore(dir string) (*Store, error) {
 	if err = json.Unmarshal(b, &s.db); err != nil {
 		return nil, err
 	}
+	if s.db.Version == 14 {
+		if err = s.loadSQLite(b); err != nil {
+			return nil, err
+		}
+	}
+	return s.validate()
+}
+
+func (s *Store) validate() (*Store, error) {
 	if (s.db.Version < 1 || s.db.Version > 13) || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
@@ -373,6 +390,9 @@ func openStore(dir string) (*Store, error) {
 	return s, nil
 }
 func (s *Store) commit(db Database) error {
+	if s.invalid {
+		return errors.New("store unavailable")
+	}
 	// Old binaries reject the upgraded store before reading a large revision.
 	if db.Version < 13 {
 		for _, article := range db.Articles {
@@ -391,6 +411,23 @@ func (s *Store) commit(db Database) error {
 		}
 	}
 	db.Updated = time.Now().UTC().Format(time.RFC3339Nano)
+	if s.sqlite {
+		if err := s.commitSQLite(db); err != nil {
+			// Commit errors can be ambiguous. Reload the authoritative database;
+			// if recovery fails, fail closed until the process is restarted.
+			recovered := &Store{dir: s.dir}
+			if recovered.loadSQLite([]byte(`{"version":14,"backend":"sqlite"}`)) != nil {
+				s.invalid = true
+			} else if _, validationErr := recovered.validate(); validationErr != nil {
+				s.invalid = true
+			} else {
+				s.db = recovered.db
+			}
+			return err
+		}
+		s.db = db
+		return nil
+	}
 	b, err := json.Marshal(db)
 	if err != nil {
 		return err

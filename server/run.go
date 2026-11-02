@@ -19,6 +19,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "migrate-sqlite" {
+		if err := sqliteMigrateCommand(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "github" {
 		if e := githubCommand(os.Args[2:]); e != nil {
 			log.Fatal(e)
@@ -67,8 +73,7 @@ func main() {
 	if *interval < 5*time.Second || *interval > time.Hour {
 		log.Fatal("invalid sync interval")
 	}
-	store, err := openStore(*data)
-	if err != nil {
+	if err := privateDataDir(*data); err != nil {
 		log.Fatal(err)
 	}
 	lock, err := os.OpenFile(filepath.Join(*data, "writer.lock"), os.O_CREATE|os.O_RDWR, 0600)
@@ -79,8 +84,8 @@ func main() {
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		log.Fatal("data directory already in use")
 	}
-	// Reload under the process lock, avoiding startup races with another writer.
-	store, err = openStore(*data)
+	// Open only after taking the process lock, including SQLite recovery.
+	store, err := openStore(*data)
 	if err != nil {
 		log.Fatal(err)
 	}

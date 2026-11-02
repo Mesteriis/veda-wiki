@@ -203,6 +203,15 @@ func render(p Page) (template.HTML, template.HTML, error) {
 	return template.HTML(out.String()), template.HTML(toc.String()), err
 }
 func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	if w.Store != nil {
+		w.Store.mu.RLock()
+		invalid := w.Store.invalid
+		w.Store.mu.RUnlock()
+		if invalid {
+			http.Error(rw, "Store unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	if len(w.AllowedHosts) > 0 {
 		host := r.Host
 		if parsed, _, err := net.SplitHostPort(host); err == nil {

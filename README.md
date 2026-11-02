@@ -137,3 +137,5 @@ is disabled by default and needs a separately configured, qualified local model.
 See [content and source model](docs/content-model.md) and [roadmap](docs/roadmap.md).
 MIT licensed code. Third-party font and icon licenses are included with the
 assets; [asset provenance](docs/assets.md) describes the generated illustrations.
+
+For storage migration, backup and rollback requirements, see [storage](docs/storage.md).
