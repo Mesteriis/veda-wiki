@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -49,6 +52,99 @@ func TestSyncRecoveryFixtureProcess(t *testing.T) {
 		}
 	}
 	t.Fatal("fixture job was not acknowledged")
+}
+
+func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	connectFixture(t, s, f, true)
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	arrived, released := make(chan struct{}), make(chan struct{})
+	var intercepted atomic.Bool
+	var releaseOnce sync.Once
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/graphql" {
+			body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			if err != nil {
+				http.Error(w, "fixture read failed", 500)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			if bytes.Contains(body, []byte("updateRefs")) && intercepted.CompareAndSwap(false, true) {
+				close(arrived)
+				// This fixture drops the first request before applying it. A real
+				// server might instead finish a request after disconnection.
+				<-released
+				return
+			}
+		}
+		f.serve(w, r)
+	}))
+	defer gateway.Close()
+	defer releaseOnce.Do(func() { close(released) })
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
+	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if child.ProcessState == nil {
+			_ = child.Process.Kill()
+			_ = child.Wait()
+		}
+	}()
+	select {
+	case <-arrived:
+	case <-ctx.Done():
+		t.Fatal("fixture ref update was not reached")
+	}
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Wait(); err == nil {
+		t.Fatal("fixture process unexpectedly exited normally")
+	}
+	releaseOnce.Do(func() { close(released) })
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := s.jobs()
+	if len(jobs) != 1 || jobs[0].State != "prepared" || jobs[0].PreparedCommit == "" || f.writeCount() != 0 {
+		t.Fatal("prepared state or remote non-write was not preserved", jobs)
+	}
+	if _, err := s.put("handbook", "README.md", "# Second edit", 2); err != nil {
+		t.Fatal(err)
+	}
+	recovery := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
+	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	if err := recovery.Run(); err != nil {
+		t.Fatal("recovery process failed", err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs = s.jobs()
+	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 2 || f.contents()["README.md"] != "# Second edit" {
+		t.Fatal("crash recovery lost or duplicated a revision", jobs, f.writeCount())
+	}
 }
 
 func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
