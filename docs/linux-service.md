@@ -56,6 +56,15 @@ state versions compatible during restore; the example unit is not an automated
 backup or recovery mechanism. Successful CI runs also provide temporary
 `veda-linux-ci` artifacts for amd64 and arm64, with a SHA-256 manifest. These
 are CI builds, not signed releases, and expire under GitHub Actions retention.
-Verify the manifest before installing. CI builds both architectures, but ARM64
-execution has not yet been verified. This repository does not yet publish
-prebuilt releases.
+Verify the manifest before installing. A locally built ARM64 archive passed a
+synthetic Linux ARM64 container check for health, REST, isolation, embedded UI,
+SQLite restore and the local translation protocol. This is not a fresh-host
+systemd installation or a real-model test. To repeat it on an already running
+ARM64 Docker host with the selected Python image already present:
+
+```sh
+python3 scripts/smoke_linux_arm64.py --archive /path/to/veda-ci-linux-arm64.tar.gz
+```
+
+The check uses disposable networkless containers and does not pull an image.
+This repository does not yet publish prebuilt releases.
