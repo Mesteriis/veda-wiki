@@ -70,7 +70,9 @@ definitions are in another chunk. Large blocks without a safe split and large
 documents containing HTML require manual handling and are
 skipped for 24 hours. It does not detect the original language or verify translation
 quality. It rejects unchanged output, truncated generation, stale revisions and
-changes to protected Markdown. The worker also requires at least three Cyrillic
+changes to protected Markdown, including heading levels and list nesting, type, starting number and item
+count. This does not prove that translated prose preserves meaning.
+The worker also requires at least three Cyrillic
 letters and at least 40% Cyrillic among Latin and Cyrillic letters in parsed
 prose; code blocks, inline code, autolinks and raw HTML do not count. This is
 a conservative script check, not language identification or quality review:

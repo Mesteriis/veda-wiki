@@ -537,3 +537,24 @@ func TestLocalWorkerTranslatesLargeParagraphs(t *testing.T) {
 		t.Fatal("large paragraph translation failed", err)
 	}
 }
+
+func TestLocalTranslationWorkerRejectsLostListStep(t *testing.T) {
+	s := testStore(t)
+	programSource(t, s, "program", "private")
+	if _, err := s.put("program", "docs/steps.md", "# Setup\n\n1. First\n2. Second\n", 0); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, 200, map[string]any{"done": true, "response": "# Установка\n\n1. Первый\n"})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorker(s, srv.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Once(context.Background())
+	article, err := s.article("program", "docs/steps.md", false)
+	if err != nil || article.Translation != nil || len(worker.retry) != 1 {
+		t.Fatal("incomplete list was saved", err)
+	}
+}

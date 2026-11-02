@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -71,17 +72,26 @@ func (s *Store) validateTranslation(in translationRequest) (map[string]any, erro
 	}, nil
 }
 
-// Translation cannot alter code or destinations. Preserve their order too, so
-// translated prose cannot silently associate a command or link with another step.
+// Preserve heading levels, list shape, code and destinations in order. This
+// detects some dropped steps but cannot verify prose meaning or order.
 func protectedMarkdown(value string) []string {
 	source := []byte(value)
 	root := markdown.Parser().Parse(text.NewReader(source))
 	result := []string{}
 	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
+			if _, ok := node.(*ast.List); ok {
+				result = append(result, "list:end")
+			}
 			return ast.WalkContinue, nil
 		}
 		switch n := node.(type) {
+		case *ast.Heading:
+			result = append(result, fmt.Sprintf("heading:%d", n.Level))
+		case *ast.List:
+			result = append(result, fmt.Sprintf("list:%t:%d", n.IsOrdered(), n.Start))
+		case *ast.ListItem:
+			result = append(result, "list:item")
 		case *ast.FencedCodeBlock:
 			info := ""
 			if n.Info != nil {

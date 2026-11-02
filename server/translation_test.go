@@ -157,3 +157,38 @@ func TestStalePrivateDraftDoesNotLeakOnPublicPage(t *testing.T) {
 		t.Fatal("public page exposed unpublished translation state", err)
 	}
 }
+
+func TestTranslationPreservesHeadingAndListStructure(t *testing.T) {
+	s := testStore(t)
+	programSource(t, s, "program", "private")
+	original := "# Setup\n\n## Steps\n\n1. First\n   - Nested\n2. Second\n"
+	rev, err := s.put("program", "docs/guide.md", original, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := "# Установка\n\n## Шаги\n\n1. Первый\n   - Вложенный\n2. Второй\n"
+	in := translationRequest{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: valid}
+	for _, broken := range []string{
+		strings.Replace(valid, "## Шаги", "### Шаги", 1),
+		strings.Replace(valid, "2. Второй\n", "", 1),
+		strings.Replace(valid, "   - Вложенный", "- Вложенный", 1),
+		strings.Replace(valid, "1. Первый", "3. Первый", 1),
+	} {
+		in.Text = broken
+		report, err := s.validateTranslation(in)
+		if err != nil || report["structural_valid"] != false {
+			t.Fatal("altered structure was not detected", err)
+		}
+		if _, err = s.submitTranslation(in); err != ErrInvalid {
+			t.Fatal("altered structure was stored", err)
+		}
+	}
+	in.Text = valid
+	report, err := s.validateTranslation(in)
+	if err != nil || report["structural_valid"] != true {
+		t.Fatal("valid structure rejected", err)
+	}
+	if _, err = s.submitTranslation(in); err != nil {
+		t.Fatal("valid translation not stored", err)
+	}
+}
