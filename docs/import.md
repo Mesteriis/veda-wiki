@@ -32,6 +32,9 @@ url: https://example.org
 
 `description`, `image` and `url` are optional. `image` is a repository-relative
 local raster image; `url` is an HTTPS link, never an instruction to fetch it.
+The reading interface shows the description and HTTPS link under the source
+in its source-specific tree view; the image is used on recent-page cards. Only
+sources visible to the reader contribute their metadata.
 Unknown fields, duplicate keys, multiple YAML documents, aliases, anchors,
 custom tags and unsupported schema versions are refused. The parser uses the
 [stable Go YAML v3 API](https://pkg.go.dev/go.yaml.in/yaml/v3), pinned in go.mod.

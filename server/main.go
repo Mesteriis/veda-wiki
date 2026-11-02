@@ -56,10 +56,12 @@ type Card struct {
 	ImageURL    string
 }
 type Group struct {
-	Name  string
-	ID    string
-	Count int
-	Pages []Page
+	Name        string
+	ID          string
+	Count       int
+	Pages       []Page
+	Description string `json:",omitempty"`
+	SourceURL   string `json:",omitempty"`
 }
 type SourceWarning struct {
 	ID        string
@@ -380,6 +382,10 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				name = source.Title
 			}
 			g = &Group{Name: name, ID: id}
+			if source := sources[id]; source.Metadata != nil {
+				g.Description = source.Metadata.Description
+				g.SourceURL = source.Metadata.URL
+			}
 			groups[id] = g
 		}
 		g.Count++

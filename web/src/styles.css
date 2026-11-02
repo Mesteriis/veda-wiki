@@ -759,6 +759,14 @@ kbd {
   width: 15px;
   height: 15px;
 }
+.tree-source-description {
+  margin: 4px 8px;
+  color: #8eafc2;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.tree-pages .tree-source-link,
 .tree-pages .tree-all {
   font-size: 11px;
   color: var(--cyan);

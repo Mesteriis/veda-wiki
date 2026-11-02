@@ -298,6 +298,8 @@ function Tree({ groups }) {
             <small>{g.Count}</small>
           </summary>
           <div className="tree-pages">
+            {g.Description && <p className="tree-source-description">{g.Description}</p>}
+            {g.SourceURL && <a className="tree-source-link" href={g.SourceURL} target="_blank" rel="noopener noreferrer">Сайт источника <I name="external-link" /></a>}
             <TreeNodes node={buildTree(g.ID, g.Pages || [])} />
             <a className="tree-all" href={"/?env=" + encodeURIComponent(g.ID)}>
               Все страницы раздела <I name="arrow-right" />
