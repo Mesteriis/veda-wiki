@@ -56,6 +56,8 @@ access regardless of the MCP key.
 
 The scoped-key store uses format version 4 or newer so older binaries refuse it;
 preserve the current store and verify backup compatibility before rollback.
-The snapshot currently copies
-authorized content per request; performance with large collections is unverified.
+Each request snapshots authorized sources under the authorization lock, copying
+mutable maps, slices and records while reusing immutable strings. A synthetic
+large-document benchmark covers snapshot allocations, but production-scale
+memory and concurrency still need validation.
 Keys have not been deployed or externally audited.

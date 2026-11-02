@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"maps"
+	"slices"
 	"sort"
 	"time"
 )
@@ -228,6 +230,11 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 	for _, id := range scope {
 		selected[id] = true
 		if source, ok := s.db.Sources[id]; ok {
+			if source.Metadata != nil {
+				metadata := *source.Metadata
+				source.Metadata = &metadata
+			}
+			source.Assets = maps.Clone(source.Assets)
 			db.Sources[id] = source
 			if conn, ok := s.db.Connections[source.ConnectionID]; ok {
 				db.Connections[conn.ID] = conn
@@ -238,17 +245,26 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 		}
 	}
 	for key, article := range s.db.Articles {
-		if selected[article.SourceID] {
-			db.Articles[key] = article
+		if !selected[article.SourceID] {
+			continue
 		}
+		// Strings are immutable values; copy every mutable field while the
+		// source lock still protects the coherent authorization snapshot.
+		article.Versions = slices.Clone(article.Versions)
+		article.Conflicts = slices.Clone(article.Conflicts)
+		if article.Translation != nil {
+			translation := *article.Translation
+			article.Translation = &translation
+		}
+		if article.CopiedFrom != nil {
+			origin := *article.CopiedFrom
+			article.CopiedFrom = &origin
+		}
+		if article.Published != nil {
+			published := *article.Published
+			article.Published = &published
+		}
+		db.Articles[key] = article
 	}
-	encoded, err := json.Marshal(db)
-	if err != nil {
-		return nil, true, err
-	}
-	var snapshot Database
-	if err = json.Unmarshal(encoded, &snapshot); err != nil {
-		return nil, true, err
-	}
-	return &Store{dir: s.dir, db: snapshot, observed: observed}, true, nil
+	return &Store{dir: s.dir, db: db, observed: observed}, true, nil
 }
