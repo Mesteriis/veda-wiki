@@ -13,7 +13,12 @@ import (
 
 // Compare only wiki originals: program listing hashes can describe translations.
 // This is aggregate read-only evidence, not an import, deletion or conflict plan.
-func compareWikiPreview(batch ImportBatch, endpoint string) (map[string]int, error) {
+type previewComparison struct {
+	Articles map[string]int
+	Assets   map[string]int
+}
+
+func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison, error) {
 	if batch.Kind != "wiki" || !identifier.MatchString(batch.SourceID) {
 		return nil, ErrInvalid
 	}
@@ -50,13 +55,16 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (map[string]int, err
 	if err = get("/api/v1/sources", &sources); err != nil {
 		return nil, err
 	}
-	found := false
+	var selected *Source
 	for _, source := range sources {
 		if source.ID == batch.SourceID && source.Kind == "wiki" {
-			found = true
+			if selected != nil {
+				return nil, ErrInvalid
+			}
+			selected = &source
 		}
 	}
-	if !found {
+	if selected == nil {
 		return nil, ErrNotFound
 	}
 	var pages []Page
@@ -94,5 +102,28 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (map[string]int, err
 		delete(remote, name)
 	}
 	result["veda_only"] = len(remote)
-	return result, nil
+	assets := map[string]int{"same": 0, "different": 0, "checkout_only": 0, "veda_only": 0}
+	remoteAssets := make(map[string]string, len(selected.Assets))
+	for name, ref := range selected.Assets {
+		if !remoteAssetPath(name, "wiki") {
+			return nil, ErrInvalid
+		}
+		if _, err := hexKey(ref.SHA); err != nil {
+			return nil, ErrInvalid
+		}
+		remoteAssets[name] = ref.SHA
+	}
+	for name, data := range batch.Assets {
+		sha, exists := remoteAssets[name]
+		if !exists {
+			assets["checkout_only"]++
+		} else if sha == digest(data) {
+			assets["same"]++
+		} else {
+			assets["different"]++
+		}
+		delete(remoteAssets, name)
+	}
+	assets["veda_only"] = len(remoteAssets)
+	return &previewComparison{Articles: result, Assets: assets}, nil
 }

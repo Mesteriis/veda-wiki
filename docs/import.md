@@ -43,12 +43,14 @@ current caller without a credential:
   --compare-url http://127.0.0.1:8080
 ```
 
-The output adds aggregate `same`, `different`, `checkout_only`, and `veda_only`
-counts; it does not include names or contents, send the checkout to VEDA, or
+The output adds separate article `comparison` and `asset_comparison` aggregates,
+each with `same`, `different`, `checkout_only`, and `veda_only` counts; it does
+not include names or contents, send the checkout to VEDA, or
 change either side. It uses current article hashes, not import-base revisions,
 and the two systems can change during the comparison. Withheld and untracked
 files are excluded, so `veda_only` does not imply deletion and `different` does
-not establish a conflict. Images and metadata are not compared. Program sources
+not establish a conflict. Image counts compare stored source hashes, not blob
+availability or historical image bindings. Metadata is not compared. Program sources
 are refused because their displayed hashes can refer to translations. The endpoint
 must be independently authorized and trusted; the comparison does not read or
 send a key, use a proxy, or follow redirects.

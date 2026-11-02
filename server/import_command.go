@@ -125,7 +125,8 @@ func importCommand(args []string) error {
 			if err != nil {
 				return err
 			}
-			result["comparison"] = comparison
+			result["comparison"] = comparison.Articles
+			result["asset_comparison"] = comparison.Assets
 		}
 		return json.NewEncoder(os.Stdout).Encode(result)
 	}
