@@ -91,6 +91,7 @@ with tempfile.TemporaryDirectory(prefix='veda-mcp-tls-') as tmp:
         ports.add(port())
     plain, tls = ports
     process = subprocess.Popen([BINARY, '--data', str(data), '--listen', f'127.0.0.1:{plain}',
+        '--public-listen', '127.0.0.1:0',
         '--https-listen', f'127.0.0.1:{tls}', '--tls-cert', str(cert), '--tls-key', str(certkey)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
