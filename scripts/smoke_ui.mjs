@@ -164,6 +164,15 @@ for (const width of [1672, 390, 320]) {
       issuedLink = await evaluate("document.querySelector('.access-issued label textarea').value");
       await evaluate("document.querySelector('.access-issued button').click()");
       await until("!document.querySelector('.access-issued')");
+      if (width === 1672) {
+        for (const intermediate of [1201, 1024, 800]) {
+          await send('Emulation.setDeviceMetricsOverride', { width: intermediate, height: 941, deviceScaleFactor: 1, mobile: false });
+          await until(`innerWidth === ${intermediate}`);
+          if (!await evaluate(`document.documentElement.scrollWidth === ${intermediate}`)) throw Error('settings intermediate viewport overflow');
+        }
+        await send('Emulation.setDeviceMetricsOverride', { width, height: 941, deviceScaleFactor: 1, mobile: false });
+        await until(`innerWidth === ${width}`);
+      }
     }
     const writeStatus = await evaluate("(async () => (await fetch('/api/v1/articles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_id:'fixture',path:'browser-write.md',text:'# Synthetic',expected_revision:0})})).status)()");
     if (writeStatus !== 403 && writeStatus !== 404) throw Error('browser admin session allowed article write');
