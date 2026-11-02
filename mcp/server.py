@@ -120,6 +120,7 @@ def make_server(client):
             "query": string, "source_id": string, "limit": {"type": "integer", "minimum": 1, "maximum": 100},
             "offset": {"type": "integer", "minimum": 0}}, ["query"]),
         "veda_read": ("Read the current article and its revision.", {"source_id": string, "path": string}, ["source_id", "path"]),
+        "veda_read_display": ("Read the Markdown shown to readers, including an available Russian translation, with its status, origin and original SHA. This is not an editable source revision; use veda_read for the original and its revision before preparing changes.", {"source_id": string, "path": string}, ["source_id", "path"]),
         "veda_read_excerpt": ("Read a bounded portion of the current article. Offsets count Unicode code points; pass the first response's sha256 as expected_sha256 for every continuation. A changed revision is refused.", {
             "source_id": string, "path": string, "offset": {"type": "integer", "minimum": 0},
             "limit": {"type": "integer", "minimum": 1, "maximum": 16000},
@@ -185,7 +186,7 @@ def make_server(client):
     }
 
     if client.read_only:
-        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed")}
+        specs = {name: specs[name] for name in ("veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed")}
 
     def read(source_id, path):
         article = client.request("GET", "/api/v1/articles?" + urlencode({"source_id": source_id, "path": path}))
@@ -213,6 +214,8 @@ def make_server(client):
                 result = await asyncio.to_thread(client.request, "GET", "/api/v1/search?" + urlencode(params))
             elif name == "veda_read":
                 result = await asyncio.to_thread(read, **arguments)
+            elif name == "veda_read_display":
+                result = await asyncio.to_thread(client.request, "GET", "/api/v1/articles/display?" + urlencode(arguments))
             elif name == "veda_read_excerpt":
                 result = await asyncio.to_thread(client.request, "GET", "/api/v1/articles/excerpt?" + urlencode(arguments))
             elif name == "veda_prepare_update":

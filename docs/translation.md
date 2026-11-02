@@ -10,6 +10,11 @@ original. An authenticated reader sees when an existing translation is stale;
 the public view reports it as unavailable without disclosing unpublished drafts.
 REST/MCP article
 reads return the original, allowing an agent to translate from the actual source.
+`veda_read_display` and `GET /api/v1/articles/display` return the Markdown shown
+to the caller, including a currently visible Russian translation when available,
+its state and hashes. They do not return an editable revision; use `veda_read`
+and the original revision for update proposals. Unapproved translations remain
+private, and stale translations are never returned as the displayed text.
 New drafts produced by the local worker retain `origin: local_model` across
 restart, copying, moving, and unchanged approval. The reader labels those
 translations as automatic. An edited submission has unknown origin; older

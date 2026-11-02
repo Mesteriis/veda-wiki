@@ -218,6 +218,27 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/articles/display":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
+		if !identifier.MatchString(sourceID) || !safePath(p) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		page, err := w.Store.page(sourceID+"/"+p, !owner && !reader)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]any{
+			"source_id": sourceID, "path": p, "title": page.Title,
+			"text": page.Text, "sha256": page.SHA, "original_sha256": page.OriginalSHA,
+			"translated": page.Translated, "translation_state": page.TranslationState,
+			"translation_origin": page.TranslationOrigin, "program_documentation": page.ProgramDocumentation,
+		})
 	case "/api/v1/articles/excerpt":
 		if r.Method != "GET" {
 			rw.WriteHeader(405)
