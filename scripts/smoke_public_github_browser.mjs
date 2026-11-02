@@ -45,7 +45,7 @@ await send('Page.navigate', {url});
 await until("!!document.querySelector('#main-navigation .nav-item')");
 await evaluate("[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText==='GitHub').click()");
 await until("!!document.querySelector('dialog[open] .github-connect input[name=key]')");
-await evaluate(`document.querySelector('dialog input[name=key]').value=${JSON.stringify('d'.repeat(64))};document.querySelector('dialog .github-connect form').requestSubmit()`);
+await evaluate(`document.querySelector('dialog input[name=key]').value=${JSON.stringify('d'.repeat(64))};document.querySelector('dialog input[name=key]').closest('form').requestSubmit()`);
 await until("!!document.querySelector('dialog input[name=repository]')");
 await evaluate(`(() => {const r=document.querySelector('dialog input[name=repository]'), f=r.form; if(f.querySelector('input[name=write]').checked) throw Error('write unexpectedly selected'); r.value=${JSON.stringify(repo)}; f.querySelector('input[name=id]').value='live-program'; f.requestSubmit();})()`);
 await until("document.querySelector('dialog').innerText.includes('Репозиторий подключён')");
