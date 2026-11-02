@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -243,5 +245,51 @@ func TestAdminBootstrapSurvivesSQLiteRestart(t *testing.T) {
 	v, ok := s.authenticateUser("operator", "synthetic password")
 	if !ok || !s.adminSessionValid("operator", v) {
 		t.Fatal("admin login not restored")
+	}
+}
+
+func TestOlderBinaryRefusesAdministratorStore(t *testing.T) {
+	old := os.Getenv("VEDA_PRE_ADMIN_BINARY")
+	if old == "" {
+		t.Skip("pre-administrator binary not provided")
+	}
+	for _, sqlite := range []bool{false, true} {
+		t.Run(map[bool]string{false: "json", true: "sqlite"}[sqlite], func(t *testing.T) {
+			s := testStore(t)
+			source(t, s, "fixture", "private")
+			if sqlite {
+				if err := migrateSQLite(s.dir); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				s, err = openStore(s.dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := s.bootstrapAdmin("operator"); err != nil {
+				t.Fatal(err)
+			}
+			name := "state.json"
+			if sqlite {
+				name = "state.sqlite"
+			}
+			file := filepath.Join(s.dir, name)
+			before, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
+				t.Fatal("old binary did not refuse administrator store")
+			}
+			after, err := os.ReadFile(file)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("old binary changed store")
+			}
+		})
 	}
 }
