@@ -503,7 +503,7 @@ function Dashboard({ v }) {
           <Tree groups={v.Groups || []} />
           <div className="lower-right">
             <MorePages cards={v.Cards || []} pages={v.Pages || []} />
-            <Activity />
+            {!v.Public && <Activity />}
           </div>
         </div>
       </div>
