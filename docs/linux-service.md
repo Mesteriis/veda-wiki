@@ -53,4 +53,9 @@ starting or retrying; do not remove migration artifacts blindly.
 
 Set up and test backups before relying on the service. Keep the executable and
 state versions compatible during restore; the example unit is not an automated
-backup or recovery mechanism. The archive is built locally; this repository does not yet publish prebuilt releases.
+backup or recovery mechanism. Successful CI runs also provide temporary
+`veda-linux-ci` artifacts for amd64 and arm64, with a SHA-256 manifest. These
+are CI builds, not signed releases, and expire under GitHub Actions retention.
+Verify the manifest before installing. CI builds both architectures, but ARM64
+execution has not yet been verified. This repository does not yet publish
+prebuilt releases.

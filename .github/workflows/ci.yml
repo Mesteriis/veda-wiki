@@ -30,3 +30,14 @@ jobs:
       - run: python scripts/smoke_directory_restore.py
       - run: python scripts/smoke_directory_restore.py --index
       - run: cd server && VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^TestMultiSourceMCPAfterSQLiteRestart$' -v .
+      - name: Build Linux archives
+        run: |
+          python scripts/package_release.py --version ci --arch amd64 --output "$RUNNER_TEMP/veda-artifacts"
+          python scripts/package_release.py --version ci --arch arm64 --output "$RUNNER_TEMP/veda-artifacts"
+          cd "$RUNNER_TEMP/veda-artifacts"
+          sha256sum veda-ci-linux-amd64.tar.gz veda-ci-linux-arm64.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veda-linux-ci
+          path: ${{ runner.temp }}/veda-artifacts/
+          if-no-files-found: error
