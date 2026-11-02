@@ -110,7 +110,44 @@ with tempfile.TemporaryDirectory(prefix='veda-mcp-tls-') as tmp:
         save_reader_key(key, issued['key'])
         asyncio.run(check_tls(f'https://127.0.0.1:{tls}', key, cert,
             lambda: owner_post('/api/v1/access-keys/revoke', {'id': 'tls-agent'})))
-        print('PASS: TLS MCP source scope, read, unsaved proposal, denial and revocation')
+        owner_post('/api/v1/sources', {'id': 'public', 'title': 'Synthetic public', 'kind': 'wiki', 'visibility': 'public'})
+        key_dir = root / 'agents'
+        key_dir.mkdir(mode=0o700)
+        values = []
+        for name in ('codex', 'claude', 'opencode', 'hermes'):
+            created = owner_post('/api/v1/access-keys', {'id': 'fixture-' + name, 'sources': ['allowed'],
+                'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+            values.append(created['key'])
+            save_reader_key(key_dir / (name + '.key'), created['key'])
+        if len(set(values)) != 4:
+            raise RuntimeError('agent keys are not independent')
+        command = [sys.executable, str(ROOT / 'scripts/check_agent_readers.py'), '--url', f'https://127.0.0.1:{tls}',
+            '--source', 'allowed', '--article', 'guide.md', '--key-dir', str(key_dir)]
+        env = {**os.environ, 'SSL_CERT_FILE': str(cert)}
+        checked = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        if checked.returncode or any(token.encode() in checked.stdout + checked.stderr for token in values):
+            raise RuntimeError('four-agent reader check failed or exposed a key')
+        wrong_source = command.copy()
+        wrong_source[wrong_source.index('--source') + 1] = 'hidden'
+        denied = subprocess.run(wrong_source, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        if denied.returncode == 0 or any(token.encode() in denied.stdout + denied.stderr for token in values):
+            raise RuntimeError('four-agent check accepted the wrong scope or exposed a key')
+        broad = owner_post('/api/v1/access-keys', {'id': 'fixture-broad', 'sources': ['allowed', 'hidden'],
+            'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})['key']
+        broad_dir = root / 'broad-agents'
+        broad_dir.mkdir(mode=0o700)
+        for index, name in enumerate(('codex', 'claude', 'opencode', 'hermes')):
+            save_reader_key(broad_dir / (name + '.key'), broad if index == 0 else values[index])
+        too_broad = command.copy()
+        too_broad[too_broad.index('--key-dir') + 1] = str(broad_dir)
+        rejected = subprocess.run(too_broad, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        if rejected.returncode == 0 or any(token.encode() in rejected.stdout + rejected.stderr for token in [broad, *values]):
+            raise RuntimeError('four-agent check accepted a broader private scope or exposed a key')
+        owner_post('/api/v1/access-keys/revoke', {'id': 'fixture-codex'})
+        revoked = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        if revoked.returncode == 0 or any(token.encode() in revoked.stdout + revoked.stderr for token in values):
+            raise RuntimeError('four-agent check accepted a revoked key or exposed a key')
+        print('PASS: TLS MCP source scope, read, unsaved proposal, denial, revocation and four-agent checks')
     finally:
         process.terminate()
         process.wait(timeout=10)

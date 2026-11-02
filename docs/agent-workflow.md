@@ -49,6 +49,17 @@ confirmed, inspect the file metadata before retrying; a partial file may exist.
 Do not paste credentials into chat. A file can be read by other processes with
 the same operating-system identity, so separate files are not process isolation.
 
+Before changing client registrations, use the MCP virtual environment to run
+`scripts/check_agent_readers.py --url https://VEDA-HOST --source SOURCE_ID
+--article AGENTS.md --key-dir /absolute/private/agent-keys`. It checks all four
+files and requires access to exactly the chosen private source; public sources
+may also be visible. It reads a bounded excerpt and prepares an unsaved synthetic
+proposal without printing their contents or the keys. Use an existing article
+path if the source has no root `AGENTS.md`. This checks the credentials and
+adapter, not whether each agent's model can discover or invoke them, and does
+not prove that four files contain distinct keys. Verify each client after its
+configuration changes.
+
 These examples are for a server on the same machine. Loopback addresses inside
 another host or container are not reachable from the client machine. For a
 trusted directly reachable HTTPS VEDA instance, pass `--url https://VEDA-HOST
