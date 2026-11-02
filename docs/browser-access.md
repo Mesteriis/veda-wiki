@@ -75,3 +75,25 @@ are separate agent credentials and do not establish OS isolation. Creating a
 team or user upgrades the logical store to version 15: older binaries reject it.
 The SQLite marker remains version 14 and must stay paired with its database.
 Back up and verify a compatible restore before creating accounts or rolling back.
+
+## Administrator first setup
+
+An administrator is a named user with access to all private sources and to the
+separate browser GitHub and access-administration sessions. Those sessions do
+not grant the owner REST API or article writes. Changing or disabling the user
+or changing its administrator role invalidates existing user sessions.
+
+The first administrator must be provisioned through the root-authenticated local
+Unix socket; the endpoint is unavailable to other peers and browser origins.
+The operation returns a random, single-use setup token valid for 24 hours; only
+its salted Argon2 hash is stored. The owner enters the token and a new password
+in the GitHub dialog under “Первый вход — установить пароль”, then logs in.
+Passwords must contain 12–128 Unicode characters. The local operator may issue
+a new setup token for the same pending account, invalidating the previous one;
+an already configured administrator cannot be replaced by this operation.
+Transport the token privately and do not put it in URLs, logs or command
+arguments. This changes the logical store format to version 20: older binaries
+refuse it. A compatible backup and restore plan are required before setup.
+The separately configured workstation reader bridge can still grant its local
+operating-system user read-only access without a browser login; a named admin
+session does not change that bridge's existing trust boundary.

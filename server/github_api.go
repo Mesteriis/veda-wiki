@@ -12,7 +12,7 @@ import (
 // Browser administration is restricted to GitHub account and connection
 // management. The cookie cannot authorize the owner API or article writes.
 func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
-	if w.Public || w.Store == nil || !w.AdminSessions.validCookie(r, adminSessionCookie) {
+	if w.Public || w.Store == nil || !w.adminCookieValid(r, w.AdminSessions, adminSessionCookie) {
 		http.NotFound(rw, r)
 		return
 	}

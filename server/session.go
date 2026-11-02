@@ -100,10 +100,14 @@ func (s *readerSessions) validCookie(r *http.Request, name string) bool {
 }
 
 func (s *readerSessions) userCookie(r *http.Request) (userSession, bool) {
+	return s.namedUserCookie(r, sessionCookie)
+}
+
+func (s *readerSessions) namedUserCookie(r *http.Request, name string) (userSession, bool) {
 	if s == nil || !secureBrowserRequest(r) {
 		return userSession{}, false
 	}
-	c, err := r.Cookie(sessionCookie)
+	c, err := r.Cookie(name)
 	if err != nil || len(c.Value) != 64 {
 		return userSession{}, false
 	}
@@ -118,6 +122,14 @@ func (s *readerSessions) userCookie(r *http.Request) (userSession, bool) {
 	}
 	user, ok := s.users[hash]
 	return user, ok
+}
+
+func (w Wiki) adminCookieValid(r *http.Request, sessions *readerSessions, cookie string) bool {
+	if sessions.validCookie(r, cookie) {
+		return true
+	}
+	u, ok := sessions.namedUserCookie(r, cookie)
+	return ok && w.Store != nil && w.Store.adminSessionValid(u.ID, u.AuthVersion)
 }
 
 func (s *readerSessions) scopedCookie(r *http.Request) ([32]byte, bool) {
@@ -155,6 +167,9 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" && r.URL.Path == prefix+"status" {
 		valid := sessions.validCookie(r, cookie)
+		if prefix != "/api/session/" {
+			valid = w.adminCookieValid(r, sessions, cookie)
+		}
 		if !valid && prefix == "/api/session/" && w.Store != nil {
 			if hash, ok := sessions.scopedCookie(r); ok {
 				valid = w.Store.validScopeHash(hash, time.Now())
@@ -177,6 +192,34 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 	}
 	if !sameOrigin(r) {
 		jsonResponse(rw, 403, map[string]string{"error": "origin rejected"})
+		return
+	}
+	if prefix == "/api/admin/session/" && r.URL.Path == prefix+"setup" {
+		var in struct {
+			Username string `json:"username"`
+			Token    string `json:"setup_token"`
+			Password string `json:"password"`
+		}
+		if decodeLimited(rw, r, &in, 2048) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		sessions.mu.Lock()
+		allowed := sessions.allowAttempt(time.Now())
+		sessions.mu.Unlock()
+		if !allowed {
+			jsonResponse(rw, 429, map[string]string{"error": "try again later"})
+			return
+		}
+		if w.Store == nil {
+			http.NotFound(rw, r)
+			return
+		}
+		if err := w.Store.finishAdminSetup(in.Username, in.Token, in.Password); err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]bool{"configured": true})
 		return
 	}
 	if r.URL.Path == prefix+"logout" {
@@ -270,9 +313,12 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 	}
 	var person userSession
 	userAccess := false
-	if !fullAccess && !scopedAccess && in.Key == "" && prefix == "/api/session/" && w.Store != nil {
+	if !fullAccess && !scopedAccess && in.Key == "" && w.Store != nil {
 		person.ID = in.Username
 		person.AuthVersion, userAccess = w.Store.authenticateUser(in.Username, in.Password)
+		if userAccess && prefix != "/api/session/" {
+			userAccess = w.Store.adminSessionValid(person.ID, person.AuthVersion)
+		}
 	}
 	if !fullAccess && !scopedAccess && !userAccess {
 		sessions.mu.Unlock()

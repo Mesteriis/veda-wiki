@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"sort"
+	"time"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -20,6 +21,8 @@ type WikiTeam struct {
 }
 type WikiUser struct {
 	ID           string   `json:"id"`
+	Admin        bool     `json:"admin,omitempty"`
+	SetupExpires string   `json:"setup_expires,omitempty"`
 	Salt         string   `json:"salt"`
 	PasswordHash string   `json:"password_hash"`
 	Teams        []string `json:"teams"`
@@ -29,6 +32,7 @@ type WikiUser struct {
 }
 type WikiUserView struct {
 	ID       string   `json:"id"`
+	Admin    bool     `json:"admin"`
 	Teams    []string `json:"teams"`
 	Disabled bool     `json:"disabled"`
 	Revision int      `json:"revision"`
@@ -68,6 +72,14 @@ func validatePeople(db Database) error {
 		}
 	}
 	for id, user := range db.Users {
+		if user.Admin && db.Version < 20 {
+			return errors.New("administrators require store version 20")
+		}
+		if user.SetupExpires != "" {
+			if _, err := time.Parse(time.RFC3339Nano, user.SetupExpires); err != nil || !user.Admin {
+				return errors.New("invalid administrator setup")
+			}
+		}
 		if id != user.ID || !identifier.MatchString(id) || user.Revision < 1 || user.Revision > 1000000000 || user.AuthVersion < 1 || user.AuthVersion > 1000000000 || len(user.Teams) > 100 {
 			return errors.New("invalid user")
 		}
@@ -86,6 +98,36 @@ func validatePeople(db Database) error {
 		}
 	}
 	return nil
+}
+
+// setUserAdmin is called only by an owner-authorized provisioning path.
+// Changing the role invalidates sessions issued under the previous role.
+func (s *Store) setUserAdmin(id string, admin bool, expected int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.db.Users[id]
+	if !ok || u.Revision != expected || u.Revision >= 1000000000 || u.AuthVersion >= 1000000000 {
+		return ErrConflict
+	}
+	if u.Admin == admin {
+		return nil
+	}
+	u.Admin = admin
+	u.Revision++
+	u.AuthVersion++
+	db := s.clone()
+	db.Users[id] = u
+	if db.Version < 20 {
+		db.Version = 20
+	}
+	return s.commit(db)
+}
+
+func (s *Store) adminSessionValid(id string, version int) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	u, ok := s.db.Users[id]
+	return ok && !u.Disabled && u.Admin && u.SetupExpires == "" && u.AuthVersion == version
 }
 func (s *Store) passwordHash(password string) (string, string, error) {
 	if !passwordValid(password) {
@@ -116,7 +158,7 @@ func (s *Store) userViews() []WikiUserView {
 	defer s.mu.RUnlock()
 	out := make([]WikiUserView, 0, len(s.db.Users))
 	for _, user := range s.db.Users {
-		out = append(out, WikiUserView{user.ID, append([]string{}, user.Teams...), user.Disabled, user.Revision})
+		out = append(out, WikiUserView{ID: user.ID, Admin: user.Admin, Teams: append([]string{}, user.Teams...), Disabled: user.Disabled, Revision: user.Revision})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
@@ -199,6 +241,7 @@ func (s *Store) saveUser(id string, teams *[]string, password *string, disabled 
 	}
 	if password != nil {
 		user.Salt, user.PasswordHash = salt, hash
+		user.SetupExpires = ""
 		if exists {
 			user.AuthVersion++
 		}
@@ -220,7 +263,7 @@ func (s *Store) saveUser(id string, teams *[]string, password *string, disabled 
 	if err = s.commit(db); err != nil {
 		return WikiUserView{}, err
 	}
-	return WikiUserView{user.ID, append([]string{}, user.Teams...), user.Disabled, user.Revision}, nil
+	return WikiUserView{ID: user.ID, Admin: user.Admin, Teams: append([]string{}, user.Teams...), Disabled: user.Disabled, Revision: user.Revision}, nil
 }
 
 // Always perform Argon2 for valid-size input, including unknown users. The
@@ -246,7 +289,7 @@ func (s *Store) authenticateUser(id, password string) (int, bool) {
 	s.passwordMu.Lock()
 	derived := argon2.IDKey([]byte(password), salt, 2, passwordMemoryKiB, 1, 32)
 	s.passwordMu.Unlock()
-	if !exists || user.Disabled || subtle.ConstantTimeCompare(derived, expected) != 1 {
+	if !exists || user.Disabled || user.SetupExpires != "" || subtle.ConstantTimeCompare(derived, expected) != 1 {
 		return 0, false
 	}
 	s.mu.RLock()
@@ -254,12 +297,101 @@ func (s *Store) authenticateUser(id, password string) (int, bool) {
 	s.mu.RUnlock()
 	return user.AuthVersion, ok && !current.Disabled && current.AuthVersion == user.AuthVersion && current.PasswordHash == user.PasswordHash
 }
+
+// bootstrapAdmin is restricted to the root-authenticated local socket.
+func (s *Store) bootstrapAdmin(id string) (string, error) {
+	if !identifier.MatchString(id) {
+		return "", ErrInvalid
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(raw)
+	salt, hash, err := s.passwordHash(token)
+	if err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous, exists := s.db.Users[id]
+	if exists && (!previous.Admin || previous.SetupExpires == "" || previous.Disabled || previous.Revision >= 1000000000 || previous.AuthVersion >= 1000000000) {
+		return "", ErrConflict
+	}
+	for _, user := range s.db.Users {
+		if user.Admin && user.ID != id {
+			return "", ErrConflict
+		}
+	}
+	db := s.clone()
+	u := WikiUser{ID: id, Admin: true, Salt: salt, PasswordHash: hash, Teams: []string{}, Revision: 1, AuthVersion: 1, SetupExpires: time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339Nano)}
+	if exists {
+		u.Revision = previous.Revision + 1
+		u.AuthVersion = previous.AuthVersion + 1
+	}
+	db.Users[id] = u
+	if db.Version < 20 {
+		db.Version = 20
+	}
+	if err = s.commit(db); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func (s *Store) finishAdminSetup(id, token, password string) error {
+	if !identifier.MatchString(id) || !passwordValid(token) || !passwordValid(password) {
+		return ErrInvalid
+	}
+	s.mu.RLock()
+	u, ok := s.db.Users[id]
+	s.mu.RUnlock()
+	expires, err := time.Parse(time.RFC3339Nano, u.SetupExpires)
+	if !ok || !u.Admin || u.Disabled || err != nil || !expires.After(time.Now()) {
+		return ErrConflict
+	}
+	salt, err := hex.DecodeString(u.Salt)
+	if err != nil {
+		return ErrConflict
+	}
+	expected, err := hex.DecodeString(u.PasswordHash)
+	if err != nil {
+		return ErrConflict
+	}
+	s.passwordMu.Lock()
+	derived := argon2.IDKey([]byte(token), salt, 2, passwordMemoryKiB, 1, 32)
+	s.passwordMu.Unlock()
+	if subtle.ConstantTimeCompare(derived, expected) != 1 {
+		return ErrConflict
+	}
+	newSalt, newHash, err := s.passwordHash(password)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.db.Users[id]
+	if !ok || current.Revision != u.Revision || current.PasswordHash != u.PasswordHash || current.SetupExpires != u.SetupExpires || !expires.After(time.Now()) {
+		return ErrConflict
+	}
+	current.Salt, current.PasswordHash, current.SetupExpires = newSalt, newHash, ""
+	current.Revision++
+	current.AuthVersion++
+	db := s.clone()
+	db.Users[id] = current
+	return s.commit(db)
+}
 func (s *Store) userScopeLocked(id string, authVersion int) []string {
 	user, ok := s.db.Users[id]
-	if !ok || user.Disabled || user.AuthVersion != authVersion {
+	if !ok || user.Disabled || user.SetupExpires != "" || user.AuthVersion != authVersion {
 		return nil
 	}
 	seen := map[string]bool{}
+	if user.Admin {
+		for id := range s.db.Sources {
+			seen[id] = true
+		}
+	}
 	for _, id := range user.Teams {
 		for _, source := range s.db.Teams[id].Sources {
 			seen[source] = true

@@ -5,7 +5,7 @@ import "net/http"
 // This session is separate from reader and GitHub administration sessions and
 // can manage only scoped reader keys. Article and GitHub APIs stay unavailable.
 func (w Wiki) browserAccessAPI(rw http.ResponseWriter, r *http.Request) {
-	if w.Public || w.Store == nil || !w.AccessSessions.validCookie(r, accessSessionCookie) {
+	if w.Public || w.Store == nil || !w.adminCookieValid(r, w.AccessSessions, accessSessionCookie) {
 		http.NotFound(rw, r)
 		return
 	}

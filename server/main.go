@@ -275,6 +275,23 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		w.sessionAPI(rw, r)
 		return
 	}
+	if w.Store != nil && w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/local/bootstrap-admin" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
+		var in struct {
+			ID string `json:"id"`
+		}
+		if decodeLimited(rw, r, &in, 1024) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		token, err := w.Store.bootstrapAdmin(in.ID)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		rw.Header().Set("Cache-Control", "no-store")
+		jsonResponse(rw, 201, map[string]string{"setup_token": token})
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/admin/github/") {
 		w.adminGitHubAPI(rw, r)
 		return
