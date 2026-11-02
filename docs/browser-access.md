@@ -18,7 +18,9 @@ recorded by browsers, proxies, servers and monitoring systems before VEDA can
 remove the parameter. Use only trusted HTTPS routes, do not share such URLs
 through untrusted channels, and revoke a key if a URL is exposed. VEDA removes
 the parameter from the address before exchanging the key, preserves other query
-parameters and does not forward it to the state API.
+parameters and does not forward it to the state API. The server also sets
+`Referrer-Policy: no-referrer` to prevent the browser from sending the address
+as a referrer; this does not prevent logging of the initial request URL.
 
 Login is allowed only over a direct HTTPS connection to the private listener,
 or HTTP on loopback from the local machine. For direct HTTPS configure both

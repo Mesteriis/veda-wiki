@@ -245,6 +245,7 @@ func render(p Page) (template.HTML, template.HTML, error) {
 	return template.HTML(out.String()), template.HTML(toc.String()), err
 }
 func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Referrer-Policy", "no-referrer")
 	if w.Store != nil {
 		w.Store.mu.RLock()
 		invalid := w.Store.invalid

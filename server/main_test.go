@@ -36,6 +36,16 @@ func request(w Wiki, method, url, body string, auth bool) *httptest.ResponseReco
 	return rw
 }
 
+func TestReferrerPolicyOnPageAndError(t *testing.T) {
+	w := Wiki{Store: testStore(t), Public: true, AllowedHosts: []string{"example.com"}}
+	for _, target := range []string{"https://example.com/?key=synthetic", "https://other.example/"} {
+		r := request(w, "GET", target, "", false)
+		if got := r.Header().Get("Referrer-Policy"); got != "no-referrer" {
+			t.Fatalf("Referrer-Policy for %s = %q", target, got)
+		}
+	}
+}
+
 func TestDirectoryLinksResolveWithinVisibleSource(t *testing.T) {
 	s := testStore(t)
 	for _, item := range []struct{ id, visibility string }{{"alpha", "public"}, {"beta", "private"}} {
