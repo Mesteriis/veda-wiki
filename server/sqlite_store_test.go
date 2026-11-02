@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -222,5 +223,107 @@ func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
 	reopened, err := openStore(s.dir)
 	if err != nil || len(reopened.db.Articles) != 65 {
 		t.Fatal("large SQLite store did not reopen", err)
+	}
+}
+
+func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	connectFixture(t, s, f, true)
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(s.dir)
+	if err != nil || !s.sqlite {
+		t.Fatal("SQLite reopen failed", err)
+	}
+	if _, err = s.put("handbook", "README.md", "# Local update", 1); err != nil {
+		t.Fatal(err)
+	}
+	before, err := openStore(s.dir)
+	if err != nil || len(before.jobs()) != 1 || before.jobs()[0].State != "pending" {
+		t.Fatal("article and queued write not durable", err)
+	}
+	if a, err := before.article("handbook", "README.md", false); err != nil || a.Versions[len(a.Versions)-1].Text != "# Local update" {
+		t.Fatal("local revision missing", err)
+	}
+	f.modify(func() { f.loseResponse = true })
+	newSyncManager(s, f.client()).Once(context.Background())
+	if f.writeCount() != 1 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
+		t.Fatal("uncertain push not recorded")
+	}
+	restored, err := openStore(s.dir)
+	if err != nil || restored.jobs()[0].PreparedCommit == "" {
+		t.Fatal("uncertain state lost after restart", err)
+	}
+	if err = restored.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	newSyncManager(restored, f.client()).Once(context.Background())
+	if f.writeCount() != 1 || restored.jobs()[0].State != "complete" || f.contents()["README.md"] != "# Local update" {
+		t.Fatal("recovery duplicated or lost update")
+	}
+	final, err := openStore(s.dir)
+	if err != nil || final.jobs()[0].State != "complete" {
+		t.Fatal("recovery not durable", err)
+	}
+}
+
+func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
+	s := testStore(t)
+	first := newFakeGitHub(t, map[string]string{"docs/guide.md": "# First original"})
+	second := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Second original"})
+	second.modify(func() { second.name = "org/second"; second.repoID = 42; second.private = true })
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
+			second.serve(w, r)
+		} else {
+			first.serve(w, r)
+		}
+	}))
+	defer gateway.Close()
+	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	m := newSyncManager(s, client)
+	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+		t.Fatal(err)
+	}
+	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
+		if _, err := m.connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name, AccountID: "operator", Write: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.Once(context.Background())
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.put("one", "docs/guide.md", "# First updated", 1); err != nil {
+		t.Fatal(err)
+	}
+	first.modify(func() { first.loseResponse = true })
+	newSyncManager(s, client).Once(context.Background())
+	if first.writeCount() != 1 || second.writeCount() != 0 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
+		t.Fatal("first write did not enter recoverable state")
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = reopened.retryConnection("one"); err != nil {
+		t.Fatal(err)
+	}
+	newSyncManager(reopened, client).Once(context.Background())
+	if first.writeCount() != 1 || second.writeCount() != 0 || reopened.jobs()[0].State != "complete" {
+		t.Fatal("unexpected duplicate or second repository write")
+	}
+	if first.contents()["docs/guide.md"] != "# First updated" || second.contents()["docs/guide.md"] != "# Second original" {
+		t.Fatal("repository contents crossed")
+	}
+	a, err := reopened.article("two", "docs/guide.md", false)
+	if err != nil || len(a.Versions) != 1 || a.Versions[0].Text != "# Second original" {
+		t.Fatal("second local article changed", err)
 	}
 }
