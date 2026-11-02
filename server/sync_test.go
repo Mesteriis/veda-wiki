@@ -590,6 +590,84 @@ func TestConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T) {
 	if len(reopened.conflicts()) != 1 || reopened.jobs()[0].PreparedCommit == "" || reopened.jobs()[0].State == "superseded" {
 		t.Fatal("uncertain write or conflict lost after restart")
 	}
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Local"})
+	if err := reopened.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	newSyncManager(reopened, f.client()).Once(context.Background())
+	if len(reopened.conflicts()) != 0 || reopened.jobs()[0].State != "complete" {
+		t.Fatal("confirmed prepared content did not reconcile", reopened.jobs())
+	}
+}
+
+func TestExternalMatchForLaterEditDoesNotDiscardOlderUncertainWrite(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	m := connectFixture(t, s, f, true)
+	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.reject = true })
+	m.Once(context.Background())
+	if _, err := s.put("handbook", "README.md", "# Second edit", 2); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.reject = false })
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Second edit"})
+	if err := s.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	jobs := s.jobs()
+	if len(jobs) != 2 || jobs[0].PreparedCommit == "" || jobs[0].State == "superseded" || jobs[0].State == "complete" || jobs[1].State == "complete" {
+		t.Fatal("later external content hid uncertain write", jobs)
+	}
+	if len(s.conflicts()) != 1 || f.writeCount() != 0 || f.contents()["README.md"] != "# Second edit" {
+		t.Fatal("uncertain write did not preserve external content")
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reopened.conflicts()) != 1 || reopened.jobs()[0].PreparedCommit == "" {
+		t.Fatal("uncertainty lost after restart")
+	}
+}
+
+func TestIdenticalLaterEditIsSatisfiedWithoutDuplicatePush(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	m := connectFixture(t, s, f, true)
+	if _, err := s.put("handbook", "README.md", "# Same edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.loseResponse = true })
+	m.Once(context.Background())
+	if _, err := s.put("handbook", "README.md", "# Same edit", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	jobs := s.jobs()
+	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 1 {
+		t.Fatal("identical revision caused duplicate push or lost confirmation", jobs, f.writeCount())
+	}
+}
+
+func TestIdenticalLaterEditRequiresItsOwnDependencies(t *testing.T) {
+	hash := digest([]byte("# Same edit"))
+	db := Database{Outbox: map[string]SyncJob{
+		"first": {ID: "first", SourceID: "handbook", Path: "README.md", Revision: 2, SHA: hash, State: "retry", PreparedCommit: strings.Repeat("a", 40)},
+		"later": {ID: "later", SourceID: "handbook", Path: "README.md", Revision: 3, SHA: hash, State: "pending", Assets: map[string]BlobRef{"image.png": {SHA: strings.Repeat("b", 64), MIME: "image/png"}}},
+	}}
+	if !observedWrite(&db, "handbook", "README.md", hash, strings.Repeat("c", 40), nil, nil, true) {
+		t.Fatal("prepared write was not observed")
+	}
+	if db.Outbox["first"].State != "complete" || db.Outbox["later"].State != "pending" {
+		t.Fatal("later write confirmed without its image")
+	}
 }
 func TestGitHubPrivateVisibilityAndUnpublishedEdits(t *testing.T) {
 	s := testStore(t)

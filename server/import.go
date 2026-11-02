@@ -604,7 +604,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		if found {
 			latest = a.Versions[len(a.Versions)-1].SHA
 		}
-		if found && !a.Deleted && latest != hash && latest != a.UpstreamHash {
+		if found && !a.Deleted && latest != a.UpstreamHash && (latest != hash || (proof != nil && preparedWriteDiffers(db, batch.SourceID, p, hash))) {
 			if hasImportConflict(a, hash, false) {
 				result.Conflicts++
 				continue

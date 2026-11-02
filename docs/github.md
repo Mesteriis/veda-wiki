@@ -151,6 +151,11 @@ when it observes the expected content and dependencies. A later local edit does
 not discard that prepared job or overtake it on the same path. If the upstream
 content instead conflicts, VEDA retains both the conflict and the uncertain
 job; conflict resolution is refused until the prepared outcome is reconciled.
+An external change matching a later edit cannot silently close a different
+earlier prepared write. If a verified pull later observes the prepared content
+and its dependencies, VEDA can confirm it even after a conflict; identical
+later unprepared edits are satisfied by the same observation without a new
+commit.
 There is currently no automatic resolution for every divergent or ambiguous
 history; an administrator must investigate rather than discard the job.
 Jobs already marked superseded by an older VEDA version are not automatically

@@ -291,7 +291,17 @@ func (s *Store) cancelBundle(id string, confirm bool) error {
 }
 func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {
 	matched := 0
+	firstPrepared := 0
+	matches := map[string]bool{}
 	for _, job := range db.Outbox {
+		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && (firstPrepared == 0 || job.Revision < firstPrepared) {
+			firstPrepared = job.Revision
+		}
+	}
+	for id, job := range db.Outbox {
+		if job.SourceID != sourceID || job.Path != p {
+			continue
+		}
 		linksMatch := true
 		for name, sha := range job.Links {
 			if text, exists := files[name]; !exists || digest([]byte(text)) != sha {
@@ -305,7 +315,10 @@ func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[st
 				break
 			}
 		}
-		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" && ((len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0) || (complete && assetsPresent(Source{Assets: assets}, job.Assets) && linksMatch)) {
+		eligibleState := job.State != "complete" && job.State != "superseded" && (job.State != "conflict" || (job.PreparedCommit != "" && job.Revision == firstPrepared))
+		eligible := job.SourceID == sourceID && job.Path == p && job.SHA == hash && eligibleState && ((len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0) || (complete && assetsPresent(Source{Assets: assets}, job.Assets) && linksMatch))
+		matches[id] = eligible
+		if eligible && job.Revision > matched && (firstPrepared == 0 || job.Revision == firstPrepared) {
 			matched = job.Revision
 		}
 	}
@@ -322,9 +335,24 @@ func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[st
 			}
 			job.LastError = ""
 			db.Outbox[id] = job
+		} else if firstPrepared != 0 && job.Revision > matched && job.PreparedCommit == "" && matches[id] {
+			// The same observed content also satisfies a later unprepared edit.
+			job.State, job.ObservedCommit, job.LastError = "complete", commit, ""
+			db.Outbox[id] = job
 		}
 	}
 	return true
+}
+
+// If a later local revision matches an external update, an older prepared
+// write still cannot be silently superseded or retried over that update.
+func preparedWriteDiffers(db Database, sourceID, p, hash string) bool {
+	for _, job := range db.Outbox {
+		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && job.SHA != hash {
+			return true
+		}
+	}
+	return false
 }
 func randomID() (string, error) {
 	b := make([]byte, 16)
