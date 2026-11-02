@@ -42,7 +42,7 @@ const passwordMemoryKiB = 19 * 1024
 
 func passwordValid(p string) bool {
 	n := utf8.RuneCountInString(p)
-	return utf8.ValidString(p) && len(p) <= 512 && n >= 12 && n <= 128
+	return utf8.ValidString(p) && len(p) <= 512 && n >= 10 && n <= 128
 }
 func orderedIDs(values []string, max int) ([]string, error) {
 	if len(values) > max {
@@ -128,6 +128,35 @@ func (s *Store) adminSessionValid(id string, version int) bool {
 	defer s.mu.RUnlock()
 	u, ok := s.db.Users[id]
 	return ok && !u.Disabled && u.Admin && u.SetupExpires == "" && u.AuthVersion == version
+}
+
+// createSuperuser creates an administrator or completes the same pending
+// bootstrap account. Existing active accounts are never overwritten.
+func (s *Store) createSuperuser(id, password string) error {
+	if !identifier.MatchString(id) {
+		return ErrInvalid
+	}
+	salt, hash, err := s.passwordHash(password)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous, exists := s.db.Users[id]
+	if exists && (!previous.Admin || previous.Disabled || previous.SetupExpires == "" || previous.Revision >= 1000000000 || previous.AuthVersion >= 1000000000) {
+		return ErrConflict
+	}
+	u := WikiUser{ID: id, Admin: true, Salt: salt, PasswordHash: hash, Teams: []string{}, Revision: 1, AuthVersion: 1}
+	if exists {
+		u.Revision = previous.Revision + 1
+		u.AuthVersion = previous.AuthVersion + 1
+	}
+	db := s.clone()
+	db.Users[id] = u
+	if db.Version < 20 {
+		db.Version = 20
+	}
+	return s.commit(db)
 }
 func (s *Store) passwordHash(password string) (string, string, error) {
 	if !passwordValid(password) {

@@ -292,6 +292,22 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		jsonResponse(rw, 201, map[string]string{"setup_token": token})
 		return
 	}
+	if w.Store != nil && w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/local/createsuperuser" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
+		var in struct {
+			ID       string `json:"id"`
+			Password string `json:"password"`
+		}
+		if decodeLimited(rw, r, &in, 2048) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if err := w.Store.createSuperuser(in.ID, in.Password); err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 201, map[string]bool{"created": true})
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/admin/github/") {
 		w.adminGitHubAPI(rw, r)
 		return

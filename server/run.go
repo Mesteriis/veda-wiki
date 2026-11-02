@@ -19,6 +19,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "createsuperuser" {
+		if err := createSuperuserCommand(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "migrate-sqlite" {
 		if err := sqliteMigrateCommand(os.Args[2:]); err != nil {
 			log.Fatal(err)

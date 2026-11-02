@@ -7,6 +7,7 @@ require github.com/yuin/goldmark v1.7.16
 require (
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/crypto v0.58.0
+	golang.org/x/term v0.47.0
 	modernc.org/sqlite v1.61.0
 )
 

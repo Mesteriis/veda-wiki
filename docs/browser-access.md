@@ -47,7 +47,7 @@ The owner creates teams, assigns their source scopes, creates users with an
 initial password, assigns teams, disables users and resets passwords in the
 separate access-administration session. The initial password must be conveyed to
 the intended person securely; the user can then change it. Passwords must be
-12–128 Unicode characters and at most 512 UTF-8 bytes. VEDA stores salted
+10–128 Unicode characters and at most 512 UTF-8 bytes. VEDA stores salted
 Argon2id hashes (19 MiB, two iterations, one lane), never plaintext passwords;
 administrative listings return neither hashes nor salts. Password confirmation
 and login share the ten-attempts-per-minute limiter. This is a local reader
@@ -88,7 +88,7 @@ Unix socket; the endpoint is unavailable to other peers and browser origins.
 The operation returns a random, single-use setup token valid for 24 hours; only
 its salted Argon2 hash is stored. The owner enters the token and a new password
 in the GitHub dialog under “Первый вход — установить пароль”, then logs in.
-Passwords must contain 12–128 Unicode characters. The local operator may issue
+Passwords must contain 10–128 Unicode characters. The local operator may issue
 a new setup token for the same pending account, invalidating the previous one;
 an already configured administrator cannot be replaced by this operation.
 Transport the token privately and do not put it in URLs, logs or command
@@ -97,3 +97,22 @@ refuse it. A compatible backup and restore plan are required before setup.
 The separately configured workstation reader bridge can still grant its local
 operating-system user read-only access without a browser login; a named admin
 session does not change that bridge's existing trust boundary.
+
+## Creating an administrator from a terminal
+
+On Linux, with the VEDA service running and its root-authenticated local socket
+configured, run as root:
+
+```sh
+veda createsuperuser --username USER --socket /path/to/reader.sock
+```
+
+The command requires a terminal, prompts twice with echo disabled and never
+accepts a password as a command-line argument or environment variable. Omit
+`--username` to be prompted. Passwords must contain 10–128 Unicode characters.
+An existing active account is not overwritten. If the specified account is an
+administrator awaiting its initial setup, the command completes it and revokes
+its setup token. The user can then sign in to the GitHub administration dialog
+with their username and password. Root access to the socket is required; a
+browser, non-root socket peer, public listener or origin-bearing request cannot
+create an administrator. Back up the v20 store and retain a compatible binary.
