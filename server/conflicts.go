@@ -13,6 +13,30 @@ type ConflictRecord struct {
 	Conflict ImportConflict `json:"conflict"`
 }
 
+// Caller holds the store lock or uses a scoped snapshot.
+func conflictResolutionBlocked(db Database, sourceID, p string) bool {
+	for _, job := range db.Outbox {
+		if job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
+			continue
+		}
+		if job.Path == p && (job.PreparedCommit != "" || job.scopePrepared || len(job.Bundle) != 0 || job.scopeBundle) {
+			return true
+		}
+		if len(job.Bundle) != 0 {
+			if _, ok := job.Bundle[p]; ok {
+				return true
+			}
+			if _, ok := job.Links[p]; ok {
+				return true
+			}
+		}
+		if job.scopeBundle && job.scopeBundlePaths[p] {
+			return true
+		}
+	}
+	return false
+}
+
 func supersedeImportConflicts(a Article) Article {
 	a.Conflicts = append([]ImportConflict(nil), a.Conflicts...)
 	for i := range a.Conflicts {
@@ -71,10 +95,8 @@ func (s *Store) resolveConflict(sourceID, p string, index, expected int, resolut
 	if expected != len(a.Versions) || index >= len(a.Conflicts) || a.Conflicts[index].Resolution != "" {
 		return ErrConflict
 	}
-	for _, job := range s.db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && (job.PreparedCommit != "" || len(job.Bundle) != 0) && job.State != "complete" && job.State != "superseded" {
-			return ErrConflict
-		}
+	if conflictResolutionBlocked(s.db, sourceID, p) {
+		return ErrConflict
 	}
 	for _, c := range a.Conflicts[index+1:] {
 		if c.Resolution == "" {

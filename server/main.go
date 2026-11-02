@@ -28,22 +28,23 @@ var assets embed.FS
 var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
 type Page struct {
-	searchOriginal       string
-	searchDisplayed      string
-	searchSourceTitle    string
-	ProgramDocumentation bool          `json:"program_documentation,omitempty"`
-	UnresolvedConflict   bool          `json:"unresolved_conflict,omitempty"`
-	TranslationOrigin    string        `json:"translation_origin,omitempty"`
-	TranslationState     string        `json:"translation_state,omitempty"`
-	OriginalSHA          string        `json:"original_sha256,omitempty"`
-	Translated           bool          `json:"translated,omitempty"`
-	Path                 string        `json:"path"`
-	Title                string        `json:"title"`
-	Environment          string        `json:"environment"`
-	SHA                  string        `json:"sha256"`
-	Updated              string        `json:"updated_at,omitempty"`
-	Text                 string        `json:"-"`
-	HTML                 template.HTML `json:"-"`
+	searchOriginal            string
+	searchDisplayed           string
+	searchSourceTitle         string
+	ProgramDocumentation      bool          `json:"program_documentation,omitempty"`
+	UnresolvedConflict        bool          `json:"unresolved_conflict,omitempty"`
+	ConflictResolutionBlocked bool          `json:"conflict_resolution_blocked_by_write,omitempty"`
+	TranslationOrigin         string        `json:"translation_origin,omitempty"`
+	TranslationState          string        `json:"translation_state,omitempty"`
+	OriginalSHA               string        `json:"original_sha256,omitempty"`
+	Translated                bool          `json:"translated,omitempty"`
+	Path                      string        `json:"path"`
+	Title                     string        `json:"title"`
+	Environment               string        `json:"environment"`
+	SHA                       string        `json:"sha256"`
+	Updated                   string        `json:"updated_at,omitempty"`
+	Text                      string        `json:"-"`
+	HTML                      template.HTML `json:"-"`
 }
 type Snapshot struct {
 	Generated string `json:"generated_at"`

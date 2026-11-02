@@ -16,24 +16,25 @@ import (
 )
 
 type SyncJob struct {
-	scopePrepared  bool
-	scopeBundle    bool
-	ID             string             `json:"id"`
-	SourceID       string             `json:"source_id"`
-	Path           string             `json:"path"`
-	Revision       int                `json:"revision"`
-	SHA            string             `json:"sha256"`
-	State          string             `json:"state"`
-	Created        string             `json:"created_at"`
-	Attempts       int                `json:"attempts"`
-	LastError      string             `json:"last_error,omitempty"`
-	PreparedCommit string             `json:"prepared_commit,omitempty"`
-	ObservedCommit string             `json:"observed_commit,omitempty"`
-	NextAttempt    string             `json:"next_attempt,omitempty"`
-	Visibility     string             `json:"visibility"`
-	Assets         map[string]BlobRef `json:"assets,omitempty"`
-	Links          map[string]string  `json:"links,omitempty"`
-	Bundle         map[string]string  `json:"bundle,omitempty"`
+	scopePrepared    bool
+	scopeBundle      bool
+	scopeBundlePaths map[string]bool
+	ID               string             `json:"id"`
+	SourceID         string             `json:"source_id"`
+	Path             string             `json:"path"`
+	Revision         int                `json:"revision"`
+	SHA              string             `json:"sha256"`
+	State            string             `json:"state"`
+	Created          string             `json:"created_at"`
+	Attempts         int                `json:"attempts"`
+	LastError        string             `json:"last_error,omitempty"`
+	PreparedCommit   string             `json:"prepared_commit,omitempty"`
+	ObservedCommit   string             `json:"observed_commit,omitempty"`
+	NextAttempt      string             `json:"next_attempt,omitempty"`
+	Visibility       string             `json:"visibility"`
+	Assets           map[string]BlobRef `json:"assets,omitempty"`
+	Links            map[string]string  `json:"links,omitempty"`
+	Bundle           map[string]string  `json:"bundle,omitempty"`
 }
 
 var errImportedAssetUnavailable = errors.New("imported asset unavailable")

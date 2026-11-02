@@ -11,7 +11,7 @@ import (
 
 func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# First", "b.md": "# Second"})
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# First", "b.md": "# Second", "linked.md": "# Linked", "dependency.md": "# Dependency"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "a.md", "# Local", 1); err != nil {
 		t.Fatal(err)
@@ -40,15 +40,41 @@ func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 	}
 	// A linked bundle blocks resolution even before a ref update is prepared.
 	s.mu.Lock()
-	s.db.Outbox["fixture-bundle"] = SyncJob{SourceID: "handbook", Path: "b.md", State: "pending", Bundle: map[string]string{"linked.md": strings.Repeat("a", 64)}}
+	s.db.Outbox["fixture-bundle"] = SyncJob{SourceID: "handbook", Path: "b.md", State: "pending", Bundle: map[string]string{"linked.md": strings.Repeat("a", 64)}, Links: map[string]string{"dependency.md": strings.Repeat("b", 64)}}
 	s.mu.Unlock()
-	r := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path=b.md", nil)
-	r.Header.Set("Authorization", "Bearer "+key)
-	out := httptest.NewRecorder()
-	(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
-	var body map[string]any
-	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != true || strings.Contains(out.Body.String(), "linked.md") {
-		t.Fatal("linked bundle status missing or leaked", out.Code)
+	for _, path := range []string{"b.md", "linked.md", "dependency.md"} {
+		r := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path="+path, nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
+		var body map[string]any
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != true || strings.Contains(out.Body.String(), "linked.md") || strings.Contains(out.Body.String(), "dependency.md") {
+			t.Fatal("linked bundle status missing or leaked", path, out.Code)
+		}
+	}
+}
+
+func TestScopedBundleLocksLinkedTranslationValidation(t *testing.T) {
+	s := testStore(t)
+	programSource(t, s, "program", "private")
+	rev, err := s.put("program", "docs/linked.md", "# Original", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.createAccessKey("reader", []string{"program"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.db.Outbox = map[string]SyncJob{"bundle": {SourceID: "program", Path: "docs/root.md", State: "pending", Bundle: map[string]string{"docs/linked.md": rev.SHA}}}
+	s.mu.Unlock()
+	view, valid, err := s.scopedView(key, time.Now())
+	if err != nil || !valid {
+		t.Fatal("scoped snapshot unavailable", err)
+	}
+	_, err = view.validateTranslation(translationRequest{SourceID: "program", Path: "docs/linked.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
+	if err != ErrConflict {
+		t.Fatal("scoped validation missed the bundle lock", err)
 	}
 }
 

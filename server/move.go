@@ -227,7 +227,7 @@ func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
 // Keep both local copies stable until a complete remote pull resolves it.
 func moveDeletionLocks(db Database, sourceID, p string) bool {
 	for _, job := range db.Outbox {
-		if len(job.Bundle) == 0 || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
+		if (len(job.Bundle) == 0 && !job.scopeBundle) || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
 			continue
 		}
 		if job.Path == p {
@@ -237,6 +237,9 @@ func moveDeletionLocks(db Database, sourceID, p string) bool {
 			return true
 		}
 		if _, ok := job.Links[p]; ok {
+			return true
+		}
+		if job.scopeBundlePaths[p] {
 			return true
 		}
 	}

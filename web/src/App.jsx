@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { buildTree, buildMergedTree } from "./tree.js";
 import { githubErrorMessage, githubVisibilityLabel } from "./githubErrors.js";
-import { observationLabel, syncWarning } from "./sourceWarnings.js";
+import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
 const Features = createContext(() => {});
 const descriptions = {
   github: [
@@ -517,6 +517,7 @@ function Dashboard({ v }) {
 }
 function Reading({ data }) {
   const v = data.view;
+  const warning = conflictWarning(v.Page);
   return (
     <div className="reading-layout">
       <article className="panel reading">
@@ -524,7 +525,7 @@ function Reading({ data }) {
           Главная
         </a>
         <div className="source-path">{v.Page.path}</div>
-        {v.Page.unresolved_conflict && <p className="conflict-warning" role="status">У этой статьи есть неразрешённый конфликт с источником. Перед обновлением или переводом разрешите конфликт через API или MCP.</p>}
+        {warning && <p className="conflict-warning" role="status">{warning}</p>}
         <div className="provenance">
           {v.Page.translated ? "Перевод на русский · SHA256" : v.Page.translation_state === "stale" ? "Оригинал · перевод устарел · SHA256" : v.Page.program_documentation ? "Оригинал · перевод недоступен · SHA256" : "SHA256"} <code>{v.Page.sha256}</code>
           {v.Page.translated && (v.Page.translation_origin === "local_model" ? <> · Локальный автоматический перевод</> : <> · Происхождение перевода неизвестно</>)}

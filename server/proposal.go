@@ -23,13 +23,7 @@ func (s *Store) proposalBase(sourceID, path string) (map[string]any, error) {
 			break
 		}
 	}
-	blocked := false
-	for _, job := range s.db.Outbox {
-		if job.SourceID == sourceID && job.Path == path && job.State != "complete" && job.State != "superseded" && (job.PreparedCommit != "" || job.scopePrepared || len(job.Bundle) != 0 || job.scopeBundle) {
-			blocked = true
-			break
-		}
-	}
+	blocked := conflictResolutionBlocked(s.db, sourceID, path)
 	rev := a.Versions[len(a.Versions)-1]
 	return map[string]any{"revision": rev.Number, "sha256": rev.SHA, "unresolved_conflict": unresolved, "conflict_resolution_blocked_by_write": blocked, "source_status": s.sourceStatusLocked(sourceID, src)}, nil
 }

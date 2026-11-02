@@ -771,7 +771,8 @@ func (s *Store) page(key string, public bool) (Page, error) {
 			translationState = "stale"
 		}
 	}
-	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated, TranslationOrigin: origin, TranslationState: translationState, ProgramDocumentation: src.Kind == "program", UnresolvedConflict: unresolved}, nil
+	blocked := unresolved && !public && conflictResolutionBlocked(s.db, a.SourceID, a.Path)
+	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated, TranslationOrigin: origin, TranslationState: translationState, ProgramDocumentation: src.Kind == "program", UnresolvedConflict: unresolved, ConflictResolutionBlocked: blocked}, nil
 }
 func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	s.mu.RLock()

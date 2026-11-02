@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { observationLabel, syncWarning } from "./sourceWarnings.js";
+import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
 
 test("explains known sync states without displaying arbitrary input", () => {
   assert.match(syncWarning("error"), /ошибка синхронизации/);
@@ -8,6 +8,14 @@ test("explains known sync states without displaying arbitrary input", () => {
   assert.match(syncWarning("unverified"), /не подтверждено/);
   assert.equal(syncWarning("<untrusted>"), "");
   assert.equal(syncWarning("constructor"), "");
+});
+
+test("explains when a pending write prevents conflict resolution", () => {
+  assert.equal(conflictWarning({}), "");
+  assert.match(conflictWarning({ unresolved_conflict: true }), /Проверьте его состояние/);
+  const blocked = conflictWarning({ unresolved_conflict: true, conflict_resolution_blocked_by_write: true });
+  assert.match(blocked, /отправка блокирует/);
+  assert.doesNotMatch(blocked, /разрешите конфликт/);
 });
 
 test("shows a known import observation and handles unknown timestamps", () => {

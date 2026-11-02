@@ -67,7 +67,7 @@ func TestAgentContextScopesAndReportsStatus(t *testing.T) {
 func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "handbook", "public")
-	for _, path := range []string{"conflicted.md", "clean.md"} {
+	for _, path := range []string{"conflicted.md", "linked.md", "clean.md"} {
 		if _, err := s.put("handbook", path, "# Fixture", 0); err != nil {
 			t.Fatal(err)
 		}
@@ -76,6 +76,10 @@ func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
 	a := s.db.Articles["handbook/conflicted.md"]
 	a.Conflicts = []ImportConflict{{}}
 	s.db.Articles["handbook/conflicted.md"] = a
+	a = s.db.Articles["handbook/linked.md"]
+	a.Conflicts = []ImportConflict{{}}
+	s.db.Articles["handbook/linked.md"] = a
+	s.db.Outbox = map[string]SyncJob{"fixture": {SourceID: "handbook", Path: "conflicted.md", State: "retry", PreparedCommit: "synthetic-prepared-commit", Bundle: map[string]string{"linked.md": "fixture"}}}
 	s.mu.Unlock()
 	w := Wiki{Store: s, Token: "test-owner"}
 	for _, tc := range []struct {
@@ -83,6 +87,7 @@ func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
 		owner, public, want bool
 	}{
 		{"conflicted.md", true, false, true},
+		{"linked.md", true, false, true},
 		{"clean.md", true, false, false},
 		{"conflicted.md", false, true, false},
 	} {
@@ -91,6 +96,22 @@ func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
 		r := request(copy, "GET", "/api/state?page="+url.QueryEscape("handbook/"+tc.path), "", tc.owner)
 		if r.Code != 200 || strings.Contains(r.Body.String(), `"unresolved_conflict":true`) != tc.want {
 			t.Fatalf("incorrect per-page conflict visibility for %s", tc.path)
+		}
+		if strings.Contains(r.Body.String(), `"conflict_resolution_blocked_by_write":true`) != tc.want || strings.Contains(r.Body.String(), "synthetic-prepared-commit") {
+			t.Fatalf("incorrect per-page write blocker visibility for %s", tc.path)
+		}
+	}
+	key, err := s.createAccessKey("reader", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"conflicted.md", "linked.md"} {
+		r := httptest.NewRequest("GET", "/api/state?page="+url.QueryEscape("handbook/"+path), nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		w.ServeHTTP(out, r)
+		if out.Code != 200 || !strings.Contains(out.Body.String(), `"conflict_resolution_blocked_by_write":true`) || strings.Contains(out.Body.String(), "synthetic-prepared-commit") {
+			t.Fatal("scoped reader did not receive safe write blocker status", path)
 		}
 	}
 }

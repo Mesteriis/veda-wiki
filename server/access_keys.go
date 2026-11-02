@@ -271,10 +271,22 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 		db.Articles[key] = article
 	}
 	// Copy only fields needed for source counts and the selected article's
-	// blocking status; no commit IDs, revisions, contents or bundle paths.
+	// blocking status; no commit IDs, revisions, contents or link hashes.
 	for id, job := range s.db.Outbox {
 		if selected[job.SourceID] && job.State != "complete" && job.State != "superseded" {
-			db.Outbox[id] = SyncJob{SourceID: job.SourceID, Path: job.Path, State: job.State, scopePrepared: job.PreparedCommit != "" || job.scopePrepared, scopeBundle: len(job.Bundle) != 0 || job.scopeBundle}
+			paths := map[string]bool{}
+			if len(job.Bundle) != 0 || job.scopeBundle {
+				for p := range job.Bundle {
+					paths[p] = true
+				}
+				for p := range job.Links {
+					paths[p] = true
+				}
+				for p := range job.scopeBundlePaths {
+					paths[p] = true
+				}
+			}
+			db.Outbox[id] = SyncJob{SourceID: job.SourceID, Path: job.Path, State: job.State, scopePrepared: job.PreparedCommit != "" || job.scopePrepared, scopeBundle: len(job.Bundle) != 0 || job.scopeBundle, scopeBundlePaths: paths}
 		}
 	}
 	return &Store{dir: s.dir, db: db, observed: observed, withheld: withheld}, true, nil
