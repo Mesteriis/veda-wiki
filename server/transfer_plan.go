@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"path"
 	"sort"
 
 	"github.com/yuin/goldmark/ast"
@@ -16,7 +17,25 @@ type transferPlanItem struct {
 	Revision        int    `json:"revision"`
 	SHA             string `json:"sha256"`
 	Destination     string `json:"destination_status"`
+	DirectoryIndex  bool   `json:"directory_index,omitempty"`
 }
+
+// Caller holds the store lock. README wins, matching reader resolution.
+func (s *Store) directoryTransferSource(sourceID, articlePath, destination string) (string, bool, bool) {
+	readme, ok := directoryReadmeTarget(articlePath, destination)
+	if !ok {
+		return "", false, false
+	}
+	if a, exists := s.db.Articles[sourceID+"/"+readme]; exists && !a.Deleted && len(a.Versions) > 0 {
+		return readme, true, false
+	}
+	index := path.Join(path.Dir(readme), "index.md")
+	if a, exists := s.db.Articles[sourceID+"/"+index]; exists && !a.Deleted && len(a.Versions) > 0 {
+		return index, true, true
+	}
+	return readme, true, false
+}
+
 type transferPlan struct {
 	Articles []transferPlanItem `json:"articles"`
 }
@@ -50,14 +69,19 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 	if len(root.Versions) != in.ExpectedRevision {
 		return transferPlan{}, ErrConflict
 	}
-	type pair struct{ from, to string }
-	pending := []pair{{in.SourcePath, in.DestinationPath}}
+	type pair struct {
+		from, to string
+		index    bool
+	}
+	pending := []pair{{from: in.SourcePath, to: in.DestinationPath}}
 	mappedFrom, mappedTo := map[string]string{}, map[string]string{}
+	indexMapped := map[string]bool{}
 	result := transferPlan{Articles: []transferPlanItem{}}
 	edges := 0
 	for len(pending) > 0 {
 		current := pending[len(pending)-1]
 		pending = pending[:len(pending)-1]
+		indexMapped[current.from] = indexMapped[current.from] || current.index
 		if to, exists := mappedFrom[current.from]; exists {
 			if to != current.to {
 				return transferPlan{}, ErrConflict
@@ -88,7 +112,7 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 				state = "matching"
 			}
 		}
-		result.Articles = append(result.Articles, transferPlanItem{current.from, current.to, len(a.Versions), rev.SHA, state})
+		result.Articles = append(result.Articles, transferPlanItem{SourcePath: current.from, DestinationPath: current.to, Revision: len(a.Versions), SHA: rev.SHA, Destination: state})
 		rootNode := markdown.Parser().Parse(text.NewReader([]byte(rev.Text)))
 		var parseErr error
 		ast.Walk(rootNode, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -112,8 +136,9 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 			}
 			from, fromOK := repositoryTarget(current.from, u.Path)
 			to, toOK := repositoryTarget(current.to, u.Path)
+			index := false
 			if !fromOK || !articlePath(from, src.Kind) {
-				from, fromOK = directoryReadmeTarget(current.from, u.Path)
+				from, fromOK, index = s.directoryTransferSource(src.ID, current.from, u.Path)
 				to, toOK = directoryReadmeTarget(current.to, u.Path)
 			}
 			if !fromOK || !toOK || !articlePath(from, src.Kind) || !articlePath(to, dst.Kind) {
@@ -125,11 +150,25 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 				parseErr = ErrInvalid
 				return ast.WalkStop, nil
 			}
-			pending = append(pending, pair{from, to})
+			pending = append(pending, pair{from: from, to: to, index: index})
 			return ast.WalkContinue, nil
 		})
 		if parseErr != nil {
 			return transferPlan{}, parseErr
+		}
+	}
+	for i := range result.Articles {
+		item := &result.Articles[i]
+		item.DirectoryIndex = indexMapped[item.SourcePath]
+		if !item.DirectoryIndex || item.Destination == "matching" {
+			continue
+		}
+		competitor := path.Join(path.Dir(item.DestinationPath), "index.md")
+		if _, mapped := mappedTo[competitor]; mapped {
+			return transferPlan{}, ErrConflict
+		}
+		if a, exists := s.db.Articles[dst.ID+"/"+competitor]; exists && !a.Deleted {
+			return transferPlan{}, ErrConflict
 		}
 	}
 	sort.Slice(result.Articles, func(i, j int) bool { return result.Articles[i].SourcePath < result.Articles[j].SourcePath })

@@ -184,14 +184,16 @@ Owner-only provenance is preserved locally and removed from public responses.
 Copy transfers supported relative images and preserves relative article links
 only when the destination already contains the same linked revision. It does
 not automatically copy linked articles unless `include_linked: true` is set.
-Directory links such as `[Guide](docs/)` can be transferred when they resolve
-to `README.md` in the source and the same destination link resolves to its
-matching README. The linked README must already match at the destination, or
-be included with `include_linked`. Links resolving only to `index.md` are
-still rejected: a destination README could take precedence later. Use an
-explicit Markdown file link for those cases. A rejected operation leaves both
-sources unchanged. Directory-link transfers upgrade the logical store to v16;
-older binaries refuse it, so verify compatible backups before relying on them.
+Directory links such as `[Guide](docs/)` are resolved to the source README, or
+to `index.md` when there is no README. The destination link uses `README.md`:
+it must already match, or be included with `include_linked`. The transfer plan
+marks a source index mapped to a destination README with `directory_index`.
+An ambiguous mapping, or creating a README that would shadow an existing
+destination index, is rejected. A queued GitHub bundle rechecks the remote tree
+before its exact-head commit. A rejected operation leaves both sources unchanged.
+Directory-link transfers upgrade the logical store to v16; an index-to-README
+mapping upgrades it to v17. Older binaries refuse these formats, so verify
+compatible backups before relying on them.
 With that flag, all recursively linked Markdown articles and supported images
 are copied atomically into a standalone local destination, or queued together
 for one GitHub commit. Cycles are handled;

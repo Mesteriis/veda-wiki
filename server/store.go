@@ -142,7 +142,7 @@ func openStore(dir string) (*Store, error) {
 }
 
 func (s *Store) validate() (*Store, error) {
-	if (s.db.Version < 1 || s.db.Version > 16) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version < 1 || s.db.Version > 17) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -238,6 +238,9 @@ func (s *Store) validate() (*Store, error) {
 		}
 		if article.CopiedFrom != nil {
 			origin := article.CopiedFrom
+			if origin.DirectoryIndex && (s.db.Version < 17 || path.Base(origin.Path) != "index.md" || path.Base(article.Path) != "README.md") {
+				return nil, errors.New("invalid directory copy provenance")
+			}
 			src, exists := s.db.Sources[origin.SourceID]
 			if !exists || !articlePath(origin.Path, src.Kind) || origin.Revision < 1 || len(origin.SHA) != 64 {
 				return nil, errors.New("invalid copy provenance")

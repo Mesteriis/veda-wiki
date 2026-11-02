@@ -20,11 +20,13 @@ Transfers containing links resolved through directory `README.md` upgrade the
 logical database to version 16, which older binaries reject. Rolling back to a
 pre-v16 binary requires a separately verified compatible restore and can lose
 changes made after that backup.
+Mapping a source directory `index.md` to a destination `README.md` during a
+linked transfer upgrades the logical store to v17. Pre-v17 binaries reject it.
 The synthetic `scripts/smoke_directory_restore.py` check runs the actual
 binary, copies a linked directory fixture, migrates to SQLite and starts a
 copy of the stopped store. It has also passed against the installed Linux
-binary in an isolated temporary directory. It does not prove the production
-backup or restore process.
+binary in an isolated temporary directory for v16. Pass `--index` to exercise
+the v17 mapping. It does not prove the production backup or restore process.
 
 Do not automatically delete migration artifacts after an interrupted migration.
 If the command reports an error, inspect the marker and artifacts before doing

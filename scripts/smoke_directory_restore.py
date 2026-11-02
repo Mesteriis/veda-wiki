@@ -1,4 +1,5 @@
 """Exercise v16 directory transfers and a stopped SQLite restore with fixtures."""
+import argparse
 import json
 from pathlib import Path
 import shutil
@@ -21,6 +22,9 @@ def port():
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--index', action='store_true')
+    use_index = parser.parse_args().index
     opener = build_opener(ProxyHandler({}))
     with tempfile.TemporaryDirectory(prefix='veda-directory-restore-') as tmp:
         root = Path(tmp)
@@ -62,7 +66,8 @@ def main():
         try:
             for source in ('from', 'to'):
                 call('/api/v1/sources', {'id': source, 'title': source, 'kind': 'wiki', 'visibility': 'private'})
-            for path, value in [('guide.md', '# Guide\n\n[Docs](docs/)'), ('docs/README.md', '# Documentation')]:
+            source_path = 'docs/index.md' if use_index else 'docs/README.md'
+            for path, value in [('guide.md', '# Guide\n\n[Docs](docs/)'), (source_path, '# Documentation')]:
                 call('/api/v1/articles', {'source_id': 'from', 'path': path, 'text': value, 'expected_revision': 0})
             call('/api/v1/articles/copy', {'source_id': 'from', 'source_path': 'guide.md', 'expected_revision': 1,
                  'destination_id': 'to', 'destination_path': 'guide.md', 'include_linked': True})
@@ -78,14 +83,15 @@ def main():
         db = sqlite3.connect(f'file:{restored / "state.sqlite"}?mode=ro', uri=True)
         try:
             row = db.execute("SELECT data FROM records WHERE category='meta' AND id='state'").fetchone()
-            if row is None or json.loads(row[0])['version'] != 16 or db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+            if row is None or json.loads(row[0])['version'] != (17 if use_index else 16) or db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise RuntimeError('restored database version or integrity mismatch')
         finally:
             db.close()
         proc = start(restored)
         try:
             for source in ('from', 'to'):
-                for name, expected in [('guide.md', '# Guide\n\n[Docs](docs/)'), ('docs/README.md', '# Documentation')]:
+                documentation_path = source_path if source == 'from' else 'docs/README.md'
+                for name, expected in [('guide.md', '# Guide\n\n[Docs](docs/)'), (documentation_path, '# Documentation')]:
                     article = call('/api/v1/articles?' + urlencode({'source_id': source, 'path': name}))
                     if article['versions'][-1]['text'] != expected:
                         raise RuntimeError('restored article differs')

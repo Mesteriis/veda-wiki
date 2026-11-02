@@ -148,7 +148,7 @@ def make_server(client):
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "destination_id": string, "destination_path": string, "confirm_publication": {"type": "boolean"}, "include_linked": {"type": "boolean"}},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
-        "veda_transfer_plan": ("Inspect the recursive relative article-link graph and destination matches without changing data. This is a snapshot, not a reservation or authorization. Images, HTML and publication approval are not validated by this plan.", {
+        "veda_transfer_plan": ("Inspect the recursive relative article-link graph and destination matches without changing data. directory_index marks an index.md mapped to a destination README.md; review the mapped paths. This is a snapshot, not a reservation or authorization. Images, HTML and publication approval are not validated by this plan.", {
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "destination_id": string, "destination_path": string},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),

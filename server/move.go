@@ -354,7 +354,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		from, fromOK := repositoryTarget(sourcePath, parsed.Path)
 		to, toOK := repositoryTarget(targetPath, parsed.Path)
 		if !image && (!fromOK || !articlePath(from, src.Kind)) {
-			from, fromOK = directoryReadmeTarget(sourcePath, parsed.Path)
+			from, fromOK, _ = s.directoryTransferSource(src.ID, sourcePath, parsed.Path)
 			to, toOK = directoryReadmeTarget(targetPath, parsed.Path)
 			directoryLinks = true
 		}

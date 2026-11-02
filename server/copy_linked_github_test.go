@@ -68,6 +68,82 @@ func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
 	}
 }
 
+func TestIndexDirectoryBundleRejectsNewRemoteIndex(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	s.put("from", "guide.md", "[Docs](docs/)", 0)
+	s.put("from", "docs/index.md", "# Original index", 0)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	m := connectFixture(t, s, f, true)
+	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
+	if err != nil || s.db.Version != 17 {
+		t.Fatal("index bundle not queued", err)
+	}
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
+	m.Once(context.Background())
+	if f.writeCount() != 0 || f.contents()["docs/README.md"] != "" || s.jobs()[0].State == "complete" {
+		t.Fatal("new remote index was shadowed")
+	}
+}
+
+func TestIndexDirectoryBundleSentAndConfirmed(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	s.put("from", "guide.md", "[Docs](docs/)", 0)
+	s.put("from", "docs/index.md", "# Original index", 0)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	m := connectFixture(t, s, f, true)
+	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	if f.writeCount() != 1 || f.contents()["docs/README.md"] != "# Original index" {
+		t.Fatal("mapped index not sent")
+	}
+	m.Once(context.Background())
+	if s.jobs()[0].State != "complete" {
+		t.Fatal("mapped index not confirmed")
+	}
+}
+
+func TestIndexDirectoryMoveWaitsForDestinationConfirmation(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	s.put("from", "guide.md", "[Docs](docs/)", 0)
+	s.put("from", "docs/index.md", "# Original index", 0)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	m := connectFixture(t, s, f, true)
+	move, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmMove: true, ConfirmPublication: true})
+	if err != nil || move.State != "waiting_destination" {
+		t.Fatal("move not queued", err)
+	}
+	m.Once(context.Background())
+	if s.db.Articles["from/guide.md"].Deleted {
+		t.Fatal("source removed before confirmation")
+	}
+	m.Once(context.Background())
+	if s.moves()[0].State != "complete" || !s.db.Articles["from/guide.md"].Deleted || s.db.Articles["from/docs/index.md"].Deleted {
+		t.Fatal("move did not preserve linked source after confirmation")
+	}
+}
+
+func TestIndexDirectoryRootCannotShadowNewRemoteIndex(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	s.put("from", "docs/index.md", "# Root\n\n[Self](./)", 0)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	m := connectFixture(t, s, f, true)
+	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "docs/index.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "docs/README.md", IncludeLinked: true, ConfirmPublication: true})
+	if err != nil || len(s.jobs()[0].Bundle) != 0 {
+		t.Fatal("root fixture invalid", err)
+	}
+	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
+	m.Once(context.Background())
+	if f.writeCount() != 0 || f.contents()["docs/README.md"] != "" {
+		t.Fatal("root copy shadowed new remote index")
+	}
+}
+
 func TestOldBinaryRejectsDirectoryLinkStore(t *testing.T) {
 	old := os.Getenv("VEDA_OLD_V16_BINARY")
 	if old == "" {
@@ -95,6 +171,37 @@ func TestOldBinaryRejectsDirectoryLinkStore(t *testing.T) {
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(before) != string(after) {
+		t.Fatal("old binary changed state")
+	}
+}
+
+func TestOldBinaryRejectsDirectoryIndexStore(t *testing.T) {
+	old := os.Getenv("VEDA_OLD_V17_BINARY")
+	if old == "" {
+		t.Skip("old binary not provided")
+	}
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "private")
+	s.put("from", "guide.md", "[Docs](docs/)", 0)
+	s.put("from", "docs/index.md", "# Docs", 0)
+	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: true}); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(s.dir, "state.json")
+	before, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
+		t.Fatal("old binary did not reject version 17")
+	}
+	after, err := os.ReadFile(state)
+	if err != nil || string(after) != string(before) {
 		t.Fatal("old binary changed state")
 	}
 }

@@ -50,7 +50,10 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 			return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 		}
 		copied := Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
-		b := Article{SourceID: in.DestinationID, Path: item.DestinationPath, Versions: []Revision{copied}, CopiedFrom: &CopyOrigin{SourceID: in.SourceID, Path: item.SourcePath, Revision: item.Revision, SHA: rev.SHA}, Translation: movedTranslation(a.Translation)}
+		b := Article{SourceID: in.DestinationID, Path: item.DestinationPath, Versions: []Revision{copied}, CopiedFrom: &CopyOrigin{SourceID: in.SourceID, Path: item.SourcePath, Revision: item.Revision, SHA: rev.SHA, DirectoryIndex: item.DirectoryIndex}, Translation: movedTranslation(a.Translation)}
+		if item.DirectoryIndex && shadow.db.Version < 17 {
+			shadow.db.Version = 17
+		}
 		if public {
 			published := copied
 			published.Number = 0

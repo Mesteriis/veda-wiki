@@ -5,10 +5,11 @@ import "time"
 // CopyOrigin is retained on the destination for owner audit and is never
 // returned on the anonymous public surface.
 type CopyOrigin struct {
-	SourceID string `json:"source_id"`
-	Path     string `json:"path"`
-	Revision int    `json:"revision"`
-	SHA      string `json:"sha256"`
+	SourceID       string `json:"source_id"`
+	Path           string `json:"path"`
+	Revision       int    `json:"revision"`
+	SHA            string `json:"sha256"`
+	DirectoryIndex bool   `json:"directory_index,omitempty"`
 }
 type copyRequest struct {
 	SourceID           string `json:"source_id"`

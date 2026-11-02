@@ -45,7 +45,7 @@ func TestCopyLinkedLocalRejectsConflictWithoutPartialWrites(t *testing.T) {
 	}
 }
 
-func TestTransferIndexOnlyDirectoryLinkFailsWithoutChangingEitherSource(t *testing.T) {
+func TestTransferIndexDirectoryDoesNotShadowExistingDestination(t *testing.T) {
 	for _, linked := range []bool{false, true} {
 		t.Run(map[bool]string{false: "single", true: "linked"}[linked], func(t *testing.T) {
 			s := testStore(t)
@@ -62,15 +62,12 @@ func TestTransferIndexOnlyDirectoryLinkFailsWithoutChangingEitherSource(t *testi
 			}
 			before, _ := json.Marshal(s.db)
 			_, err := s.planTransfer(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md"})
-			if err != ErrNotFound {
+			if err != ErrConflict {
 				t.Fatal("directory link transfer plan was accepted", err)
 			}
 			_, err = s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: linked})
 			after, _ := json.Marshal(s.db)
-			want := ErrInvalid
-			if linked {
-				want = ErrNotFound
-			}
+			want := ErrConflict
 			if err != want || string(before) != string(after) {
 				t.Fatal("directory link copy did not fail atomically", err)
 			}
@@ -120,6 +117,47 @@ func TestPendingDirectoryReadmeDependencySurvivesEdit(t *testing.T) {
 	}
 	if len(retainedPendingLinks("[Other](elsewhere/)", "guide.md", got)) != 0 {
 		t.Fatal("removed directory dependency retained")
+	}
+}
+
+func TestCopyLinkedIndexDirectoryToReadme(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "private")
+	s.put("from", "guide.md", "# Guide\n\n[Docs](docs/)", 0)
+	s.put("from", "docs/index.md", "# Documentation", 0)
+	in := copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: true}
+	plan, err := s.planTransfer(in)
+	if err != nil || len(plan.Articles) != 2 || plan.Articles[0].SourcePath != "docs/index.md" || plan.Articles[0].DestinationPath != "docs/README.md" || !plan.Articles[0].DirectoryIndex {
+		t.Fatal("index mapping not exposed in plan", err)
+	}
+	if _, err = s.copyArticle(in); err != nil {
+		t.Fatal("index directory copy failed", err)
+	}
+	a := s.db.Articles["to/docs/README.md"]
+	if s.db.Version != 17 || a.CopiedFrom == nil || !a.CopiedFrom.DirectoryIndex || a.CopiedFrom.Path != "docs/index.md" {
+		t.Fatal("index mapping provenance missing")
+	}
+	if _, err = openStore(s.dir); err != nil {
+		t.Fatal("v17 store did not reopen", err)
+	}
+	if err = migrateSQLite(s.dir); err != nil {
+		t.Fatal("v17 SQLite migration failed", err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil || reopened.db.Version != 17 || !reopened.db.Articles["to/docs/README.md"].CopiedFrom.DirectoryIndex {
+		t.Fatal("v17 provenance lost after SQLite migration", err)
+	}
+}
+
+func TestIndexDirectoryAmbiguousMappingIsRejected(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "private")
+	s.put("from", "guide.md", "[Directory](docs/) [File](docs/index.md)", 0)
+	s.put("from", "docs/index.md", "# Documentation", 0)
+	if _, err := s.planTransfer(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md"}); err != ErrConflict {
+		t.Fatal("ambiguous index mapping accepted", err)
 	}
 }
 func TestCopyLinkedLocalChecksPublicationForEveryArticle(t *testing.T) {

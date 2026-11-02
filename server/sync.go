@@ -716,7 +716,8 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		}
 		var commit string
 		var e error
-		if len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0 {
+		directoryIndex := a.CopiedFrom != nil && a.CopiedFrom.DirectoryIndex
+		if len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0 && !directoryIndex {
 			commit, e = m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
 		} else {
 			var files map[string][]byte
@@ -815,6 +816,27 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 			return nil, e
 		}
 		files[name] = data
+	}
+	// Do not introduce a new README over an index added remotely since the
+	// transfer was planned. The checked tree is bound to the CAS update.
+	m.store.mu.RLock()
+	shadowed := false
+	for name := range files {
+		a, exists := m.store.db.Articles[c.ID+"/"+name]
+		if !exists || a.CopiedFrom == nil || !a.CopiedFrom.DirectoryIndex {
+			continue
+		}
+		if _, hasReadme := entries[name]; !hasReadme {
+			_, hasIndex := entries[path.Join(path.Dir(name), "index.md")]
+			if hasIndex {
+				shadowed = true
+				break
+			}
+		}
+	}
+	m.store.mu.RUnlock()
+	if shadowed {
+		return nil, ErrConflict
 	}
 	for name, data := range files {
 		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
