@@ -28,6 +28,8 @@ var assets embed.FS
 var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
 type Page struct {
+	searchOriginal       string
+	searchDisplayed      string
 	ProgramDocumentation bool          `json:"program_documentation,omitempty"`
 	TranslationOrigin    string        `json:"translation_origin,omitempty"`
 	OriginalSHA          string        `json:"original_sha256,omitempty"`
@@ -378,11 +380,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if name == "" && (env == "" || env == "all" || env == id) {
 			score := 1
 			if query != "" {
-				body := ""
-				if full, e := w.Store.page(p.Path, w.Public); e == nil {
-					body = full.Text
-				}
-				score = searchScore(query, p.Title+" "+p.Path, body, terms)
+				score = searchRevisions(query, p.Path, p.searchOriginal, p.searchDisplayed, terms)
 			}
 			if score > 0 {
 				v.Pages = append(v.Pages, p)

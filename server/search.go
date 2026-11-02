@@ -34,8 +34,9 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 		score int
 	}
 	type candidate struct {
-		hit  searchHit
-		body string
+		hit       searchHit
+		original  string
+		displayed string
 	}
 	var candidates []candidate
 	s.mu.RLock()
@@ -55,8 +56,9 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 			}
 			rev = *a.Published
 		}
+		original := rev.Text
 		rev, _ = displayedRevision(a, rev, public)
-		candidates = append(candidates, candidate{hit: searchHit{SourceID: a.SourceID, Path: a.Path, Title: title(rev.Text, a.Path)}, body: rev.Text})
+		candidates = append(candidates, candidate{hit: searchHit{SourceID: a.SourceID, Path: a.Path, Title: title(rev.Text, a.Path)}, original: original, displayed: rev.Text})
 	}
 	s.mu.RUnlock()
 	sort.Slice(candidates, func(i, j int) bool {
@@ -65,7 +67,7 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 	var matches []ranked
 	terms := searchTerms(query)
 	for _, c := range candidates {
-		score := searchScore(query, c.hit.Title+" "+c.hit.SourceID+"/"+c.hit.Path, c.body, terms)
+		score := searchRevisions(query, c.hit.SourceID+"/"+c.hit.Path, c.original, c.displayed, terms)
 		if score == 0 {
 			continue
 		}
@@ -77,6 +79,17 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 		out = append(out, item.hit)
 	}
 	return out
+}
+
+// Score each text independently: words from different translations must not
+// combine into a match that exists in neither version.
+func searchRevisions(query, articlePath, original, displayed string, terms [][]string) int {
+	originalScore := searchScore(query, title(original, articlePath)+" "+articlePath, original, terms)
+	if original == displayed {
+		return originalScore
+	}
+	displayedScore := searchScore(query, title(displayed, articlePath)+" "+articlePath, displayed, terms)
+	return max(originalScore, displayedScore)
 }
 
 var searchStopWords = map[string]bool{

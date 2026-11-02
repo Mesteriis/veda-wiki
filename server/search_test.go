@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -88,6 +89,74 @@ func TestPublicSearchUsesPublishedRevision(t *testing.T) {
 	}
 	if hits := s.findArticles("confidential", "", false); len(hits) != 1 || hits[0].Title != "Confidential local" {
 		t.Fatal("private revision missing")
+	}
+}
+
+func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Deployment guide\n\nInstall the service."})
+	connectFixture(t, s, f, false)
+	a, err := s.article("handbook", "docs/guide.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := a.Versions[0]
+	_, err = s.submitTranslation(translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: original.SHA, Text: "# Руководство\n\nУстановите службу.", ConfirmPublication: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"Deployment", "Руководство"} {
+		if hits := s.findArticles(q, "", true); len(hits) != 1 || hits[0].Title != "Руководство" {
+			t.Fatalf("search %q missed visible document: %+v", q, hits)
+		}
+		w := Wiki{Store: s, Public: true}
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest("GET", "/api/state?q="+url.QueryEscape(q), nil)
+		w.ServeHTTP(response, request)
+		var result struct {
+			View struct {
+				Pages []Page `json:"Pages"`
+			} `json:"view"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.View.Pages) != 1 {
+			t.Fatalf("browser search %q missed visible document: %d", q, response.Code)
+		}
+	}
+	if hits := s.findArticles("Deployment Установите", "", true); len(hits) != 0 {
+		t.Fatal("search combined words from different texts")
+	}
+	s.mu.Lock()
+	a = s.db.Articles["handbook/docs/guide.md"]
+	a.Translation.PublicApproved = false
+	s.db.Articles["handbook/docs/guide.md"] = a
+	s.mu.Unlock()
+	if hits := s.findArticles("Руководство", "", true); len(hits) != 0 {
+		t.Fatal("public search exposed unapproved translation")
+	}
+	if hits := s.findArticles("Руководство", "", false); len(hits) != 1 {
+		t.Fatal("private search missed private translation")
+	}
+	response := httptest.NewRecorder()
+	Wiki{Store: s, Public: true}.ServeHTTP(response, httptest.NewRequest("GET", "/api/state?q="+url.QueryEscape("Руководство"), nil))
+	var result struct {
+		View struct {
+			Pages []Page `json:"Pages"`
+		} `json:"view"`
+	}
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.View.Pages) != 0 {
+		t.Fatal("browser search exposed unapproved translation")
+	}
+	s.mu.Lock()
+	a = s.db.Articles["handbook/docs/guide.md"]
+	local := "# Hidden local draft\n\nSecret term."
+	a.Versions = append(a.Versions, Revision{Number: 2, Text: local, SHA: digest([]byte(local))})
+	s.db.Articles["handbook/docs/guide.md"] = a
+	s.mu.Unlock()
+	if hits := s.findArticles("Hidden", "", true); len(hits) != 0 {
+		t.Fatal("public search exposed unpublished original")
+	}
+	if hits := s.findArticles("Deployment", "", true); len(hits) != 1 {
+		t.Fatal("published original disappeared after private edit")
 	}
 }
 

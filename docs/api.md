@@ -44,7 +44,10 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
 Search matches exact phrases or meaningful words across visible titles, paths
-and article text. Multiword queries require two distinct meaningful matches;
+and article text. For translated articles it searches both the visible original
+revision and its visible translation, scores each text independently, and
+returns the displayed title. An unapproved translation is never searched on the
+public surface. Multiword queries require two distinct meaningful matches;
 title and path matches rank above body matches. A small set of infrastructure
 aliases covers generic container terms, LXC and Docker, as well as VPS/VDS/VSP.
 Generic container queries include both technologies; explicit LXC and Docker
