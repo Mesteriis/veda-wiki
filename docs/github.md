@@ -203,6 +203,12 @@ any queued image dependencies. Review the article and those images before
 approving. Never approve
 it based solely on a visibility change. Public Git history cannot be recalled.
 
+A subprocess test also starts the synchronization logic in a fresh test
+process after a simulated lost push response and SQLite migration. It verifies
+that the already applied commit is acknowledged without a duplicate push. The
+GitHub service and credentials in that test are synthetic; it does not launch
+the production server binary or prove real credential recovery.
+
 Automated coverage uses a simulated GitHub service; anonymous public import has
 also been checked against a real public repository. Real authenticated App/PAT
 connections, writes and multi-repository recovery still require acceptance.
