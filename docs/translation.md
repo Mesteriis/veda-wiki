@@ -174,3 +174,6 @@ short synthetic translation passed, but `TestRealLocalMLXProjectDocumentation`
 failed on the public import guide: the protected-element count changed from 56
 to 41. This is evidence for this model configuration and fixture only; no
 private content was used, and the model was not enabled on the server.
+The same 8B configuration also failed the protected Markdown check on the
+first section when the guide was split into pieces of at most 4,000 bytes
+(`TestRealLocalMLXProjectDocumentationSections`).
