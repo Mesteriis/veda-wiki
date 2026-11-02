@@ -132,7 +132,8 @@ for (const width of [1672, 390, 320]) {
     if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
     await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
     const scope = title === 'GitHub' ? '.github-page' : 'dialog[open]';
-    await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`);
+    try { await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`); }
+    catch (error) { throw Error(`admin login unavailable: ${title}, path=${await evaluate('location.pathname + location.search')}, page=${await evaluate("!!document.querySelector('.github-page')")}, dialog=${await evaluate("!!document.querySelector('dialog[open]')")}`); }
     await evaluate(`document.querySelector(${JSON.stringify(scope + ' input[name=key]')}).value=${JSON.stringify('d'.repeat(64))}; document.querySelector(${JSON.stringify(scope + ' input[name=key]')}).closest('form').requestSubmit()`);
     const expected = title === 'GitHub' ? 'Подключить репозиторий' : 'Новый ключ чтения';
     await until(`document.querySelector(${JSON.stringify(scope)}).textContent.includes(${JSON.stringify(expected)})`);
