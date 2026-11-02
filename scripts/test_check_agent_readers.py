@@ -22,6 +22,15 @@ class AgentReaderMetadataTests(unittest.TestCase):
     def test_accepts_four_distinct_private_keys(self):
         module.validate_key_metadata(self.root)
 
+    def test_reader_tools_fail_closed(self):
+        module.validate_reader_tools(set(module.READER_TOOLS))
+        with self.assertRaises(ValueError):
+            module.validate_reader_tools(set(module.READER_TOOLS) | {'veda_copy_article'})
+        with self.assertRaises(ValueError):
+            module.validate_reader_tools(set(module.READER_TOOLS) | {'new_unknown_tool'})
+        with self.assertRaises(ValueError):
+            module.validate_reader_tools(set(module.READER_TOOLS) - {'veda_read_excerpt'})
+
     def test_rejects_duplicates_and_bad_format(self):
         duplicate = self.root / 'hermes.key'
         duplicate.write_text('a' * 64)

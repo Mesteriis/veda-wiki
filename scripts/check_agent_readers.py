@@ -15,6 +15,16 @@ from mcp.client.stdio import get_default_environment, stdio_client
 
 AGENTS = ('codex', 'claude', 'opencode', 'hermes')
 ADAPTER = Path(__file__).resolve().parents[1] / 'mcp' / 'server.py'
+READER_TOOLS = frozenset(('veda_sources', 'veda_search', 'veda_find', 'veda_read',
+    'veda_read_display', 'veda_read_display_excerpt', 'veda_read_excerpt', 'veda_context',
+    'veda_prepare_update', 'veda_prepare_new_article', 'veda_prepare_translation',
+    'veda_translation_needed', 'veda_transfer_plan'))
+REQUIRED_TOOLS = frozenset(('veda_sources', 'veda_read_excerpt', 'veda_prepare_new_article'))
+
+
+def validate_reader_tools(names):
+    if not REQUIRED_TOOLS.issubset(names) or not names.issubset(READER_TOOLS):
+        raise ValueError('Unexpected tool set')
 
 
 def validate_key_metadata(directory):
@@ -62,9 +72,7 @@ async def verify_agent(agent, key, base, source, article):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 names = {tool.name for tool in (await session.list_tools()).tools}
-                required = {'veda_sources', 'veda_read_excerpt', 'veda_prepare_new_article'}
-                if not required.issubset(names) or 'veda_write_article' in names:
-                    raise ValueError('Unexpected tool set')
+                validate_reader_tools(names)
                 result = response_json(await session.call_tool('veda_sources', {}))
                 private_ids = {item['id'] for item in result['sources'] if item.get('visibility') == 'private'}
                 if private_ids != {source}:

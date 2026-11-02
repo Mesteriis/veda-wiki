@@ -58,7 +58,9 @@ proposal without printing their contents or the keys. Use an existing article
 path if the source has no root `AGENTS.md`. This checks the credentials and
 adapter and checks that the files contain four distinct keys. It does not prove
 that each agent's model can discover or invoke the tools; verify each client
-after its configuration changes.
+after its configuration changes. The check rejects unknown MCP tools as well
+as write tools; when adding a new read-only tool, review and update its
+allowlist before using the check with the newer adapter.
 
 To check the local key-file helpers without using credentials or contacting a
 server, install `mcp/requirements.txt` in the MCP virtual environment and run
