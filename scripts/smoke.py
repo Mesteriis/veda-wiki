@@ -109,6 +109,10 @@ async def main():
                     await call("veda_create_source", {"id": "copy", "title": "copy", "kind": "wiki", "visibility": "private"})
                     copied = await call("veda_copy_article", {"source_id": "closed", "source_path": "README.md", "expected_revision": 2, "destination_id": "copy", "destination_path": "copied.md"})
                     assert copied["revision"] == 1
+                    await call("veda_write_article", {"source_id": "copy", "path": "update.md", "text": "# Old target", "expected_revision": 0})
+                    update_args = {"source_id": "closed", "source_path": "README.md", "expected_revision": 2, "destination_id": "copy", "destination_path": "update.md", "expected_destination_revision": 1}
+                    assert (await call("veda_copy_article", update_args))["revision"] == 2
+                    assert (await session.call_tool("veda_copy_article", update_args)).isError
                     copy_read = await call("veda_read", {"source_id": "copy", "path": "copied.md"})
                     assert copy_read["text"] == "# Private updated"
                     await call("veda_create_source", {"id": "program", "title": "program", "kind": "program", "visibility": "private"})

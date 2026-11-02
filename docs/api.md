@@ -189,8 +189,12 @@ assets are read-only through the ordinary source-creation endpoint.
 
 `POST /api/v1/articles/copy` requires `source_id`, `source_path`,
 `expected_revision`, `destination_id`, `destination_path` and optionally
-`confirm_publication` and `include_linked`. The destination must be a new path in a different
-source. Conflicts or stale source revisions are rejected. The copy and its
+`confirm_publication`, `include_linked`, and `expected_destination_revision`. The
+destination is in a different source. An existing destination is updated only
+when `expected_destination_revision` matches its current revision; its history
+and upstream baseline are retained. Omit it or use zero for a new destination.
+Updating an existing destination cannot be combined with `include_linked`.
+Conflicts or stale revisions are rejected. The copy and its
 remote outbox job are committed atomically; inspect the outbox to verify remote
 durability. The source is retained. Private-to-public copying requires explicit
 review and `confirm_publication: true`. A public destination refuses

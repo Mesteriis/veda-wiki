@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 // CopyOrigin is retained on the destination for owner audit and is never
 // returned on the anonymous public surface.
@@ -12,13 +15,14 @@ type CopyOrigin struct {
 	DirectoryIndex bool   `json:"directory_index,omitempty"`
 }
 type copyRequest struct {
-	SourceID           string `json:"source_id"`
-	SourcePath         string `json:"source_path"`
-	ExpectedRevision   int    `json:"expected_revision"`
-	DestinationID      string `json:"destination_id"`
-	DestinationPath    string `json:"destination_path"`
-	ConfirmPublication bool   `json:"confirm_publication"`
-	IncludeLinked      bool   `json:"include_linked,omitempty"`
+	SourceID                    string `json:"source_id"`
+	SourcePath                  string `json:"source_path"`
+	ExpectedRevision            int    `json:"expected_revision"`
+	ExpectedDestinationRevision *int   `json:"expected_destination_revision,omitempty"`
+	DestinationID               string `json:"destination_id"`
+	DestinationPath             string `json:"destination_path"`
+	ConfirmPublication          bool   `json:"confirm_publication"`
+	IncludeLinked               bool   `json:"include_linked,omitempty"`
 }
 
 // Caller holds the store mutex. The returned transaction is not yet committed.
@@ -50,7 +54,17 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		}
 	}
 	key := in.DestinationID + "/" + in.DestinationPath
-	if _, exists := s.db.Articles[key]; exists {
+	b, exists := s.db.Articles[key]
+	if exists {
+		if in.ExpectedDestinationRevision == nil || *in.ExpectedDestinationRevision < 1 || b.Deleted || len(b.Versions) != *in.ExpectedDestinationRevision || moveDeletionLocks(s.db, in.DestinationID, in.DestinationPath) || conflictResolutionBlocked(s.db, in.DestinationID, in.DestinationPath) {
+			return Database{}, Revision{}, ErrConflict
+		}
+		for _, conflict := range b.Conflicts {
+			if conflict.Resolution == "" {
+				return Database{}, Revision{}, ErrConflict
+			}
+		}
+	} else if in.ExpectedDestinationRevision != nil && *in.ExpectedDestinationRevision != 0 {
 		return Database{}, Revision{}, ErrConflict
 	}
 	rev := a.Versions[len(a.Versions)-1]
@@ -64,8 +78,10 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	if targetPublic && (secretContent.MatchString(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 		return Database{}, Revision{}, ErrInvalid
 	}
-	copied := Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
-	b := Article{SourceID: in.DestinationID, Path: in.DestinationPath, Versions: []Revision{copied}, CopiedFrom: &CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}}
+	copied := Revision{Number: len(b.Versions) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
+	b.SourceID, b.Path, b.Deleted = in.DestinationID, in.DestinationPath, false
+	b.Versions = append(append([]Revision(nil), b.Versions...), copied)
+	b.CopiedFrom = &CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}
 	if a.Translation != nil {
 		if destination.Kind != "program" {
 			return Database{}, Revision{}, ErrInvalid
@@ -77,6 +93,8 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		published.Number = 0
 		b.Published = &published
 		b.PublishedLocal = true
+	} else {
+		b.PublishedLocal = false
 	}
 	db := s.clone()
 	if dependencies.DirectoryLinks && db.Version < 16 {
@@ -93,13 +111,32 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		db.Sources[destination.ID] = destination
 	}
 	db.Articles[key] = b
+	// An active move may depend on the previous destination revision.
+	// Reconcile it in the same transaction before queuing the new write.
+	reconcileMoves(&db)
 	if destination.ConnectionID != "" {
 		enqueueWrite(&db, b, copied)
 		if len(dependencies.Assets) > 0 || len(dependencies.Links) > 0 {
-			id := b.SourceID + "/" + b.Path + "@1"
+			id := b.SourceID + "/" + b.Path + "@" + strconv.Itoa(copied.Number)
 			job := db.Outbox[id]
-			job.Assets = dependencies.Assets
-			job.Links = dependencies.Links
+			if job.Assets == nil {
+				job.Assets = map[string]BlobRef{}
+			}
+			for name, ref := range dependencies.Assets {
+				if old, ok := job.Assets[name]; ok && old != ref {
+					return Database{}, Revision{}, ErrConflict
+				}
+				job.Assets[name] = ref
+			}
+			if job.Links == nil {
+				job.Links = map[string]string{}
+			}
+			for name, sha := range dependencies.Links {
+				if old, ok := job.Links[name]; ok && old != sha {
+					return Database{}, Revision{}, ErrConflict
+				}
+				job.Links[name] = sha
+			}
 			db.Outbox[id] = job
 			version := 7
 			if len(dependencies.Links) > 0 {
@@ -119,6 +156,9 @@ func (s *Store) copyArticle(in copyRequest) (Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if in.IncludeLinked {
+		if in.ExpectedDestinationRevision != nil && *in.ExpectedDestinationRevision != 0 {
+			return Revision{}, ErrInvalid
+		}
 		db, revision, _, err := s.prepareCopyLinkedLocal(in)
 		if err != nil {
 			return Revision{}, err
