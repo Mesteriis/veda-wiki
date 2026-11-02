@@ -180,9 +180,11 @@ access local files; do not treat this mechanism as per-user authorization.
 
 ## Import observation
 
-Authenticated source listings include `last_import_observed_at` when a local
-import was successfully accepted since this server process started, including
-an unchanged import. A failed import does not advance it. The value is kept in
+Authenticated source listings include `last_import_observed_at` when an import
+was successfully accepted since this server process started, including an
+unchanged local import or a GitHub branch head freshly verified to match the
+imported snapshot. The latter does not re-download every blob. A failed import
+or stale connection observation does not advance it. The value is kept in
 memory and is absent after restart until another successful import; it is not
 a claim that the upstream checkout or infrastructure is currently correct.
 `unresolved_conflicts` counts pending conflicts. `import_partial` and

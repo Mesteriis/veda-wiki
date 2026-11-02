@@ -1,12 +1,56 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	m := connectFixture(t, s, f, false)
+	ctx, err := s.agentContext("handbook", "guide.md", false)
+	if err != nil || ctx.SourceStatus.LastImportObservedAt == nil {
+		t.Fatal("successful GitHub import not observed", err)
+	}
+	public, err := s.agentContext("handbook", "guide.md", true)
+	if err != nil || public.SourceStatus.LastImportObservedAt != nil || s.sources(true)[0].LastImportObservedAt != "" {
+		t.Fatal("public context exposed observation metadata", err)
+	}
+	old := time.Now().Add(-time.Hour).UTC()
+	s.mu.Lock()
+	s.observed["handbook"] = old
+	s.mu.Unlock()
+	m.Once(context.Background())
+	observed := s.sources(false)[0].LastImportObservedAt
+	stamp, err := time.Parse(time.RFC3339Nano, observed)
+	if err != nil || !stamp.After(old) {
+		t.Fatal("unchanged verified head not observed", err)
+	}
+	f.modify(func() { f.fail = true })
+	syncFixtureSource(t, m, "handbook")
+	if s.sources(false)[0].LastImportObservedAt != observed {
+		t.Fatal("failed GitHub check advanced observation")
+	}
+	conn := s.connections()[0]
+	if err = s.pauseConnection("handbook", true); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.observeGitHubHead(conn, conn.LastPull, conn.TreeSHA); err != ErrConflict {
+		t.Fatal("stale connection advanced observation", err)
+	}
+	if s.sources(false)[0].LastImportObservedAt != observed {
+		t.Fatal("stale observation changed timestamp")
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil || reopened.sources(false)[0].LastImportObservedAt != "" {
+		t.Fatal("observation persisted across restart", err)
+	}
+}
 
 func TestImportObservationIsTransientAndOnlyAdvancesOnSuccess(t *testing.T) {
 	s := testStore(t)

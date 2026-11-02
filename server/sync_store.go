@@ -81,6 +81,21 @@ func sourcePublic(db Database, src Source, now time.Time) bool {
 func sourcePublicReadable(db Database, src Source, now time.Time) bool {
 	return sourcePublic(db, src, now) && (src.ConnectionID == "" || !src.ImportPartial)
 }
+
+// An unchanged, freshly verified GitHub head confirms the already imported
+// snapshot without downloading every blob again. Never accept an observation
+// from a request that raced with reconfiguration or a different import.
+func (s *Store) observeGitHubHead(expected GitHubConnection, head, tree string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.db.Connections[expected.ID]
+	src, exists := s.db.Sources[expected.ID]
+	if s.invalid || !ok || !exists || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || c.Private != expected.Private || c.Verification != "verified" || c.LastPull != head || c.TreeSHA != tree || src.ConnectionID != c.ID || src.ImportCommit != head || (src.Visibility == "private") != c.Private {
+		return ErrConflict
+	}
+	s.markImportObserved(c.ID)
+	return nil
+}
 func (s *Store) retryConnection(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

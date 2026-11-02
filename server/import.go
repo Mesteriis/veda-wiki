@@ -688,9 +688,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	if e := s.commit(db); e != nil {
 		return ImportResult{}, e
 	}
-	if proof == nil {
-		s.markImportObserved(batch.SourceID)
-	}
+	s.markImportObserved(batch.SourceID)
 	return result, nil
 }
 

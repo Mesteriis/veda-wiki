@@ -440,6 +440,9 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		return
 	}
 	if matchingVisibility && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
+		if err := m.store.observeGitHubHead(c, head, c.TreeSHA); err != nil {
+			return
+		}
 		m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
 		return
 	}
