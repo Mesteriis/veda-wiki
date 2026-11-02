@@ -56,7 +56,9 @@ Only Git-indexed files are eligible: ignored/untracked local Markdown, nested
 checkouts and unrelated working directories do not become published content.
 Staged new files are eligible and are reported as a dirty observation.
 Credential-like Markdown is withheld, never returned in an error message.
-Incomplete coverage is explicit and disables automatic upstream deletions.
+Incomplete coverage is explicit and disables automatic upstream deletions. A
+public source with incomplete coverage is hidden from public readers until a
+complete import succeeds; authorized readers retain access to its local data.
 For a private source, an incomplete observation also retains previously known
 images that were not observed. After a complete observation, missing images
 still referenced by a locally changed or local-only article are retained while

@@ -75,11 +75,12 @@ func sourcePublic(db Database, src Source, now time.Time) bool {
 	return ok && !c.Paused && c.Verification == "verified" && !c.Private && e == nil && !verified.After(now.Add(time.Minute)) && now.Sub(verified) < 10*time.Minute
 }
 
-// A partial GitHub snapshot cannot establish which previously imported paths
-// remain public. Keep publication decisions based on sourcePublic, but hide
-// the entire source from public readers until a complete snapshot is imported.
+// A partial import cannot establish which previously imported paths remain
+// public, regardless of whether the source is local or connected to GitHub.
+// Publication decisions still use sourcePublic, but readers fail closed until
+// the import is complete. Sources without an import are not partial.
 func sourcePublicReadable(db Database, src Source, now time.Time) bool {
-	return sourcePublic(db, src, now) && (src.ConnectionID == "" || !src.ImportPartial)
+	return sourcePublic(db, src, now) && !src.ImportPartial
 }
 
 // An unchanged, freshly verified GitHub head confirms the already imported
