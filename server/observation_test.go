@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -75,5 +76,59 @@ func TestContextSourceStatusCountsUnresolvedConflicts(t *testing.T) {
 	var response []map[string]any
 	if e := json.Unmarshal(r.Body.Bytes(), &response); e != nil || len(response) != 1 || response[0]["unresolved_conflicts"] != float64(1) || !strings.Contains(r.Body.String(), "last_import_observed_at") {
 		t.Fatal("source status response", e)
+	}
+}
+
+func TestStateShowsWarningsOnlyForVisiblePrivateSources(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "alpha", "private")
+	source(t, s, "beta", "private")
+	source(t, s, "open", "public")
+	for _, id := range []string{"alpha", "beta", "open"} {
+		if _, err := s.put(id, "a.md", "# Synthetic", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.mu.Lock()
+	db := s.clone()
+	for _, id := range []string{"alpha", "beta", "open"} {
+		src := db.Sources[id]
+		src.ImportPartial = true
+		db.Sources[id] = src
+	}
+	err := s.commit(db)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.createAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner"}
+	read := func(token string) []SourceWarning {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/api/state", nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		out := httptest.NewRecorder()
+		w.ServeHTTP(out, req)
+		var payload struct {
+			View View `json:"view"`
+		}
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &payload) != nil {
+			t.Fatal("state failed", out.Code)
+		}
+		return payload.View.SourceWarnings
+	}
+	if got := read(""); len(got) != 0 {
+		t.Fatal("public state exposed warnings")
+	}
+	if got := read(key); len(got) != 1 || got[0].ID != "alpha" || !got[0].Partial {
+		t.Fatal("scoped warnings were missing or leaked")
+	}
+	if got := read("owner"); len(got) != 3 {
+		t.Fatal("owner did not receive all visible warnings")
 	}
 }

@@ -98,6 +98,18 @@ summary:focus-visible {
   box-shadow: inset 0 0 20px #001e2a44;
   overflow: hidden;
 }
+.source-warnings {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.source-warning {
+  padding: 10px 13px;
+  color: #f2d5a1;
+  background: #21190d;
+  border: 1px solid #76572b;
+  border-radius: 6px;
+}
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;

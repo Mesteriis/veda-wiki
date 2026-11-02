@@ -57,8 +57,16 @@ type Group struct {
 	Count int
 	Pages []Page
 }
+type SourceWarning struct {
+	ID        string
+	Name      string
+	Partial   bool
+	Dirty     bool
+	Conflicts int
+}
 type View struct {
-	Cards []Card
+	Cards          []Card
+	SourceWarnings []SourceWarning
 
 	Public      bool
 	Groups      []Group
@@ -333,6 +341,9 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	sources := map[string]Source{}
 	for _, source := range w.Store.sources(w.Public) {
 		sources[source.ID] = source.Source
+		if !w.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0) {
+			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts})
+		}
 	}
 	for _, p := range s.Pages {
 		id := p.Environment

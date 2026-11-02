@@ -8,7 +8,7 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | Method | Route | Behavior |
 | --- | --- | --- |
 | GET | `/health` | Visible article count and visible revision timestamp |
-| GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path |
+| GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path. Authenticated readers receive warnings for incomplete or dirty imports and unresolved conflicts in their visible sources |
 | GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
 | GET | `/api/v1/context?source_id=…&path=…` | Visible ancestor instructions and source status in one snapshot |

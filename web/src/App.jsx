@@ -77,6 +77,17 @@ function Panel({ title, children, className = "", actions }) {
     </section>
   );
 }
+function SourceWarnings({ view }) {
+  const warnings = (view.SourceWarnings || []).filter((source) => !view.Page || source.ID === view.Page.environment);
+  if (!warnings.length) return null;
+  return <section className="source-warnings" aria-label="Состояние источников">
+    {warnings.map((source) => <div className="source-warning" key={source.ID} role="status">
+      <strong>{source.Name}:</strong>{" "}
+      {[source.Partial && "импорт неполный", source.Dirty && "в источнике есть изменения вне коммита", source.Conflicts > 0 && `конфликты: ${source.Conflicts}`].filter(Boolean).join(" · ")}.
+      {" "}Проверяйте актуальное состояние перед действиями.
+    </div>)}
+  </section>;
+}
 function Sidebar({ v }) {
   const nav = [
     ["home", "Главная", "/"],
@@ -838,6 +849,7 @@ export function App() {
       <Sidebar v={v} />
       <main>
         <Header v={v} />
+        <SourceWarnings view={v} />
         {v.Page ? (
           <Reading data={data} />
         ) : v.Query || v.Selected ? (
