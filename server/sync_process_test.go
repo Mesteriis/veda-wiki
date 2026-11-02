@@ -35,11 +35,64 @@ func TestSyncRecoveryFixtureProcess(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		m.Once(context.Background())
 		jobs := s.jobs()
-		if len(jobs) == 1 && jobs[0].State == "complete" {
+		complete := len(jobs) > 0
+		for _, job := range jobs {
+			if job.State != "complete" {
+				complete = false
+			}
+		}
+		if complete {
 			return
 		}
 	}
 	t.Fatal("fixture job was not acknowledged")
+}
+
+func TestSQLiteLaterEditAfterLostResponseRecoversInFreshProcess(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	connectFixture(t, s, f, true)
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.put("handbook", "README.md", "# First edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.loseResponse = true })
+	newSyncManager(s, f.client()).Once(context.Background())
+	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].PreparedCommit == "" || f.writeCount() != 1 {
+		t.Fatal("fixture did not retain uncertain write", jobs)
+	}
+	if _, err = s.put("handbook", "README.md", "# Second edit", 2); err != nil {
+		t.Fatal(err)
+	}
+	if jobs := s.jobs(); len(jobs) != 2 || jobs[0].State != "retry" || jobs[1].State != "pending" {
+		t.Fatal("later edit did not preserve both jobs", jobs)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
+	cmd.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+f.server.URL)
+	if err := cmd.Run(); err != nil {
+		t.Fatal("recovery subprocess failed", err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := reopened.jobs()
+	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 2 || f.contents()["README.md"] != "# Second edit" {
+		t.Fatal("fresh process lost or duplicated a revision", jobs, f.writeCount())
+	}
 }
 
 func TestSQLitePreparedWriteRecoversInFreshProcess(t *testing.T) {

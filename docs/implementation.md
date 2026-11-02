@@ -30,8 +30,10 @@ access paths, not just the existing unit tests.
 Synthetic GitHub lost-response tests cover both JSON and SQLite backends when a
 later edit follows an uncertain prepared write. They reopen the store, confirm
 both revisions without a duplicate push, and preserve an unresolved conflict
-until the prepared content is observed. This does not test stored real GitHub
-credentials or a process crash during an in-flight request.
+until the prepared content is observed. The two-revision SQLite scenario also
+resumes from a fresh test subprocess against a synthetic GitHub service. This
+does not test stored real GitHub credentials or a process crash during an
+in-flight request.
 
 A two-repository synthetic GitHub test also covers an invalid `docs` entry in
 one source after SQLite migration: its local article remains available, its
