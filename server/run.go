@@ -55,11 +55,15 @@ func main() {
 	interval := flag.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
 	translationURL := flag.String("translation-local-url", "", "Optional numeric loopback translation service URL")
 	translationModel := flag.String("translation-model", "", "Local model for Russian documentation drafts")
+	translationTokenFile := flag.String("translation-token-file", "", "Optional private file containing the local translation service bearer")
 	translationProtocol := flag.String("translation-protocol", "ollama", "Local translation protocol: ollama or mlx")
 	translationInterval := flag.Duration("translation-interval", time.Minute, "Local translation check interval (5s to 1h)")
 	flag.Parse()
 	if *readerKeyRequired && *readerSocket == "" {
 		log.Fatal("reader socket key requirement needs a reader socket")
+	}
+	if *translationTokenFile != "" && (*translationURL == "" || !filepath.IsAbs(*translationTokenFile) || filepath.Clean(*translationTokenFile) != *translationTokenFile) {
+		log.Fatal("invalid local translation credential configuration")
 	}
 	if (*translationURL == "") != (*translationModel == "") || (*translationProtocol != "ollama" && *translationProtocol != "mlx") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
 		log.Fatal("invalid local translation configuration")
@@ -132,6 +136,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		worker.tokenFile = *translationTokenFile
 		workers.Add(1)
 		go func() { defer workers.Done(); worker.Run(ctx, *translationInterval) }()
 	}

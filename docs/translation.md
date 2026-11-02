@@ -59,7 +59,14 @@ the same host, for example `--translation-local-url http://127.0.0.1:11434
 model flags are required; the worker is disabled by
 default. Its URL must use a numeric loopback address, HTTP, and an explicit port;
 HTTP proxies and redirects are disabled. The operator must verify that the
-local service and model do not forward documents elsewhere. Configure
+local service and model do not forward documents elsewhere. If the local service
+requires a bearer, `--translation-token-file /absolute/private/path` reads it
+from an owner-only regular file owned by the VEDA process user; the file must
+contain only the token, without a newline. The final path cannot be a symlink.
+The file is read again on each request to allow rotation. An inaccessible or
+invalid file stops that translation attempt without sending the document or
+the token; credentials are not placed in command arguments or logs. Supplying
+this option requires the translation URL and model. Configure
 `--translation-interval` between 5 seconds and 1 hour (default one minute).
 
 The worker processes one candidate per interval and retries failures after 15

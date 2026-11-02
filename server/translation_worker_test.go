@@ -558,3 +558,78 @@ func TestLocalTranslationWorkerRejectsLostListStep(t *testing.T) {
 		t.Fatal("incomplete list was saved", err)
 	}
 }
+
+func TestLocalTranslationBearerIsPrivateRotatableAndNeverRedirected(t *testing.T) {
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenPath, []byte("synthetic-one"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	expected := "Bearer synthetic-one"
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Authorization") != expected {
+			t.Error("wrong local bearer")
+		}
+		jsonResponse(w, 200, map[string]any{"done": true, "response": "# Перевод"})
+	}))
+	defer srv.Close()
+	worker, err := newTranslationWorker(testStore(t), srv.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.tokenFile = tokenPath
+	if _, err = worker.translate(context.Background(), "# Original"); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(tokenPath, []byte("synthetic-two"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	expected = "Bearer synthetic-two"
+	if _, err = worker.translate(context.Background(), "# Original"); err != nil || calls != 2 {
+		t.Fatal("rotation failed", err)
+	}
+	if err = os.Chmod(tokenPath, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = worker.translate(context.Background(), "# Original"); err == nil || calls != 2 {
+		t.Fatal("insecure file accepted")
+	}
+	if err = os.Chmod(tokenPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err = os.Symlink(tokenPath, link); err != nil {
+		t.Fatal(err)
+	}
+	worker.tokenFile = link
+	if _, err = worker.translate(context.Background(), "# Original"); err == nil || calls != 2 {
+		t.Fatal("symlink accepted")
+	}
+	worker.tokenFile = tokenPath
+	if err = os.WriteFile(tokenPath, []byte("synthetic\ninvalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = worker.translate(context.Background(), "# Original"); err == nil || calls != 2 {
+		t.Fatal("invalid bearer accepted")
+	}
+	if err = os.WriteFile(tokenPath, []byte("synthetic-two"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	redirected := false
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { redirected = true; w.WriteHeader(200) }))
+	defer receiver.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, receiver.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	worker, err = newTranslationWorker(testStore(t), redirect.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.tokenFile = tokenPath
+	if _, err = worker.translate(context.Background(), "# Original"); err == nil || redirected {
+		t.Fatal("redirect sent local bearer")
+	}
+}
