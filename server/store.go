@@ -142,7 +142,7 @@ func openStore(dir string) (*Store, error) {
 }
 
 func (s *Store) validate() (*Store, error) {
-	if (s.db.Version < 1 || s.db.Version > 15) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version < 1 || s.db.Version > 16) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {

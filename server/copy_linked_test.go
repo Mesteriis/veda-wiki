@@ -45,7 +45,7 @@ func TestCopyLinkedLocalRejectsConflictWithoutPartialWrites(t *testing.T) {
 	}
 }
 
-func TestTransferDirectoryLinkFailsWithoutChangingEitherSource(t *testing.T) {
+func TestTransferIndexOnlyDirectoryLinkFailsWithoutChangingEitherSource(t *testing.T) {
 	for _, linked := range []bool{false, true} {
 		t.Run(map[bool]string{false: "single", true: "linked"}[linked], func(t *testing.T) {
 			s := testStore(t)
@@ -54,28 +54,72 @@ func TestTransferDirectoryLinkFailsWithoutChangingEitherSource(t *testing.T) {
 			if _, err := s.put("from", "guide.md", "# Guide\n\n[Docs](docs/)", 0); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.put("from", "docs/README.md", "# Docs", 0); err != nil {
+			if _, err := s.put("from", "docs/index.md", "# Docs", 0); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.put("to", "docs/README.md", "# Docs", 0); err != nil {
+			if _, err := s.put("to", "docs/index.md", "# Docs", 0); err != nil {
 				t.Fatal(err)
 			}
 			before, _ := json.Marshal(s.db)
 			_, err := s.planTransfer(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md"})
-			if err != ErrInvalid {
+			if err != ErrNotFound {
 				t.Fatal("directory link transfer plan was accepted", err)
 			}
 			_, err = s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: linked})
 			after, _ := json.Marshal(s.db)
-			if err != ErrInvalid || string(before) != string(after) {
+			want := ErrInvalid
+			if linked {
+				want = ErrNotFound
+			}
+			if err != want || string(before) != string(after) {
 				t.Fatal("directory link copy did not fail atomically", err)
 			}
 			_, err = s.moveArticle(moveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: linked, ConfirmMove: true})
 			after, _ = json.Marshal(s.db)
-			if err != ErrInvalid || string(before) != string(after) {
+			if err != want || string(before) != string(after) {
 				t.Fatal("directory link move did not fail atomically", err)
 			}
 		})
+	}
+}
+
+func TestCopyLinkedDirectoryReadmeAndRootLinks(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "private")
+	for p, text := range map[string]string{
+		"README.md":      "# Root",
+		"docs/README.md": "# Docs\n\n[Root](../)",
+		"guide.md":       "# Guide\n\n[Docs](docs/)",
+	} {
+		if _, err := s.put("from", p, text, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	in := copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: true}
+	plan, err := s.planTransfer(in)
+	if err != nil || len(plan.Articles) != 3 {
+		t.Fatal("directory graph not planned", err)
+	}
+	if _, err := s.copyArticle(in); err != nil {
+		t.Fatal("directory graph not copied", err)
+	}
+	if s.db.Version != 16 {
+		t.Fatal("directory transfer did not gate old binaries")
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil || reopened.db.Articles["to/docs/README.md"].Versions[0].Text != "# Docs\n\n[Root](../)" {
+		t.Fatal("directory graph lost on reopen", err)
+	}
+}
+
+func TestPendingDirectoryReadmeDependencySurvivesEdit(t *testing.T) {
+	got := retainedPendingLinks("[Docs](docs/)", "guide.md", map[string]string{"docs/README.md": "expected"})
+	if len(got) != 1 || got["docs/README.md"] != "expected" {
+		t.Fatal("directory dependency lost")
+	}
+	if len(retainedPendingLinks("[Other](elsewhere/)", "guide.md", got)) != 0 {
+		t.Fatal("removed directory dependency retained")
 	}
 }
 func TestCopyLinkedLocalChecksPublicationForEveryArticle(t *testing.T) {

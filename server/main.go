@@ -164,6 +164,26 @@ func repositoryTarget(articlePath, destination string) (string, bool) {
 	return target, safeRelative(target)
 }
 
+// A README has priority over index.md when resolving a directory. A fixed
+// README dependency therefore cannot be shadowed by a later index.md.
+func directoryReadmeTarget(articlePath, destination string) (string, bool) {
+	if destination == "" {
+		return "", false
+	}
+	base := path.Clean(path.Join(path.Dir(articlePath), destination))
+	if strings.HasPrefix(destination, "/") {
+		base = path.Clean(strings.TrimPrefix(destination, "/"))
+	}
+	if base == "." {
+		return "README.md", true
+	}
+	if !safeRelative(base) {
+		return "", false
+	}
+	target := base + "/README.md"
+	return target, safeRelative(target)
+}
+
 func render(p Page) (template.HTML, template.HTML, error) {
 	source := []byte(p.Text)
 	doc := markdown.Parser().Parse(text.NewReader(source), parser.WithContext(parser.NewContext(parser.WithIDs(&unicodeIDs{used: map[string]bool{}}))))

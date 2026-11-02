@@ -42,6 +42,63 @@ func TestCopyLinkedGraphToGitHubOneCommit(t *testing.T) {
 	}
 }
 
+func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	s.put("from", "guide.md", "# Guide\n\n[Docs](docs/)", 0)
+	s.put("from", "docs/README.md", "# Docs", 0)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	m := connectFixture(t, s, f, true)
+	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
+	if err != nil || s.db.Version != 16 || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
+		t.Fatal("directory bundle not queued", err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal("directory bundle did not reopen", err)
+	}
+	m = newSyncManager(s, f.client())
+	m.Once(context.Background())
+	if f.writeCount() != 1 || f.contents()["docs/README.md"] != "# Docs" || s.jobs()[0].State == "complete" {
+		t.Fatal("directory bundle was not atomically sent")
+	}
+	m.Once(context.Background())
+	if s.jobs()[0].State != "complete" {
+		t.Fatal("directory bundle not confirmed")
+	}
+}
+
+func TestOldBinaryRejectsDirectoryLinkStore(t *testing.T) {
+	old := os.Getenv("VEDA_OLD_V16_BINARY")
+	if old == "" {
+		t.Skip("old binary not provided")
+	}
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "private")
+	s.put("from", "guide.md", "[Docs](docs/)", 0)
+	s.put("from", "docs/README.md", "# Docs", 0)
+	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: true}); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(s.dir, "state.json")
+	before, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
+		t.Fatal("old binary did not reject version 16")
+	}
+	after, err := os.ReadFile(state)
+	if err != nil || string(before) != string(after) {
+		t.Fatal("old binary changed state")
+	}
+}
+
 func TestLinkedBundleRequiresCompleteObservation(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")

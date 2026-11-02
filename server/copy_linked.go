@@ -79,6 +79,7 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 	batchAssets := map[string]BlobRef{}
 	verifiedAssets := map[BlobRef]bool{}
 	rootReferences := false
+	directoryLinks := false
 	var total int64
 	for _, item := range plan.Articles {
 		a := s.db.Articles[in.SourceID+"/"+item.SourcePath]
@@ -87,6 +88,7 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 		if e != nil {
 			return Database{}, Revision{}, transferDependencies{}, e
 		}
+		directoryLinks = directoryLinks || deps.DirectoryLinks
 		for p, ref := range deps.Assets {
 			if !verifiedAssets[ref] {
 				info, err := os.Lstat(path.Join(s.dir, "blobs", ref.SHA))
@@ -129,5 +131,8 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 	} else {
 		shadow.db.Sources[dst.ID] = dst
 	}
-	return shadow.db, root, transferDependencies{Assets: batchAssets, Links: links}, nil
+	if directoryLinks && shadow.db.Version < 16 {
+		shadow.db.Version = 16
+	}
+	return shadow.db, root, transferDependencies{Assets: batchAssets, Links: links, DirectoryLinks: directoryLinks}, nil
 }

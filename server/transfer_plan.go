@@ -112,6 +112,10 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 			}
 			from, fromOK := repositoryTarget(current.from, u.Path)
 			to, toOK := repositoryTarget(current.to, u.Path)
+			if !fromOK || !articlePath(from, src.Kind) {
+				from, fromOK = directoryReadmeTarget(current.from, u.Path)
+				to, toOK = directoryReadmeTarget(current.to, u.Path)
+			}
 			if !fromOK || !toOK || !articlePath(from, src.Kind) || !articlePath(to, dst.Kind) {
 				parseErr = ErrInvalid
 				return ast.WalkStop, nil

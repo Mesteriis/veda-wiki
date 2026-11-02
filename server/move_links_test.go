@@ -46,6 +46,34 @@ func TestMovePreservesMatchingRelativeLink(t *testing.T) {
 	}
 }
 
+func TestMoveDirectoryReadmeRequiresMatchingDestinationAndPersistsSQLite(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "private")
+	s.put("from", "guide.md", "# Guide\n\n[Docs](docs/)", 0)
+	rev, _ := s.put("from", "docs/README.md", "# Docs", 0)
+	in := moveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", ConfirmMove: true}
+	if _, err := s.moveArticle(in); err != ErrConflict {
+		t.Fatal("move accepted missing destination README", err)
+	}
+	s.put("to", "docs/README.md", "# Docs", 0)
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	move, err := s.moveArticle(in)
+	if err != nil || move.State != "complete" || move.Links["docs/README.md"] != rev.SHA || s.db.Version != 16 {
+		t.Fatal("move lost directory dependency", err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil || s.db.Version != 16 || s.moves()[0].Links["docs/README.md"] != rev.SHA {
+		t.Fatal("directory dependency lost after SQLite reopen", err)
+	}
+}
+
 func TestTransferRejectsMissingOrChangedLinkedArticle(t *testing.T) {
 	for _, target := range []string{"", "# Different"} {
 		s := testStore(t)

@@ -78,6 +78,9 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		b.PublishedLocal = true
 	}
 	db := s.clone()
+	if dependencies.DirectoryLinks && db.Version < 16 {
+		db.Version = 16
+	}
 	if len(dependencies.Assets) > 0 && destination.ConnectionID == "" {
 		destination.Assets = make(map[string]BlobRef, len(destination.Assets)+len(dependencies.Assets))
 		for p, ref := range s.db.Sources[in.DestinationID].Assets {

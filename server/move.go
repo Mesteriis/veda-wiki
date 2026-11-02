@@ -174,6 +174,9 @@ func retainedPendingLinks(value, articlePath string, candidates map[string]strin
 			return ast.WalkContinue, nil
 		}
 		name, valid := repositoryTarget(articlePath, u.Path)
+		if _, found := candidates[name]; !valid || !found {
+			name, valid = directoryReadmeTarget(articlePath, u.Path)
+		}
 		if sha, found := candidates[name]; valid && found {
 			refs[name] = sha
 		}
@@ -276,8 +279,9 @@ type moveRequest struct {
 // Embedded HTML and links without an identical destination remain blocked.
 // Caller holds the store lock.
 type transferDependencies struct {
-	Assets map[string]BlobRef
-	Links  map[string]string
+	Assets         map[string]BlobRef
+	Links          map[string]string
+	DirectoryLinks bool
 }
 
 // Earlier binaries do not retain repository-root references in pending work.
@@ -316,6 +320,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 	verified := map[BlobRef]bool{}
 	total := int64(0)
 	var failure error
+	directoryLinks := false
 	ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -348,6 +353,11 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		}
 		from, fromOK := repositoryTarget(sourcePath, parsed.Path)
 		to, toOK := repositoryTarget(targetPath, parsed.Path)
+		if !image && (!fromOK || !articlePath(from, src.Kind)) {
+			from, fromOK = directoryReadmeTarget(sourcePath, parsed.Path)
+			to, toOK = directoryReadmeTarget(targetPath, parsed.Path)
+			directoryLinks = true
+		}
 		if !fromOK || !toOK || (target.Kind == "program" && !strings.HasPrefix(to, "docs/")) {
 			failure = ErrInvalid
 			return ast.WalkStop, nil
@@ -428,7 +438,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 		}
 		return ast.WalkContinue, nil
 	})
-	return transferDependencies{Assets: assets, Links: links}, failure
+	return transferDependencies{Assets: assets, Links: links, DirectoryLinks: directoryLinks}, failure
 }
 func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if !in.ConfirmMove {
@@ -508,6 +518,9 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	}
 	if len(dependencies.Links) > 0 && db.Version < 8 {
 		db.Version = 8
+	}
+	if dependencies.DirectoryLinks && db.Version < 16 {
+		db.Version = 16
 	}
 	if in.IncludeLinked && db.Sources[in.DestinationID].ConnectionID != "" && db.Version < 10 {
 		// Previous binaries do not understand graph moves awaiting a bundle.
