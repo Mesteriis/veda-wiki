@@ -61,6 +61,21 @@ VEDA_TEST_PUBLIC_WIKI_PROGRAM=1 VEDA_TEST_PUBLIC_PROGRAM_REPO=OWNER/REPO \
   .venv/bin/python scripts/smoke_public_wiki_program_checkout.py
 ```
 
+An opt-in read-only GitHub API check imports that public wiki fixture and the
+public `Mesteriis/mac-tower` program repository into a disposable store. It
+verifies repository type, wiki metadata and image, program `docs/` boundaries,
+SQLite restart, and scoped MCP search, reads and unsaved proposals. `gh` must
+already have Mesteriis selected; a local GET-only proxy uses its credential
+without passing a token to VEDA. This check performs no GitHub writes and does
+not establish that VEDA-stored credentials, private repositories, write-back or
+the deployment host's GitHub connectivity work:
+
+```sh
+cd server
+VEDA_LIVE_GITHUB_MIXED=1 VEDA_TEST_MCP_PYTHON=/path/to/python \
+  go test -count=1 -run '^TestLiveGitHubMixedSourcesReadOnly$' -v .
+```
+
 The local integration test uses two fake GitHub repositories, including one
 private source, and the MCP SDK to verify merged search, source-scoped reads,
 proposals and denial after SQLite restart. Run it with a Python environment that
