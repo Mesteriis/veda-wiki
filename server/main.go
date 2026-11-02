@@ -282,7 +282,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	if w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/v1/import" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
 		var batch ImportBatch
-		if decodeLimited(rw, r, &batch, 40<<20) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
+		if decodeImport(rw, r, &batch) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
 			apiError(rw, ErrInvalid)
 			return
 		}

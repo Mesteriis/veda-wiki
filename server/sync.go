@@ -366,7 +366,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		}
 		count++
 		total += len(b)
-		if count > 2000 || total > 16<<20 {
+		if count > 2000 || total > maxImportBytes {
 			return batch, &remoteError{Code: "repository_limit"}
 		}
 		if markdown {
@@ -870,7 +870,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 			total += int64(len(data))
 		}
 	}
-	if count > 2000 || total > 16<<20 {
+	if count > 2000 || total > maxImportBytes {
 		return nil, &remoteError{Code: "repository_limit"}
 	}
 	if len(files) == 0 {

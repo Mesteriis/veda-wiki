@@ -69,7 +69,14 @@ Markdown must be UTF-8 and at most 1 MiB per file. Persisting a document larger
 than 256,000 bytes upgrades the store to v13; older binaries reject it. Preserve
 and test a compatible backup before rollback. Raster images are
 limited to 4 MiB each and MIME-checked (PNG/JPEG/WebP/GIF). Total content is
-limited to 16 MiB and 2,000 files; traversal is bounded to 20,000 entries.
+limited to 32 MiB and 2,000 files; traversal is bounded to 20,000 entries. The
+JSON request limit is 64 MiB, including encoding overhead; unusually escaped text
+can hit the transport limit first. The JSON storage backend also has its own
+64 MiB whole-state limit, including history; use SQLite for larger stores.
+Import requests are decoded incrementally and reject duplicate top-level fields
+and duplicate file or image paths. Size limits are still enforced during decoding
+and validation; provision memory for the data set and database, not just the
+request size.
 Hidden directories, node_modules, vendor and dist are excluded. Symlinks are
 withheld, special files are refused, and os.Root confines filesystem reads.
 Only Git-indexed files are eligible: ignored/untracked local Markdown, nested

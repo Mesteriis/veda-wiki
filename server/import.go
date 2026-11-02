@@ -71,6 +71,11 @@ type ImportResult struct {
 	Withheld   int    `json:"withheld"`
 }
 
+// Bound aggregate imported content separately from the JSON transport. Images
+// are base64-encoded in transport, and JSON text may require escaping.
+const maxImportBytes = 32 << 20
+const maxImportRequestBytes = 64 << 20
+
 var secretContent = regexp.MustCompile(`(?i)-----BEGIN .*PRIVATE KEY-----|\b(?:password|passwd|api[_-]?key|access[_-]?token|client_secret)\s*[=:]\s*["']?[^\s"']{6,}|\b(?:ghp_|github_pat_|sk-proj-)[A-Za-z0-9_\-]{12,}|https?://[^\s/]+:[^\s/]+@`)
 var commitID = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
@@ -318,7 +323,7 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		}
 		count++
 		total += len(b)
-		if count > 2000 || total > 16<<20 {
+		if count > 2000 || total > maxImportBytes {
 			return errors.New("checkout exceeds import limits")
 		}
 		if markdown {
@@ -407,7 +412,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		refs[name] = ref
 		total += len(data)
 	}
-	if total > 16<<20 {
+	if total > maxImportBytes {
 		return result, ErrInvalid
 	}
 	if batch.Metadata != nil && batch.Metadata.Image != "" {

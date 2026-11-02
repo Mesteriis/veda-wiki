@@ -691,7 +691,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		var batch ImportBatch
-		if e := decodeLimited(rw, r, &batch, 40<<20); e != nil {
+		if e := decodeImport(rw, r, &batch); e != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
