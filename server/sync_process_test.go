@@ -39,6 +39,11 @@ func TestSyncRecoveryFixtureProcess(t *testing.T) {
 	client := &GitHubClient{base: endpoint, http: &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil}}}
 	m := newSyncManager(s, client)
 	for i := 0; i < 4; i++ {
+		if i > 0 && os.Getenv("VEDA_RECOVERY_FORCE_RETRY") == "1" {
+			if err := s.retryConnection("handbook"); err != nil {
+				t.Fatal("fixture retry failed", err)
+			}
+		}
 		m.Once(context.Background())
 		jobs := s.jobs()
 		complete := len(jobs) > 0
@@ -144,6 +149,129 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 	jobs = s.jobs()
 	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 2 || f.contents()["README.md"] != "# Second edit" {
 		t.Fatal("crash recovery lost or duplicated a revision", jobs, f.writeCount())
+	}
+}
+
+func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	connectFixture(t, s, f, true)
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
+		t.Fatal(err)
+	}
+	firstArrived, retryArrived, firstApplied := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	releaseFirst, releaseRetry := make(chan struct{}), make(chan struct{})
+	var mutations atomic.Int32
+	var releaseFirstOnce, releaseRetryOnce sync.Once
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/graphql" {
+			body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			if err != nil {
+				http.Error(w, "fixture read failed", 500)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			if bytes.Contains(body, []byte("updateRefs")) {
+				switch mutations.Add(1) {
+				case 1:
+					close(firstArrived)
+					<-releaseFirst
+					f.serve(w, r)
+					close(firstApplied)
+					return
+				case 2:
+					close(retryArrived)
+					<-releaseRetry
+				}
+			}
+		}
+		f.serve(w, r)
+	}))
+	defer gateway.Close()
+	defer releaseFirstOnce.Do(func() { close(releaseFirst) })
+	defer releaseRetryOnce.Do(func() { close(releaseRetry) })
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
+	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if child.ProcessState == nil {
+			_ = child.Process.Kill()
+			_ = child.Wait()
+		}
+	}()
+	select {
+	case <-firstArrived:
+	case <-ctx.Done():
+		t.Fatal("first ref update not reached")
+	}
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Wait(); err == nil {
+		t.Fatal("fixture process unexpectedly exited normally")
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].State != "prepared" || jobs[0].PreparedCommit == "" {
+		t.Fatal("prepared write missing", jobs)
+	}
+	if _, err := s.put("handbook", "README.md", "# Second edit", 2); err != nil {
+		t.Fatal(err)
+	}
+	recovery := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
+	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL, "VEDA_RECOVERY_FORCE_RETRY=1")
+	if err := recovery.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if recovery.ProcessState == nil {
+			_ = recovery.Process.Kill()
+			_ = recovery.Wait()
+		}
+	}()
+	select {
+	case <-retryArrived:
+	case <-ctx.Done():
+		t.Fatal("retry ref update not reached")
+	}
+	releaseFirstOnce.Do(func() { close(releaseFirst) })
+	select {
+	case <-firstApplied:
+	case <-ctx.Done():
+		t.Fatal("late update not applied")
+	}
+	if f.writeCount() != 1 {
+		t.Fatal("late update was not applied exactly once")
+	}
+	releaseRetryOnce.Do(func() { close(releaseRetry) })
+	if err := recovery.Wait(); err != nil {
+		t.Fatal("recovery process failed", err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := s.jobs()
+	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 2 || f.contents()["README.md"] != "# Second edit" {
+		t.Fatal("late request caused a lost or duplicate revision", jobs, f.writeCount())
 	}
 }
 

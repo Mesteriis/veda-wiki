@@ -36,9 +36,11 @@ test terminates the fixture subprocess after the simulated remote ref update
 but before its response, then reopens SQLite and confirms both the uncertain
 write and a later edit without duplication. A separate fixture drops the ref
 update before applying it and kills the process after the prepared state was
-persisted; recovery submits both revisions in order. These checks do not test
-stored real GitHub credentials, a server that applies the first request after
-disconnection, or every crash point.
+persisted; recovery submits both revisions in order. A third fixture applies
+the disconnected first request after the restarted process has issued its
+retry, so the retry's compare-and-swap is rejected; an explicit retry then
+reconciles both edits without a duplicate. These checks do not test stored real
+GitHub credentials or every network and crash ordering.
 
 A two-repository synthetic GitHub test also covers an invalid `docs` entry in
 one source after SQLite migration: its local article remains available, its
