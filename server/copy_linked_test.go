@@ -44,6 +44,40 @@ func TestCopyLinkedLocalRejectsConflictWithoutPartialWrites(t *testing.T) {
 		t.Fatal("conflict changed store", err)
 	}
 }
+
+func TestTransferDirectoryLinkFailsWithoutChangingEitherSource(t *testing.T) {
+	for _, linked := range []bool{false, true} {
+		t.Run(map[bool]string{false: "single", true: "linked"}[linked], func(t *testing.T) {
+			s := testStore(t)
+			source(t, s, "from", "private")
+			source(t, s, "to", "private")
+			if _, err := s.put("from", "guide.md", "# Guide\n\n[Docs](docs/)", 0); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.put("from", "docs/README.md", "# Docs", 0); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.put("to", "docs/README.md", "# Docs", 0); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := json.Marshal(s.db)
+			_, err := s.planTransfer(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md"})
+			if err != ErrInvalid {
+				t.Fatal("directory link transfer plan was accepted", err)
+			}
+			_, err = s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: linked})
+			after, _ := json.Marshal(s.db)
+			if err != ErrInvalid || string(before) != string(after) {
+				t.Fatal("directory link copy did not fail atomically", err)
+			}
+			_, err = s.moveArticle(moveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: linked, ConfirmMove: true})
+			after, _ = json.Marshal(s.db)
+			if err != ErrInvalid || string(before) != string(after) {
+				t.Fatal("directory link move did not fail atomically", err)
+			}
+		})
+	}
+}
 func TestCopyLinkedLocalChecksPublicationForEveryArticle(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")

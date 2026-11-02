@@ -184,6 +184,9 @@ Owner-only provenance is preserved locally and removed from public responses.
 Copy transfers supported relative images and preserves relative article links
 only when the destination already contains the same linked revision. It does
 not automatically copy linked articles unless `include_linked: true` is set.
+Directory links such as `[Guide](docs/)` are supported when reading, but copy,
+move and transfer planning currently reject them; use an explicit Markdown file
+link before transferring. Rejection leaves both sources unchanged.
 With that flag, all recursively linked Markdown articles and supported images
 are copied atomically into a standalone local destination, or queued together
 for one GitHub commit. Cycles are handled;
