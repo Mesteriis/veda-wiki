@@ -35,6 +35,18 @@ VEDA_TEST_PUBLIC_MULTI=1 VEDA_TEST_PUBLIC_REPO_ONE=OWNER/REPO1 \
   VEDA_TEST_PUBLIC_REPO_TWO=OWNER/REPO2 .venv/bin/python scripts/smoke_public_multisource.py
 ```
 
+A separate opt-in check anonymously clones two public program repositories
+into temporary directories and imports the checkouts as explicitly public local
+sources. It compares one article per source byte-for-byte, migrates to SQLite,
+restarts, and exercises merged search, reading and proposals over MCP. This
+check does not use the GitHub API and does not establish repository visibility
+or test GitHub connections, credentials, background synchronization or writes.
+
+```sh
+VEDA_TEST_PUBLIC_CHECKOUT_MULTI=1 VEDA_TEST_PUBLIC_REPO_ONE=OWNER/REPO1 \
+  VEDA_TEST_PUBLIC_REPO_TWO=OWNER/REPO2 .venv/bin/python scripts/smoke_public_checkout_multisource.py
+```
+
 The local integration test uses two fake GitHub repositories, including one
 private source, and the MCP SDK to verify merged search, source-scoped reads,
 proposals and denial after SQLite restart. Run it with a Python environment that
