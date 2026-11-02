@@ -99,6 +99,75 @@ func TestCheckoutTypesMetadataAndExclusions(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestCheckoutWithholdsUnmergedDocumentation(t *testing.T) {
+	for _, removeWorkingFile := range []bool{false, true} {
+		t.Run(fmt.Sprintf("missing_worktree=%t", removeWorkingFile), func(t *testing.T) {
+			repo := gitFixture(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original", "other.md": "# Other"})
+			initial, err := prepareCheckout(repo, "handbook")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := testStore(t)
+			empty := ""
+			initial.Create, initial.Visibility, initial.ExpectedImport = true, "private", &empty
+			if _, err := s.importBatch(initial); err != nil {
+				t.Fatal(err)
+			}
+			gitTest(t, repo, "checkout", "-qb", "alternate")
+			writeFixture(t, repo, "guide.md", "# Alternate")
+			gitTest(t, repo, "commit", "-qam", "Alternate")
+			gitTest(t, repo, "checkout", "-q", "-")
+			writeFixture(t, repo, "guide.md", "# Main")
+			gitTest(t, repo, "commit", "-qam", "Main")
+			merge := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "merge", "alternate")
+			if err := merge.Run(); err == nil {
+				t.Fatal("fixture merge did not conflict")
+			}
+			if removeWorkingFile {
+				if err := os.Remove(filepath.Join(repo, "guide.md")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			batch, err := prepareCheckout(repo, "handbook")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if batch.Complete || batch.Withheld != 1 || batch.withheldReasons["unmerged"] != 1 {
+				t.Fatal("conflict not reported as partial", batch.Complete, batch.Withheld)
+			}
+			if _, ok := batch.Files["guide.md"]; ok {
+				t.Fatal("unmerged content was imported")
+			}
+			if batch.Files["other.md"] != "# Other" {
+				t.Fatal("unrelated document was lost")
+			}
+			batch = applyAgain(s, batch)
+			if _, err := s.importBatch(batch); err != nil {
+				t.Fatal(err)
+			}
+			if page, err := s.page("handbook/guide.md", false); err != nil || page.Text != "# Original" {
+				t.Fatal("partial import deleted the previous document", err)
+			}
+		})
+	}
+}
+
+func TestCheckoutRejectsUnmergedMetadata(t *testing.T) {
+	repo := gitFixture(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide"})
+	gitTest(t, repo, "checkout", "-qb", "alternate")
+	writeFixture(t, repo, "veda.yaml", strings.Replace(metadataFixture, "Handbook", "Alternate", 1))
+	gitTest(t, repo, "commit", "-qam", "Alternate")
+	gitTest(t, repo, "checkout", "-q", "-")
+	writeFixture(t, repo, "veda.yaml", strings.Replace(metadataFixture, "Handbook", "Main", 1))
+	gitTest(t, repo, "commit", "-qam", "Main")
+	if err := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "merge", "alternate").Run(); err == nil {
+		t.Fatal("fixture merge did not conflict")
+	}
+	if _, err := prepareCheckout(repo, "handbook"); !errors.Is(err, ErrConflict) {
+		t.Fatal("unmerged metadata accepted", err)
+	}
+}
 func TestCheckoutSymlinksSecretsAndSpecialFiles(t *testing.T) {
 	repo := gitFixture(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Safe"})
 	outside := filepath.Join(t.TempDir(), "outside.md")

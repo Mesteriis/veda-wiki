@@ -25,8 +25,8 @@ To inspect the selected tracked checkout before connecting it, run:
 
 The command requires Git on the machine where the checkout is inspected.
 Preview reports only type, article and image counts, withheld count, completeness
-and dirty status. Withheld reasons are aggregate counts for symlinks, invalid
-UTF-8, sensitive-content patterns and unsupported images; a pattern match can
+and dirty status. Withheld reasons are aggregate counts for unmerged Git paths,
+symlinks, invalid UTF-8, sensitive-content patterns and unsupported images; a pattern match can
 be a false positive and is not an exhaustive secret scan. It does not contact
 VEDA, read an owner key, create a source,
 or list article names or content. It uses the same working-tree selection as a
@@ -113,6 +113,9 @@ Credential-like Markdown is withheld, never returned in an error message.
 Incomplete coverage is explicit and disables automatic upstream deletions. A
 public source with incomplete coverage is hidden from public readers until a
 complete import succeeds; authorized readers retain access to its local data.
+Unmerged Markdown and image paths are withheld even if absent from the working
+tree; an unmerged `veda.yaml` refuses the import because the repository type
+and metadata cannot be established safely.
 For a private source, an incomplete observation also retains previously known
 images that were not observed. After a complete observation, missing images
 still referenced by a locally changed or local-only article are retained while

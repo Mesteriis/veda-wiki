@@ -224,6 +224,24 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		return result, e
 	}
 	result.Dirty = status != ""
+	unmergedText, e := git("ls-files", "--unmerged", "-z")
+	if e != nil {
+		return result, e
+	}
+	unmerged := map[string]bool{}
+	for _, record := range strings.Split(unmergedText, "\x00") {
+		if record == "" {
+			continue
+		}
+		_, name, ok := strings.Cut(record, "\t")
+		if !ok || name == "" {
+			return result, ErrInvalid
+		}
+		unmerged[name] = true
+	}
+	if unmerged["veda.yaml"] {
+		return result, ErrConflict
+	}
 	trackedText, e := git("ls-files", "-z", "--cached")
 	if e != nil {
 		return result, e
@@ -274,6 +292,17 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 	if result.Kind == "program" {
 		start = "docs"
 	}
+	// Git can leave an unmerged path absent from the working tree. Count it
+	// before traversal so a partial import cannot mistake it for a deletion.
+	for name := range unmerged {
+		if !importablePath(name, result.Kind) {
+			continue
+		}
+		switch strings.ToLower(path.Ext(name)) {
+		case ".md", ".markdown", ".png", ".jpg", ".jpeg", ".webp", ".gif":
+			withhold("unmerged")
+		}
+	}
 	total := 0
 	count := 0
 	entries := 0
@@ -298,6 +327,9 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 			return nil
 		}
 		if !tracked[name] || !safeRelative(name) {
+			return nil
+		}
+		if unmerged[name] {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
@@ -359,6 +391,10 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 	}
 	statusAfter, e := git("status", "--porcelain", "--untracked-files=no")
 	if e != nil || statusAfter != status {
+		return result, ErrConflict
+	}
+	unmergedAfter, e := git("ls-files", "--unmerged", "-z")
+	if e != nil || unmergedAfter != unmergedText {
 		return result, ErrConflict
 	}
 	return result, nil
