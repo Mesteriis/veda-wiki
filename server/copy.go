@@ -59,7 +59,7 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	}
 	now := time.Now()
 	targetPublic := sourcePublic(s.db, destination, now)
-	sourcePublicRevision := sourcePublic(s.db, source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
+	sourcePublicRevision := sourcePublicReadable(s.db, source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
 	if targetPublic && !sourcePublicRevision && (!in.ConfirmPublication || secretContent.MatchString(rev.Text)) {
 		return Database{}, Revision{}, ErrInvalid
 	}

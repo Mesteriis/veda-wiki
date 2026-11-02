@@ -161,6 +161,8 @@ source. Conflicts or stale source revisions are rejected. The copy and its
 remote outbox job are committed atomically; inspect the outbox to verify remote
 durability. The source is retained. Private-to-public copying requires explicit
 review and `confirm_publication: true`; obvious credential-like text is refused.
+An article hidden from public readers by an incomplete source import also
+requires explicit publication review before copy or move to a public source.
 A connected destination with stale visibility proof stays unpublished and its
 queued write needs later approval if the destination is verified public.
 Owner-only provenance is preserved locally and removed from public responses.

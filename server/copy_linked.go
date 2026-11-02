@@ -39,7 +39,7 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 		}
 		a := s.db.Articles[in.SourceID+"/"+item.SourcePath]
 		rev := a.Versions[item.Revision-1]
-		sourcePublicRevision := sourcePublic(s.db, src, now) && (src.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
+		sourcePublicRevision := sourcePublicReadable(s.db, src, now) && (src.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
 		if public && !sourcePublicRevision && (!in.ConfirmPublication || secretContent.MatchString(rev.Text)) {
 			return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 		}
