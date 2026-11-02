@@ -39,7 +39,7 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if _, err := manager.connect(context.Background(), connectRequest{ID: "one", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.connect(context.Background(), connectRequest{ID: "two", Repository: "org/second", AccountID: "operator"}); err != nil {
+	if _, err := manager.connect(context.Background(), connectRequest{ID: "two", Repository: "org/second", AccountID: "operator", Write: true}); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
@@ -62,6 +62,13 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	manager.Once(context.Background())
 	if len(s.snapshot(false).Pages) != 2 || len(s.snapshot(true).Pages) != 1 {
 		t.Fatal("merged visibility incorrect")
+	}
+	if _, err := s.put("two", "docs/guide.md", "# Shared private\nLocal pending fixture", 1); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
 	}
 	server := httptest.NewServer(Wiki{Store: s, Token: "owner"})
 	defer server.Close()
@@ -96,16 +103,18 @@ async def run(key, expected):
    assert {(x['source_id'],x['path']) for x in found['results']}=={(x,'docs/guide.md') for x in expected}
    for source in expected:
     article=await call('veda_read',{'source_id':source,'path':'docs/guide.md'})
-    assert article['text']==('# Shared public\nPublic fixture' if source=='one' else '# Shared private\nPrivate fixture')
+    assert article['text']==('# Shared public\nPublic fixture' if source=='one' else '# Shared private\nLocal pending fixture')
     context=await call('veda_context',{'source_id':source,'path':'docs/guide.md'})
-    assert context['source_status']['last_import_observed_at'] is not None
+    assert context['source_status']['last_import_observed_at'] is None
     assert context['source_status']['sync_state']=='ready'
     assert context['source_status']['sync_verification']=='verified'
+    assert context['source_status']['unconfirmed_write_jobs']==(0 if source=='one' else 1)
     proposal=await call('veda_prepare_update',{'source_id':source,'path':'docs/guide.md','expected_revision':article['revision'],'text':'# Proposed'})
     assert proposal['saved'] is False and proposal['base_sha256']==article['sha256']
+    assert proposal['source_status']['unconfirmed_write_jobs']==(0 if source=='one' else 1)
    if expected=={'one'}:
     denied=await s.call_tool('veda_read',{'source_id':'two','path':'docs/guide.md'})
-    assert denied.isError and 'Private fixture' not in str(denied)
+    assert denied.isError and 'Local pending fixture' not in str(denied)
 async def main():
  await run(sys.argv[3],{'one','two'})
  await run(sys.argv[4],{'one'})

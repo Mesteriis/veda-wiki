@@ -84,8 +84,10 @@ VEDA_LIVE_GITHUB_MIXED=1 VEDA_TEST_MCP_PYTHON=/path/to/python \
 
 The local integration test uses two fake GitHub repositories, including one
 private source, and the MCP SDK to verify merged search, source-scoped reads,
-proposals and denial after SQLite restart. Run it with a Python environment that
-has the MCP SDK:
+proposals and denial after SQLite restart. It also verifies that a local write
+and its unconfirmed job remain visible through scoped MCP context and proposals
+after SQLite is reopened; the other source reports zero jobs. Run it with a
+Python environment that has the MCP SDK:
 
 ```sh
 cd server && VEDA_TEST_MCP_PYTHON=/path/to/python go test -run '^TestMultiSourceMCPAfterSQLiteRestart$' -v .
