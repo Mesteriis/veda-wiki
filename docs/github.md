@@ -281,3 +281,21 @@ two-repository test passed against public GitHub with the linked article absent
 from the target before transfer, via the `gh` proxy. The test refuses
 to create the target branch if its source tree contains GitHub Actions
 workflows, avoiding an unintended workflow run.
+
+### Attaching an existing private source
+
+An owner may explicitly attach a disconnected private source to a private GitHub
+repository with `adopt_existing: true` on `POST /api/v1/github/connections`, or
+`github connect --adopt-existing`, using the existing source ID and an explicitly
+selected account. The admin interface offers the same option. The repository
+must have the same source type, a complete import without withheld files, and
+all existing source assets must be present with identical contents. Tombstones,
+unresolved conflicts, pending operations, or a concurrent source change reject
+the attachment. Repository identity, privacy and branch head are checked again
+before the connection and import are committed together.
+
+Matching articles retain their revision history. Different versions become
+conflicts, repository-only articles are imported, and local-only articles remain
+local; attachment does not queue them for upload. Resolve conflicts and review
+local-only material before any subsequent write. A local checkout importer must
+be retired or reconfigured after attachment: it cannot update a connected source.

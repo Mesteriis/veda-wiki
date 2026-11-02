@@ -394,3 +394,8 @@ paused image outbox passed a PBS round-trip; its restored queue then completed
 against a local fake GitHub. Production v6/v7/v8 backup and restore are unverified.
 Restore a compatible binary or a separately verified backup when rolling back;
 do not overwrite newer state with an older server.
+
+The owner-only GitHub connection request accepts `adopt_existing: true` to attach
+an existing disconnected private source to a verified private repository. See
+[GitHub integration](github.md#attaching-an-existing-private-source) for the
+preconditions, conflict behavior, and local-only article handling.

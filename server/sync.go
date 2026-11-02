@@ -81,11 +81,12 @@ func (m *SyncManager) Once(ctx context.Context) {
 }
 
 type connectRequest struct {
-	ID         string `json:"id"`
-	Repository string `json:"repository"`
-	AccountID  string `json:"account_id,omitempty"`
-	Branch     string `json:"branch,omitempty"`
-	Write      bool   `json:"write"`
+	ID            string `json:"id"`
+	Repository    string `json:"repository"`
+	AccountID     string `json:"account_id,omitempty"`
+	Branch        string `json:"branch,omitempty"`
+	Write         bool   `json:"write"`
+	AdoptExisting bool   `json:"adopt_existing,omitempty"`
 }
 type configureRequest struct {
 	ID        string  `json:"id"`
@@ -207,6 +208,17 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 	if !identifier.MatchString(in.ID) {
 		return GitHubConnection{}, ErrInvalid
 	}
+	var snapshot string
+	if in.AdoptExisting {
+		if in.AccountID == "" {
+			return GitHubConnection{}, ErrInvalid
+		}
+		var err error
+		snapshot, err = m.store.adoptionSnapshot(in.ID)
+		if err != nil {
+			return GitHubConnection{}, err
+		}
+	}
 	repo, e := repositoryName(in.Repository)
 	if e != nil {
 		return GitHubConnection{}, e
@@ -236,10 +248,55 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 	if !validBranch(branch) || info.Archived && in.Write {
 		return GitHubConnection{}, ErrInvalid
 	}
-	if _, e = m.github.head(ctx, repo, branch, token); e != nil {
+	head, e := m.github.head(ctx, repo, branch, token)
+	if e != nil {
 		return GitHubConnection{}, e
 	}
 	c := GitHubConnection{ID: in.ID, Repository: info.FullName, RepositoryID: info.ID, Branch: branch, AccountID: in.AccountID, Write: in.Write, Private: *info.Private, Verification: "verified", VerifiedAt: time.Now().UTC().Format(time.RFC3339Nano), State: "pending", ConfigRevision: 1}
+	if in.AdoptExisting {
+		if !c.Private {
+			return GitHubConnection{}, ErrConflict
+		}
+		tree, err := m.github.tree(ctx, c.Repository, head, token)
+		if err != nil {
+			return GitHubConnection{}, err
+		}
+		batch, err := m.remoteBatch(ctx, c, head, token, tree)
+		if err != nil {
+			return GitHubConnection{}, err
+		}
+		if batch.Create || !batch.Complete || batch.Withheld != 0 {
+			return GitHubConnection{}, ErrConflict
+		}
+		// Verify the remote identity, visibility and head again immediately
+		// before the atomic attachment; a later sync still re-verifies them.
+		latest, err := m.github.repository(ctx, c.Repository, token)
+		if err != nil {
+			return GitHubConnection{}, err
+		}
+		if latest.ID != c.RepositoryID || !*latest.Private || latest.Archived && c.Write {
+			return GitHubConnection{}, ErrConflict
+		}
+		currentHead, err := m.github.head(ctx, c.Repository, c.Branch, token)
+		if err != nil {
+			return GitHubConnection{}, err
+		}
+		if currentHead != head {
+			return GitHubConnection{}, ErrConflict
+		}
+		c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		proof := &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: "private", TreeSHA: tree.SHA, Adoption: &adoptionProof{Connection: c, Account: account, Snapshot: snapshot}}
+		if _, err = m.store.applyImport(batch, proof, false); err != nil {
+			return GitHubConnection{}, err
+		}
+		m.Wake()
+		for _, saved := range m.store.connections() {
+			if saved.ID == c.ID {
+				return saved, nil
+			}
+		}
+		return GitHubConnection{}, ErrConflict
+	}
 	m.store.mu.Lock()
 	defer m.store.mu.Unlock()
 	if _, ok := m.store.db.Connections[c.ID]; ok {

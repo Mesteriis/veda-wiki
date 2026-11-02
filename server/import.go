@@ -534,11 +534,27 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		return result, ErrInvalid
 	}
 	if proof != nil {
-		conn, ok := s.db.Connections[proof.ConnectionID]
-		if !ok || conn.Paused || conn.ConfigRevision != proof.ConfigRevision || conn.ID != batch.SourceID || (exists && src.ConnectionID != conn.ID) {
-			return result, ErrConflict
+		if proof.Adoption != nil {
+			adopt := proof.Adoption
+			conn := adopt.Connection
+			current, err := s.adoptionSnapshotLocked(batch.SourceID)
+			account, accountOK := s.db.Accounts[conn.AccountID]
+			if err != nil || !exists || current != adopt.Snapshot || !accountOK || account != adopt.Account || conn.AccountID == "" || conn.ID != batch.SourceID || conn.ID != proof.ConnectionID || conn.ConfigRevision != proof.ConfigRevision || !conn.Private || proof.Visibility != "private" || !batch.Complete || batch.Withheld != 0 {
+				return result, ErrConflict
+			}
+			for name, old := range src.Assets {
+				if incoming, ok := refs[name]; !ok || incoming != old {
+					return result, ErrConflict
+				}
+			}
+			src.ConnectionID = conn.ID
+		} else {
+			conn, ok := s.db.Connections[proof.ConnectionID]
+			if !ok || conn.Paused || conn.ConfigRevision != proof.ConfigRevision || conn.ID != batch.SourceID || (exists && src.ConnectionID != conn.ID) {
+				return result, ErrConflict
+			}
+			src.ConnectionID = conn.ID
 		}
-		src.ConnectionID = conn.ID
 		src.Visibility = proof.Visibility
 	}
 	if src.Kind != batch.Kind || src.ImportGeneration != *batch.ExpectedImport {
@@ -560,6 +576,18 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		return result, nil
 	}
 	db := s.clone()
+	if proof != nil && proof.Adoption != nil {
+		// A local checkout's old import base is not a GitHub merge base. Clear
+		// it so differing files become conflicts and absent files stay local.
+		for key, article := range db.Articles {
+			if article.SourceID == batch.SourceID {
+				article.UpstreamHash = ""
+				db.Articles[key] = article
+			}
+		}
+		conn := proof.Adoption.Connection
+		db.Connections[conn.ID] = conn
+	}
 	if proof != nil && proof.Visibility == "public" {
 		for key, a := range db.Articles {
 			if a.SourceID == batch.SourceID && (wasPrivate || !a.PublishedLocal) {

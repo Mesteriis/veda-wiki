@@ -66,6 +66,13 @@ type remoteProof struct {
 	ConfigRevision int
 	Visibility     string
 	TreeSHA        string
+	Adoption       *adoptionProof
+}
+
+type adoptionProof struct {
+	Connection GitHubConnection
+	Account    GitHubAccount
+	Snapshot   string
 }
 
 func sourcePublic(db Database, src Source, now time.Time) bool {

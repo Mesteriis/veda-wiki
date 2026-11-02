@@ -68,6 +68,8 @@ async def main():
                         "veda_move_article", "veda_translation_needed", "veda_translate_article", "veda_context",
                         "veda_conflicts", "veda_resolve_conflict", "veda_github_status", "veda_github_connect",
                         "veda_sync", "veda_publish_job", "veda_cancel_bundle"}
+                    connect_schema = next(tool.inputSchema for tool in tools.tools if tool.name == "veda_github_connect")
+                    assert connect_schema["properties"]["adopt_existing"]["type"] == "boolean"
 
                     async def call(name, args):
                         result = await session.call_tool(name, args)

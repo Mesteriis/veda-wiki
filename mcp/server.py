@@ -181,7 +181,7 @@ def make_server(client):
         "veda_github_status": ("Inspect explicit GitHub connections and the durable outbox; never returns credentials.", {
             "limit": {"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0}}, []),
         "veda_github_connect": ("Connect one repository anonymously or with an explicitly registered account; never guesses credentials.", {
-            "id":string,"repository":string,"account_id":string,"branch":string,"write":{"type":"boolean"}},["id","repository"]),
+            "id":string,"repository":string,"account_id":string,"branch":string,"write":{"type":"boolean"},"adopt_existing":{"type":"boolean","description":"Attach an existing disconnected private source to a private repository, preserving local differences as conflicts."}},["id","repository"]),
         "veda_sync": ("Schedule an explicit retry for an existing GitHub connection; accepted work remains durable.", {"id":string},["id"]),
         "veda_publish_job": ("Approve one private queued revision for publication only after explicit user instruction and review.", {
             "job_id":string,"expected_revision":{"type":"integer","minimum":1},
