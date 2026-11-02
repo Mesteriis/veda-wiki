@@ -86,6 +86,12 @@ async def main():
                     rejected = await session.call_tool("veda_write_article", {"source_id": "open", "path": "unsafe.md",
                         "text": "password=synthetic-fixture-only", "expected_revision": 0})
                     assert rejected.isError
+                    await call("veda_write_article", {"source_id": "closed", "path": "unsafe.md",
+                        "text": "password=synthetic-fixture-only", "expected_revision": 0})
+                    plan = await call("veda_transfer_plan", {"source_id": "closed", "source_path": "unsafe.md",
+                        "expected_revision": 1, "destination_id": "open", "destination_path": "unsafe.md"})
+                    assert len(plan["articles"]) == 1 and plan["articles"][0]["credential_like"] is True
+                    assert "synthetic-fixture-only" not in json.dumps(plan)
                     current = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert current["revision"] == 1 and current["text"] == "# Private canary"
                     await call("veda_write_article", {"source_id": "closed", "path": "README.md",
@@ -249,7 +255,7 @@ async def main():
                             result = await reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not result.isError and json.loads(result.content[0].text)["text"] == "# Private updated"
                             names = {tool.name for tool in (await reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed"}
+                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed", "veda_transfer_plan"}
                     def owner_post(route, value):
                         req = Request(f"http://127.0.0.1:{private_port}" + route,
                             data=json.dumps(value).encode(), method="POST",
@@ -269,7 +275,7 @@ async def main():
                         async with ClientSession(scoped_in, scoped_out) as scoped:
                             await scoped.initialize()
                             names = {tool.name for tool in (await scoped.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed"}
+                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed", "veda_transfer_plan"}
                             visible = await scoped.call_tool("veda_sources", {})
                             assert {item["id"] for item in json.loads(visible.content[0].text)["sources"]} == {"closed", "program"}
                             found = await scoped.call_tool("veda_find", {"query": "Private updated", "limit": 1})
@@ -285,6 +291,14 @@ async def main():
                             assert not allowed_queue.isError and json.loads(allowed_queue.content[0].text)["total"] == 1
                             hidden_queue = await scoped.call_tool("veda_translation_needed", {"source_id": "hidden-program"})
                             assert not hidden_queue.isError and json.loads(hidden_queue.content[0].text)["total"] == 0
+                            plan_args = {"source_id": "closed", "source_path": "README.md", "expected_revision": 2,
+                                "destination_id": "program", "destination_path": "docs/copied.md"}
+                            scoped_plan = await scoped.call_tool("veda_transfer_plan", plan_args)
+                            assert not scoped_plan.isError and len(json.loads(scoped_plan.content[0].text)["articles"]) == 1
+                            hidden_plan = await scoped.call_tool("veda_transfer_plan", {**plan_args, "destination_id": "copy", "destination_path": "copied.md"})
+                            assert hidden_plan.isError
+                            denied_copy = await scoped.call_tool("veda_copy_article", plan_args)
+                            assert denied_copy.isError
                             allowed = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not allowed.isError
                             displayed = await scoped.call_tool("veda_read_display", {"source_id": "program", "path": "docs/setup.md"})
@@ -343,6 +357,10 @@ async def main():
                                     assert not allowed.isError
                                     denied = await keyed_socket.call_tool("veda_read", {"source_id": "copy", "path": "copied.md"})
                                     assert denied.isError
+                                    keyed_plan = await keyed_socket.call_tool("veda_transfer_plan", plan_args)
+                                    assert not keyed_plan.isError
+                                    keyed_hidden = await keyed_socket.call_tool("veda_transfer_plan", {**plan_args, "destination_id": "copy", "destination_path": "copied.md"})
+                                    assert keyed_hidden.isError
                                     owner_post("/api/v1/access-keys/revoke", {"id": "agent-test"})
                                     revoked_socket = await keyed_socket.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                                     assert revoked_socket.isError
@@ -358,7 +376,10 @@ async def main():
                             displayed = await socket_reader.call_tool("veda_read_display", {"source_id": "program", "path": "docs/setup.md"})
                             assert not displayed.isError and json.loads(displayed.content[0].text)["translation_state"] == "current"
                             names = {tool.name for tool in (await socket_reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed"}
+                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed", "veda_transfer_plan"}
+                            socket_plan = await socket_reader.call_tool("veda_transfer_plan", {"source_id": "closed", "source_path": "unsafe.md", "expected_revision": 1,
+                                "destination_id": "open", "destination_path": "unsafe.md"})
+                            assert not socket_plan.isError and json.loads(socket_plan.content[0].text)["articles"][0]["credential_like"] is True
                             item = await socket_reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not item.isError and json.loads(item.content[0].text)["text"] == "# Private updated"
                             ctx = await socket_reader.call_tool("veda_context", {"source_id": "closed", "path": "nested/example.md"})

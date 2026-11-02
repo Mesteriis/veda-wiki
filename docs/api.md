@@ -49,7 +49,7 @@ The field is absent for public readers and for articles without a conflict.
 | GET/POST | `/api/access/keys` | List, create or update scoped keys in that browser session |
 | POST | `/api/access/keys/revoke` | Revoke a scoped key in that browser session |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
-| POST | `/api/v1/articles/transfer-plan` | Inspect recursive relative article links and destination matches (owner only) |
+| POST | `/api/v1/articles/transfer-plan` | Inspect recursive relative article links and destination matches; owner or scoped reader with access to both sources, no browser Origin |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
 | POST | `/api/v1/conflicts/resolve` | Owner-only conflict resolution with expected revision |
@@ -228,12 +228,17 @@ production v9 store and live GitHub credentials have not been verified.
 `POST /api/v1/articles/transfer-plan` and `veda_transfer_plan` accept the same
 source and destination identifiers, paths, and expected source revision. They
 return the recursively linked Markdown articles with their current revisions,
-digests, mapped paths and destination status (`missing`, `matching`, or
-`conflict`). Cycles are included once; ambiguous path mappings are rejected.
+digests, mapped paths, destination status (`missing`, `matching`, or
+`conflict`) and a `credential_like` heuristic for each article without exposing
+its text. The heuristic can miss secrets or flag harmless examples. Cycles are
+included once; ambiguous path mappings are rejected.
 The plan is a read-only snapshot, not a reservation or a guarantee that a
 copy or move will succeed. It does not inspect images, embedded HTML,
 publication approval, remote write permissions or later changes. It does not
 automatically copy missing articles; execution must revalidate all conditions.
+Scoped readers must be authorized for both source and destination. Browser
+sessions cannot submit this POST; access uses a reader credential or eligible
+local reader socket. Copying and moving remain owner-only.
 
 ## Restricted local snapshot import
 

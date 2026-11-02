@@ -298,7 +298,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if w.Store != nil {
 		owner := w.authorized(r)
 		implicitLocal := w.ReaderLocal && !w.ReaderKeyRequired && r.Header.Get("Authorization") == ""
-		validation := r.Method == "POST" && r.URL.Path == "/api/v1/articles/translation-validate" && r.Header.Get("Origin") == ""
+		validation := r.Method == "POST" && (r.URL.Path == "/api/v1/articles/translation-validate" || r.URL.Path == "/api/v1/articles/transfer-plan") && r.Header.Get("Origin") == ""
 		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || (!validation && w.Sessions.valid(r))))) && (r.Method == "GET" || validation)
 		if !w.Public && !owner && !reader && r.Method == "GET" {
 			if hash, ok := w.Sessions.scopedCookie(r); ok {

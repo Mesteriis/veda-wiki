@@ -16,7 +16,8 @@ Existing owner, shared reader and Unix socket behavior remains unchanged. Keys
 have not yet been provisioned to the four agents. Use MCP
 `--reader-key-file /path/to/private-key` to expose read and search tools and
 non-persistent new-article, update and translation proposal preparation tools,
-plus the translation queue filtered to authorized sources;
+the transfer plan when both sources are authorized, and the translation queue
+filtered to authorized sources;
 the file must be owned by the process user and inaccessible to group/other.
 Server authorization remains the enforcement boundary.
 

@@ -86,7 +86,7 @@ func apiError(rw http.ResponseWriter, err error) {
 	jsonResponse(rw, code, map[string]string{"error": message})
 }
 func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
-	validation := r.Method == "POST" && r.URL.Path == "/api/v1/articles/translation-validate" && reader
+	validation := r.Method == "POST" && (r.URL.Path == "/api/v1/articles/translation-validate" || r.URL.Path == "/api/v1/articles/transfer-plan") && reader
 	if r.Method != "GET" && ((!owner && !validation) || r.Header.Get("Origin") != "") {
 		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required; browser writes are disabled"})
 		return

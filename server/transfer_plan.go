@@ -18,6 +18,7 @@ type transferPlanItem struct {
 	SHA             string `json:"sha256"`
 	Destination     string `json:"destination_status"`
 	DirectoryIndex  bool   `json:"directory_index,omitempty"`
+	CredentialLike  bool   `json:"credential_like"`
 }
 
 // Caller holds the store lock. README wins, matching reader resolution.
@@ -112,7 +113,7 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 				state = "matching"
 			}
 		}
-		result.Articles = append(result.Articles, transferPlanItem{SourcePath: current.from, DestinationPath: current.to, Revision: len(a.Versions), SHA: rev.SHA, Destination: state})
+		result.Articles = append(result.Articles, transferPlanItem{SourcePath: current.from, DestinationPath: current.to, Revision: len(a.Versions), SHA: rev.SHA, Destination: state, CredentialLike: secretContent.MatchString(rev.Text)})
 		rootNode := markdown.Parser().Parse(text.NewReader([]byte(rev.Text)))
 		var parseErr error
 		ast.Walk(rootNode, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
