@@ -38,6 +38,28 @@ that share an operating-system identity and can read each other's files; an
 unrestricted administrative SSH route also remains administrative access.
 Restart or reconnect a client as required for it to discover updated tools.
 
+## Project instructions
+
+Keep the repository's root `AGENTS.md` as the shared instruction source and
+start the agent in the repository or a relevant subdirectory. Codex uses
+`AGENTS.md` for project guidance. OpenCode reads
+project `AGENTS.md` files, and Hermes discovers the root-to-working-directory
+chain unless a higher-priority project context file overrides it. Hermes may
+truncate long context files or the merged chain; its truncation marker is not a
+substitute for reading the complete applicable instructions. See
+[OpenCode instructions](https://opencode.ai/docs/rules/) and
+[Hermes context files](https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files/).
+
+Claude Code 2.1.277 and later can load `AGENTS.md` directly, subject to its
+project-instruction settings and other `CLAUDE.md` files. Older versions or
+sessions without that support can use a repository-root `CLAUDE.md` containing
+`@AGENTS.md`; follow the current [Claude Code instructions](https://code.claude.com/docs/en/memory)
+and verify the loaded files in a new session. A root import alone does not
+guarantee that environment-specific files are loaded. For every client, read
+the applicable environment's complete instructions and brief before work;
+inspect the actual tool list and source scope, and do not infer successful
+loading from the existence of a configuration file.
+
 ## Read and prepare an update
 
 1. Use `veda_find` to locate candidates and keep `source_id` with each path.
