@@ -90,3 +90,11 @@ per request versus an earlier two-iteration measurement of about 45 ms and
 26.3 MB. A comparable 200-document Russian synthetic benchmark measured about 143 ms
 and 216 KB after the change versus about 160 ms and 29.6 MB before it. These
 are limited synthetic measurements, not production workload guarantees.
+
+A local synthetic HTTPS smoke test at source revision `9bfc6a0` exercised the
+four-agent key checker against a real isolated VEDA process with four distinct
+reader keys. It verified the allowed private source, an excerpt and an unsaved
+proposal, and rejected duplicated keys, incorrect and overly broad scopes and
+a revoked key. No production credentials or article content were used. This
+checks the helper and MCP adapter, not the four agent applications, model
+behavior, production key provisioning or separate operating-system identities.
