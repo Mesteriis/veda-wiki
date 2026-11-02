@@ -621,6 +621,7 @@ function ReaderAccess() {
 }
 function AccessSettings() {
   const [status, setStatus] = useState(null);
+  const [sharedSession, setSharedSession] = useState(false);
   const [sources, setSources] = useState([]);
   const [keys, setKeys] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -647,7 +648,7 @@ function AccessSettings() {
   useEffect(() => {
     const controller = new AbortController();
     json("/api/access/session/status", { signal: controller.signal })
-      .then(async (s) => { setStatus(s.authenticated); if (s.authenticated) await refresh(); })
+      .then(async (s) => { setStatus(s.authenticated); setSharedSession(!!s.via_reader_session); if (s.authenticated) await refresh(); })
       .catch((e) => { if (e.name !== "AbortError") setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
     return () => controller.abort();
   }, []);
@@ -732,7 +733,7 @@ function AccessSettings() {
       {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
       <form onSubmit={create}><h3>Новый ключ чтения</h3><label>Идентификатор<input name="id" required placeholder="agent-one" /></label><label>Срок в днях<input name="days" type="number" min="1" max="365" defaultValue="30" required /></label><fieldset><legend>Доступные источники</legend>{sources.length ? sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} /> {s.title} ({s.id})</label>) : <p>Источников пока нет.</p>}</fieldset><button disabled={busy || !!issued || !sources.length}>Создать ключ</button></form>
       <h3>Выданные ключи</h3>{keys.length ? <ul>{keys.map((k) => <li key={k.id}><strong>{k.id}</strong> · {k.sources.join(", ")} · до {new Date(k.expires_at).toLocaleString()} <button type="button" disabled={busy} onClick={() => setEditing(editing === k.id ? null : k.id)}>Изменить доступ</button> <button type="button" disabled={busy} onClick={() => revoke(k.id)}>Отозвать</button>{editing === k.id && <form onSubmit={(event) => update(event, k)}><fieldset><legend>Источники для {k.id}</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} defaultChecked={k.sources.includes(s.id)} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy}>Сохранить доступ</button> <button type="button" disabled={busy} onClick={() => setEditing(null)}>Отмена</button></form>}</li>)}</ul> : <p>Ключей пока нет.</p>}
-      <button type="button" disabled={busy} onClick={logout}>Выйти из управления доступом</button>
+      {sharedSession ? <p>Вход выполнен через учётную запись. Для выхода используйте профиль.</p> : <button type="button" disabled={busy} onClick={logout}>Выйти из управления доступом</button>}
     </>}
     {message && <p role="alert">{message}</p>}
   </div>;
@@ -740,6 +741,7 @@ function AccessSettings() {
 function GitHubConnect() {
   const stateLabels = { pending: "Ожидает синхронизации", syncing: "Синхронизация", ready: "Синхронизирован", paused: "Приостановлен", skipped: "Нет папки docs/", blocked: "Требует внимания", error: "Ошибка синхронизации" };
   const [status, setStatus] = useState(null);
+  const [sharedSession, setSharedSession] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [connections, setConnections] = useState([]);
   const [mirrors, setMirrors] = useState([]);
@@ -761,7 +763,7 @@ function GitHubConnect() {
   useEffect(() => {
     const controller = new AbortController();
     json("/api/admin/session/status", { signal: controller.signal })
-      .then(async (s) => { setStatus(s.authenticated); if (s.authenticated) await refresh(); })
+      .then(async (s) => { setStatus(s.authenticated); setSharedSession(!!s.via_reader_session); if (s.authenticated) await refresh(); })
       .catch((e) => { if (e.name !== "AbortError") setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
     return () => controller.abort();
   }, []);
@@ -874,7 +876,7 @@ function GitHubConnect() {
       </form>
       {mirrors.length > 0 && <ul>{mirrors.map((m) => <li key={m.destination_id}>{m.source_id} → {m.destination_id} · {({pending:"Ожидает",ready:"Проход завершён",syncing:"Синхронизация",blocked:"Требует внимания",error:"Ошибка",paused:"Приостановлено"})[m.state] || "Состояние неизвестно"}{m.blocked ? ` · ожидают или требуют проверки: ${m.blocked}` : ""} <button type="button" disabled={busy} onClick={() => configureMirror(m.source_id, m.destination_id, !m.enabled, m.revision)}>{m.enabled ? "Приостановить" : "Возобновить"}</button>{m.blocked_paths?.length > 0 && <details><summary>Показать статьи</summary><ul>{m.blocked_paths.map((p) => <li key={p}>{p}</li>)}</ul>{m.blocked > m.blocked_paths.length && <p>Показаны первые {m.blocked_paths.length} из {m.blocked}.</p>}</details>}</li>)}</ul>}
       <p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена. Во время проверки и на паузе публичные статьи источника временно скрыты; локальная копия остаётся доступной авторизованным читателям.</p>
-      <button onClick={logout} disabled={busy}>Выйти из управления</button>
+      {sharedSession ? <p>Вход выполнен через учётную запись. Для выхода используйте профиль.</p> : <button onClick={logout} disabled={busy}>Выйти из управления</button>}
     </>}
     {message && <p role="status">{message}</p>}
   </div>;

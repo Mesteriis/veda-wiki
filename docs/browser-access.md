@@ -37,7 +37,11 @@ limit of ten login attempts per minute and at most 100 active sessions. To
 revoke all sessions restart the service; credential rotation requires replacing
 the reader key in the private data directory and restarting the service.
 
-The GitHub dialog accepts the owner key for a separate administrator session;
+An authenticated named administrator can open GitHub and access management
+using the existing reader session. Role removal, disablement, password changes,
+logout and expiry invalidate this access; ordinary readers and reader keys do
+not gain administration. The GitHub dialog also accepts the owner key for a
+separate administrator session;
 the key is sent only over direct HTTPS or loopback HTTP and is not stored in the
 browser. The administrator session is limited to GitHub account registration
 and connection, and cannot authorize article writes or other owner APIs. It
@@ -69,7 +73,8 @@ bearer. Existing sessions use the new scope on their next request. A concurrent
 change or an expired key requires the administrator to refresh and review;
 expired keys must be reissued. The access-administration cookie cannot authorize
 GitHub administration, private reading, or article
-writes; the GitHub and reader cookies cannot manage keys. Login and mutations
+writes; a GitHub-only cookie or a non-administrator reader cookie cannot manage
+keys. Login and mutations
 require the same HTTPS/loopback and same-origin protections described above.
 A new key is shown once and remains only in the current page's memory; save it
 before closing the dialog. If creation fails or the response is lost, inspect
@@ -86,7 +91,7 @@ Back up and verify a compatible restore before creating accounts or rolling back
 ## Administrator first setup
 
 An administrator is a named user with access to all private sources and to the
-separate browser GitHub and access-administration sessions. Those sessions do
+browser GitHub and access-administration routes. Those sessions do
 not grant the owner REST API or article writes. Changing or disabling the user
 or changing its administrator role invalidates existing user sessions.
 
@@ -103,8 +108,8 @@ arguments. This changes the logical store format to version 20: older binaries
 refuse it. A compatible backup and restore plan are required before setup.
 Workstation bridges must forward the reader session to the private listener
 and must not use a trusted reader socket as anonymous browser access. The
-browser reader, GitHub administrator and access-administrator sessions remain
-separate; sign in to each surface as needed.
+browser reader session grants administration only to a named administrator;
+independent key-based administrator sessions remain available.
 
 ## Creating an administrator from a terminal
 

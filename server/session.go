@@ -129,6 +129,14 @@ func (w Wiki) adminCookieValid(r *http.Request, sessions *readerSessions, cookie
 		return true
 	}
 	u, ok := sessions.namedUserCookie(r, cookie)
+	if ok && w.Store != nil && w.Store.adminSessionValid(u.ID, u.AuthVersion) {
+		return true
+	}
+	return w.readerAdminCookieValid(r)
+}
+
+func (w Wiki) readerAdminCookieValid(r *http.Request) bool {
+	u, ok := w.Sessions.userCookie(r)
 	return ok && w.Store != nil && w.Store.adminSessionValid(u.ID, u.AuthVersion)
 }
 
@@ -178,7 +186,11 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 				valid = w.Store.userSessionValid(user.ID, user.AuthVersion)
 			}
 		}
-		jsonResponse(rw, 200, map[string]bool{"authenticated": valid})
+		result := map[string]bool{"authenticated": valid}
+		if prefix != "/api/session/" {
+			result["via_reader_session"] = valid && w.readerAdminCookieValid(r)
+		}
+		jsonResponse(rw, 200, result)
 		return
 	}
 	if r.Method == "GET" && prefix == "/api/session/" && r.URL.Path == prefix+"profile" {

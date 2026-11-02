@@ -293,3 +293,71 @@ func TestOlderBinaryRefusesAdministratorStore(t *testing.T) {
 		})
 	}
 }
+
+func TestNamedAdministratorReaderSessionGrantsAdminWithoutSecondLogin(t *testing.T) {
+	s := testStore(t)
+	groups := []string{}
+	password := "synthetic password"
+	admin, err := s.saveUser("administrator", &groups, &password, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.setUserAdmin("administrator", true, admin.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.saveUser("reader", &groups, &password, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader-key", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, newFakeGitHub(t, map[string]string{}).client())}
+	call := func(method, path, body, origin string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:1"
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if cookie != nil {
+			r.AddCookie(cookie)
+		}
+		out := httptest.NewRecorder()
+		w.ServeHTTP(out, r)
+		return out
+	}
+	origin := "http://localhost:8080"
+	login := func(body string) *http.Cookie {
+		r := call("POST", "/api/session/login", body, origin, nil)
+		if r.Code != 200 || len(r.Result().Cookies()) != 1 {
+			t.Fatal("login failed", r.Code)
+		}
+		return r.Result().Cookies()[0]
+	}
+	reader := login(`{"username":"reader","password":"synthetic password"}`)
+	if r := call("GET", "/api/admin/github/accounts", "", "", reader); r.Code != 404 {
+		t.Fatal("ordinary reader gained admin", r.Code)
+	}
+	key := login(`{"key":"reader-key"}`)
+	if r := call("GET", "/api/admin/github/accounts", "", "", key); r.Code != 404 {
+		t.Fatal("reader key gained admin", r.Code)
+	}
+	cookie := login(`{"username":"administrator","password":"synthetic password"}`)
+	for _, path := range []string{"/api/admin/github/accounts", "/api/access/users"} {
+		if r := call("GET", path, "", "", cookie); r.Code != 200 {
+			t.Fatal("administrator denied", path, r.Code)
+		}
+	}
+	status := call("GET", "/api/admin/session/status", "", "", cookie)
+	if !strings.Contains(status.Body.String(), `"via_reader_session":true`) {
+		t.Fatal("shared session not reported")
+	}
+	if r := call("POST", "/api/admin/github/accounts", `{}`, "http://evil.example", cookie); r.Code != 403 {
+		t.Fatal("cross-origin admin request accepted", r.Code)
+	}
+	if r := call("POST", "/api/v1/articles", `{}`, origin, cookie); r.Code != 403 {
+		t.Fatal("reader session obtained write API", r.Code)
+	}
+	if r := call("POST", "/api/session/logout", `{}`, origin, cookie); r.Code != 200 {
+		t.Fatal("logout failed", r.Code)
+	}
+	if r := call("GET", "/api/admin/github/accounts", "", "", cookie); r.Code != 404 {
+		t.Fatal("logout did not revoke admin", r.Code)
+	}
+}

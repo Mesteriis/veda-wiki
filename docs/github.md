@@ -128,11 +128,12 @@ directory; account listings do not return them. Never commit credentials or
 pass them on a command line. Connect using `--account ACCOUNT`; add `--write`
 only when the account has the required repository permission. No account is
 automatically guessed. The private browser interface also offers GitHub App or
-token account registration and repository connection after a separate
-administrator login.
+token account registration and repository connection. An already signed-in
+named administrator can use this dialog without another login.
 The administrator session grants GitHub account, connection, configuration,
 manual sync and pause/resume endpoints, not article editing or the general owner API. It is accepted only over direct
-HTTPS or loopback HTTP, and is separate from the reader session. The read-only
+HTTPS or loopback HTTP. A reader session grants these permissions only to a
+currently enabled named administrator, not ordinary users or reader keys. The read-only
 Unix socket does not expose administration; an independently configured local
 bridge can forward only the protected administration routes.
 The connection dialog can change the selected account and write permission
