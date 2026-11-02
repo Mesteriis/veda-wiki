@@ -23,6 +23,13 @@ listener remains public-only and ignores reader credentials and sessions.
 The application does not trust forwarded headers: TLS terminated at a proxy
 without TLS to VEDA is not accepted for remote browser login.
 
+An additional direct HTTPS listener can be enabled with `--https-listen`
+alongside the existing loopback HTTP listener. Set `--tls-cert`, `--tls-key`
+and include the HTTPS hostname or IP in `--allowed-hosts`. In this mode the
+ordinary HTTP listener must remain on loopback; the separate HTTPS port handles
+private browser sessions directly. Certificates must be trusted by clients and
+cover the chosen address. The public-only listener is unchanged.
+
 Successful login sets an HttpOnly, SameSite=Strict session cookie (Secure over
 HTTPS). Sessions expire after eight hours and are held only in memory; restart
 revokes them. Logout revokes the current session. The server applies a global

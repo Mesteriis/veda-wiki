@@ -52,6 +52,7 @@ func main() {
 	data := flag.String("data", ".veda", "Private local data directory (single writer)")
 	listen := flag.String("listen", "127.0.0.1:8080", "API and viewer address")
 	public := flag.String("public-listen", "127.0.0.1:8081", "Public-only address")
+	httpsListen := flag.String("https-listen", "", "Optional additional private HTTPS address")
 	hosts := flag.String("allowed-hosts", "localhost,127.0.0.1,::1", "Allowed HTTP Host names")
 	localImportSource := flag.String("local-import-source", "", "Allow Linux root on the reader socket to import this existing private local source")
 	readerSocket := flag.String("reader-socket", "", "Optional private Unix socket for read-only local clients")
@@ -79,6 +80,16 @@ func main() {
 	}
 	if (*tlsCert == "") != (*tlsKey == "") {
 		log.Fatal("both tls-cert and tls-key are required")
+	}
+	if *httpsListen != "" && *tlsCert == "" {
+		log.Fatal("additional HTTPS listener requires a certificate and key")
+	}
+	if *httpsListen != "" {
+		host, _, err := net.SplitHostPort(*listen)
+		ip := net.ParseIP(host)
+		if err != nil || !(strings.EqualFold(host, "localhost") || ip != nil && ip.IsLoopback()) {
+			log.Fatal("HTTP listener must be loopback when additional HTTPS is enabled")
+		}
 	}
 	if *interval < 5*time.Second || *interval > time.Hour {
 		log.Fatal("invalid sync interval")
@@ -122,6 +133,15 @@ func main() {
 	if err != nil {
 		apiListener.Close()
 		log.Fatal(err)
+	}
+	var httpsListener net.Listener
+	if *httpsListen != "" {
+		httpsListener, err = net.Listen("tcp", *httpsListen)
+		if err != nil {
+			apiListener.Close()
+			publicListener.Close()
+			log.Fatal(err)
+		}
 	}
 	var socketListener net.Listener
 	if *readerSocket != "" {
@@ -171,13 +191,16 @@ func main() {
 			}
 		}
 		endpoint := servedListener{server: server, listener: l}
-		if !publicOnly && !readerOnly {
+		if !publicOnly && !readerOnly && (httpsListener == nil || l == httpsListener) {
 			endpoint.cert, endpoint.key = *tlsCert, *tlsKey
 		}
 		return endpoint
 	}
 	log.Printf("VEDA listening on %s; public on %s; owner key saved to data directory (not printed)", *listen, *public)
 	endpoints := []servedListener{makeServer(publicListener, true, false), makeServer(apiListener, false, false)}
+	if httpsListener != nil {
+		endpoints = append(endpoints, makeServer(httpsListener, false, false))
+	}
 	if socketListener != nil {
 		endpoints = append(endpoints, makeServer(socketListener, false, true))
 	}
