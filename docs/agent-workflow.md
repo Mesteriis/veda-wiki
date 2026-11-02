@@ -84,9 +84,11 @@ loading from the existence of a configuration file.
    provenance and hashes; proposals must be based on the original revision.
 4. Call `veda_prepare_update` with the original `expected_revision` and proposed
    Markdown. It returns an unsaved proposal, base SHA, the observed conflict
-   flag and source status from the same snapshot. It does not reserve the revision
-   or publish anything. If a conflict is
-   present, report it and have it resolved before an authorized write.
+   flag, selected-article `conflict_resolution_blocked_by_write` and source
+   status from the same snapshot. It does not reserve the revision or publish
+   anything. If a conflict is present, report it before an authorized write.
+   When that flag is true, a prepared write or linked bundle requires
+   investigation before conflict resolution; do not assume its outcome.
 5. Present the proposal and its source, path, revision and base SHA for review.
    An authorized writer may submit it through REST or the owner MCP interface.
    The server rejects stale revisions and unresolved import conflicts; after a

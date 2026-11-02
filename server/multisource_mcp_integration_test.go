@@ -71,6 +71,14 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].PreparedCommit == "" {
 		t.Fatal("fixture did not create an unconfirmed prepared write")
 	}
+	two.advance(map[string]string{"docs/guide.md": "# Shared private\nDifferent upstream fixture"})
+	if err := s.retryConnection("two"); err != nil {
+		t.Fatal(err)
+	}
+	manager.Once(context.Background())
+	if len(s.conflicts()) != 1 {
+		t.Fatal("fixture did not create an import conflict")
+	}
 	s, err = openStore(s.dir)
 	if err != nil {
 		t.Fatal(err)
@@ -111,13 +119,16 @@ async def run(key, expected):
     assert article['text']==('# Shared public\nPublic fixture' if source=='one' else '# Shared private\nLocal pending fixture')
     context=await call('veda_context',{'source_id':source,'path':'docs/guide.md'})
     assert context['source_status']['last_import_observed_at'] is None
-    assert context['source_status']['sync_state']==('ready' if source=='one' else 'error')
+    assert context['source_status']['sync_state']==('ready' if source=='one' else 'conflict')
     assert context['source_status']['sync_verification']=='verified'
     assert context['source_status']['unconfirmed_write_jobs']==(0 if source=='one' else 1)
     assert context['source_status']['prepared_unconfirmed_write_jobs']==(0 if source=='one' else 1)
     assert 'prepared_commit' not in json.dumps(context)
     proposal=await call('veda_prepare_update',{'source_id':source,'path':'docs/guide.md','expected_revision':article['revision'],'text':'# Proposed'})
     assert proposal['saved'] is False and proposal['base_sha256']==article['sha256']
+    assert proposal['conflict_resolution_blocked_by_write']==(source=='two')
+    if source=='two':
+     assert proposal['unresolved_conflict'] and 'blocks conflict resolution' in proposal['note']
     assert proposal['source_status']['unconfirmed_write_jobs']==(0 if source=='one' else 1)
     assert proposal['source_status']['prepared_unconfirmed_write_jobs']==(0 if source=='one' else 1)
    if expected=={'one'}:

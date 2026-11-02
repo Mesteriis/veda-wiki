@@ -118,7 +118,10 @@ An update uses PUT and `expected_revision: 1` after the first successful write.
 An unresolved import conflict also causes a write to return 409 even if the
 local revision has not changed. Resolve the conflict first; prepared MCP
 proposals report the conflict and source status observed during preparation,
-which may change before a write. The MCP adapter requires a server that returns
+which may change before a write. `conflict_resolution_blocked_by_write` reports
+whether the selected article has a nonterminal prepared write or linked bundle;
+it does not expose other paths or indicate that an ordinary write is blocked.
+The MCP adapter requires a server that returns
 this status in the proposal-base response. New-article proposals use
 `new-proposal-base`; the path check and source status come from one snapshot.
 Deleted history remains hidden and can still cause a later write conflict.

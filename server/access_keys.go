@@ -270,11 +270,11 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 		}
 		db.Articles[key] = article
 	}
-	// The reader context exposes only a source-level count, never job IDs,
-	// paths, revisions or content. Capture the count inputs under the same lock.
+	// Copy only fields needed for source counts and the selected article's
+	// blocking status; no commit IDs, revisions, contents or bundle paths.
 	for id, job := range s.db.Outbox {
 		if selected[job.SourceID] && job.State != "complete" && job.State != "superseded" {
-			db.Outbox[id] = SyncJob{SourceID: job.SourceID, State: job.State, scopePrepared: job.PreparedCommit != "" || job.scopePrepared}
+			db.Outbox[id] = SyncJob{SourceID: job.SourceID, Path: job.Path, State: job.State, scopePrepared: job.PreparedCommit != "" || job.scopePrepared, scopeBundle: len(job.Bundle) != 0 || job.scopeBundle}
 		}
 	}
 	return &Store{dir: s.dir, db: db, observed: observed, withheld: withheld}, true, nil

@@ -17,6 +17,7 @@ import (
 
 type SyncJob struct {
 	scopePrepared  bool
+	scopeBundle    bool
 	ID             string             `json:"id"`
 	SourceID       string             `json:"source_id"`
 	Path           string             `json:"path"`

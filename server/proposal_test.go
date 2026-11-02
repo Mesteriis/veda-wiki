@@ -1,11 +1,56 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# First", "b.md": "# Second"})
+	m := connectFixture(t, s, f, true)
+	if _, err := s.put("handbook", "a.md", "# Local", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.loseResponse = true })
+	m.Once(context.Background())
+	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path    string
+		blocked bool
+	}{{"a.md", true}, {"b.md", false}} {
+		r := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path="+tc.path, nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
+		var body map[string]any
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != tc.blocked {
+			t.Fatal("incorrect article write status", tc.path, out.Code)
+		}
+		if strings.Contains(out.Body.String(), "prepared_commit") {
+			t.Fatal("commit identifier exposed")
+		}
+	}
+	// A linked bundle blocks resolution even before a ref update is prepared.
+	s.mu.Lock()
+	s.db.Outbox["fixture-bundle"] = SyncJob{SourceID: "handbook", Path: "b.md", State: "pending", Bundle: map[string]string{"linked.md": strings.Repeat("a", 64)}}
+	s.mu.Unlock()
+	r := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path=b.md", nil)
+	r.Header.Set("Authorization", "Bearer "+key)
+	out := httptest.NewRecorder()
+	(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
+	var body map[string]any
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != true || strings.Contains(out.Body.String(), "linked.md") {
+		t.Fatal("linked bundle status missing or leaked", out.Code)
+	}
+}
 
 func TestProposalBaseAndWriteDetectConflictWithoutRevisionChange(t *testing.T) {
 	for _, sqlite := range []bool{false, true} {
