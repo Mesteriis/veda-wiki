@@ -60,6 +60,12 @@ adapter and checks that the files contain four distinct keys. It does not prove
 that each agent's model can discover or invoke the tools; verify each client
 after its configuration changes.
 
+To check the local key-file helpers without using credentials or contacting a
+server, install `mcp/requirements.txt` in the MCP virtual environment and run
+`/absolute/venv/bin/python -m unittest scripts/test_check_agent_readers.py
+scripts/test_save_reader_key.py` from the repository root. These tests use
+synthetic files and do not validate deployed keys or agent configurations.
+
 These examples are for a server on the same machine. Loopback addresses inside
 another host or container are not reachable from the client machine. For a
 trusted directly reachable HTTPS VEDA instance, pass `--url https://VEDA-HOST
