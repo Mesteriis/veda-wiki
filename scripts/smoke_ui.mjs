@@ -111,4 +111,5 @@ for (const width of [1672, 390, 320]) {
   }
   console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
-ws.close();
+// Let Chrome close its profile and children before the temporary directory is removed.
+ws.send(JSON.stringify({ id: ++id, method: 'Browser.close' }));

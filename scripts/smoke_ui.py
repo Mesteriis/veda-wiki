@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import signal
 import subprocess
 import tempfile
 import time
@@ -94,7 +95,7 @@ def main():
                 [chrome, '--headless=new', '--disable-gpu', '--disable-background-networking',
                  '--disable-extensions', '--no-first-run', '--no-proxy-server',
                  f'--user-data-dir={root / "chrome"}', f'--remote-debugging-port={debug}', 'about:blank'],
-                stdout=subprocess.DEVNULL, stderr=browser_log,
+                stdout=subprocess.DEVNULL, stderr=browser_log, start_new_session=True,
             )
             try:
                 subprocess.run(['node', str(ROOT / 'scripts/smoke_ui.mjs'), str(debug),
@@ -109,8 +110,30 @@ def main():
                                   'devtools_listening': b'devtools listening' in log}), flush=True)
                 raise
             finally:
-                browser.terminate()
-                browser.wait(timeout=10)
+                try:
+                    browser.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(browser.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        browser.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(browser.pid, signal.SIGKILL)
+                        browser.wait(timeout=5)
+                # Some Chrome children may still be closing after the parent exits.
+                for _ in range(50):
+                    try:
+                        os.killpg(browser.pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(.1)
+                else:
+                    try:
+                        os.killpg(browser.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
                 browser_log.close()
         finally:
             server.terminate()
