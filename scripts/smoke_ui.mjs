@@ -95,6 +95,20 @@ for (const width of [1672, 390, 320]) {
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
   await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
   if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('user session survived logout');
-  console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
+  for (const title of ['GitHub', 'Настройки']) {
+    if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
+    await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
+    await until("!!document.querySelector('dialog[open] .reader-access input[name=key]')");
+    await evaluate(`document.querySelector('dialog input[name=key]').value=${JSON.stringify('d'.repeat(64))}; document.querySelector('dialog .reader-access form').requestSubmit()`);
+    const expected = title === 'GitHub' ? 'Подключить репозиторий' : 'Новый ключ чтения';
+    await until(`document.querySelector('dialog').innerText.includes(${JSON.stringify(expected)})`);
+    const writeStatus = await evaluate("(async () => (await fetch('/api/v1/articles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_id:'fixture',path:'browser-write.md',text:'# Synthetic',expected_revision:0})})).status)()");
+    if (writeStatus !== 403 && writeStatus !== 404) throw Error('browser admin session allowed article write');
+    await evaluate("[...document.querySelectorAll('dialog button')].find(b=>b.innerText.startsWith('Выйти из управления')).click()");
+    await until("!!document.querySelector('dialog .reader-access input[name=key]')");
+    await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
+    await until("!document.querySelector('dialog[open]')");
+  }
+  console.log(JSON.stringify({ width, article: true, search: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
 ws.close();

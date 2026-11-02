@@ -128,7 +128,9 @@ Chromium executable. It starts a temporary VEDA with synthetic public articles
 and a temporary browser profile; it checks article navigation, search and
 viewport overflow, plus scoped key and named-user login, source isolation and
 logout on desktop and mobile, including access to GitHub and settings from the
-mobile menu. It runs in CI with the hosted runner’s Chrome and does not exercise production
+mobile menu. It also tests synthetic admin sessions and verifies that they do
+not authorize browser article writes. It runs in CI with the hosted runner’s
+Chrome and does not exercise production
 credentials or GitHub connections:
 
 ```sh
