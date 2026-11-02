@@ -574,6 +574,11 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	if len(article.Versions) != expected {
 		return Revision{}, ErrConflict
 	}
+	for _, conflict := range article.Conflicts {
+		if conflict.Resolution == "" {
+			return Revision{}, ErrConflict
+		}
+	}
 	sum := sha256.Sum256([]byte(text))
 	rev := Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: time.Now().UTC().Format(time.RFC3339Nano)}
 	versions := append([]Revision(nil), article.Versions...)

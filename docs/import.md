@@ -104,6 +104,12 @@ supplies source ID, path, conflict index, expected local revision and either
 `local` or `upstream`. Stale decisions return 409. Original local revisions and
 incoming conflict records remain in history. MCP exposes `veda_conflicts` and
 `veda_resolve_conflict` through the same endpoints.
+Ordinary article writes are rejected while that article has an unresolved
+import conflict, even when its local revision matches. Resolve the conflict
+first. A read-only agent can still prepare an unsaved proposal; the proposal
+reports conflict status as of preparation, and the write checks again.
+The MCP adapter and server must both support the proposal-base endpoint; a
+new adapter paired with an older server cannot prepare an update.
 
 Conflict lists contain summaries, ordered by source/path/index, and accept
 `limit` (1–100, default 30) and `offset`. To inspect an incoming text, pass

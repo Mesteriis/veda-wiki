@@ -130,7 +130,7 @@ def make_server(client):
             "source_id": string, "path": string, "offset": {"type": "integer", "minimum": 0},
             "limit": {"type": "integer", "minimum": 1, "maximum": 16000},
             "expected_sha256": {"type": "string", "minLength": 64, "maxLength": 64}}, ["source_id", "path"]),
-        "veda_prepare_update": ("Prepare a non-persistent proposed article update after rereading the current revision. Returns the base revision and SHA for review; it does not save or publish the proposed text. Stale revisions are refused.", {
+        "veda_prepare_update": ("Prepare a non-persistent proposed article update using the current revision, SHA and conflict status. It does not save or publish the proposed text. Unresolved import conflicts must be resolved before a write; stale revisions are refused.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
@@ -226,7 +226,8 @@ def make_server(client):
             elif name == "veda_read_excerpt":
                 result = await asyncio.to_thread(client.request, "GET", "/api/v1/articles/excerpt?" + urlencode(arguments))
             elif name == "veda_prepare_update":
-                current = await asyncio.to_thread(read, arguments["source_id"], arguments["path"])
+                params = {"source_id": arguments["source_id"], "path": arguments["path"]}
+                current = await asyncio.to_thread(client.request, "GET", "/api/v1/articles/proposal-base?" + urlencode(params))
                 proposed = arguments["text"]
                 if (not isinstance(proposed, str) or len(proposed.encode("utf-8")) > MAX_ARTICLE_BYTES
                         or current["revision"] != arguments["expected_revision"]):
@@ -234,8 +235,9 @@ def make_server(client):
                 result = {"source_id": arguments["source_id"], "path": arguments["path"],
                           "expected_revision": current["revision"], "base_sha256": current["sha256"],
                           "proposed_sha256": hashlib.sha256(proposed.encode("utf-8")).hexdigest(),
-                          "text": proposed, "saved": False,
-                          "note": "Proposal only; review and an authorized write are still required."}
+                          "text": proposed, "saved": False, "unresolved_conflict": current["unresolved_conflict"],
+                          "note": ("Proposal only; resolve the import conflict before an authorized write." if current["unresolved_conflict"]
+                                   else "Proposal only; review and an authorized write are still required. Conflict status may change before writing.")}
             elif name == "veda_prepare_new_article":
                 sources = await asyncio.to_thread(client.request, "GET", "/api/v1/sources")
                 source = next((item for item in sources if item["id"] == arguments["source_id"]), None)
