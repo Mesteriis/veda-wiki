@@ -62,10 +62,20 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	m.Once(context.Background())
+	if _, err := s.page("two/docs/b.md", true); err != nil {
+		t.Fatal("second source was not initially public", err)
+	}
 	limited.Store(true)
 	m.Once(context.Background())
 	if secondCalls.Load() != 0 {
 		t.Fatal("second source called GitHub during shared cooldown")
+	}
+	if _, err := s.page("two/docs/b.md", true); err == nil {
+		t.Fatal("shared cooldown left the other source publicly verified")
+	}
+	if _, err := s.page("two/docs/b.md", false); err != nil {
+		t.Fatal("shared cooldown lost local content", err)
 	}
 	reopened, err := openStore(s.dir)
 	if err != nil {

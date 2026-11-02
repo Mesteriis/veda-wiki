@@ -87,6 +87,11 @@ func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 		<-done
 		t.Fatal("head request did not start")
 	}
+	if err := s.retryConnection("source"); err != nil {
+		close(release)
+		<-done
+		t.Fatal("manual retry during sync failed", err)
+	}
 	_, publicErr := s.page("source/README.md", true)
 	_, privateErr := s.page("source/README.md", false)
 	close(release)
@@ -96,6 +101,34 @@ func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 	}
 	if _, err := s.page("source/README.md", true); err == nil {
 		t.Fatal("invalidated snapshot became public after sync")
+	}
+}
+
+func TestReconfigurationRequiresFreshImportedHead(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	m := newSyncManager(s, f.client())
+	if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	if _, err := s.page("source/README.md", true); err != nil {
+		t.Fatal("initial public article unavailable", err)
+	}
+	c := s.connections()[0]
+	write := false
+	if _, err := m.configure(context.Background(), configureRequest{ID: c.ID, Write: &write, Expected: &c.ConfigRevision}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.page("source/README.md", true); err == nil {
+		t.Fatal("reconfigured connection exposed an unverified snapshot")
+	}
+	if _, err := s.page("source/README.md", false); err != nil {
+		t.Fatal("reconfiguration removed local content", err)
+	}
+	m.Once(context.Background())
+	if _, err := s.page("source/README.md", true); err != nil {
+		t.Fatal("fresh pull did not restore public content", err)
 	}
 }
 

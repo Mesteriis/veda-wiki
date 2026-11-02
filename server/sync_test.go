@@ -750,8 +750,14 @@ func TestGitHubPrivateQueuedWritesRequirePublicationConsent(t *testing.T) {
 	if e = s.publishJob(jobs[0].ID, 1, true); e != ErrConflict {
 		t.Fatal("stale publication accepted")
 	}
+	if e = s.connectionStatusFor(s.connections()[0], "syncing", "verified", "", nil, time.Time{}); e != nil {
+		t.Fatal(e)
+	}
 	if e = s.publishJob(jobs[0].ID, 2, true); e != nil {
 		t.Fatal(e)
+	}
+	if _, e = s.page("handbook/README.md", true); e == nil || s.connections()[0].State != "syncing" {
+		t.Fatal("publication approval exposed a snapshot during sync")
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())

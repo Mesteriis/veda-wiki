@@ -80,10 +80,13 @@ func sourcePublic(db Database, src Source, now time.Time) bool {
 // Publication decisions still use sourcePublic, but readers fail closed until
 // the import is complete. Sources without an import are not partial.
 func sourcePublicReadable(db Database, src Source, now time.Time) bool {
-	if src.ConnectionID != "" && db.Connections[src.ConnectionID].State == "syncing" {
-		// A fresh visibility check alone does not prove the previously
-		// imported head still describes the repository. Wait for the pull.
-		return false
+	if src.ConnectionID != "" {
+		c := db.Connections[src.ConnectionID]
+		// A visibility check alone does not establish which head was imported.
+		// Configuration changes clear the recorded head until a fresh pull.
+		if c.State == "syncing" || !commitID.MatchString(c.LastPull) || c.LastPull != src.ImportCommit || !commitID.MatchString(c.TreeSHA) {
+			return false
+		}
 	}
 	return sourcePublic(db, src, now) && !src.ImportPartial
 }
@@ -118,7 +121,9 @@ func (s *Store) retryConnection(id string) error {
 		}
 	}
 	c.NextAttempt = ""
-	c.State = "pending"
+	if c.State != "syncing" {
+		c.State = "pending"
+	}
 	db := s.clone()
 	db.Connections[id] = c
 	for key, j := range db.Outbox {
@@ -248,7 +253,9 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	db.Outbox[id] = job
 	conn := db.Connections[src.ConnectionID]
 	conn.NextAttempt = ""
-	conn.State = "pending"
+	if conn.State != "syncing" {
+		conn.State = "pending"
+	}
 	db.Connections[conn.ID] = conn
 	return s.commit(db)
 }
@@ -523,6 +530,7 @@ func (s *Store) connectionStatusFor(observed GitHubConnection, state, verificati
 			}
 			other.NextAttempt = next.UTC().Format(time.RFC3339Nano)
 			other.LastError = "rate_limited"
+			other.Verification = "unknown"
 			if !other.Paused {
 				other.State = "error"
 			}

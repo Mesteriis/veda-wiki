@@ -149,7 +149,9 @@ cooldown is applied to existing connections using the same VEDA account, or to
 all existing anonymous connections; it is persisted through restarts. Separate
 VEDA account IDs may still share a GitHub limit, and account registration or a
 new connection is not blocked by this background cooldown. A 403 without
-rate-limit headers is treated as a permission failure.
+rate-limit headers is treated as a permission failure. Shared cooldown also
+clears public visibility verification for those connections until their next
+successful synchronization; their private local copies remain available.
 Conflicts retain both versions. The worker checks visibility before import and
 private writes; public reads fail closed if the visibility proof is older than
 ten minutes, unavailable or paused. Visibility may change externally between
