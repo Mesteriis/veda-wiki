@@ -56,6 +56,10 @@ source-scoped key. Configuring a remote URL grants that destination the key and
 access to the requested documents, so use only a trusted VEDA endpoint. HTTPS
 transport avoids relying on the administrative SSH route, but does not isolate
 agents that share an operating-system account and can read each other's files.
+An isolated real-backend smoke test exercises a trusted test certificate,
+source-scoped read, unsaved proposal, out-of-scope denial and key revocation.
+It does not establish that a real deployed agent has been provisioned or that
+its TLS endpoint and credentials are configured correctly.
 
 For an SSH-based stdio transport, `mcp/keyed_stdio_launcher.py --key-file KEY --
 COMMAND...` sends the 64-byte key as a preamble to the trusted child and then
