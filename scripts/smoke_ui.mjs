@@ -89,6 +89,7 @@ for (const width of [1672, 390, 320]) {
   if (await evaluate("document.body.innerText.includes('Источники знаний')")) throw Error('integration panel visible anonymously');
   if (await evaluate("!!document.querySelector('.sidebar-bottom .storage, .sidebar-bottom .system')")) throw Error('sidebar status panels visible anonymously');
   if (await evaluate("!!document.querySelector('.shortcuts')")) throw Error('quick actions visible anonymously');
+  if (await evaluate("[...document.querySelectorAll('#main-navigation .nav-item')].some(e=>['GitHub','API и MCP','Настройки'].includes(e.textContent.trim())) || !!document.querySelector('.reading-mode, button[aria-label=Уведомления], button[aria-label=Оформление]') || !document.querySelector('button[aria-label=Профиль]')")) throw Error('anonymous navigation visibility incorrect');
   if (await evaluate("document.body.innerText.includes('Приватная тестовая страница')")) throw Error('private content visible anonymously');
   if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Профиль]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return getComputedStyle(b).display !== 'none' && r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('profile button is not visible or reachable');
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
@@ -100,6 +101,7 @@ for (const width of [1672, 390, 320]) {
   if (!await evaluate("document.body.innerText.includes('Источники знаний')")) throw Error('integration panel missing for authenticated reader');
   if (!await evaluate("!!document.querySelector('.sidebar-bottom .storage') && !!document.querySelector('.sidebar-bottom .system')")) throw Error('sidebar status panels missing for authenticated reader');
   if (!await evaluate("!!document.querySelector('.shortcuts')")) throw Error('quick actions missing for authenticated reader');
+  if (!await evaluate("['GitHub','API и MCP','Настройки'].every(t=>[...document.querySelectorAll('#main-navigation .nav-item')].some(e=>e.textContent.trim()===t)) && !!document.querySelector('.reading-mode') && !!document.querySelector('button[aria-label=Уведомления]') && !!document.querySelector('button[aria-label=Оформление]')")) throw Error('authenticated navigation missing');
   await evaluate("document.querySelector('.page-card[href*=private]').click()");
   await until("document.body.innerText.includes('Закрытый синтетический текст')");
   if (await evaluate("!!document.querySelector('.conflict-warning')")) throw Error('clean article showed conflict warning');
@@ -122,6 +124,10 @@ for (const width of [1672, 390, 320]) {
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
   await until("!location.search && !!document.querySelector('.page-card') && !document.body.innerText.includes('Приватная тестовая страница')");
   if (await evaluate("(async () => (await (await fetch('/api/session/status')).json()).authenticated)()")) throw Error('user session survived logout');
+  await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
+  await until("!!document.querySelector('.reader-access input[name=username]')");
+  await evaluate("document.querySelector('.reader-access input[name=username]').value='browser-user'; document.querySelector('.reader-access input[name=password]').value='synthetic fixture password'; document.querySelector('.reader-access form').requestSubmit()");
+  await until("document.body.innerText.includes('Приватная тестовая страница')");
   for (const title of ['GitHub', 'Настройки']) {
     if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
     await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);

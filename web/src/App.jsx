@@ -112,7 +112,7 @@ function Sidebar({ v }) {
         </span>
       </a>
       <nav id="main-navigation" className={menuOpen ? "mobile-open" : ""} aria-label="Основная навигация" onClick={(event) => { if (event.target.closest(".nav-item")) setMenuOpen(false); }}>
-        {nav.map(([icon, label, href, feature]) =>
+        {nav.filter(([, , , feature]) => !v.Public || !['github', 'api', 'settings'].includes(feature)).map(([icon, label, href, feature]) =>
           href ? (
             <a
               className={
@@ -204,13 +204,13 @@ function Header({ v }) {
         <kbd>K</kbd>
       </form>
       <div className="header-actions">
-        <span className="reading-mode"><I name="shield-check" />Только чтение</span>
+        {!v.Public && <><span className="reading-mode"><I name="shield-check" />Только чтение</span>
         <F className="round" name="notifications" label="Уведомления">
           <I name="bell" />
         </F>
         <F className="round" name="theme" label="Оформление">
           <I name="sun" />
-        </F>
+        </F></>}
         <F className="round profile" name="profile" label="Профиль">
           V
         </F>
