@@ -32,6 +32,11 @@ hermes mcp add veda --command /absolute/venv/bin/python --args /absolute/veda/mc
 
 These examples are for a server on the same machine. Loopback addresses inside
 another host or container are not reachable from the client machine. For a
+trusted directly reachable HTTPS VEDA instance, pass `--url https://VEDA-HOST
+--reader-key-file /private/agent.key --allow-remote-reader-https` to the
+adapter. Certificate and hostname verification stay enabled and redirects are
+refused; use a distinct source-scoped key for each agent. A remote HTTPS
+connection must be explicitly enabled and cannot use the owner-key adapter. For a
 trusted SSH transport and scoped Unix socket, use the keyed launcher described
 in [scoped access](scoped-access-design.md). Separate keys do not isolate agents
 that share an operating-system identity and can read each other's files; an

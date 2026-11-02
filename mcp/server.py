@@ -27,12 +27,19 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class Client:
-    def __init__(self, base, key_file=None, socket_path=None, read_only=False, key_value=None):
+    def __init__(self, base, key_file=None, socket_path=None, read_only=False, key_value=None, allow_remote_reader_https=False):
         parsed = urlparse(base)
-        if (parsed.scheme != "http" or parsed.hostname not in ("localhost", "127.0.0.1", "::1")
-                or parsed.username or parsed.password or parsed.path not in ("", "/")
+        loopback_http = parsed.scheme == "http" and parsed.hostname in ("localhost", "127.0.0.1", "::1")
+        remote_reader_https = (allow_remote_reader_https and parsed.scheme == "https" and bool(parsed.hostname)
+                               and read_only and key_file is not None and socket_path is None and key_value is None)
+        if (not (loopback_http or remote_reader_https)
+                or parsed.username is not None or parsed.password is not None or parsed.path not in ("", "/")
                 or parsed.query or parsed.fragment):
-            raise ValueError("MCP requires a loopback REST URL")
+            raise ValueError("MCP requires loopback HTTP or explicitly enabled reader-only HTTPS")
+        try:
+            parsed.port  # Reject malformed or out-of-range ports before making requests.
+        except ValueError:
+            raise ValueError("Invalid REST URL port") from None
         self.base = base.rstrip("/")
         self.key_file = Path(key_file) if key_file else None
         self.key_value = key_value
@@ -102,7 +109,9 @@ class Client:
                     raise ValueError("Response exceeds MCP limit")
                 return json.loads(payload)
         except HTTPError as exc:
-            raise ValueError(f"VEDA refused request (HTTP {exc.code})") from None
+            code = exc.code
+            exc.close()
+            raise ValueError(f"VEDA refused request (HTTP {code})") from None
 
 
 def make_server(client):
@@ -332,6 +341,7 @@ async def main():
     credentials.add_argument("--reader-key-file")
     credentials.add_argument("--reader-key-preamble", action="store_true")
     parser.add_argument("--reader-socket")
+    parser.add_argument("--allow-remote-reader-https", action="store_true", help="Allow a reader-key adapter to use a TLS-verified HTTPS REST endpoint")
     args = parser.parse_args()
     if not (args.key_file or args.reader_key_file or args.reader_socket) or (args.key_file and args.reader_socket) or (args.reader_key_preamble and not args.reader_socket):
         parser.error("choose a key file or a reader socket, optionally with a reader key")
@@ -350,7 +360,7 @@ async def main():
             raise ValueError("Invalid reader key preamble") from None
         if any(c not in "0123456789abcdef" for c in key_value):
             raise ValueError("Invalid reader key preamble")
-    server = make_server(Client(args.url, args.key_file or args.reader_key_file, args.reader_socket, read_only=args.reader_key_file is not None or args.reader_key_preamble, key_value=key_value))
+    server = make_server(Client(args.url, args.key_file or args.reader_key_file, args.reader_socket, read_only=args.reader_key_file is not None or args.reader_key_preamble, key_value=key_value, allow_remote_reader_https=args.allow_remote_reader_https))
     async with stdio_server() as (read, write):
         await server.run(read, write, InitializationOptions(
             server_name="veda", server_version="0.1.0", instructions=server.instructions,
