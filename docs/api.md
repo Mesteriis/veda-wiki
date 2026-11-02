@@ -471,6 +471,15 @@ compatible version before enabling. A changed or public repository, an offline
 source, errors and conflicting paths stop the affected work rather than making
 it public. This applies only after explicitly configuring the source pair.
 
+### Browser state polling
+
+`GET /api/state` returns an `ETag` for the complete response after access
+checks. A request with the same `If-None-Match` receives `304` without a body;
+any change in the visible response produces a new validator. The
+response remains `Cache-Control: no-store`, and clients must discard their
+in-memory state when signing out or changing sessions. The browser uses the
+validator only within one active page polling cycle.
+
 ### Browser knowledge graph
 
 `GET /api/state?graph=1` additionally returns `view.GraphEdges`, a list of

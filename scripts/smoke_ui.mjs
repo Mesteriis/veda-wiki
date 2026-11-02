@@ -86,6 +86,11 @@ for (const width of [1672, 390, 320]) {
   await until("location.search.includes('page=') && document.body.innerText.includes('Демонстрационное содержимое')");
   await send('Page.navigate', { url: privateUrl });
   await until("!!document.querySelector('.home-page-row')");
+  if (width === 1672) {
+    await evaluate("(() => { const original=window.fetch.bind(window); window.__vedaConditionalPoll=false; window.fetch=async (...args) => { const response=await original(...args); if (String(args[0]).startsWith('/api/state') && args[1]?.headers?.['If-None-Match'] && response.status===304) window.__vedaConditionalPoll=true; return response; }; })()");
+    await pollCondition(evaluate, 'window.__vedaConditionalPoll === true', 160);
+    if (!await evaluate("!!document.querySelector('.home-page-row')")) throw Error('conditional poll lost the displayed state');
+  }
   if (await evaluate("document.body.innerText.includes('Источники знаний')")) throw Error('integration panel visible anonymously');
   if (await evaluate("!!document.querySelector('.sidebar-bottom .storage, .sidebar-bottom .system')")) throw Error('sidebar status panels visible anonymously');
   if (await evaluate("!!document.querySelector('.shortcuts')")) throw Error('quick actions visible anonymously');

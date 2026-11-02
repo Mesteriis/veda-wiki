@@ -5,6 +5,7 @@ import { readVisits, recordVisit, saveVisits, clearVisits, visibleVisits } from 
 import { githubErrorMessage, githubVisibilityLabel } from "./githubErrors.js";
 import { githubSourceId } from "./githubSourceId.js";
 import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
+import { fetchState } from "./statePoll.js";
 const Features = createContext(() => {});
 const descriptions = {
   github: [
@@ -1028,18 +1029,21 @@ export function App({ linkLoginError = false }) {
   const modal = useRef(null);
   useEffect(() => {
     const c = new AbortController();
-    let timer;
+    let timer, etag = "";
     async function refreshState() {
       try {
-        const r = await fetch("/api/state" + window.location.search, { signal: c.signal });
-        if (!r.ok) {
-          if (r.status === 404) setData(null);
-          throw Error(r.status === 404 ? "Страница не найдена" : "Wiki временно недоступна");
+        const next = await fetchState(fetch, "/api/state" + window.location.search, c.signal, etag);
+        if (!c.signal.aborted) {
+          etag = next.etag;
+          if (!next.unchanged) setData(next.data);
+          setError("");
         }
-        const next = await r.json();
-        if (!c.signal.aborted) { setData(next); setError(""); }
       } catch (e) {
-        if (!c.signal.aborted) setError(e.message);
+        if (!c.signal.aborted) {
+          if (e.status) etag = "";
+          if (e.status === 404) setData(null);
+          setError(e.message);
+        }
       } finally {
         if (!c.signal.aborted) timer = setTimeout(refreshState, 10000);
       }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -559,12 +560,30 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	for _, g := range groups {
 		v.Groups = append(v.Groups, *g)
 	}
-	sort.Slice(v.Groups, func(i, j int) bool { return v.Groups[i].Name < v.Groups[j].Name })
+	sort.Slice(v.Groups, func(i, j int) bool {
+		if v.Groups[i].Name == v.Groups[j].Name {
+			return v.Groups[i].ID < v.Groups[j].ID
+		}
+		return v.Groups[i].Name < v.Groups[j].Name
+	})
 	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 	var body template.HTML
 	if v.Page != nil {
 		body = v.Page.HTML
 	}
-	json.NewEncoder(rw).Encode(map[string]any{"view": v, "html": body, "toc": v.TOC})
+	payload, err := json.Marshal(map[string]any{"view": v, "html": body, "toc": v.TOC})
+	if err != nil {
+		http.Error(rw, "State unavailable", http.StatusInternalServerError)
+		return
+	}
+	etag := fmt.Sprintf("\"%x\"", sha256.Sum256(payload))
+	rw.Header().Set("ETag", etag)
+	rw.Header().Add("Vary", "Cookie")
+	rw.Header().Add("Vary", "Authorization")
+	if r.Header.Get("If-None-Match") == etag {
+		rw.WriteHeader(http.StatusNotModified)
+		return
+	}
+	rw.Write(payload)
 }
 func label(id string) string { return id }
