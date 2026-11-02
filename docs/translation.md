@@ -94,7 +94,12 @@ Configure `--translation-interval` between 5 seconds and 1 hour (default one min
 
 The worker processes one candidate per interval and retries failures after 15
 minutes. Documents over 32,000 bytes are split at top-level paragraph or
-heading boundaries, then validated and saved as one result. A split is rejected
+heading boundaries, then validated and saved as one result.
+Between requests the worker rechecks the original revision, conflicts, deletion,
+move state and whether an owner already supplied a translation; when a change
+is observed it stops sending later chunks. A change can race with a request
+already in flight, so the final save also rechecks state under the write lock.
+The result is discarded if it is no longer current. A split is rejected
 if it changes how protected Markdown is parsed, including references whose
 definitions are in another chunk. Large blocks without a safe split require manual handling and are skipped for
 24 hours. Large documents containing HTML can be split only when all HTML is

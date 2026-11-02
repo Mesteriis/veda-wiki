@@ -100,6 +100,12 @@ func (w *translationWorker) Once(ctx context.Context) {
 		}
 		var output strings.Builder
 		for _, part := range parts {
+			// A slow local model may return after the document changed, was
+			// deleted, conflicted or received a translation from an owner.
+			// Stop sending the remaining chunks once that state is observed.
+			if ctx.Err() != nil || !w.store.translationStillNeeded(candidate) {
+				return
+			}
 			var translated string
 			translated, err = w.translate(ctx, part)
 			if err != nil {
@@ -132,6 +138,30 @@ func (w *translationWorker) Once(ctx context.Context) {
 		}
 		return
 	}
+}
+
+// This check is advisory between requests: a concurrent change can still occur
+// immediately after it. saveTranslation rechecks the state under the write lock.
+func (s *Store) translationStillNeeded(candidate translationCandidate) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src, ok := s.db.Sources[candidate.SourceID]
+	if s.invalid || !ok || src.Kind != "program" || moveDeletionLocks(s.db, candidate.SourceID, candidate.Path) {
+		return false
+	}
+	a, ok := s.db.Articles[candidate.SourceID+"/"+candidate.Path]
+	if !ok || a.Deleted || candidate.Revision < 1 || len(a.Versions) != candidate.Revision || a.Versions[len(a.Versions)-1].SHA != candidate.OriginalSHA {
+		return false
+	}
+	if a.Translation != nil && a.Translation.OriginalSHA == candidate.OriginalSHA {
+		return false
+	}
+	for _, conflict := range a.Conflicts {
+		if conflict.Resolution == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // This conservative script check cannot establish language or translation

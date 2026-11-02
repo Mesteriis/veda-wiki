@@ -236,6 +236,75 @@ func TestLocalTranslationWorkerDoesNotOverwriteConcurrentOwnerTranslation(t *tes
 	}
 }
 
+func TestLocalTranslationWorkerStopsRemainingChunksWhenWorkBecomesStale(t *testing.T) {
+	for _, change := range []string{"none", "revision", "owner", "deleted", "conflict"} {
+		t.Run(change, func(t *testing.T) {
+			s := testStore(t)
+			programSource(t, s, "program", "private")
+			original := "# Setup\n\n" + strings.Repeat("English ", 2500) + "\n\n" + strings.Repeat("Second ", 2500)
+			rev, err := s.put("program", "docs/guide.md", original, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				var input struct {
+					Prompt string `json:"prompt"`
+				}
+				if json.NewDecoder(r.Body).Decode(&input) != nil {
+					t.Error("invalid request")
+					return
+				}
+				if calls == 1 {
+					var changeErr error
+					switch change {
+					case "revision":
+						_, changeErr = s.put("program", "docs/guide.md", "# New revision", 1)
+					case "owner":
+						_, changeErr = s.submitTranslation(translationRequest{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Ручной перевод\n\nТекст"})
+					case "deleted", "conflict":
+						s.mu.Lock()
+						a := s.db.Articles["program/docs/guide.md"]
+						if change == "deleted" {
+							a.Deleted = true
+						} else {
+							a.Conflicts = append(a.Conflicts, ImportConflict{})
+						}
+						s.db.Articles["program/docs/guide.md"] = a
+						s.mu.Unlock()
+					}
+					if changeErr != nil {
+						t.Error(changeErr)
+					}
+				}
+				translated := "Текст"
+				if strings.HasPrefix(input.Prompt, "#") {
+					translated = "# Установка\n\nТекст"
+				}
+				jsonResponse(w, 200, map[string]any{"done": true, "response": translated})
+			}))
+			defer srv.Close()
+			worker, err := newTranslationWorker(s, srv.URL, "fixture")
+			if err != nil {
+				t.Fatal(err)
+			}
+			worker.Once(context.Background())
+			a, err := s.article("program", "docs/guide.md", false)
+			if err != nil && !(change == "deleted" && errors.Is(err, ErrNotFound)) {
+				t.Fatal(err)
+			}
+			if change == "none" {
+				if calls < 2 || a.Translation == nil || a.Translation.Origin != "local_model" {
+					t.Fatal("unchanged document did not finish translation", calls)
+				}
+			} else if calls != 1 || (change == "owner" && (a.Translation == nil || a.Translation.Text != "# Ручной перевод\n\nТекст")) || (change != "owner" && a.Translation != nil) {
+				t.Fatal("stale job continued or replaced a translation", calls)
+			}
+		})
+	}
+}
+
 func TestLocalTranslationWorkerRejectsIncompleteAndUnchangedOutput(t *testing.T) {
 	for _, fixture := range []struct {
 		done           bool
