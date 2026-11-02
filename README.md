@@ -117,7 +117,7 @@ make test
 .venv/bin/python scripts/smoke_large.py
 ```
 
-The CI workflow builds from a clean checkout and runs `make test` and the MCP smoke test. `make test`
+The CI workflow builds from a clean checkout and runs `make test`, browser and MCP smoke tests. `make test`
 builds React, tests tree navigation, runs Go race tests and `go vet`. The smoke test uses
 temporary empty storage and the official MCP SDK against the actual Go server.
 It verifies REST/MCP write-through, revisions, actual CLI import, conflict
@@ -127,8 +127,8 @@ An optional browser smoke test needs Node 22+ and a trusted local Chrome or
 Chromium executable. It starts a temporary VEDA with synthetic public articles
 and a temporary browser profile; it checks article navigation, search and
 viewport overflow, plus a scoped reader login and logout on desktop and mobile.
-It is not part of CI and does not exercise production credentials or GitHub
-connections:
+It runs in CI with the hosted runner’s Chrome and does not exercise production
+credentials or GitHub connections:
 
 ```sh
 make build
