@@ -32,6 +32,7 @@ type Page struct {
 	searchDisplayed      string
 	ProgramDocumentation bool          `json:"program_documentation,omitempty"`
 	TranslationOrigin    string        `json:"translation_origin,omitempty"`
+	TranslationState     string        `json:"translation_state,omitempty"`
 	OriginalSHA          string        `json:"original_sha256,omitempty"`
 	Translated           bool          `json:"translated,omitempty"`
 	Path                 string        `json:"path"`

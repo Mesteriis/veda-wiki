@@ -39,7 +39,7 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 		t.Fatal(e)
 	}
 	initial, e := s.page("program/docs/setup.md", false)
-	if e != nil || !initial.ProgramDocumentation || initial.Translated {
+	if e != nil || !initial.ProgramDocumentation || initial.Translated || initial.TranslationState != "unavailable" {
 		t.Fatal("original program documentation is not identified", e)
 	}
 	in := translationRequest{SourceID: "program", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Установка\n\nВыполните `install` и [читайте](guide.md).\n\n```sh\necho hello\n```\n"}
@@ -57,7 +57,7 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 		t.Fatal(e)
 	}
 	got, e := s.page("program/docs/setup.md", false)
-	if e != nil || !got.Translated || got.OriginalSHA != rev.SHA || got.Text != in.Text {
+	if e != nil || !got.Translated || got.TranslationState != "current" || got.OriginalSHA != rev.SHA || got.Text != in.Text {
 		t.Fatal("translation not visible", e)
 	}
 	source, e := s.article("program", "docs/setup.md", false)
@@ -68,7 +68,7 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 		t.Fatal(e)
 	}
 	got, e = s.page("program/docs/setup.md", false)
-	if e != nil || !got.ProgramDocumentation || got.Translated || !strings.Contains(got.Text, "Changed upstream") {
+	if e != nil || !got.ProgramDocumentation || got.Translated || got.TranslationState != "stale" || !strings.Contains(got.Text, "Changed upstream") {
 		t.Fatal("stale translation displayed", e)
 	}
 	if _, e = s.submitTranslation(in); e != ErrConflict {
@@ -79,7 +79,7 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 		t.Fatal(e)
 	}
 	got, e = reopened.page("program/docs/setup.md", false)
-	if e != nil || got.Translated {
+	if e != nil || got.Translated || got.TranslationState != "stale" {
 		t.Fatal("stale state lost on restart", e)
 	}
 }
@@ -129,7 +129,31 @@ func TestPrivateTranslationCannotAppearAfterVisibilityChanges(t *testing.T) {
 		t.Fatal("publication review missing", candidates)
 	}
 	page, e := s.page("program/docs/readme.md", true)
-	if e != nil || !page.ProgramDocumentation || page.Translated || page.Text != "# Original" {
+	if e != nil || !page.ProgramDocumentation || page.Translated || page.TranslationState != "unavailable" || page.Text != "# Original" {
 		t.Fatal("private translation published", e)
+	}
+}
+
+func TestStalePrivateDraftDoesNotLeakOnPublicPage(t *testing.T) {
+	s := testStore(t)
+	programSource(t, s, "program", "public")
+	rev, err := s.put("program", "docs/a.md", "# Original", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.saveTranslation(translationRequest{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.put("program", "docs/a.md", "# Updated", 1); err != nil {
+		t.Fatal(err)
+	}
+	private, err := s.page("program/docs/a.md", false)
+	if err != nil || private.TranslationState != "stale" || private.Translated {
+		t.Fatal("private reader did not see stale translation state", err)
+	}
+	public, err := s.page("program/docs/a.md", true)
+	if err != nil || public.TranslationState != "unavailable" || public.TranslationOrigin != "" || public.Translated {
+		t.Fatal("public page exposed unpublished translation state", err)
 	}
 }

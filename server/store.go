@@ -675,11 +675,18 @@ func (s *Store) page(key string, public bool) (Page, error) {
 	}
 	originalSHA := r.SHA
 	r, translated := displayedRevision(a, r, public)
-	origin := ""
-	if translated {
-		origin = a.Translation.Origin
+	origin, translationState := "", ""
+	if src.Kind == "program" {
+		translationState = "unavailable"
+		if translated {
+			translationState = "current"
+			origin = a.Translation.Origin
+		} else if !public && a.Translation != nil && a.Translation.OriginalSHA != originalSHA {
+			// Public readers must not learn whether an unpublished translation exists.
+			translationState = "stale"
+		}
 	}
-	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated, TranslationOrigin: origin, ProgramDocumentation: src.Kind == "program"}, nil
+	return Page{Path: key, Title: title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated, TranslationOrigin: origin, TranslationState: translationState, ProgramDocumentation: src.Kind == "program"}, nil
 }
 func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	s.mu.RLock()

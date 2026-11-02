@@ -518,8 +518,8 @@ function Reading({ data }) {
         </a>
         <div className="source-path">{v.Page.path}</div>
         <div className="provenance">
-          {v.Page.translated ? "Перевод на русский · SHA256" : v.Page.program_documentation ? "Оригинал · перевод недоступен · SHA256" : "SHA256"} <code>{v.Page.sha256}</code>
-          {v.Page.translated && v.Page.translation_origin === "local_model" && <> · Локальный автоматический перевод</>}
+          {v.Page.translated ? "Перевод на русский · SHA256" : v.Page.translation_state === "stale" ? "Оригинал · перевод устарел · SHA256" : v.Page.program_documentation ? "Оригинал · перевод недоступен · SHA256" : "SHA256"} <code>{v.Page.sha256}</code>
+          {v.Page.translated && (v.Page.translation_origin === "local_model" ? <> · Локальный автоматический перевод</> : <> · Происхождение перевода неизвестно</>)}
           {v.Page.translated && <> · Оригинал <code>{v.Page.original_sha256}</code></>}
         </div>
         <div

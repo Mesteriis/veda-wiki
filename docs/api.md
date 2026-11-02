@@ -5,6 +5,13 @@ A separate `reader.key` bearer credential can read current private content but c
 data directory and is never returned by the API. Errors do not echo credentials
 or article bodies. Do not put the key into URLs, browser storage or logs.
 
+For a program document, the reading page includes `translation_state`: `current`
+when a matching translation is displayed, `unavailable` when none is visible,
+and `stale` to authenticated readers when an existing translation targets an
+older original. The public surface reports `unavailable` in that last case
+and does not expose the existence or origin of unpublished translations.
+Unknown translation origin is explicitly labelled in the interface.
+
 | Method | Route | Behavior |
 | --- | --- | --- |
 | GET | `/health` | Visible article count and visible revision timestamp |
