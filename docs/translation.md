@@ -31,7 +31,9 @@ only their authorized sources; anonymous callers cannot list the queue. The
 owner can read each original and submit via `POST /api/v1/articles/translation` or `veda_translate_article`
 with `source_id`, `path`, `expected_revision`, `original_sha256`, `text` and
 optional `confirm_publication`. The original revision and SHA must still match;
-unresolved conflicts block submission. Code blocks, inline code, link and image
+an unresolved import conflict also blocks validation and saving, even if the
+local revision and hash remain unchanged. Resolve the conflict before saving.
+Code blocks, inline code, link and image
 destinations and raw HTML fragments must be retained in the same order. HTML
 blocks are preserved in full, including any prose inside them; prose inside an
 HTML block cannot currently be translated through this submission path. This

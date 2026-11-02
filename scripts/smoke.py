@@ -161,6 +161,26 @@ async def main():
                         "index": 0, "expected_revision": 2, "resolution": "upstream"})
                     resolved = await call("veda_read", {"source_id": "imported", "path": "README.md"})
                     assert resolved["revision"] == 3 and resolved["text"] == "# Imported upstream edit"
+                    program_checkout = Path(tmp) / "program-checkout"
+                    (program_checkout / "docs").mkdir(parents=True)
+                    (program_checkout / "docs/guide.md").write_text("# Original")
+                    program_git = ["git", "-C", str(program_checkout), "-c", "core.hooksPath=/dev/null",
+                                   "-c", "commit.gpgsign=false", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
+                    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Fixture"]):
+                        subprocess.run(program_git + args, check=True, capture_output=True)
+                    program_import = [str(ROOT / "veda"), "import", "--checkout", str(program_checkout),
+                                      "--source", "imported-program", "--url", f"http://127.0.0.1:{private_port}",
+                                      "--key-file", str(data / "owner.key")]
+                    subprocess.run(program_import + ["--create"], check=True, capture_output=True)
+                    local = await call("veda_write_article", {"source_id": "imported-program", "path": "docs/guide.md", "text": "# Local edit", "expected_revision": 1})
+                    translation = {"source_id": "imported-program", "path": "docs/guide.md", "expected_revision": 2, "text": "# Локальная правка"}
+                    assert (await call("veda_prepare_translation", translation))["validation"]["structural_valid"] is True
+                    (program_checkout / "docs/guide.md").write_text("# Remote edit")
+                    assert json.loads(subprocess.run(program_import, check=True, capture_output=True, text=True).stdout)["conflicts"] == 1
+                    assert (await session.call_tool("veda_prepare_translation", translation)).isError
+                    assert (await session.call_tool("veda_translate_article", {**translation, "original_sha256": local["sha256"]})).isError
+                    await call("veda_resolve_conflict", {"source_id": "imported-program", "path": "docs/guide.md", "index": 0, "expected_revision": 2, "resolution": "local"})
+                    assert (await call("veda_prepare_translation", translation))["validation"]["structural_valid"] is True
                     for port in (private_port, public_port):
                         public = public_json(port, "/api/state")
                         encoded = json.dumps(public)
@@ -329,7 +349,7 @@ async def main():
                             owner_post("/api/v1/access-keys/revoke", {"id": "required-test"})
                             revoked = await keyed_socket.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert revoked.isError
-            print("PASS: owner MCP; scoped MCP read and revocation; context; import; conflicts; public isolation; copy; move; translation; reader socket; restart")
+            print("PASS: owner MCP; scoped MCP read and revocation; context; import; conflicts; public isolation; copy; move; translation and conflict guard; reader socket; restart")
         finally:
             process.terminate()
             process.wait(timeout=10)

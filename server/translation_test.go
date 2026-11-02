@@ -83,6 +83,68 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 		t.Fatal("stale state lost on restart", e)
 	}
 }
+
+func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
+	for _, sqlite := range []bool{false, true} {
+		t.Run(map[bool]string{false: "json", true: "sqlite"}[sqlite], func(t *testing.T) {
+			s := testStore(t)
+			batch := testBatch()
+			batch.Kind, batch.Metadata = "program", nil
+			batch.Files = map[string]string{"docs/guide.md": "# Original"}
+			if _, err := s.importBatch(batch); err != nil {
+				t.Fatal(err)
+			}
+			local, err := s.put("handbook", "docs/guide.md", "# Local edit", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sqlite {
+				if err = migrateSQLite(s.dir); err != nil {
+					t.Fatal(err)
+				}
+				s, err = openStore(s.dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			proposal := translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 2, OriginalSHA: local.SHA, Text: "# Локальная правка"}
+			if _, err = s.validateTranslation(proposal); err != nil {
+				t.Fatal("valid proposal rejected", err)
+			}
+			batch = applyAgain(s, batch)
+			batch.Files["docs/guide.md"] = "# Remote edit"
+			result, err := s.importBatch(batch)
+			if err != nil || result.Conflicts != 1 {
+				t.Fatal("conflict not created", err)
+			}
+			if _, err = s.validateTranslation(proposal); err != ErrConflict {
+				t.Fatal("conflicted validation accepted", err)
+			}
+			if _, err = s.submitTranslation(proposal); err != ErrConflict {
+				t.Fatal("conflicted submission accepted", err)
+			}
+			if _, err = s.saveTranslation(proposal, true); err != ErrConflict {
+				t.Fatal("conflicted automatic draft accepted", err)
+			}
+			if len(s.translationCandidates()) != 0 {
+				t.Fatal("conflicted article queued for translation")
+			}
+			reopened, err := openStore(s.dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = reopened.submitTranslation(proposal); err != ErrConflict {
+				t.Fatal("restart lost conflict", err)
+			}
+			if err = reopened.resolveConflict("handbook", "docs/guide.md", 0, 2, "local"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = reopened.submitTranslation(proposal); err != nil {
+				t.Fatal("resolved translation rejected", err)
+			}
+		})
+	}
+}
 func TestTranslationPublicationRequiresReview(t *testing.T) {
 	s := testStore(t)
 	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "public"}); e != nil {
