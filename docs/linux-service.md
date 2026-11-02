@@ -58,8 +58,12 @@ backup or recovery mechanism. Successful CI runs also provide temporary
 are CI builds, not signed releases, and expire under GitHub Actions retention.
 Verify the manifest before installing. A locally built ARM64 archive passed a
 synthetic Linux ARM64 container check for health, REST, isolation, embedded UI,
-SQLite restore and the local translation protocol. This is not a fresh-host
-systemd installation or a real-model test. To repeat it on an already running
+SQLite restore and the local translation protocol. It did not use a real model.
+The amd64 archive was also installed on a fresh GitHub-hosted
+Ubuntu runner using the commands above; the service, empty public index, UI,
+state/key permissions and restart passed. This does not cover other Linux
+distributions, existing installations, remote access or MCP installation.
+To repeat the ARM64 check on an already running
 ARM64 Docker host with the selected Python image already present:
 
 ```sh
