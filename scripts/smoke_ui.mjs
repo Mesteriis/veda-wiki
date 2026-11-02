@@ -15,18 +15,24 @@ if (!pages) throw Error('debugger unavailable');
 const ws = new WebSocket(pages.find(page => page.type === 'page').webSocketDebuggerUrl);
 await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
 let id = 0;
+let currentWidth = 0;
 const pending = new Map();
 ws.onmessage = event => {
   const message = JSON.parse(event.data);
   if (message.id && pending.has(message.id)) {
     const call = pending.get(message.id);
     pending.delete(message.id);
-    message.error ? call.reject(Error('CDP error')) : call.resolve(message.result);
+    if (message.error) {
+      const code = Number.isInteger(message.error.code) ? message.error.code : 'unknown';
+      const known = ['Cannot find context with specified id', 'Inspected target navigated or closed'];
+      const reason = known.includes(message.error.message) ? message.error.message : 'other';
+      call.reject(Error(`CDP error: method=${call.method} width=${currentWidth} code=${code} reason=${reason}`));
+    } else call.resolve(message.result);
   }
 };
 const send = (method, params = {}) => new Promise((resolve, reject) => {
   const next = ++id;
-  pending.set(next, { resolve, reject });
+  pending.set(next, { resolve, reject, method });
   ws.send(JSON.stringify({ id: next, method, params }));
 });
 const evaluate = async expression => {
@@ -43,6 +49,7 @@ const until = async expression => {
 };
 await send('Page.enable');
 for (const width of [1672, 390, 320]) {
+  currentWidth = width;
   await send('Emulation.setDeviceMetricsOverride', { width, height: 941, deviceScaleFactor: 1, mobile: width <= 390 });
   await send('Page.navigate', { url });
   await until("!!document.querySelector('.page-card')");
