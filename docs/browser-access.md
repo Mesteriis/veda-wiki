@@ -94,9 +94,10 @@ an already configured administrator cannot be replaced by this operation.
 Transport the token privately and do not put it in URLs, logs or command
 arguments. This changes the logical store format to version 20: older binaries
 refuse it. A compatible backup and restore plan are required before setup.
-The separately configured workstation reader bridge can still grant its local
-operating-system user read-only access without a browser login; a named admin
-session does not change that bridge's existing trust boundary.
+Workstation bridges must forward the reader session to the private listener
+and must not use a trusted reader socket as anonymous browser access. The
+browser reader, GitHub administrator and access-administrator sessions remain
+separate; sign in to each surface as needed.
 
 ## Creating an administrator from a terminal
 
