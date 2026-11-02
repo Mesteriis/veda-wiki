@@ -55,6 +55,65 @@ func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 	}
 }
 
+func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original guide"})
+	m := newSyncManager(s, f.client())
+	if _, err := m.connect(context.Background(), connectRequest{ID: "program", Repository: "org/handbook"}); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	before := s.db.Sources["program"].ImportGeneration
+	if _, err := s.page("program/docs/guide.md", true); err != nil {
+		t.Fatal("initial public document unavailable", err)
+	}
+	f.advance(map[string]string{"docs": "not a directory"})
+	m.Once(context.Background())
+	if c := s.connections()[0]; c.State != "error" || c.Verification != "unknown" || c.LastError != "invalid_docs_directory" {
+		t.Fatal("invalid docs entry was accepted or misclassified", c.State, c.Verification, c.LastError)
+	}
+	if s.db.Sources["program"].ImportGeneration != before || s.db.Articles["program/docs/guide.md"].Deleted {
+		t.Fatal("invalid docs entry changed the local snapshot")
+	}
+	if _, err := s.page("program/docs/guide.md", false); err != nil {
+		t.Fatal("local documentation was lost", err)
+	}
+	if _, err := s.page("program/docs/guide.md", true); err == nil {
+		t.Fatal("stale snapshot remained publicly visible")
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.page("program/docs/guide.md", false); err != nil {
+		t.Fatal("document lost after restart", err)
+	}
+	f.advance(map[string]string{"docs/guide.md": "# Original guide"})
+	if err := reopened.retryConnection("program"); err != nil {
+		t.Fatal(err)
+	}
+	m = newSyncManager(reopened, f.client())
+	m.Once(context.Background())
+	if _, err := reopened.page("program/docs/guide.md", true); err != nil {
+		t.Fatal("valid documentation did not recover", err)
+	}
+}
+
+func TestProgramDocsSymlinkAndSubmoduleAreRejected(t *testing.T) {
+	s := testStore(t)
+	m := newSyncManager(s, nil)
+	for _, entry := range []gitTreeEntry{
+		{Path: "docs", Type: "blob", Mode: "120000"},
+		{Path: "docs", Type: "commit", Mode: "160000"},
+		{Path: "docs", Type: "tree", Mode: "160000"},
+	} {
+		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "program"}, strings.Repeat("a", 40), "", gitTree{Tree: []gitTreeEntry{entry}})
+		if errorCode(err) != "invalid_docs_directory" {
+			t.Fatalf("invalid docs entry accepted: %s %s: %v", entry.Type, entry.Mode, err)
+		}
+	}
+}
+
 func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})

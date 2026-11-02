@@ -84,6 +84,12 @@ README, source code or a `do/` directory. Original program Markdown remains inta
 translation via REST/MCP; see [translation workflow](translation.md). Automatic
 translation is not yet configured.
 
+In a program repository, if an entry named `docs` exists but is a file, symlink or submodule instead of
+a directory, import fails rather than treating it as an absent directory. A
+connected source retains its local snapshot; an unverified public snapshot is
+not served while the connection reports `invalid_docs_directory`. Correct the repository entry
+and retry synchronization.
+
 ## Bounds and provenance
 
 Markdown must be UTF-8 and at most 1 MiB per file. Persisting a document larger

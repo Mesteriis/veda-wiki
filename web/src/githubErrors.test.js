@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { githubErrorMessage } from './githubErrors.js';
 
 test('explains known errors without displaying arbitrary remote content', () => {
+  assert.match(githubErrorMessage('invalid_docs_directory', 0, 'fallback'), /docs должен быть каталогом/);
   assert.match(githubErrorMessage('rate_limited', 503, 'fallback'), /лимит/);
   assert.match(githubErrorMessage('repository_type_changed', 0, 'fallback'), /Верните прежнюю структуру/);
   assert.match(githubErrorMessage('asset_unavailable', 0, 'fallback'), /резервную копию/);

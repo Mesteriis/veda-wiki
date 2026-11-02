@@ -330,6 +330,10 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 			return batch, e
 		}
 		batch.Kind = "wiki"
+	} else if entry, exists := entries["docs"]; exists && (entry.Type != "tree" || entry.Mode != "040000") {
+		// A file, symlink or submodule named docs is not an absent directory.
+		// Treating it as one would delete previously imported documentation.
+		return batch, &remoteError{Code: "invalid_docs_directory"}
 	} else if !hasDocs {
 		m.store.mu.RLock()
 		existing, found := m.store.db.Sources[c.ID]
