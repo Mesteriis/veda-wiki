@@ -615,6 +615,34 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	}
 	return rev, nil
 }
+
+// The caller holds the store lock or operates on a request-local snapshot.
+// A blank value means no current sync warning, not proof of live correctness.
+func sourceSyncIssue(db Database, src Source, now time.Time) string {
+	if src.ConnectionID == "" {
+		return ""
+	}
+	conn, exists := db.Connections[src.ConnectionID]
+	switch {
+	case !exists:
+		return "unverified"
+	case conn.Paused:
+		return "paused"
+	case conn.State == "error":
+		return "error"
+	case conn.State == "blocked" || conn.State == "conflict":
+		return "attention"
+	case conn.State == "syncing":
+		return "checking"
+	default:
+		verified, err := time.Parse(time.RFC3339Nano, conn.VerifiedAt)
+		if conn.Verification != "verified" || err != nil || verified.After(now.Add(time.Minute)) || now.Sub(verified) >= 10*time.Minute || !commitID.MatchString(conn.LastPull) || conn.LastPull != src.ImportCommit || !commitID.MatchString(conn.TreeSHA) {
+			return "unverified"
+		}
+	}
+	return ""
+}
+
 func (s *Store) sources(public bool) []SourceView {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -637,26 +665,7 @@ func (s *Store) sources(public bool) []SourceView {
 			}
 			view := SourceView{Source: src}
 			if !public {
-				if src.ConnectionID != "" {
-					conn, exists := s.db.Connections[src.ConnectionID]
-					switch {
-					case !exists:
-						view.syncIssue = "unverified"
-					case conn.Paused:
-						view.syncIssue = "paused"
-					case conn.State == "error":
-						view.syncIssue = "error"
-					case conn.State == "blocked" || conn.State == "conflict":
-						view.syncIssue = "attention"
-					case conn.State == "syncing":
-						view.syncIssue = "checking"
-					default:
-						verified, err := time.Parse(time.RFC3339Nano, conn.VerifiedAt)
-						if conn.Verification != "verified" || err != nil || verified.After(now.Add(time.Minute)) || now.Sub(verified) >= 10*time.Minute || !commitID.MatchString(conn.LastPull) || conn.LastPull != src.ImportCommit || !commitID.MatchString(conn.TreeSHA) {
-							view.syncIssue = "unverified"
-						}
-					}
-				}
+				view.syncIssue = sourceSyncIssue(s.db, src, now)
 				if observed, ok := s.observed[src.ID]; ok {
 					view.LastImportObservedAt = observed.UTC().Format(time.RFC3339Nano)
 				}

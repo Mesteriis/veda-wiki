@@ -103,7 +103,7 @@ func TestPublicAgentContextUsesPublishedRevision(t *testing.T) {
 	if err != nil || len(ctx.Instructions) != 1 || ctx.Instructions[0].Text != "# Published instructions" || ctx.Instructions[0].Number != 0 {
 		t.Fatal("public context revealed a private revision", err)
 	}
-	if ctx.SourceStatus.LastImportObservedAt != nil || ctx.SourceStatus.UnresolvedConflicts != 0 || ctx.SourceStatus.SyncState != "" || ctx.SourceStatus.SyncError != "" || ctx.SourceStatus.SyncVerification != "" {
+	if ctx.SourceStatus.LastImportObservedAt != nil || ctx.SourceStatus.UnresolvedConflicts != 0 || ctx.SourceStatus.SyncState != "" || ctx.SourceStatus.SyncError != "" || ctx.SourceStatus.SyncVerification != "" || ctx.SourceStatus.SyncIssue != "" {
 		t.Fatal("public context revealed private status")
 	}
 }
@@ -133,7 +133,7 @@ func TestScopedContextReportsConnectionFailure(t *testing.T) {
 	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &result) != nil {
 		t.Fatal("scoped context unavailable", r.Code)
 	}
-	if result.SourceStatus.SyncState != "error" || result.SourceStatus.SyncError != "upstream_unavailable" || result.SourceStatus.SyncVerification != "unknown" || result.SourceStatus.LastImportObservedAt == nil {
+	if result.SourceStatus.SyncState != "error" || result.SourceStatus.SyncError != "upstream_unavailable" || result.SourceStatus.SyncVerification != "unknown" || result.SourceStatus.SyncIssue != "error" || result.SourceStatus.LastImportObservedAt == nil {
 		t.Fatal("connection failure not reflected in context", result.SourceStatus)
 	}
 	request := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path=AGENTS.md", nil)
@@ -143,10 +143,56 @@ func TestScopedContextReportsConnectionFailure(t *testing.T) {
 	var base struct {
 		SourceStatus contextStatus `json:"source_status"`
 	}
-	if proposal.Code != 200 || json.Unmarshal(proposal.Body.Bytes(), &base) != nil || base.SourceStatus.SyncState != "error" || base.SourceStatus.SyncVerification != "unknown" {
+	if proposal.Code != 200 || json.Unmarshal(proposal.Body.Bytes(), &base) != nil || base.SourceStatus.SyncState != "error" || base.SourceStatus.SyncVerification != "unknown" || base.SourceStatus.SyncIssue != "error" {
 		t.Fatal("connection failure not reflected in proposal", proposal.Code)
 	}
 	if call("other").Code != 404 {
 		t.Fatal("connection status escaped source scope")
 	}
+}
+
+func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Instructions"})
+	connectFixture(t, s, f, false)
+	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner"}
+	read := func(route string) contextStatus {
+		t.Helper()
+		req := httptest.NewRequest("GET", route, nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		res := httptest.NewRecorder()
+		w.ServeHTTP(res, req)
+		var payload struct {
+			SourceStatus contextStatus `json:"source_status"`
+		}
+		if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &payload) != nil {
+			t.Fatal("scoped status unavailable", res.Code)
+		}
+		return payload.SourceStatus
+	}
+	check := func(want string) {
+		t.Helper()
+		context := read("/api/v1/context?source_id=handbook&path=AGENTS.md")
+		proposal := read("/api/v1/articles/proposal-base?source_id=handbook&path=AGENTS.md")
+		if context.SyncIssue != want || proposal.SyncIssue != want || s.sources(false)[0].syncIssue != want {
+			t.Fatalf("inconsistent warning: context=%q proposal=%q want=%q", context.SyncIssue, proposal.SyncIssue, want)
+		}
+	}
+	check("")
+	s.mu.Lock()
+	conn := s.db.Connections["handbook"]
+	conn.Paused = true
+	s.db.Connections["handbook"] = conn
+	s.mu.Unlock()
+	check("paused")
+	s.mu.Lock()
+	conn.Paused = false
+	conn.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
+	s.db.Connections["handbook"] = conn
+	s.mu.Unlock()
+	check("unverified")
 }

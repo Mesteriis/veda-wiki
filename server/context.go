@@ -23,6 +23,7 @@ type contextStatus struct {
 	SyncState            string  `json:"sync_state,omitempty"`
 	SyncError            string  `json:"sync_error,omitempty"`
 	SyncVerification     string  `json:"sync_verification,omitempty"`
+	SyncIssue            string  `json:"sync_issue,omitempty"`
 }
 
 type agentContext struct {
@@ -34,7 +35,7 @@ type agentContext struct {
 
 // The caller holds the store read or write lock, and has authorized the source.
 func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
-	status := contextStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty}
+	status := contextStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty, SyncIssue: sourceSyncIssue(s.db, src, time.Now())}
 	if conn, ok := s.db.Connections[src.ConnectionID]; src.ConnectionID != "" && ok {
 		status.SyncState = conn.State
 		status.SyncError = conn.LastError

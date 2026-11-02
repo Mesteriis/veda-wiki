@@ -237,9 +237,12 @@ absent after restart until another import; a head-only check does not create it.
 are omitted from public-only listings where applicable. MCP `veda_context`
 returns the same status alongside scope instructions. For authenticated access
 to a connected source, it also includes `sync_state`, `sync_verification` and,
-when present, the sanitized `sync_error` code. A failed, paused or unverified
-connection can leave the local copy stale even when an earlier observation time
-is present. These connection fields are omitted from public context responses
+when present, the sanitized `sync_error` code and `sync_issue`. The warning is
+`paused`, `error`, `attention`, `checking` or `unverified` when synchronization
+needs attention or visibility verification has expired. An absent warning is
+not proof that the upstream repository or infrastructure is current. A failed,
+paused or unverified connection can leave the local copy stale even when an
+earlier observation time is present. These connection fields are omitted from public context responses
 and from local disconnected sources.
 The context endpoint reads all ancestor `AGENTS.md` articles and status under
 one lock, subject to the caller's source permissions and published revisions.
