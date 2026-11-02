@@ -138,7 +138,7 @@ function Sidebar({ v }) {
       <button type="button" className="mobile-menu-toggle" aria-label="Меню" aria-controls="main-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
         <I name={menuOpen ? "x" : "dots"} />
       </button>
-      <div className="sidebar-bottom">
+      {!v.Public && <div className="sidebar-bottom">
         <section className="storage panel">
           <div>
             Хранилище (Markdown)
@@ -178,7 +178,7 @@ function Sidebar({ v }) {
             ))}
           </dl>
         </section>
-      </div>
+      </div>}
     </aside>
   );
 }
