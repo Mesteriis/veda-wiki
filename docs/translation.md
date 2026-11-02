@@ -160,3 +160,10 @@ exactly one response per ID. On the public fixture, 37 of 39 groups passed
 that alignment check and two were rejected. This did not reconstruct Markdown
 or check semantic quality; retry/fallback behavior remains untested. The
 fragment method remains experimental and is not part of the worker.
+In a follow-up local experiment, automatically splitting rejected batches and
+retrying returned all 191 selected prose spans after two splits (43 model calls).
+A prototype byte-range reconstruction retained the 56 protected Markdown
+items in this fixture. However, inspection found awkward and altered prose at
+span boundaries, including an inserted quotation mark, so structural equality
+is not sufficient to accept it. The experiment used public data only; it is
+not integrated into the worker and does not establish translation quality.
