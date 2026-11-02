@@ -64,6 +64,37 @@ func TestAgentContextScopesAndReportsStatus(t *testing.T) {
 	}
 }
 
+func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "handbook", "public")
+	for _, path := range []string{"conflicted.md", "clean.md"} {
+		if _, err := s.put("handbook", path, "# Fixture", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.mu.Lock()
+	a := s.db.Articles["handbook/conflicted.md"]
+	a.Conflicts = []ImportConflict{{}}
+	s.db.Articles["handbook/conflicted.md"] = a
+	s.mu.Unlock()
+	w := Wiki{Store: s, Token: "test-owner"}
+	for _, tc := range []struct {
+		path                string
+		owner, public, want bool
+	}{
+		{"conflicted.md", true, false, true},
+		{"clean.md", true, false, false},
+		{"conflicted.md", false, true, false},
+	} {
+		copy := w
+		copy.Public = tc.public
+		r := request(copy, "GET", "/api/state?page="+url.QueryEscape("handbook/"+tc.path), "", tc.owner)
+		if r.Code != 200 || strings.Contains(r.Body.String(), `"unresolved_conflict":true`) != tc.want {
+			t.Fatalf("incorrect per-page conflict visibility for %s", tc.path)
+		}
+	}
+}
+
 func TestAgentContextRefusesOversizedInstructionSet(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "alpha", "private")

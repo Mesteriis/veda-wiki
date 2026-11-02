@@ -11,6 +11,9 @@ and `stale` to authenticated readers when an existing translation targets an
 older original. The public surface reports `unavailable` in that last case
 and does not expose the existence or origin of unpublished translations.
 Unknown translation origin is explicitly labelled in the interface.
+For an authenticated reader, the selected page includes
+`unresolved_conflict: true` when that article has an unresolved import conflict.
+The field is absent for public readers and for articles without a conflict.
 
 | Method | Route | Behavior |
 | --- | --- | --- |

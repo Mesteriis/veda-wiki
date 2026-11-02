@@ -53,10 +53,11 @@ def main():
             else:
                 raise RuntimeError('fixture not ready')
 
-            def post(route, obj):
+            def post(route, obj, method='POST'):
                 request = urllib.request.Request(
                     f'http://127.0.0.1:{private}' + route, data=json.dumps(obj).encode(),
                     headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + 'd' * 64},
+                    method=method,
                 )
                 with opener.open(request, timeout=5) as response:
                     return json.load(response)
@@ -80,6 +81,14 @@ def main():
             post('/api/v1/articles', {'source_id': 'private-fixture', 'path': 'private.md',
                  'text': '# Приватная тестовая страница\n\nЗакрытый синтетический текст.',
                  'expected_revision': 0})
+            batch = {'source_id': 'conflict-fixture', 'kind': 'wiki', 'metadata': {'schema_version': 1, 'kind': 'wiki', 'title': 'Конфликтный пример'},
+                     'files': {'guide.md': '# Исходный пример'}, 'commit': 'a' * 40, 'complete': True,
+                     'create': True, 'visibility': 'private', 'expected_import': ''}
+            imported = post('/api/v1/import', batch)
+            post('/api/v1/articles', {'source_id': 'conflict-fixture', 'path': 'guide.md', 'text': '# Локальный пример', 'expected_revision': 1}, method='PUT')
+            batch.update({'create': False, 'expected_import': imported['generation'], 'commit': 'b' * 40, 'files': {'guide.md': '# Изменение источника'}})
+            if post('/api/v1/import', batch)['conflicts'] != 1:
+                raise RuntimeError('synthetic conflict missing')
             post('/api/v1/sources', {'id': 'other-private', 'title': 'Недоступный пример',
                                       'kind': 'wiki', 'visibility': 'private'})
             post('/api/v1/articles', {'source_id': 'other-private', 'path': 'secret.md',
@@ -89,7 +98,7 @@ def main():
             post('/api/v1/users', {'id': 'browser-user', 'teams': ['browser-team'],
                                    'password': 'synthetic fixture password'})
             key = post('/api/v1/access-keys', {'id': 'browser-fixture',
-                       'sources': ['fixture', 'private-fixture'],
+                       'sources': ['fixture', 'private-fixture', 'conflict-fixture'],
                        'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})['key']
             key_file = root / 'browser.key'
             key_file.write_text(key)

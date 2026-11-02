@@ -88,6 +88,9 @@ for (const width of [1672, 390, 320]) {
   await until("document.body.innerText.includes('Приватная тестовая страница')");
   await evaluate("document.querySelector('.page-card[href*=private]').click()");
   await until("document.body.innerText.includes('Закрытый синтетический текст')");
+  if (await evaluate("!!document.querySelector('.conflict-warning')")) throw Error('clean article showed conflict warning');
+  await send('Page.navigate', { url: privateUrl + '?page=conflict-fixture%2Fguide.md' });
+  await until("document.body.innerText.includes('Локальный пример') && !!document.querySelector('.conflict-warning[role=status]')");
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");
   await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");

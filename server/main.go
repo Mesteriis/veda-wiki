@@ -31,6 +31,7 @@ type Page struct {
 	searchOriginal       string
 	searchDisplayed      string
 	ProgramDocumentation bool          `json:"program_documentation,omitempty"`
+	UnresolvedConflict   bool          `json:"unresolved_conflict,omitempty"`
 	TranslationOrigin    string        `json:"translation_origin,omitempty"`
 	TranslationState     string        `json:"translation_state,omitempty"`
 	OriginalSHA          string        `json:"original_sha256,omitempty"`
