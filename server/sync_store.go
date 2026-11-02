@@ -16,6 +16,7 @@ import (
 )
 
 type SyncJob struct {
+	scopePrepared  bool
 	ID             string             `json:"id"`
 	SourceID       string             `json:"source_id"`
 	Path           string             `json:"path"`

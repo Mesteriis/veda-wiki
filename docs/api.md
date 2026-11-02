@@ -290,6 +290,11 @@ The same status includes `unconfirmed_write_jobs` for a connected source: the
 number of non-complete, non-superseded outbox jobs at the snapshot. It includes
 blocked or ambiguous jobs and is not a count of individual files or moves. Zero
 does not establish remote freshness; public context omits the field.
+`prepared_unconfirmed_write_jobs` is the subset with a persisted prepared commit
+that has not been confirmed or superseded. It can include a successful response
+awaiting observation as well as an uncertain response; the count alone cannot
+establish what happened remotely. It is omitted for public and disconnected
+sources, and does not reveal paths or commit IDs.
 The context endpoint reads all ancestor `AGENTS.md` articles and status under
 one lock, subject to the caller's source permissions and published revisions.
 Missing instructions only mean they are absent from the visible dataset; a

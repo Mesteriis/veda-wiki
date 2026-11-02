@@ -274,7 +274,7 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 	// paths, revisions or content. Capture the count inputs under the same lock.
 	for id, job := range s.db.Outbox {
 		if selected[job.SourceID] && job.State != "complete" && job.State != "superseded" {
-			db.Outbox[id] = SyncJob{SourceID: job.SourceID, State: job.State}
+			db.Outbox[id] = SyncJob{SourceID: job.SourceID, State: job.State, scopePrepared: job.PreparedCommit != "" || job.scopePrepared}
 		}
 	}
 	return &Store{dir: s.dir, db: db, observed: observed, withheld: withheld}, true, nil

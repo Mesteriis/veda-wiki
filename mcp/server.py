@@ -167,7 +167,7 @@ def make_server(client):
             "source_id":string, "path":string, "expected_revision":{"type":"integer","minimum":1}, "original_sha256":string,
             "text":{"type":"string","maxLength":MAX_ARTICLE_BYTES}, "confirm_publication":{"type":"boolean"}},
             ["source_id","path","expected_revision","original_sha256","text"]),
-        "veda_context": ("Read root and ancestor AGENTS.md articles and source status for a target within one source. For connected repositories inspect sync_state, sync_error, sync_verification and unconfirmed_write_jobs; pending, blocked or uncertain writes are not confirmed upstream. Status is not proof of live infrastructure.", {
+        "veda_context": ("Read root and ancestor AGENTS.md articles and source status for a target within one source. For connected repositories inspect sync_state, sync_error, sync_verification, unconfirmed_write_jobs and prepared_unconfirmed_write_jobs. Prepared jobs may have reached the remote; do not discard them or assume their outcome. Status is not proof of live infrastructure.", {
             "source_id": string, "path": string}, ["source_id", "path"]),
         "veda_conflicts": ("List conflict summaries with pagination; supply source_id/path/index to inspect one incoming text.", {
             "limit": {"type": "integer", "minimum": 1, "maximum": 100},

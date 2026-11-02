@@ -204,31 +204,35 @@ func TestContextReportsUnconfirmedWritesInScopedSnapshot(t *testing.T) {
 		}
 		return result.SourceStatus
 	}
-	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 {
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 || status.PreparedWrites == nil || *status.PreparedWrites != 0 {
 		t.Fatal("initial queue count unavailable")
 	}
 	if _, err = s.put("handbook", "guide.md", "# Local update", 1); err != nil {
 		t.Fatal(err)
 	}
-	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 {
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 || status.PreparedWrites == nil || *status.PreparedWrites != 0 {
 		t.Fatal("queued write not reflected immediately")
 	}
-	if status := read(true); status.UnconfirmedWrites != nil {
+	if status := read(true); status.UnconfirmedWrites != nil || status.PreparedWrites != nil {
 		t.Fatal("public context exposed write queue")
 	}
+	public := request(Wiki{Store: s, Public: true}, "GET", "/api/v1/context?source_id=handbook&path=guide.md", "", false)
+	if public.Code != 200 || strings.Contains(public.Body.String(), "prepared_unconfirmed_write_jobs") {
+		t.Fatal("public response exposed prepared count", public.Code)
+	}
 	m.Once(context.Background())
-	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 {
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 || status.PreparedWrites == nil || *status.PreparedWrites != 1 {
 		t.Fatal("write counted as confirmed before the follow-up import")
 	}
 	m.Once(context.Background())
-	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 {
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 || status.PreparedWrites == nil || *status.PreparedWrites != 0 {
 		t.Fatal("confirmed write still counted")
 	}
 	if _, err = s.agentContext("other", "guide.md", false); err != nil {
 		t.Fatal(err)
 	}
 	local, _ := s.agentContext("other", "guide.md", false)
-	if local.SourceStatus.UnconfirmedWrites != nil {
+	if local.SourceStatus.UnconfirmedWrites != nil || local.SourceStatus.PreparedWrites != nil {
 		t.Fatal("local source reported a GitHub outbox count")
 	}
 }
