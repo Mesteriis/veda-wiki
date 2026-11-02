@@ -189,3 +189,9 @@ short public excerpt the eight markers survived and protected Markdown matched,
 but terminology was imperfect. On the full public guide, the 52 markers failed
 the exact-count check. The regex-based prototype is not a complete Markdown
 parser and was not integrated; automatic translation remains unconfigured.
+Combining the same marker prototype with ten groups of public-guide paragraphs
+preserved the ordered marker lists and all 56 protected Markdown elements on
+reconstruction. Manual inspection still found awkward and potentially
+misleading technical terminology. The prototype uses regular expressions,
+not complete Markdown parsing, and this single fixture does not establish
+semantic quality or safety on arbitrary input; it has not been integrated.
