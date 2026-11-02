@@ -664,3 +664,53 @@ func TestConnectedReconcileBlocksUnobservedLinkedArticle(t *testing.T) {
 		t.Fatal("linked graph copied despite unobserved revision")
 	}
 }
+
+func TestConnectedMirrorSQLiteQueueAndDivergence(t *testing.T) {
+	s, m, first, second := connectedMoveFixtures(t)
+	files := second.contents()
+	files["README.md"] = "# Source"
+	second.advance(files)
+	m.Once(context.Background())
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = newSyncManager(s, m.github)
+	enabled, revision := true, 0
+	if _, err = s.configureMirror(context.Background(), mirrorRequest{SourceID: "one", DestinationID: "two", Enabled: &enabled, ExpectedRevision: &revision}); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	files = first.contents()
+	files["README.md"] = "# First update"
+	first.advance(files)
+	m.Once(context.Background())
+	if len(s.jobs()) != 1 || s.jobs()[0].State != "pending" {
+		t.Fatal("mirror update not queued")
+	}
+	s, err = openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = newSyncManager(s, m.github)
+	for i := 0; i < 3; i++ {
+		m.Once(context.Background())
+	}
+	if second.contents()["README.md"] != "# First update" || s.jobs()[0].State != "complete" {
+		t.Fatal("queued update did not survive reopen")
+	}
+	one := first.contents()
+	one["README.md"] = "# First independent"
+	two := second.contents()
+	two["README.md"] = "# Second independent"
+	first.advance(one)
+	second.advance(two)
+	m.Once(context.Background())
+	if s.mirrors()[0].State != "blocked" || first.contents()["README.md"] != "# First independent" || second.contents()["README.md"] != "# Second independent" || len(s.jobs()) != 1 {
+		t.Fatal("independent changes were not preserved")
+	}
+}
