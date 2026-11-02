@@ -58,7 +58,7 @@ for (const width of [1672, 390, 320]) {
       await until("document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'true'");
       if (!await evaluate(`(() => { const b=[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()`)) throw Error('mobile navigation item unreachable');
       await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
-      await until(`!!document.querySelector('dialog[open]') && document.querySelector('dialog h2').innerText===${JSON.stringify(title)}`);
+      await until(`!!document.querySelector('dialog[open]') && document.querySelector('dialog h2').innerText===${JSON.stringify(title === 'Недавние' ? 'История просмотров' : title)}`);
       await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
       await until("!document.querySelector('dialog[open]') && document.querySelector('button[aria-label=Меню]').getAttribute('aria-expanded') === 'false'");
     }
