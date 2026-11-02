@@ -2467,3 +2467,10 @@ main:has(.settings-page) { background-color: #001019; }
 @media (min-width: 601px) and (max-width: 900px) {
   main:has(.settings-page) .masthead::before { left: -12px; right: -12px; }
 }
+@media (min-width: 901px) {
+  main:has(.settings-page) .masthead::before {
+    background-position: right 160px top -160px;
+    mask-image: linear-gradient(to bottom, #000 55%, transparent 100%), linear-gradient(to right, #000 70%, transparent 87%);
+    mask-composite: intersect;
+  }
+}

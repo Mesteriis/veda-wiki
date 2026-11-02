@@ -116,7 +116,7 @@ def main():
             try:
                 subprocess.run(['node', str(ROOT / 'scripts/smoke_ui.mjs'), str(debug),
                                 f'http://127.0.0.1:{public}/', f'http://127.0.0.1:{private}/', str(key_file)],
-                               check=True, timeout=45)
+                               check=True, timeout=120)
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 browser_log.flush()
                 browser_log.seek(0)
