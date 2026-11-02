@@ -32,6 +32,7 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	a.Conflicts = []ImportConflict{{Incoming: "original conflict"}}
 	a.Translation = &Translation{Text: "original translation"}
 	a.CopiedFrom = &CopyOrigin{Path: "original path"}
+	a.ReconcileBase = &ReconcileBase{SourceID: "beta", Path: "secret.md"}
 	a.Published = &Revision{Text: "original published"}
 	s.db.Articles["alpha/guide.md"] = a
 	s.observed = map[string]time.Time{"alpha": observed}
@@ -60,6 +61,9 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	s.mu.Unlock()
 	vs := view.db.Sources["alpha"]
 	va := view.db.Articles["alpha/guide.md"]
+	if va.ReconcileBase != nil {
+		t.Fatal("snapshot included reconciliation baseline from another source")
+	}
 	if vs.Metadata.Title != "Original source" || vs.Assets["image.png"].SHA != "original" || va.Versions[0].Text != "# Original" || va.Conflicts[0].Incoming != "original conflict" || va.Translation.Text != "original translation" || va.CopiedFrom.Path != "original path" || va.Published.Text != "original published" || !view.observed["alpha"].Equal(observed) {
 		t.Fatal("snapshot shared mutable state")
 	}
@@ -122,7 +126,7 @@ func TestScopedSnapshotMutableFieldInventory(t *testing.T) {
 		mutable []string
 	}{
 		{Source{}, []string{"Metadata", "Assets"}},
-		{Article{}, []string{"Translation", "CopiedFrom", "Versions", "Conflicts", "Published"}},
+		{Article{}, []string{"Translation", "CopiedFrom", "ReconcileBase", "Versions", "Conflicts", "Published"}},
 		{WikiMetadata{}, nil}, {BlobRef{}, nil}, {Revision{}, nil},
 		{ImportConflict{}, nil}, {Translation{}, nil}, {CopyOrigin{}, nil}, {GitHubConnection{}, nil},
 	}

@@ -57,6 +57,7 @@ type Revision struct {
 type Article struct {
 	Translation    *Translation     `json:"translation,omitempty"`
 	CopiedFrom     *CopyOrigin      `json:"copied_from,omitempty"`
+	ReconcileBase  *ReconcileBase   `json:"reconcile_base,omitempty"`
 	SourceID       string           `json:"source_id"`
 	Path           string           `json:"path"`
 	Versions       []Revision       `json:"versions"`
@@ -142,7 +143,7 @@ func openStore(dir string) (*Store, error) {
 }
 
 func (s *Store) validate() (*Store, error) {
-	if (s.db.Version < 1 || s.db.Version > 17) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version < 1 || s.db.Version > 18) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -217,6 +218,12 @@ func (s *Store) validate() (*Store, error) {
 		src, exists := s.db.Sources[article.SourceID]
 		if !exists || key != article.SourceID+"/"+article.Path || !articlePath(article.Path, src.Kind) || len(article.Versions) == 0 {
 			return nil, errors.New("invalid stored article")
+		}
+		if b := article.ReconcileBase; b != nil {
+			origin, found := s.db.Articles[b.SourceID+"/"+b.Path]
+			if s.db.Version < 18 || b.SourceID == article.SourceID || !found || b.Revision < 1 || b.Revision > len(origin.Versions) || origin.Versions[b.Revision-1].SHA != b.SHA {
+				return nil, errors.New("invalid reconciliation baseline")
+			}
 		}
 		for i, revision := range article.Versions {
 			sum := sha256.Sum256([]byte(revision.Text))
@@ -795,6 +802,7 @@ func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 	if public {
 		a.Translation = nil
 		a.CopiedFrom = nil
+		a.ReconcileBase = nil
 		a.Conflicts = nil
 		a.UpstreamHash = ""
 		a.Versions = a.Versions[len(a.Versions)-1:]

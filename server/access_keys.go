@@ -256,6 +256,7 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 		// source lock still protects the coherent authorization snapshot.
 		article.Versions = slices.Clone(article.Versions)
 		article.Conflicts = slices.Clone(article.Conflicts)
+		article.ReconcileBase = nil
 		if article.Translation != nil {
 			translation := *article.Translation
 			article.Translation = &translation

@@ -63,7 +63,7 @@ class Client:
         return token
 
     def request(self, method, route, body=None):
-        timeout = 360 if method == "POST" and route == "/api/v1/github/connections" and isinstance(body, dict) and body.get("adopt_existing") is True else 15
+        timeout = 360 if method == "POST" and route == "/api/v1/github/connections" and isinstance(body, dict) and body.get("adopt_existing") is True else 120 if method == "POST" and route == "/api/v1/sources/reconcile" else 15
         if self.socket_path is not None:
             parent = os.lstat(self.socket_path.parent)
             info = os.lstat(self.socket_path)
@@ -154,6 +154,8 @@ def make_server(client):
             "source_id": string, "source_path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "destination_id": string, "destination_path": string},
             ["source_id", "source_path", "expected_revision", "destination_id", "destination_path"]),
+        "veda_reconcile_sources": ("Reconcile a disconnected private source into a verified writable private GitHub source. Establish baselines for matching articles, queue safe changes and leave divergent paths blocked. Never deletes content. Each call commits at most limit articles; repeat if more is true and inspect blocked paths and the GitHub outbox.", {
+            "source_id": string, "destination_id": string, "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, ["source_id", "destination_id"]),
         "veda_moves": ("List move operations and their status; owner only.", {
             "limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0}}, []),
         "veda_cancel_move": ("Cancel a waiting move, preserving both copies; an already queued destination write may still finish.", {
@@ -276,6 +278,8 @@ def make_server(client):
                 result = await asyncio.to_thread(client.request, method, "/api/v1/articles", arguments)
             elif name == "veda_copy_article":
                 result = await asyncio.to_thread(client.request, "POST", "/api/v1/articles/copy", arguments)
+            elif name == "veda_reconcile_sources":
+                result = await asyncio.to_thread(client.request, "POST", "/api/v1/sources/reconcile", arguments)
             elif name == "veda_transfer_plan":
                 result = await asyncio.to_thread(client.request, "POST", "/api/v1/articles/transfer-plan", arguments)
             elif name == "veda_moves":

@@ -49,6 +49,7 @@ The field is absent for public readers and for articles without a conflict.
 | GET/POST | `/api/access/keys` | List, create or update scoped keys in that browser session |
 | POST | `/api/access/keys/revoke` | Revoke a scoped key in that browser session |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
+| POST | `/api/v1/sources/reconcile` | Reconcile bounded changes between separate private sources (owner only) |
 | POST | `/api/v1/articles/transfer-plan` | Inspect recursive relative article links and destination matches; owner or scoped reader with access to both sources, no browser Origin |
 | POST | `/api/v1/import` | Owner-only bounded, atomic repository import batch |
 | GET | `/api/v1/conflicts` | Owner-only unresolved import conflicts |
@@ -403,3 +404,28 @@ The owner-only GitHub connection request accepts `adopt_existing: true` to attac
 an existing disconnected private source to a verified private repository. See
 [GitHub integration](github.md#attaching-an-existing-private-source) for the
 preconditions, conflict behavior, and local-only article handling.
+
+## Reconcile two private sources
+
+`POST /api/v1/sources/reconcile` (owner only) accepts `source_id`,
+`destination_id` and an optional `limit` from 1 to 50 (default 20). It requires
+a disconnected private source and a fully observed, verified, writable private
+GitHub destination of the same kind. Source identities remain separate.
+Matching article and referenced-asset observations establish an owner-only
+baseline. New articles and safe updates relative to that baseline are queued
+using the existing copy/outbox safeguards. Missing images referenced by equal
+articles are queued with the article; conflicting images are blocked. Existing
+unequal articles without a shared baseline, concurrent edits, pending writes,
+unresolved conflicts, unsafe text and unsupported dependencies are reported in
+`blocked_paths` and are not overwritten. Nothing is deleted. Small linked
+graphs can be queued for a new destination; directory-index mappings and updates
+of existing linked graphs may require manual review. A partial source snapshot
+cannot establish deletion, and absent paths are retained.
+
+Each call commits bounded individual transactions and may report `more: true`;
+repeat until it is false and inspect blocked paths and the destination outbox.
+A timeout or interruption may leave earlier transactions committed: check the
+state and retry, which is idempotent. Reconciliation persists baselines using
+store format v18; older binaries reject this store. Maintain a compatible backup
+before invoking it. This endpoint initiates one pass; periodic scheduling is not
+yet configured.

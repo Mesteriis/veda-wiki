@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -599,6 +600,28 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		jsonResponse(rw, 200, plan)
+	case "/api/v1/sources/reconcile":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in reconcileRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(2 * time.Minute))
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		result, err := w.Store.reconcileSources(ctx, in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		if w.Sync != nil {
+			w.Sync.Wake()
+		}
+		jsonResponse(rw, 200, result)
 	case "/api/v1/articles/copy":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)
@@ -761,6 +784,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			if reader && !owner {
 				a.Translation = nil
 				a.CopiedFrom = nil
+				a.ReconcileBase = nil
 				a.Published = nil
 				a.PublishedLocal = false
 				a.UpstreamHash = ""
