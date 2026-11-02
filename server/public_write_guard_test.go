@@ -203,3 +203,46 @@ func TestCorrectedBlockedJobRetainsReferencedDependencies(t *testing.T) {
 		t.Fatal("still-referenced asset lost")
 	}
 }
+
+func TestLegacyPublicCredentialTextCannotPropagateByCopyOrMove(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "from", "private")
+	source(t, s, "to", "public")
+	if _, err := s.put("from", "unsafe.md", credentialFixture, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("from", "root.md", "[unsafe](unsafe.md)", 0); err != nil {
+		t.Fatal(err)
+	}
+	// Model content made public by an earlier version before the write guard.
+	s.mu.Lock()
+	db := s.clone()
+	src := db.Sources["from"]
+	src.Visibility = "public"
+	db.Sources["from"] = src
+	err := s.commit(db)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := json.Marshal(s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy := copyRequest{SourceID: "from", SourcePath: "unsafe.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "unsafe.md", ConfirmPublication: true}
+	if _, err = s.copyArticle(copy); !errors.Is(err, ErrInvalid) {
+		t.Fatal("legacy public sensitive copy accepted", err)
+	}
+	linked := copyRequest{SourceID: "from", SourcePath: "root.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "root.md", IncludeLinked: true, ConfirmPublication: true}
+	if _, err = s.copyArticle(linked); !errors.Is(err, ErrInvalid) {
+		t.Fatal("legacy public sensitive bundle accepted", err)
+	}
+	move := moveRequest{SourceID: "from", SourcePath: "unsafe.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "unsafe.md", ConfirmMove: true, ConfirmPublication: true}
+	if _, err = s.moveArticle(move); !errors.Is(err, ErrInvalid) {
+		t.Fatal("legacy public sensitive move accepted", err)
+	}
+	after, err := json.Marshal(s.db)
+	if err != nil || string(before) != string(after) {
+		t.Fatal("failed transfer changed state", err)
+	}
+}

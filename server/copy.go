@@ -61,7 +61,7 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	now := time.Now()
 	targetPublic := sourcePublic(s.db, destination, now)
 	sourcePublicRevision := sourcePublicReadable(s.db, source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
-	if targetPublic && !sourcePublicRevision && (!in.ConfirmPublication || secretContent.MatchString(rev.Text)) {
+	if targetPublic && (secretContent.MatchString(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 		return Database{}, Revision{}, ErrInvalid
 	}
 	copied := Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
