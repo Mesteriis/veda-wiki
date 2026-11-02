@@ -239,3 +239,87 @@ func TestChangedRepositoryTypeClosesPublicSnapshotAndRecovers(t *testing.T) {
 		})
 	}
 }
+
+func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
+	for _, tc := range []struct {
+		name, code string
+		files      map[string]string
+	}{
+		{"invalid_schema", "invalid_veda_metadata", map[string]string{"veda.yaml": metadataFixture + "unknown: value\n", "README.md": "# Changed"}},
+		{"empty_manifest", "invalid_veda_metadata", map[string]string{"veda.yaml": "", "README.md": "# Changed"}},
+		{"missing_image", "veda_image_unavailable", map[string]string{"veda.yaml": metadataFixture + "image: assets/cover.png\n", "README.md": "# Changed"}},
+		{"invalid_image", "veda_image_unavailable", map[string]string{"veda.yaml": metadataFixture + "image: assets/cover.png\n", "assets/cover.png": "not an image", "README.md": "# Changed"}},
+	} {
+		for _, sqlite := range []bool{false, true} {
+			name := tc.name + "/json"
+			if sqlite {
+				name = tc.name + "/sqlite"
+			}
+			t.Run(name, func(t *testing.T) {
+				s := testStore(t)
+				original := map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original wiki"}
+				f := newFakeGitHub(t, original)
+				m := newSyncManager(s, f.client())
+				if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
+					t.Fatal(err)
+				}
+				m.Once(context.Background())
+				if sqlite {
+					if err := migrateSQLite(s.dir); err != nil {
+						t.Fatal(err)
+					}
+					var err error
+					s, err = openStore(s.dir)
+					if err != nil {
+						t.Fatal(err)
+					}
+					m = newSyncManager(s, f.client())
+				}
+				before := s.db.Sources["source"].ImportGeneration
+				f.advance(tc.files)
+				m.Once(context.Background())
+				c := s.connections()[0]
+				if c.State != "error" || c.Verification != "unknown" || c.LastError != tc.code {
+					t.Fatal("incorrect metadata failure state", c.State, c.LastError)
+				}
+				p, err := s.page("source/README.md", false)
+				if err != nil || p.Text != "# Original wiki" || s.db.Sources["source"].ImportGeneration != before {
+					t.Fatal("invalid metadata changed local snapshot", err)
+				}
+				if _, err := s.page("source/README.md", true); err == nil {
+					t.Fatal("unverified public snapshot exposed")
+				}
+				s, err = openStore(s.dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.page("source/README.md", false); err != nil {
+					t.Fatal("local snapshot lost after restart", err)
+				}
+				f.advance(original)
+				if err := s.retryConnection("source"); err != nil {
+					t.Fatal(err)
+				}
+				newSyncManager(s, f.client()).Once(context.Background())
+				if _, err := s.page("source/README.md", true); err != nil {
+					t.Fatal("corrected metadata did not recover", err)
+				}
+			})
+		}
+	}
+}
+
+func TestWikiMetadataMustBeRegularFile(t *testing.T) {
+	m := newSyncManager(testStore(t), nil)
+	for _, entry := range []gitTreeEntry{
+		{Path: "veda.yaml", Type: "blob", Mode: "120000"},
+		{Path: "veda.yaml", Type: "tree", Mode: "040000"},
+		{Path: "veda.yaml", Type: "commit", Mode: "160000"},
+		{Path: "veda.yaml", Type: "blob", Mode: "100644", Size: 16385},
+	} {
+		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "source"}, strings.Repeat("a", 40), "", gitTree{Tree: []gitTreeEntry{entry}})
+		if errorCode(err) != "invalid_veda_metadata" {
+			t.Fatal("invalid manifest accepted", entry.Mode, err)
+		}
+	}
+}

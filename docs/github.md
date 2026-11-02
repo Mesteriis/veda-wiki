@@ -179,6 +179,11 @@ or a wiki loses `veda.yaml` and has no `docs/`, synchronization reports
 `repository_type_changed` and keeps its local history. Restore the original
 repository structure and retry to resume. Automatic source type conversion is
 not supported.
+An invalid or unsupported root `veda.yaml` reports `invalid_veda_metadata`;
+a missing or unsupported referenced cover reports `veda_image_unavailable`.
+In either case VEDA keeps the local snapshot and hides an unverified public
+snapshot. Correct the file or image and retry; diagnostic codes do not include
+the file contents or image path.
 Outbox status changes also require the same connection revision and an unchanged
 job identity and visibility. A prepared commit is retained for recovery if the
 connection changes during an uncertain remote write.

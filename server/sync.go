@@ -319,7 +319,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 	}
 	if config, ok := entries["veda.yaml"]; ok {
 		if config.Type != "blob" || (config.Mode != "100644" && config.Mode != "100755") || config.Size > 16384 {
-			return batch, ErrInvalid
+			return batch, &remoteError{Code: "invalid_veda_metadata"}
 		}
 		b, e := m.cachedBlob(ctx, c, config, token)
 		if e != nil {
@@ -327,7 +327,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		}
 		batch.Metadata, e = parseMetadata(b)
 		if e != nil {
-			return batch, e
+			return batch, &remoteError{Code: "invalid_veda_metadata"}
 		}
 		batch.Kind = "wiki"
 	} else if entry, exists := entries["docs"]; exists && (entry.Type != "tree" || entry.Mode != "040000") {
@@ -387,6 +387,11 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 				continue
 			}
 			batch.Assets[p] = b
+		}
+	}
+	if batch.Metadata != nil && batch.Metadata.Image != "" {
+		if _, ok := batch.Assets[batch.Metadata.Image]; !ok {
+			return batch, &remoteError{Code: "veda_image_unavailable"}
 		}
 	}
 	m.store.mu.RLock()
