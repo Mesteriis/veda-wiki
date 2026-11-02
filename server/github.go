@@ -106,6 +106,7 @@ func remoteRetryAt(err error) time.Time {
 var githubPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$`)
 
 func repositoryName(value string) (string, error) {
+	value = strings.TrimSpace(value)
 	if strings.HasPrefix(value, "https://") {
 		u, e := url.Parse(value)
 		if e != nil || !strings.EqualFold(u.Host, "github.com") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -113,6 +114,7 @@ func repositoryName(value string) (string, error) {
 		}
 		value = strings.TrimPrefix(u.Path, "/")
 	}
+	value = strings.TrimSuffix(value, "/")
 	value = strings.TrimSuffix(value, ".git")
 	parts := strings.Split(value, "/")
 	if len(parts) != 2 || !githubPart.MatchString(parts[0]) || !githubPart.MatchString(parts[1]) || strings.HasSuffix(parts[0], ".") || strings.HasSuffix(parts[1], ".") {
