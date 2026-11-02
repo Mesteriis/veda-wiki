@@ -23,6 +23,27 @@ This check requires outbound GitHub access and available anonymous API quota.
 It does not verify GitHub App or token authentication, private repositories,
 write-back, translation quality, or the connectivity of another host.
 
+For two distinct public program repositories, the optional multi-source check
+imports both into a disposable store, migrates it to SQLite, restarts, and uses
+the official MCP SDK to search, read and prepare unsaved proposals. It checks
+the anonymous rate limit before starting and skips if fewer than 40 requests
+remain. Repository sizes and upstream changes can still exceed that budget.
+It makes no GitHub writes and does not verify private access:
+
+```sh
+VEDA_TEST_PUBLIC_MULTI=1 VEDA_TEST_PUBLIC_REPO_ONE=OWNER/REPO1 \
+  VEDA_TEST_PUBLIC_REPO_TWO=OWNER/REPO2 .venv/bin/python scripts/smoke_public_multisource.py
+```
+
+The local integration test uses two fake GitHub repositories, including one
+private source, and the MCP SDK to verify merged search, source-scoped reads,
+proposals and denial after SQLite restart. Run it with a Python environment that
+has the MCP SDK:
+
+```sh
+cd server && VEDA_TEST_MCP_PYTHON=/path/to/python go test -run '^TestMultiSourceMCPAfterSQLiteRestart$' -v .
+```
+
 For a public repository, start VEDA and connect it without credentials:
 
 ```sh
