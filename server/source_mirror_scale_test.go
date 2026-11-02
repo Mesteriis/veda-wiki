@@ -1,18 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
 
 // Opt-in scale rehearsal: all content and credentials are synthetic.
 func TestMirrorSyntheticScale(t *testing.T) {
-	if os.Getenv("VEDA_MIRROR_SCALE") != "1" {
-		t.Skip("set VEDA_MIRROR_SCALE=1 to run the scale rehearsal")
+	mode := os.Getenv("VEDA_MIRROR_SCALE")
+	if mode != "1" && mode != "realistic" {
+		t.Skip("set VEDA_MIRROR_SCALE=1 or realistic to run the scale rehearsal")
 	}
 	started := time.Now()
 	s := testStore(t)
@@ -26,12 +29,28 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	for i := 0; i < 147; i++ {
 		name := fmt.Sprintf("images/image-%03d.png", i)
 		image := append(smallPNG(t), byte(i), byte(i>>8))
+		if mode == "realistic" {
+			size := 103540
+			if i == 0 {
+				size = 2397368
+			}
+			image = append(image, bytes.Repeat([]byte{byte(i)}, size-len(image))...)
+		}
 		b.Assets[name] = image
 		remote[name] = string(image)
 	}
 	for i := 0; i < 536; i++ {
 		name := fmt.Sprintf("pages/page-%03d.md", i)
 		text := fmt.Sprintf("# Synthetic page %d\n\n![image](../images/image-%03d.png)\n", i, i%147)
+		if mode == "realistic" {
+			size := 12000
+			if i < 3 {
+				size = 500000
+			} else if i < 27 {
+				size = 55000
+			}
+			text += strings.Repeat("x", size-len(text))
+		}
 		b.Files[name] = text
 		if i < 526 {
 			remote[name] = text
@@ -44,6 +63,14 @@ func TestMirrorSyntheticScale(t *testing.T) {
 		name := fmt.Sprintf("extra/page-%03d.md", i)
 		remote[name] = fmt.Sprintf("# Remote only %d", i)
 	}
+	articleBytes, imageBytes := 0, 0
+	for _, text := range b.Files {
+		articleBytes += len(text)
+	}
+	for _, image := range b.Assets {
+		imageBytes += len(image)
+	}
+	t.Logf("synthetic_article_bytes=%d synthetic_image_bytes=%d", articleBytes, imageBytes)
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}

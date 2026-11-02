@@ -32,7 +32,7 @@ jobs:
       - run: python scripts/smoke_directory_restore.py
       - run: python scripts/smoke_directory_restore.py --index
       - run: cd server && VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^(TestMultiSourceMCPAfterSQLiteRestart|TestAgentRoutesVPSRequestAcrossSources|TestReconcileThroughMCP|TestMirrorThroughMCP)$' -v .
-      - run: cd server && VEDA_MIRROR_SCALE=1 go test -run '^TestMirrorSyntheticScale$' -v -timeout 10m .
+      - run: cd server && VEDA_MIRROR_SCALE=realistic go test -run '^TestMirrorSyntheticScale$' -v -timeout 10m .
       - name: Build Linux archives
         run: |
           python scripts/package_release.py --version ci --arch amd64 --output "$RUNNER_TEMP/veda-artifacts"
