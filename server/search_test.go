@@ -229,3 +229,22 @@ func TestCompactSearchPaginationAndScope(t *testing.T) {
 		t.Fatal("invalid query accepted")
 	}
 }
+
+func TestExactPhraseFastPathPreservesSearchRanking(t *testing.T) {
+	for _, tc := range []struct {
+		query, metadata, body string
+		want                  int
+	}{
+		{"container vps", "path", "Mixed heading\ncontainer vps\nmore", 1000},
+		{"CONTAINER VPS", "path", "Mixed heading\ncontainer vps\nmore", 1000},
+		{"container vps", "path", "Mixed heading\nCONTAINER VPS\nmore", 1000},
+		{"контейнер VPS", "path", "Контейнер VPS", 1000},
+		{"k", "path", "K", 1000},
+		{"container vps", "path", strings.Repeat("X", 8190) + "container vps", 1000},
+		{"lxc vps", "vps/docker.md", "Docker service", 0},
+	} {
+		if got := searchScore(tc.query, tc.metadata, tc.body, searchTerms(tc.query)); got != tc.want {
+			t.Fatalf("query %q got %d, want %d", tc.query, got, tc.want)
+		}
+	}
+}

@@ -129,6 +129,23 @@ func searchTerms(query string) [][]string {
 // distinct matches and rank title/path hits above body hits.
 func searchScore(query, metadata, body string, terms [][]string) int {
 	query = strings.ToLower(query)
+	// A verbatim ASCII match is already case-insensitively equal. Check it
+	// in a bounded prefix before allocating lowercased document copies. The
+	// bound limits extra scanning when the exact phrase is absent.
+	ascii := true
+	for i := 0; i < len(query); i++ {
+		if query[i] >= 0x80 {
+			ascii = false
+			break
+		}
+	}
+	prefix := body
+	if len(prefix) > 8192 {
+		prefix = prefix[:8192]
+	}
+	if ascii && (strings.Contains(metadata, query) || strings.Contains(prefix, query)) {
+		return 1000
+	}
 	metadata = strings.ToLower(metadata)
 	body = strings.ToLower(body)
 	if strings.Contains(metadata, query) || strings.Contains(body, query) {
