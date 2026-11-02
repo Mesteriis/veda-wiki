@@ -1827,9 +1827,6 @@ dialog > p {
     font-size: 12px;
     max-width: 220px;
   }
-  .header-actions .round.profile {
-    display: none;
-  }
   .global-search {
     margin-top: 9px;
     height: 35px;

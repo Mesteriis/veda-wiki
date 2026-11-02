@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,6 +69,17 @@ def main():
                 post('/api/v1/articles', {'source_id': 'fixture', 'path': path,
                      'text': '# ' + title + '\n\nДемонстрационное содержимое для проверки интерфейса.',
                      'expected_revision': 0})
+            post('/api/v1/sources', {'id': 'private-fixture', 'title': 'Приватный пример',
+                                      'kind': 'wiki', 'visibility': 'private'})
+            post('/api/v1/articles', {'source_id': 'private-fixture', 'path': 'private.md',
+                 'text': '# Приватная тестовая страница\n\nЗакрытый синтетический текст.',
+                 'expected_revision': 0})
+            key = post('/api/v1/access-keys', {'id': 'browser-fixture',
+                       'sources': ['fixture', 'private-fixture'],
+                       'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})['key']
+            key_file = root / 'browser.key'
+            key_file.write_text(key)
+            key_file.chmod(0o600)
             debug = port()
             browser = subprocess.Popen(
                 [chrome, '--headless=new', '--disable-gpu', '--disable-background-networking',
@@ -77,7 +89,8 @@ def main():
             )
             try:
                 subprocess.run(['node', str(ROOT / 'scripts/smoke_ui.mjs'), str(debug),
-                                f'http://127.0.0.1:{public}/'], check=True, timeout=30)
+                                f'http://127.0.0.1:{public}/', f'http://127.0.0.1:{private}/', str(key_file)],
+                               check=True, timeout=45)
             finally:
                 browser.terminate()
                 browser.wait(timeout=10)
