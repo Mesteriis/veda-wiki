@@ -15,7 +15,9 @@ class ReleasePackageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in ('README.md', 'LICENSE', 'mcp/server.py', 'mcp/requirements.txt',
-                         'mcp/keyed_stdio_launcher.py', 'deploy/systemd/veda.service', 'docs/guide.md', '.veda/owner.key'):
+                         'mcp/keyed_stdio_launcher.py', 'deploy/systemd/veda.service',
+                         'web/public/assets/fonts/LICENSE', 'web/public/assets/icons/LICENSE',
+                         'docs/guide.md', '.veda/owner.key'):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('synthetic ' + name)
@@ -33,7 +35,8 @@ class ReleasePackageTest(unittest.TestCase):
                 prefix = 'veda-test-linux-amd64/'
                 self.assertEqual(set(members), {prefix + x for x in (
                     'veda', 'README.md', 'LICENSE', 'mcp/server.py', 'mcp/requirements.txt',
-                    'mcp/keyed_stdio_launcher.py', 'deploy/systemd/veda.service')} | {prefix + 'docs/' + p.name for p in (package_release.ROOT / 'docs').glob('*.md')})
+                    'mcp/keyed_stdio_launcher.py', 'deploy/systemd/veda.service',
+                    'web/public/assets/fonts/LICENSE', 'web/public/assets/icons/LICENSE')} | {prefix + 'docs/' + p.name for p in (package_release.ROOT / 'docs').glob('*.md')})
                 self.assertEqual(members[prefix + 'veda'].mode, 0o755)
                 self.assertTrue(all(m.isfile() and m.uid == 0 and m.gid == 0 and m.mtime == 0 for m in members.values()))
 
