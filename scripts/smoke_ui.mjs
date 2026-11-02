@@ -116,6 +116,7 @@ for (const width of [1672, 390, 320]) {
     await until(`document.querySelector('dialog').innerText.includes(${JSON.stringify(expected)})`);
     const writeStatus = await evaluate("(async () => (await fetch('/api/v1/articles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_id:'fixture',path:'browser-write.md',text:'# Synthetic',expected_revision:0})})).status)()");
     if (writeStatus !== 403 && writeStatus !== 404) throw Error('browser admin session allowed article write');
+    await until("[...document.querySelectorAll('dialog button')].some(b => b.innerText.startsWith('Выйти из управления') && !b.disabled)");
     await evaluate("[...document.querySelectorAll('dialog button')].find(b=>b.innerText.startsWith('Выйти из управления')).click()");
     await until("!!document.querySelector('dialog .reader-access input[name=key]')");
     await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
