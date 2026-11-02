@@ -54,6 +54,10 @@ func decodeLimited(rw http.ResponseWriter, r *http.Request, dst any, limit int64
 	return nil
 }
 func apiError(rw http.ResponseWriter, err error) {
+	if errors.Is(err, errImportedAssetUnavailable) {
+		jsonResponse(rw, http.StatusServiceUnavailable, map[string]string{"error": "asset_unavailable"})
+		return
+	}
 	var upstream *remoteError
 	if errors.As(err, &upstream) {
 		code := 502

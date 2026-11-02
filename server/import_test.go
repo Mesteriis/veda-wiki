@@ -499,6 +499,15 @@ func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
 			if _, err := s.importBatch(b); !errors.Is(err, errImportedAssetUnavailable) {
 				t.Fatal("missing retained image was accepted", err)
 			}
+			payload, err := json.Marshal(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := request(Wiki{Store: s, Token: "test-owner"}, "POST", "/api/v1/import", string(payload), true)
+			var body map[string]string
+			if response.Code != 503 || json.Unmarshal(response.Body.Bytes(), &body) != nil || body["error"] != "asset_unavailable" {
+				t.Fatal("import did not report the asset error", response.Code, response.Body.String())
+			}
 			if !s.observed[b.SourceID].Equal(before) || s.db.Sources[b.SourceID].ImportGeneration != generation {
 				t.Fatal("failed import advanced the source")
 			}

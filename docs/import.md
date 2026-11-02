@@ -116,7 +116,8 @@ private images are not retained when a source becomes public.
 Before accepting an import, VEDA verifies the images that would remain
 referenced, including images retained from earlier partial imports. If one is
 missing or corrupt and absent from the incoming batch, the import fails without
-advancing its observation or committing article changes. Restore the missing
+advancing its observation or committing article changes. The import API returns
+HTTP 503 with `{"error":"asset_unavailable"}` without naming the asset. Restore the missing
 blob from a verified backup or provide the image in a subsequent import before
 retrying. The service does not invent or silently discard the image.
 
