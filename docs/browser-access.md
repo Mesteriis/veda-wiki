@@ -1,7 +1,15 @@
 # Private browser reading
 
-Use the profile button to sign in with the separately generated `reader.key`,
-or with a source-scoped reader key created through the owner API. The shared
+Use the profile button to sign in with a named user and password, the separately
+generated `reader.key`, or a source-scoped reader key created through the owner
+API. Named users receive the union of the source scopes of their teams; a user
+without teams sees no private sources. Team membership and source permissions
+are checked on each request. Password changes and disabling a user invalidate
+all of that user's existing sessions; changing team permissions takes effect on
+subsequent requests. Requests already in progress may finish with the previous
+scope. Users can change their own password from the profile after confirming the
+current password; doing so signs out all their sessions. Users are read-only and
+cannot manage accounts, GitHub or articles. The shared
 key grants current content of all private sources. A scoped key grants current
 content only from its explicitly authorized sources; its validity and scope are
 checked on every request. Neither grants writing or administration. Keep keys
@@ -31,12 +39,21 @@ is revoked on logout or restart. The reader-only Unix socket does not expose
 administration; a separately configured local bridge may forward the limited
 administration routes. The interface offers no article
 editing. Browser session and administration POST endpoints accept only
-same-origin requests. This is an initial key-based reader mechanism, not a
-multi-user account system. Revoking or expiring a scoped key prevents subsequent
-private reads with its sessions; requests already in progress may finish. User
-accounts, teams, and multi-user administration remain future work. On login,
-expired sessions and sessions tied to revoked or expired scoped keys are removed
-before applying the session limit.
+same-origin requests. Revoking or expiring a scoped key prevents subsequent
+private reads with its sessions; requests already in progress may finish. On
+login, expired and invalidated sessions are removed before applying the limit.
+
+The owner creates teams, assigns their source scopes, creates users with an
+initial password, assigns teams, disables users and resets passwords in the
+separate access-administration session. The initial password must be conveyed to
+the intended person securely; the user can then change it. Passwords must be
+12–128 Unicode characters and at most 512 UTF-8 bytes. VEDA stores salted
+Argon2id hashes (19 MiB, two iterations, one lane), never plaintext passwords;
+administrative listings return neither hashes nor salts. Password confirmation
+and login share the ten-attempts-per-minute limiter. This is a local reader
+account system; MFA, SSO, account recovery, account deletion and audit history
+are not implemented. Do not expose it remotely without a suitable HTTPS and
+network-access design.
 
 Settings provide a separate owner-authenticated access-administration session
 for listing sources and issuing or revoking source-scoped reader keys. Its
@@ -54,4 +71,7 @@ value was not received. A key with an unknown value should be revoked and a
 new ID created. Revocation stops subsequent reads and sessions associated with
 that key; in-flight requests may finish. Issuing a key upgrades the store to
 version 4 or newer; verify backup and rollback compatibility before use. These
-are separate credentials, not user accounts, teams, or OS isolation.
+are separate agent credentials and do not establish OS isolation. Creating a
+team or user upgrades the logical store to version 15: older binaries reject it.
+The SQLite marker remains version 14 and must stay paired with its database.
+Back up and verify a compatible restore before creating accounts or rolling back.

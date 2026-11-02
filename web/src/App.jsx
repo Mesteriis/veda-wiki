@@ -563,25 +563,39 @@ function Results({ v }) {
 function ReaderAccess() {
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState("");
+  const [mode, setMode] = useState("user");
+  const [canChangePassword, setCanChangePassword] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/session/status", { signal: controller.signal })
       .then((r) => { if (!r.ok) throw Error(); return r.json(); })
-      .then((result) => setStatus(result.authenticated))
+      .then(async (result) => { setStatus(result.authenticated); if (result.authenticated) { const profile = await fetch("/api/session/profile"); if (profile.ok) setCanChangePassword((await profile.json()).password_change); } })
       .catch((e) => { if (e.name !== "AbortError") setMessage("Вход доступен на приватном адресе через HTTPS или на этом компьютере."); });
     return () => controller.abort();
   }, []);
   async function submit(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const key = new FormData(form).get("key");
+    const data = new FormData(form);
+    const credentials = mode === "user" ? { username: data.get("username"), password: data.get("password") } : { key: data.get("key") };
     setMessage("");
     try {
-      const response = await fetch("/api/session/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
-      form.reset();
+      const response = await fetch("/api/session/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(credentials) });
       if (!response.ok) throw Error();
       window.location.reload();
-    } catch { setMessage("Не удалось войти. Проверьте ключ и адрес подключения."); }
+    } catch { setMessage("Не удалось войти. Проверьте данные и адрес подключения."); }
+    finally { form.reset(); }
+  }
+  async function changePassword(event) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    setMessage("");
+    if (data.get("new_password") !== data.get("confirm_password")) { setMessage("Новые пароли не совпадают."); return; }
+    try {
+      const response = await fetch("/api/session/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ current_password: data.get("current_password"), new_password: data.get("new_password") }) });
+      if (!response.ok) throw Error();
+      window.location.assign("/");
+    } catch { setMessage("Не удалось изменить пароль. Проверьте текущий пароль и повторите попытку."); }
+    finally { form.reset(); }
   }
   async function logout() {
     try {
@@ -592,8 +606,8 @@ function ReaderAccess() {
   }
   return (
     <div className="reader-access">
-      {status === true ? <><p>Приватное чтение включено. Сеанс действует до 8 часов.</p><button onClick={logout}>Выйти</button></> : status === false ?
-        <form onSubmit={submit}><p>Введите ключ чтения, чтобы открыть приватные статьи.</p><label>Ключ чтения<input name="key" type="password" autoComplete="off" required /></label><button type="submit">Войти</button></form> : null}
+      {status === true ? <><p>Приватное чтение включено. Сеанс действует до 8 часов.</p>{canChangePassword && <form onSubmit={changePassword}><h3>Изменить пароль</h3><label>Текущий пароль<input name="current_password" type="password" autoComplete="current-password" required /></label><label>Новый пароль<input name="new_password" type="password" minLength="12" maxLength="128" autoComplete="new-password" required /></label><label>Повторите новый пароль<input name="confirm_password" type="password" minLength="12" maxLength="128" autoComplete="new-password" required /></label><button>Изменить пароль</button></form>}<button onClick={logout}>Выйти</button></> : status === false ?
+        <><button type="button" onClick={() => { setMode(mode === "user" ? "key" : "user"); setMessage(""); }}>{mode === "user" ? "Войти по ключу" : "Войти по имени"}</button><form key={mode} onSubmit={submit}>{mode === "user" ? <><p>Войдите в свою учётную запись.</p><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label></> : <><p>Введите ключ чтения.</p><label>Ключ чтения<input name="key" type="password" autoComplete="off" required /></label></>}<button type="submit">Войти</button></form></> : null}
       {message && <p role="alert">{message}</p>}
     </div>
   );
@@ -602,8 +616,13 @@ function AccessSettings() {
   const [status, setStatus] = useState(null);
   const [sources, setSources] = useState([]);
   const [keys, setKeys] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [users, setUsers] = useState([]);
   const [issued, setIssued] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [editingTeam, setEditingTeam] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
+  const [resettingUser, setResettingUser] = useState(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   async function json(route, options = {}) {
@@ -612,8 +631,8 @@ function AccessSettings() {
     return response.json();
   }
   async function refresh() {
-    const [available, existing] = await Promise.all([json("/api/access/sources"), json("/api/access/keys")]);
-    setSources(available); setKeys(existing);
+    const [available, existing, groups, people] = await Promise.all([json("/api/access/sources"), json("/api/access/keys"), json("/api/access/teams"), json("/api/access/users")]);
+    setSources(available); setKeys(existing); setTeams(groups); setUsers(people);
   }
   async function send(route, body) {
     return json(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -664,9 +683,34 @@ function AccessSettings() {
       setMessage(error.status === 409 ? "Ключ изменился или срок истёк. Обновите список и проверьте права." : "Изменение не подтверждено. Обновите список перед повтором.");
     } finally { setBusy(false); }
   }
+  async function saveTeam(event, team = null) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const selected = data.getAll("sources");
+    if (!selected.length) { setMessage("Выберите хотя бы один источник для команды."); return; }
+    const body = { id: team?.id || data.get("id"), sources: selected };
+    if (team) body.expected_revision = team.revision;
+    setBusy(true); setMessage("");
+    try { await send("/api/access/teams", body); setEditingTeam(null); if (!team) form.reset(); await refresh(); }
+    catch (error) { setMessage(error.status === 409 ? "Команда изменилась. Обновите список и проверьте права." : "Не удалось подтвердить изменение команды. Обновите список перед повтором."); }
+    finally { setBusy(false); }
+  }
+  async function createUser(event) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    setBusy(true); setMessage("");
+    try { await send("/api/access/users", { id: data.get("id"), password: data.get("password"), teams: data.getAll("teams") }); form.reset(); await refresh(); }
+    catch { form.reset(); setMessage("Создание не подтверждено. Проверьте список пользователей перед повтором."); }
+    finally { setBusy(false); }
+  }
+  async function updateUser(user, changes) {
+    setBusy(true); setMessage("");
+    try { await send("/api/access/users", { id: user.id, expected_revision: user.revision, ...changes }); setEditingUser(null); setResettingUser(null); await refresh(); }
+    catch (error) { setMessage(error.status === 409 ? "Пользователь изменился. Обновите список и повторите действие." : "Изменение не подтверждено. Обновите список перед повтором."); }
+    finally { setBusy(false); }
+  }
+  function updateMembership(event, user) { event.preventDefault(); updateUser(user, { teams: new FormData(event.currentTarget).getAll("teams") }); }
+  function resetPassword(event, user) { event.preventDefault(); const form = event.currentTarget; const password = new FormData(form).get("password"); form.reset(); updateUser(user, { password }); }
   async function logout() {
     setBusy(true); setMessage("");
-    try { await send("/api/access/session/logout", {}); setStatus(false); setKeys([]); setSources([]); setIssued(null); setEditing(null); }
+    try { await send("/api/access/session/logout", {}); setStatus(false); setKeys([]); setSources([]); setTeams([]); setUsers([]); setIssued(null); setEditing(null); setEditingTeam(null); setEditingUser(null); setResettingUser(null); }
     catch { setMessage("Не удалось завершить сеанс."); }
     finally { setBusy(false); }
   }
@@ -674,6 +718,10 @@ function AccessSettings() {
     <p>Ключи дают только чтение выбранных источников. Для агентов и пользователей можно выдавать отдельные ключи.</p>
     {status === false && <form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти в управление доступом</button></form>}
     {status === true && <>
+      <form onSubmit={saveTeam}><h3>Новая команда</h3><label>Идентификатор<input name="id" required placeholder="team-ops" /></label><fieldset><legend>Источники команды</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy || !sources.length}>Создать команду</button></form>
+      <h3>Команды</h3>{teams.length ? <ul>{teams.map((team) => <li key={team.id}><strong>{team.id}</strong> · {team.sources.join(", ")} <button type="button" disabled={busy} onClick={() => setEditingTeam(editingTeam === team.id ? null : team.id)}>Изменить источники</button>{editingTeam === team.id && <form onSubmit={(event) => saveTeam(event, team)}><fieldset><legend>Источники для {team.id}</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} defaultChecked={team.sources.includes(s.id)} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy}>Сохранить команду</button></form>}</li>)}</ul> : <p>Команд пока нет.</p>}
+      <form onSubmit={createUser}><h3>Новый пользователь</h3><label>Имя пользователя<input name="id" required placeholder="reader-one" /></label><label>Начальный пароль<input name="password" type="password" minLength="12" maxLength="128" autoComplete="new-password" required /></label><p>Передайте начальный пароль безопасно; пользователь сможет его сменить.</p><fieldset><legend>Команды пользователя</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} /> {team.id}</label>)}</fieldset><button disabled={busy}>Создать пользователя</button></form>
+      <h3>Пользователи</h3>{users.length ? <ul>{users.map((user) => <li key={user.id}><strong>{user.id}</strong> · {user.disabled ? "Отключён" : "Активен"} · {user.teams.join(", ") || "без команд"} <button type="button" disabled={busy} onClick={() => setEditingUser(editingUser === user.id ? null : user.id)}>Изменить команды</button> <button type="button" disabled={busy} onClick={() => setResettingUser(resettingUser === user.id ? null : user.id)}>Сменить пароль</button> <button type="button" disabled={busy} onClick={() => updateUser(user, { disabled: !user.disabled })}>{user.disabled ? "Включить" : "Отключить"}</button>{editingUser === user.id && <form onSubmit={(event) => updateMembership(event, user)}><fieldset><legend>Команды для {user.id}</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} defaultChecked={user.teams.includes(team.id)} /> {team.id}</label>)}</fieldset><button disabled={busy}>Сохранить команды</button></form>}{resettingUser === user.id && <form onSubmit={(event) => resetPassword(event, user)}><label>Новый пароль для {user.id}<input name="password" type="password" minLength="12" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Сменить пароль</button></form>}</li>)}</ul> : <p>Пользователей пока нет.</p>}
       {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
       <form onSubmit={create}><h3>Новый ключ чтения</h3><label>Идентификатор<input name="id" required placeholder="agent-one" /></label><label>Срок в днях<input name="days" type="number" min="1" max="365" defaultValue="30" required /></label><fieldset><legend>Доступные источники</legend>{sources.length ? sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} /> {s.title} ({s.id})</label>) : <p>Источников пока нет.</p>}</fieldset><button disabled={busy || !!issued || !sources.length}>Создать ключ</button></form>
       <h3>Выданные ключи</h3>{keys.length ? <ul>{keys.map((k) => <li key={k.id}><strong>{k.id}</strong> · {k.sources.join(", ")} · до {new Date(k.expires_at).toLocaleString()} <button type="button" disabled={busy} onClick={() => setEditing(editing === k.id ? null : k.id)}>Изменить доступ</button> <button type="button" disabled={busy} onClick={() => revoke(k.id)}>Отозвать</button>{editing === k.id && <form onSubmit={(event) => update(event, k)}><fieldset><legend>Источники для {k.id}</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} defaultChecked={k.sources.includes(s.id)} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy}>Сохранить доступ</button> <button type="button" disabled={busy} onClick={() => setEditing(null)}>Отмена</button></form>}</li>)}</ul> : <p>Ключей пока нет.</p>}

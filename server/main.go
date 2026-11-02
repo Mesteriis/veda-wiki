@@ -238,7 +238,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		w.adminGitHubAPI(rw, r)
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/api/access/keys") || r.URL.Path == "/api/access/sources" {
+	if strings.HasPrefix(r.URL.Path, "/api/access/keys") || r.URL.Path == "/api/access/sources" || r.URL.Path == "/api/access/users" || r.URL.Path == "/api/access/teams" {
 		w.browserAccessAPI(rw, r)
 		return
 	}
@@ -264,6 +264,16 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if !w.Public && !owner && !reader && r.Method == "GET" {
 			if hash, ok := w.Sessions.scopedCookie(r); ok {
 				scoped, valid, err := w.Store.scopedViewHash(hash, time.Now())
+				if err != nil {
+					http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				if valid {
+					w.Store, reader = scoped, true
+				}
+			}
+			if user, ok := w.Sessions.userCookie(r); ok && !reader {
+				scoped, valid, err := w.Store.scopedViewUser(user.ID, user.AuthVersion)
 				if err != nil {
 					http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
 					return

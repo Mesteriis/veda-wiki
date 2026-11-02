@@ -151,6 +151,68 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		jsonResponse(rw, 201, map[string]any{"id": input.ID, "sources": input.Sources, "expires_at": expiry.UTC().Format(time.RFC3339Nano), "key": key})
 		return
 	}
+	if r.URL.Path == "/api/v1/users" || r.URL.Path == "/api/v1/teams" {
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method == "GET" {
+			if r.URL.Path == "/api/v1/users" {
+				jsonResponse(rw, http.StatusOK, w.Store.userViews())
+			} else {
+				jsonResponse(rw, http.StatusOK, w.Store.teamViews())
+			}
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path == "/api/v1/teams" {
+			var in struct {
+				ID       string   `json:"id"`
+				Sources  []string `json:"sources"`
+				Expected *int     `json:"expected_revision"`
+			}
+			if decodeBody(rw, r, &in) != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			team, err := w.Store.saveTeam(in.ID, in.Sources, in.Expected)
+			if err != nil {
+				apiError(rw, err)
+				return
+			}
+			status := http.StatusOK
+			if in.Expected == nil {
+				status = http.StatusCreated
+			}
+			jsonResponse(rw, status, team)
+			return
+		}
+		var in struct {
+			ID       string    `json:"id"`
+			Teams    *[]string `json:"teams"`
+			Password *string   `json:"password"`
+			Disabled *bool     `json:"disabled"`
+			Expected *int      `json:"expected_revision"`
+		}
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		user, err := w.Store.saveUser(in.ID, in.Teams, in.Password, in.Disabled, in.Expected)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		status := http.StatusOK
+		if in.Expected == nil {
+			status = http.StatusCreated
+		}
+		jsonResponse(rw, status, user)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/v1/github/") {
 		w.githubAPI(rw, r, owner)
 		return

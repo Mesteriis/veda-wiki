@@ -136,6 +136,16 @@ func (s *Store) commitSQLite(state Database) error {
 			return err
 		}
 	}
+	for id, v := range state.Users {
+		if err = put("user", id, v); err != nil {
+			return err
+		}
+	}
+	for id, v := range state.Teams {
+		if err = put("team", id, v); err != nil {
+			return err
+		}
+	}
 	if _, err = tx.Exec(`DELETE FROM records WHERE NOT EXISTS (SELECT 1 FROM seen WHERE seen.category=records.category AND seen.id=records.id)`); err != nil {
 		return err
 	}
@@ -170,7 +180,7 @@ func (s *Store) loadSQLite(marker []byte) error {
 		return err
 	}
 	defer rows.Close()
-	result := Database{Sources: map[string]Source{}, Articles: map[string]Article{}, Accounts: map[string]GitHubAccount{}, Connections: map[string]GitHubConnection{}, Outbox: map[string]SyncJob{}, Moves: map[string]Move{}, AccessKeys: map[string]AccessKey{}}
+	result := Database{Sources: map[string]Source{}, Articles: map[string]Article{}, Accounts: map[string]GitHubAccount{}, Connections: map[string]GitHubConnection{}, Outbox: map[string]SyncJob{}, Moves: map[string]Move{}, AccessKeys: map[string]AccessKey{}, Users: map[string]WikiUser{}, Teams: map[string]WikiTeam{}}
 	metaFound := false
 	for rows.Next() {
 		var category, id string
@@ -215,6 +225,14 @@ func (s *Store) loadSQLite(marker []byte) error {
 			var v AccessKey
 			err = json.Unmarshal(data, &v)
 			result.AccessKeys[id] = v
+		case "user":
+			var v WikiUser
+			err = json.Unmarshal(data, &v)
+			result.Users[id] = v
+		case "team":
+			var v WikiTeam
+			err = json.Unmarshal(data, &v)
+			result.Teams[id] = v
 		default:
 			return errors.New("unknown SQLite record category")
 		}

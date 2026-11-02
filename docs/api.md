@@ -25,9 +25,13 @@ or article bodies. Do not put the key into URLs, browser storage or logs.
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |
 | GET/POST | `/api/v1/access-keys` | List, create or update a source-scoped read-only key (owner only) |
+| GET/POST | `/api/v1/teams`, `/api/v1/users` | List, create or update reader teams and named users (owner only) |
 | POST | `/api/v1/access-keys/revoke` | Revoke a scoped key by ID (owner only) |
 | GET/POST | `/api/access/session/status`, `/api/access/session/login`, `/api/access/session/logout` | Separate browser access-administration session |
 | GET | `/api/access/sources` | List source metadata for the separate browser access-administration session |
+| GET/POST | `/api/access/teams`, `/api/access/users` | Manage teams and named users in the separate access-administration session |
+| GET | `/api/session/profile` | Report whether the current reader session can change its password |
+| POST | `/api/session/password` | Change the current user's password after confirming the current one |
 | GET/POST | `/api/access/keys` | List, create or update scoped keys in that browser session |
 | POST | `/api/access/keys/revoke` | Revoke a scoped key in that browser session |
 | POST | `/api/v1/articles/copy` | Copy a revision to a new source and retain provenance (owner only) |
@@ -105,6 +109,18 @@ previous scope. Scoped keys are ignored on the public listener and cannot
 write, access history or use owner-only endpoints. Existing shared reader and
 Unix socket credentials still grant all private sources until separately changed.
 Key issuance upgrades the store to version 4, which older servers refuse to open.
+
+For named readers, create a team with `POST /api/v1/teams` and `id`, `sources`;
+create a user with `POST /api/v1/users` and `id`, `teams`, `password`. An empty
+team list grants no private source. To update either object, include its current
+`expected_revision`; user updates can change `teams`, `disabled` or `password`.
+Users cannot manage their own team membership. A user changes their own password
+with `current_password` and `new_password` through the same-origin browser
+session endpoint. Team changes affect the next request; disabling a user or
+changing their password invalidates all their sessions. The APIs do not return
+passwords, salts or hashes. An owner can disable a user; account deletion and
+team deletion are not currently supported. Creating either object upgrades the
+logical store to version 15, which older binaries must not open.
 The Unix reader socket remains implicitly trusted by default; use
 `--reader-socket-require-key` and configure scoped bearer keys before relying on
 per-agent restrictions. An invalid or revoked bearer on that socket does not

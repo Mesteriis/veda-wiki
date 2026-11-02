@@ -13,6 +13,9 @@ migrated store. It saves `state.before-sqlite.json`, writes `state.sqlite` as
 separate records in a transaction, reopens and validates the snapshot, syncs the
 directory and finally switches `state.json` to a version 14 SQLite marker. Old
 binaries reject that marker. Migration does not touch blobs or credentials.
+Creating a reader user or team upgrades the logical database to version 15;
+older binaries reject the new records. The version 14 SQLite marker remains the
+backend selector and must be kept together with `state.sqlite`.
 
 Do not automatically delete migration artifacts after an interrupted migration.
 If the command reports an error, inspect the marker and artifacts before doing

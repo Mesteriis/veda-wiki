@@ -74,18 +74,21 @@ type Database struct {
 	Outbox      map[string]SyncJob          `json:"outbox,omitempty"`
 	Moves       map[string]Move             `json:"moves,omitempty"`
 	AccessKeys  map[string]AccessKey        `json:"access_keys,omitempty"`
+	Users       map[string]WikiUser         `json:"users,omitempty"`
+	Teams       map[string]WikiTeam         `json:"teams,omitempty"`
 }
 
 // One server process owns the data directory. All writes are serialized and
 // persisted before becoming visible. Whole-state transactions keep article
 // history and the future sync outbox in one durability boundary.
 type Store struct {
-	mu       sync.RWMutex
-	dir      string
-	db       Database
-	observed map[string]time.Time
-	sqlite   bool
-	invalid  bool
+	mu         sync.RWMutex
+	dir        string
+	db         Database
+	observed   map[string]time.Time
+	sqlite     bool
+	invalid    bool
+	passwordMu sync.Mutex
 }
 
 func privateDataDir(dir string) error {
@@ -136,7 +139,7 @@ func openStore(dir string) (*Store, error) {
 }
 
 func (s *Store) validate() (*Store, error) {
-	if (s.db.Version < 1 || s.db.Version > 13) || s.db.Sources == nil || s.db.Articles == nil {
+	if (s.db.Version < 1 || s.db.Version > 15) || s.db.Version == 14 || s.db.Sources == nil || s.db.Articles == nil {
 		return nil, errors.New("unsupported store")
 	}
 	if s.db.Accounts == nil {
@@ -161,6 +164,9 @@ func (s *Store) validate() (*Store, error) {
 		if err := validateAccessKey(id, key, s.db.Sources); err != nil {
 			return nil, err
 		}
+	}
+	if err := validatePeople(s.db); err != nil {
+		return nil, err
 	}
 	for id, a := range s.db.Accounts {
 		if !identifier.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !githubPart.MatchString(a.Login) || len(a.SecretRef) != 32 {
@@ -488,6 +494,14 @@ func (s *Store) clone() Database {
 	db.AccessKeys = make(map[string]AccessKey, len(s.db.AccessKeys))
 	for k, v := range s.db.AccessKeys {
 		db.AccessKeys[k] = v
+	}
+	db.Users = make(map[string]WikiUser, len(s.db.Users))
+	for k, v := range s.db.Users {
+		db.Users[k] = v
+	}
+	db.Teams = make(map[string]WikiTeam, len(s.db.Teams))
+	for k, v := range s.db.Teams {
+		db.Teams[k] = v
 	}
 	for k, v := range s.db.Sources {
 		db.Sources[k] = v

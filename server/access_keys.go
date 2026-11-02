@@ -207,6 +207,21 @@ func (s *Store) scopedViewHash(hash [32]byte, now time.Time) (*Store, bool, erro
 	if scope == nil {
 		return nil, false, nil
 	}
+	return s.scopedViewLocked(scope)
+}
+
+func (s *Store) scopedViewUser(id string, version int) (*Store, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	scope := s.userScopeLocked(id, version)
+	if scope == nil {
+		return nil, false, nil
+	}
+	return s.scopedViewLocked(scope)
+}
+
+// Caller holds the store read lock, keeping authorization and snapshot atomic.
+func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 	selected := make(map[string]bool, len(scope))
 	db := Database{Version: s.db.Version, Sources: map[string]Source{}, Articles: map[string]Article{}, Connections: map[string]GitHubConnection{}}
 	observed := map[string]time.Time{}

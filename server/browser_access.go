@@ -23,7 +23,7 @@ func (w Wiki) browserAccessAPI(rw http.ResponseWriter, r *http.Request) {
 		jsonResponse(rw, http.StatusOK, choices)
 		return
 	}
-	if r.URL.Path != "/api/access/keys" && r.URL.Path != "/api/access/keys/revoke" {
+	if r.URL.Path != "/api/access/keys" && r.URL.Path != "/api/access/keys/revoke" && r.URL.Path != "/api/access/users" && r.URL.Path != "/api/access/teams" {
 		http.NotFound(rw, r)
 		return
 	}
@@ -38,9 +38,15 @@ func (w Wiki) browserAccessAPI(rw http.ResponseWriter, r *http.Request) {
 	request := r.Clone(r.Context())
 	request.Header = r.Header.Clone()
 	request.Header.Del("Origin") // already verified above
-	request.URL.Path = "/api/v1/access-keys"
-	if r.URL.Path == "/api/access/keys/revoke" {
-		request.URL.Path += "/revoke"
+	switch r.URL.Path {
+	case "/api/access/keys":
+		request.URL.Path = "/api/v1/access-keys"
+	case "/api/access/keys/revoke":
+		request.URL.Path = "/api/v1/access-keys/revoke"
+	case "/api/access/users":
+		request.URL.Path = "/api/v1/users"
+	case "/api/access/teams":
+		request.URL.Path = "/api/v1/teams"
 	}
 	w.api(rw, request, true, false)
 }

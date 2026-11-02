@@ -55,6 +55,20 @@ func TestBrowserAccessAdministrationBoundaries(t *testing.T) {
 	if r := call("GET", "/api/access/sources", "", "", cookie, false, local); r.Code != 200 {
 		t.Fatal("sources unavailable", r.Code)
 	}
+	team := `{"id":"ops","sources":["allowed"]}`
+	if r := call("POST", "/api/access/teams", team, "http://evil.example", cookie, false, local); r.Code != 403 {
+		t.Fatal("cross-origin team creation", r.Code)
+	}
+	if r := call("POST", "/api/access/teams", team, origin, cookie, false, local); r.Code != 201 {
+		t.Fatal("team creation failed", r.Code)
+	}
+	person := `{"id":"person","teams":["ops"],"password":"synthetic test password"}`
+	if r := call("POST", "/api/access/users", person, origin, cookie, false, local); r.Code != 201 || strings.Contains(r.Body.String(), "password") {
+		t.Fatal("user creation failed or exposed password", r.Code)
+	}
+	if r := call("GET", "/api/access/users", "", "", cookie, false, local); r.Code != 200 || strings.Contains(r.Body.String(), "hash") || strings.Contains(r.Body.String(), "salt") {
+		t.Fatal("user listing failed or exposed password material", r.Code)
+	}
 	expires := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	body := `{"id":"test-agent","sources":["allowed"],"expires_at":"` + expires + `"}`
 	if r := call("POST", "/api/access/keys", body, "http://evil.example", cookie, false, local); r.Code != 403 {
