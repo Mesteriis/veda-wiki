@@ -38,6 +38,10 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	initial, e := s.page("program/docs/setup.md", false)
+	if e != nil || !initial.ProgramDocumentation || initial.Translated {
+		t.Fatal("original program documentation is not identified", e)
+	}
 	in := translationRequest{SourceID: "program", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Установка\n\nВыполните `install` и [читайте](guide.md).\n\n```sh\necho hello\n```\n"}
 	broken := in
 	broken.Text = strings.Replace(in.Text, "echo hello", "echo goodbye", 1)
@@ -64,7 +68,7 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 		t.Fatal(e)
 	}
 	got, e = s.page("program/docs/setup.md", false)
-	if e != nil || got.Translated || !strings.Contains(got.Text, "Changed upstream") {
+	if e != nil || !got.ProgramDocumentation || got.Translated || !strings.Contains(got.Text, "Changed upstream") {
 		t.Fatal("stale translation displayed", e)
 	}
 	if _, e = s.submitTranslation(in); e != ErrConflict {
@@ -125,7 +129,7 @@ func TestPrivateTranslationCannotAppearAfterVisibilityChanges(t *testing.T) {
 		t.Fatal("publication review missing", candidates)
 	}
 	page, e := s.page("program/docs/readme.md", true)
-	if e != nil || page.Translated || page.Text != "# Original" {
+	if e != nil || !page.ProgramDocumentation || page.Translated || page.Text != "# Original" {
 		t.Fatal("private translation published", e)
 	}
 }
