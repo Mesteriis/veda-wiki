@@ -83,6 +83,9 @@ async def main():
                         await call("veda_write_article", {"source_id": source, "path": "README.md",
                             "text": "# Shared fixture" if source == "open" else "# Private canary",
                             "expected_revision": 0})
+                    rejected = await session.call_tool("veda_write_article", {"source_id": "open", "path": "unsafe.md",
+                        "text": "password=synthetic-fixture-only", "expected_revision": 0})
+                    assert rejected.isError
                     current = await call("veda_read", {"source_id": "closed", "path": "README.md"})
                     assert current["revision"] == 1 and current["text"] == "# Private canary"
                     await call("veda_write_article", {"source_id": "closed", "path": "README.md",

@@ -582,13 +582,17 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 			return Revision{}, ErrConflict
 		}
 	}
+	publicNow := sourcePublic(s.db, src, time.Now())
+	if publicNow && secretContent.MatchString(text) {
+		return Revision{}, ErrInvalid
+	}
 	sum := sha256.Sum256([]byte(text))
 	rev := Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: time.Now().UTC().Format(time.RFC3339Nano)}
 	versions := append([]Revision(nil), article.Versions...)
 	versions = append(versions, rev)
 	db := s.clone()
 	article.SourceID, article.Path, article.Versions, article.Deleted = sourceID, p, versions, false
-	if sourcePublic(s.db, src, time.Now()) {
+	if publicNow {
 		published := rev
 		published.Number = 0
 		article.Published = &published

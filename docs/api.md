@@ -61,6 +61,15 @@ The field is absent for public readers and for articles without a conflict.
 | POST | `/api/v1/github/cancel-bundle` | Cancel an unprepared linked-article bundle (owner only) |
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
+Direct article creation and update reject credential-like text with HTTP 400
+when the source is currently public; private writes remain available. The check
+can miss secrets or flag harmless examples. GitHub synchronization also blocks
+credential-like queued Markdown for both public and private repositories; a
+corrected new revision supersedes an unprepared blocked job without a bundled
+article graph, retaining still-referenced image and link dependencies. This
+does not retroactively remove already published content or resolve an ambiguous
+prepared push. See [GitHub synchronization](github.md) for queue recovery.
+
 Search matches exact phrases or meaningful words across visible titles, paths
 and article text. For translated articles it searches both the visible original
 revision and its visible translation, scores each text independently, and

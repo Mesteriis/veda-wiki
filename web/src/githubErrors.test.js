@@ -6,6 +6,7 @@ test('explains known errors without displaying arbitrary remote content', () => 
   assert.match(githubErrorMessage('rate_limited', 503, 'fallback'), /лимит/);
   assert.match(githubErrorMessage('repository_type_changed', 0, 'fallback'), /Верните прежнюю структуру/);
   assert.match(githubErrorMessage('asset_unavailable', 0, 'fallback'), /резервную копию/);
+  assert.match(githubErrorMessage('credential_like_content', 0, 'fallback'), /пароль или ключ/);
   assert.match(githubErrorMessage('publication_confirmation_required', 0, 'fallback'), /подтверждение публикации/);
   assert.match(githubErrorMessage('', 409, 'fallback'), /настройки/i);
   assert.equal(githubErrorMessage('<private upstream response>', 503, 'fallback'), 'fallback');

@@ -682,12 +682,6 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			}
 			continue
 		}
-		if job.Visibility != "public" && !c.Private {
-			if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", "", ""); err != nil {
-				return err
-			}
-			continue
-		}
 		if due, e := time.Parse(time.RFC3339Nano, job.NextAttempt); e == nil && due.After(time.Now()) {
 			continue
 		}
@@ -700,6 +694,18 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		}
 		if job.Revision > len(a.Versions) || a.Versions[job.Revision-1].SHA != job.SHA {
 			return ErrInvalid
+		}
+		if secretContent.MatchString(a.Versions[job.Revision-1].Text) {
+			if err := m.store.setJobFor(c, job, "blocked", "credential_like_content", "", ""); err != nil {
+				return err
+			}
+			continue
+		}
+		if job.Visibility != "public" && !c.Private {
+			if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", "", ""); err != nil {
+				return err
+			}
+			continue
 		}
 		pending := false
 		for _, conflict := range a.Conflicts {
@@ -737,6 +743,12 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		} else {
 			var files map[string][]byte
 			files, e = m.pendingBundle(ctx, c, head, treeSHA, token, job, a)
+			if e == nil && bundleHasCredentialLikeText(files) {
+				if err := m.store.setJobFor(c, job, "blocked", "credential_like_content", "", ""); err != nil {
+					return err
+				}
+				continue
+			}
 			if e == nil {
 				commit, e = m.github.pushFiles(ctx, c.Repository, c.Branch, head, treeSHA, files, token, prepared)
 			}
@@ -756,6 +768,16 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		return nil // one commit per source per pass; refresh before the next write
 	}
 	return nil
+}
+
+func bundleHasCredentialLikeText(files map[string][]byte) bool {
+	for name, content := range files {
+		ext := strings.ToLower(path.Ext(name))
+		if (ext == ".md" || ext == ".markdown") && secretContent.Match(content) {
+			return true
+		}
+	}
+	return false
 }
 
 // Refuse to overwrite pre-existing files while composing the article and its

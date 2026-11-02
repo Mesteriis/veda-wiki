@@ -140,7 +140,7 @@ def make_server(client):
         "veda_create_source": ("Create an explicit local source; GitHub connection is not implied.", {
             "id": string, "title": string, "kind": {"enum": ["wiki", "program"]},
             "visibility": {"enum": ["private", "public"]}}, ["id", "title", "kind", "visibility"]),
-        "veda_write_article": ("Create (revision 0) or update an article with optimistic concurrency.", {
+        "veda_write_article": ("Create (revision 0) or update an article with optimistic concurrency. A currently public source rejects credential-like text, and GitHub sync blocks it for any repository; private local writes remain available. The check can have false positives and cannot guarantee detection of secrets.", {
             "source_id": string, "path": string, "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES},
             "expected_revision": {"type": "integer", "minimum": 0}},
             ["source_id", "path", "text", "expected_revision"]),
