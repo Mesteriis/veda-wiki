@@ -37,6 +37,8 @@ jobs:
           python scripts/package_release.py --version ci --arch arm64 --output "$RUNNER_TEMP/veda-artifacts"
           cd "$RUNNER_TEMP/veda-artifacts"
           sha256sum veda-ci-linux-amd64.tar.gz veda-ci-linux-arm64.tar.gz > SHA256SUMS
+      - name: Install archive on fresh systemd runner
+        run: scripts/smoke_fresh_systemd.sh
       - uses: actions/upload-artifact@v4
         with:
           name: veda-linux-ci
