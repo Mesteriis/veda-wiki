@@ -35,5 +35,5 @@ The SQLite backend removes the 64 MiB whole-state JSON limit and updates
 individual records within an atomic transaction. It still loads the complete
 logical state into memory and serializes records during commits. It is not a
 fully indexed or retention-managed database; large histories and collections
-need further performance and recovery validation. The migration is opt-in and
-has not been applied to the current production instance.
+need further performance and recovery validation. Migration is opt-in; verify
+the backup and recovery procedure separately for each deployment.

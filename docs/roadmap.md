@@ -13,7 +13,7 @@
 - [ ] Program docs/ import and provenance-preserving Russian translation.
 - [ ] Stable cross-source article moves and publication review.
 - [ ] User/team permissions and private browser reading sessions.
-- [ ] SQLite migration and retention: opt-in backend implemented; production migration, restore, indexing and retention remain pending.
+- [ ] SQLite migration and retention: opt-in backend deployed; production restore boot, indexing and retention remain pending.
 - [ ] Packaging, deployment hardening and independent restore acceptance.
 
 Full-scope status is tracked in [implementation ledger](implementation.md).
