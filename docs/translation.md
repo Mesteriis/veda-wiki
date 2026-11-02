@@ -183,3 +183,9 @@ retained the 56 protected elements. Inspection nevertheless found untranslated
 English and a fragment that reversed the meaning of a negation. Structural
 checks and ID alignment do not detect those errors, so this method remains
 experimental and is not enabled.
+Another local 8B experiment masked code spans, fenced blocks and link
+destinations with numbered markers before translating whole paragraphs. On a
+short public excerpt the eight markers survived and protected Markdown matched,
+but terminology was imperfect. On the full public guide, the 52 markers failed
+the exact-count check. The regex-based prototype is not a complete Markdown
+parser and was not integrated; automatic translation remains unconfigured.
