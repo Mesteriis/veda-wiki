@@ -512,6 +512,11 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		return result, e
 	}
 	if proof == nil && exists && src.ImportGeneration == generation {
+		for _, ref := range src.Assets {
+			if s.verifyAsset(ref) != nil {
+				return ImportResult{}, errImportedAssetUnavailable
+			}
+		}
 		result.Generation = generation
 		result.Unchanged = len(batch.Files)
 		s.markImportObserved(batch.SourceID)
@@ -649,6 +654,14 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 					refs[name] = ref
 				}
 			}
+		}
+	}
+	// Retained images may not be present in the new batch and therefore cannot
+	// be repaired from it. Do not commit or report a successful observation if
+	// any image that would remain referenced is missing or corrupt.
+	for _, ref := range refs {
+		if s.verifyAsset(ref) != nil {
+			return ImportResult{}, errImportedAssetUnavailable
 		}
 	}
 	src.Metadata = batch.Metadata

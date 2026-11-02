@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -464,6 +465,50 @@ func TestPrivatePartialImportRetainsUnobservedImages(t *testing.T) {
 	}
 	if _, ok := s.db.Sources["handbook"].Assets["images/unobserved.png"]; !ok {
 		t.Fatal("partial observation removed an image")
+	}
+}
+
+func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("changed=%t", changed), func(t *testing.T) {
+			s := testStore(t)
+			b := testBatch()
+			b.Visibility = "private"
+			image := smallPNG(t)
+			b.Assets = map[string][]byte{"images/retained.png": image}
+			if _, err := s.importBatch(b); err != nil {
+				t.Fatal(err)
+			}
+			b = applyAgain(s, b)
+			b.Assets = map[string][]byte{}
+			b.Complete, b.Withheld = false, 1
+			if _, err := s.importBatch(b); err != nil {
+				t.Fatal(err)
+			}
+			b = applyAgain(s, b)
+			if changed {
+				b.Files["README.md"] = "# Changed"
+			}
+			before := s.observed[b.SourceID]
+			generation := s.db.Sources[b.SourceID].ImportGeneration
+			ref := s.db.Sources[b.SourceID].Assets["images/retained.png"]
+			filename := filepath.Join(s.dir, "blobs", ref.SHA)
+			if err := os.Remove(filename); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.importBatch(b); !errors.Is(err, errImportedAssetUnavailable) {
+				t.Fatal("missing retained image was accepted", err)
+			}
+			if !s.observed[b.SourceID].Equal(before) || s.db.Sources[b.SourceID].ImportGeneration != generation {
+				t.Fatal("failed import advanced the source")
+			}
+			if err := os.WriteFile(filename, image, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.importBatch(b); err != nil {
+				t.Fatal("import did not recover", err)
+			}
+		})
 	}
 }
 

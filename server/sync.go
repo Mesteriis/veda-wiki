@@ -484,6 +484,10 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		visibility = "private"
 	}
 	if _, e = m.store.applyImport(batch, &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: visibility, TreeSHA: tree.SHA}, false); e != nil {
+		if errors.Is(e, errImportedAssetUnavailable) {
+			fail(&remoteError{Code: "asset_unavailable"})
+			return
+		}
 		fail(e)
 		return
 	}
