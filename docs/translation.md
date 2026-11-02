@@ -167,3 +167,10 @@ items in this fixture. However, inspection found awkward and altered prose at
 span boundaries, including an inserted quotation mark, so structural equality
 is not sufficient to accept it. The experiment used public data only; it is
 not integrated into the worker and does not establish translation quality.
+
+The official Qwen3-8B MLX 4-bit snapshot at revision
+`383413e909f3bc5303ce195ebbdf0339c5a1a2a3` was also tested locally. The
+short synthetic translation passed, but `TestRealLocalMLXProjectDocumentation`
+failed on the public import guide: the protected-element count changed from 56
+to 41. This is evidence for this model configuration and fixture only; no
+private content was used, and the model was not enabled on the server.
