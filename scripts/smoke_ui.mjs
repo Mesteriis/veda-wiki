@@ -131,11 +131,11 @@ for (const width of [1672, 390, 320]) {
   for (const title of ['GitHub', 'Настройки']) {
     if (width <= 390) await evaluate("document.querySelector('button[aria-label=Меню]').click()");
     await evaluate(`[...document.querySelectorAll('#main-navigation .nav-item')].find(e=>e.innerText===${JSON.stringify(title)}).click()`);
-    const scope = title === 'GitHub' ? '.github-page' : 'dialog[open]';
+    const scope = title === 'GitHub' ? '.github-page' : '.settings-page';
     try { await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`); }
     catch (error) { throw Error(`admin login unavailable: ${title}, path=${await evaluate('location.pathname + location.search')}, page=${await evaluate("!!document.querySelector('.github-page')")}, dialog=${await evaluate("!!document.querySelector('dialog[open]')")}`); }
     await evaluate(`document.querySelector(${JSON.stringify(scope + ' input[name=key]')}).value=${JSON.stringify('d'.repeat(64))}; document.querySelector(${JSON.stringify(scope + ' input[name=key]')}).closest('form').requestSubmit()`);
-    const expected = title === 'GitHub' ? 'Подключить репозиторий' : 'Новый ключ чтения';
+    const expected = title === 'GitHub' ? 'Подключить репозиторий' : 'Пользователи';
     await until(`document.querySelector(${JSON.stringify(scope)}).textContent.includes(${JSON.stringify(expected)})`);
     if (title === 'GitHub' && !await evaluate("!!document.querySelector('.github-page input[name=source]') && !!document.querySelector('.github-page select[name=destination]') && document.querySelector('.github-page').textContent.includes('Фоновое согласование')")) throw Error('mirror configuration controls missing');
     if (title === 'GitHub') {
@@ -145,18 +145,20 @@ for (const width of [1672, 390, 320]) {
       await evaluate("document.querySelector('.github-action-dialog button[aria-label=Закрыть]').click()");
       await until("!document.querySelector('.github-action-dialog[open]')");
     }
+    if (title === 'Настройки') {
+      await evaluate("[...document.querySelectorAll('.settings-tabs button')].find(b=>b.innerText==='Ключи доступа').click()");
+      await evaluate("document.querySelector('.settings-add').click()");
+      await until("!!document.querySelector('.settings-modal[open] input[name=days]')");
+      await evaluate("document.querySelector('.settings-modal button[aria-label=Закрыть]').click()");
+      await until("!document.querySelector('.settings-modal[open]')");
+    }
     const writeStatus = await evaluate("(async () => (await fetch('/api/v1/articles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_id:'fixture',path:'browser-write.md',text:'# Synthetic',expected_revision:0})})).status)()");
     if (writeStatus !== 403 && writeStatus !== 404) throw Error('browser admin session allowed article write');
     await until(`[...document.querySelectorAll(${JSON.stringify(scope + ' button')})].some(b => b.innerText.startsWith('Выйти из управления') && !b.disabled)`);
     await evaluate(`[...document.querySelectorAll(${JSON.stringify(scope + ' button')})].find(b=>b.innerText.startsWith('Выйти из управления')).click()`);
     await until(`!!document.querySelector(${JSON.stringify(scope + ' input[name=key]')})`);
-    if (title === 'GitHub') {
-      await send('Page.navigate', { url: privateUrl });
-      await until("!!document.querySelector('.home-page-row')");
-    } else {
-      await evaluate("document.querySelector('dialog button[aria-label=Закрыть]').click()");
-      await until("!document.querySelector('dialog[open]')");
-    }
+    await send('Page.navigate', { url: privateUrl });
+    await until("!!document.querySelector('.home-page-row')");
   }
   await evaluate("document.querySelector('button[aria-label=Профиль]').click()");
   await until("[...document.querySelectorAll('.reader-access button')].some(b => b.innerText === 'Выйти')");

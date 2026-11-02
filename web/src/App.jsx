@@ -102,7 +102,7 @@ function Sidebar({ v }) {
     ["clock", "Недавние", "/?recent=1"],
     ["brand-github", "GitHub", "/?github=1", "github"],
     ["api", "API и MCP", null, "api"],
-    ["settings", "Настройки", null, "settings"],
+    ["settings", "Настройки", "/?settings=1", "settings"],
   ];
   return (
     <aside className="sidebar" onKeyDown={(event) => { if (event.key === "Escape" && menuOpen) setMenuOpen(false); }}>
@@ -119,7 +119,7 @@ function Sidebar({ v }) {
             <a
               className={
                 "nav-item " +
-                ((href === "/" && !v.Query && !v.Selected && !v.Page && !v.GraphView && !v.RecentView && !v.GitHubView) || (href === "/?env=all" && !!v.Selected && !v.Query && !v.Page) || (href === "/?graph=1" && v.GraphView) || (href === "/?recent=1" && v.RecentView) || (href === "/?github=1" && v.GitHubView)
+                ((href === "/" && !v.Query && !v.Selected && !v.Page && !v.GraphView && !v.RecentView && !v.GitHubView && !v.SettingsView) || (href === "/?env=all" && !!v.Selected && !v.Query && !v.Page) || (href === "/?graph=1" && v.GraphView) || (href === "/?recent=1" && v.RecentView) || (href === "/?github=1" && v.GitHubView) || (href === "/?settings=1" && v.SettingsView)
                   ? "selected"
                   : "")
               }
@@ -188,8 +188,8 @@ function Header({ v }) {
   return (
     <header className="masthead">
       <div className="masthead-title">
-        <h1>{v.GitHubView ? "Интеграции GitHub" : v.RecentView ? "Недавние" : v.GraphView ? "Граф знаний" : v.Selected && !v.Query && !v.Page ? "Все статьи" : "Вики VEDA"}</h1>
-        <p>{v.GitHubView ? "Подключение репозиториев и синхронизация с базой знаний" : v.RecentView ? "Страницы, которые вы недавно открывали" : v.GraphView ? "Связи между статьями базы знаний по источникам" : v.Selected && !v.Query && !v.Page ? "Полный каталог статей базы знаний" : "База знаний для работы, проектов и документации"}</p>
+        <h1>{v.SettingsView ? "Настройки" : v.GitHubView ? "Интеграции GitHub" : v.RecentView ? "Недавние" : v.GraphView ? "Граф знаний" : v.Selected && !v.Query && !v.Page ? "Все статьи" : "Вики VEDA"}</h1>
+        <p>{v.SettingsView ? "Управление пользователями, командами и ключами доступа" : v.GitHubView ? "Подключение репозиториев и синхронизация с базой знаний" : v.RecentView ? "Страницы, которые вы недавно открывали" : v.GraphView ? "Связи между статьями базы знаний по источникам" : v.Selected && !v.Query && !v.Page ? "Полный каталог статей базы знаний" : "База знаний для работы, проектов и документации"}</p>
       </div>
       <form action="/" className="global-search" role="search">
         <label className="sr" htmlFor="search">
@@ -724,6 +724,10 @@ function ReaderAccess() {
 function AccessSettings() {
   const [status, setStatus] = useState(null);
   const [sharedSession, setSharedSession] = useState(false);
+  const [accessTab, setAccessTab] = useState("users");
+  const [accessModal, setAccessModal] = useState(null);
+  const accessModalRef = useRef(null);
+  useEffect(() => { if (accessModal) accessModalRef.current?.showModal(); else accessModalRef.current?.close(); }, [accessModal]);
   const [sources, setSources] = useState([]);
   const [keys, setKeys] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -768,7 +772,7 @@ function AccessSettings() {
     setBusy(true); setMessage(""); setIssued(null);
     try {
       const result = await send("/api/access/keys", { id: data.get("id"), sources: selected, expires_at: new Date(Date.now() + days * 86400000).toISOString() });
-      setIssued(result); form.reset();
+      setIssued(result); form.reset(); setAccessModal(null);
       try { await refresh(); } catch { setMessage("Ключ создан, но список не обновился. Сохраните ключ и обновите список позже."); }
     } catch { setMessage("Создание не подтверждено: ключ мог быть создан. Проверьте список перед повтором."); }
     finally { setBusy(false); }
@@ -787,7 +791,7 @@ function AccessSettings() {
     setBusy(true); setMessage("");
     try {
       await send("/api/access/keys", { id: key.id, sources: selected, expires_at: key.expires_at, expected_etag: key.etag });
-      setEditing(null);
+      setEditing(null); setAccessModal(null);
       try { await refresh(); } catch { setMessage("Права изменены, но список не обновился. Обновите его позже."); }
     } catch (error) {
       setMessage(error.status === 409 ? "Ключ изменился или срок истёк. Обновите список и проверьте права." : "Изменение не подтверждено. Обновите список перед повтором.");
@@ -799,20 +803,20 @@ function AccessSettings() {
     const body = { id: team?.id || data.get("id"), sources: selected };
     if (team) body.expected_revision = team.revision;
     setBusy(true); setMessage("");
-    try { await send("/api/access/teams", body); setEditingTeam(null); if (!team) form.reset(); await refresh(); }
+    try { await send("/api/access/teams", body); setEditingTeam(null); if (!team) form.reset(); setAccessModal(null); await refresh(); }
     catch (error) { setMessage(error.status === 409 ? "Команда изменилась. Обновите список и проверьте права." : "Не удалось подтвердить изменение команды. Обновите список перед повтором."); }
     finally { setBusy(false); }
   }
   async function createUser(event) {
     event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
     setBusy(true); setMessage("");
-    try { await send("/api/access/users", { id: data.get("id"), password: data.get("password"), teams: data.getAll("teams") }); form.reset(); await refresh(); }
+    try { await send("/api/access/users", { id: data.get("id"), password: data.get("password"), teams: data.getAll("teams") }); form.reset(); setAccessModal(null); await refresh(); }
     catch { form.reset(); setMessage("Создание не подтверждено. Проверьте список пользователей перед повтором."); }
     finally { setBusy(false); }
   }
   async function updateUser(user, changes) {
     setBusy(true); setMessage("");
-    try { await send("/api/access/users", { id: user.id, expected_revision: user.revision, ...changes }); setEditingUser(null); setResettingUser(null); await refresh(); }
+    try { await send("/api/access/users", { id: user.id, expected_revision: user.revision, ...changes }); setEditingUser(null); setResettingUser(null); setAccessModal(null); await refresh(); }
     catch (error) { setMessage(error.status === 409 ? "Пользователь изменился. Обновите список и повторите действие." : "Изменение не подтверждено. Обновите список перед повтором."); }
     finally { setBusy(false); }
   }
@@ -824,20 +828,33 @@ function AccessSettings() {
     catch { setMessage("Не удалось завершить сеанс."); }
     finally { setBusy(false); }
   }
-  return <div className="github-connect reader-access">
-    <p>Ключи дают только чтение выбранных источников. Для агентов и пользователей можно выдавать отдельные ключи.</p>
-    {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти в управление доступом</button></form><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></>}
+  const openModal = (type, item = null) => { setMessage(""); setAccessModal({ type, item }); };
+  const closeModal = () => { setAccessModal(null); setEditing(null); setEditingTeam(null); setEditingUser(null); setResettingUser(null); };
+  const modalTitle = { user: "Новый пользователь", team: "Новая команда", key: "Новый ключ чтения", userTeams: "Изменить команды", password: "Сменить пароль", teamSources: "Источники команды", keySources: "Доступ ключа" };
+  return <div className="settings-page reader-access">
+    {status === false && <div className="panel settings-login"><p>Для управления доступом войдите как администратор.</p><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти в управление доступом</button></form><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></div>}
     {status === true && <>
-      <form onSubmit={saveTeam}><h3>Новая команда</h3><label>Идентификатор<input name="id" required placeholder="team-ops" /></label><fieldset><legend>Источники команды</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy || !sources.length}>Создать команду</button></form>
-      <h3>Команды</h3>{teams.length ? <ul>{teams.map((team) => <li key={team.id}><strong>{team.id}</strong> · {team.sources.join(", ")} <button type="button" disabled={busy} onClick={() => setEditingTeam(editingTeam === team.id ? null : team.id)}>Изменить источники</button>{editingTeam === team.id && <form onSubmit={(event) => saveTeam(event, team)}><fieldset><legend>Источники для {team.id}</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} defaultChecked={team.sources.includes(s.id)} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy}>Сохранить команду</button></form>}</li>)}</ul> : <p>Команд пока нет.</p>}
-      <form onSubmit={createUser}><h3>Новый пользователь</h3><label>Имя пользователя<input name="id" required placeholder="reader-one" /></label><label>Начальный пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><p>Передайте начальный пароль безопасно; пользователь сможет его сменить.</p><fieldset><legend>Команды пользователя</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} /> {team.id}</label>)}</fieldset><button disabled={busy}>Создать пользователя</button></form>
-      <h3>Пользователи</h3>{users.length ? <ul>{users.map((user) => <li key={user.id}><strong>{user.id}</strong> · {user.admin ? "Администратор" : "Читатель"} · {user.disabled ? "Отключён" : "Активен"} · {user.teams.join(", ") || "без команд"} <button type="button" disabled={busy} onClick={() => setEditingUser(editingUser === user.id ? null : user.id)}>Изменить команды</button> <button type="button" disabled={busy} onClick={() => setResettingUser(resettingUser === user.id ? null : user.id)}>Сменить пароль</button> <button type="button" disabled={busy} onClick={() => updateUser(user, { disabled: !user.disabled })}>{user.disabled ? "Включить" : "Отключить"}</button>{editingUser === user.id && <form onSubmit={(event) => updateMembership(event, user)}><fieldset><legend>Команды для {user.id}</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} defaultChecked={user.teams.includes(team.id)} /> {team.id}</label>)}</fieldset><button disabled={busy}>Сохранить команды</button></form>}{resettingUser === user.id && <form onSubmit={(event) => resetPassword(event, user)}><label>Новый пароль для {user.id}<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Сменить пароль</button></form>}</li>)}</ul> : <p>Пользователей пока нет.</p>}
+      <div className="settings-tabs" aria-label="Разделы настроек">{[["users", "Пользователи"], ["teams", "Команды"], ["keys", "Ключи доступа"]].map(([id,label]) => <button type="button" aria-pressed={accessTab === id} key={id} onClick={() => setAccessTab(id)}>{label}</button>)}</div>
+      <section className={`settings-section settings-${accessTab}`}>
+        <div className="settings-heading"><div><h2>{accessTab === "users" ? "Пользователи" : accessTab === "teams" ? "Команды" : "Ключи чтения"}</h2><p>{accessTab === "users" ? "Учётные записи и членство в командах" : accessTab === "teams" ? "Группы пользователей и доступные источники" : "Ключи для чтения выбранных источников"}</p></div><button className="settings-add" onClick={() => openModal(accessTab === "users" ? "user" : accessTab === "teams" ? "team" : "key")} disabled={busy || (accessTab === "keys" && (!!issued || !sources.length))}>{accessTab === "users" ? "Добавить пользователя" : accessTab === "teams" ? "Добавить команду" : "Создать ключ"}</button></div>
+        {accessTab === "users" && <div className="settings-list">{users.length ? <><div className="settings-table-head" aria-hidden="true"><span>Пользователь</span><span>Роль</span><span>Команды</span><span>Состояние</span><span></span></div>{users.map((user) => <div className="settings-row" key={user.id}><div><strong>{user.id}</strong></div><span><span className="settings-role">{user.admin ? "Администратор" : "Читатель"}</span></span><span>{user.teams.join(", ") || "Без команд"}</span><span><span className={`settings-status ${user.disabled ? "is-disabled" : "is-active"}`}>{user.disabled ? "Отключён" : "Активен"}</span></span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("userTeams", user)}>Команды</button><button disabled={busy} onClick={() => openModal("password", user)}>Сменить пароль</button><button disabled={busy} onClick={() => updateUser(user, { disabled: !user.disabled })}>{user.disabled ? "Включить" : "Отключить"}</button></div></div>)}</> : <p>Пользователей пока нет.</p>}</div>}
+        {accessTab === "teams" && <div className="settings-list">{teams.length ? teams.map((team) => <div className="settings-row" key={team.id}><div><strong>{team.id}</strong><small>Команда</small></div><span>{team.sources.join(", ")}</span><span></span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("teamSources", team)}>Изменить источники</button></div></div>) : <p>Команд пока нет.</p>}</div>}
+        {accessTab === "keys" && <div className="settings-list">{keys.length ? keys.map((key) => <div className="settings-row" key={key.id}><div><strong>{key.id}</strong><small>Ключ чтения</small></div><span>{key.sources.join(", ")}</span><span>До {new Date(key.expires_at).toLocaleString("ru-RU")}</span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("keySources", key)}>Изменить доступ</button><button disabled={busy} onClick={() => revoke(key.id)}>Отозвать</button></div></div>) : <p>Ключей пока нет.</p>}</div>}
+      </section>
       {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
-      <form onSubmit={create}><h3>Новый ключ чтения</h3><label>Идентификатор<input name="id" required placeholder="agent-one" /></label><label>Срок в днях<input name="days" type="number" min="1" max="365" defaultValue="30" required /></label><fieldset><legend>Доступные источники</legend>{sources.length ? sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} /> {s.title} ({s.id})</label>) : <p>Источников пока нет.</p>}</fieldset><button disabled={busy || !!issued || !sources.length}>Создать ключ</button></form>
-      <h3>Выданные ключи</h3>{keys.length ? <ul>{keys.map((k) => <li key={k.id}><strong>{k.id}</strong> · {k.sources.join(", ")} · до {new Date(k.expires_at).toLocaleString()} <button type="button" disabled={busy} onClick={() => setEditing(editing === k.id ? null : k.id)}>Изменить доступ</button> <button type="button" disabled={busy} onClick={() => revoke(k.id)}>Отозвать</button>{editing === k.id && <form onSubmit={(event) => update(event, k)}><fieldset><legend>Источники для {k.id}</legend>{sources.map((s) => <label className="access-source" key={s.id}><input type="checkbox" name="sources" value={s.id} defaultChecked={k.sources.includes(s.id)} /> {s.title} ({s.id})</label>)}</fieldset><button disabled={busy}>Сохранить доступ</button> <button type="button" disabled={busy} onClick={() => setEditing(null)}>Отмена</button></form>}</li>)}</ul> : <p>Ключей пока нет.</p>}
+      <dialog className="settings-modal" ref={accessModalRef} onClose={closeModal} onCancel={closeModal} onClick={(event) => { if (event.target === accessModalRef.current) accessModalRef.current.close(); }}><div className="dialog-head"><h2>{modalTitle[accessModal?.type] || "Настройки"}</h2><button type="button" aria-label="Закрыть" onClick={() => accessModalRef.current.close()}><I name="x" /></button></div>
+        {accessModal?.type === "user" && <form onSubmit={createUser}><label>Имя пользователя<input name="id" required placeholder="reader-one" /></label><label>Начальный пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><p>Передайте начальный пароль безопасно; пользователь сможет его сменить.</p><fieldset><legend>Команды пользователя</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} /> {team.id}</label>)}</fieldset><button disabled={busy}>Создать пользователя</button></form>}
+        {accessModal?.type === "team" && <form onSubmit={saveTeam}><label>Идентификатор<input name="id" required placeholder="team-ops" /></label><fieldset><legend>Источники команды</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy || !sources.length}>Создать команду</button></form>}
+        {accessModal?.type === "key" && <form onSubmit={create}><label>Идентификатор<input name="id" required placeholder="agent-one" /></label><label>Срок в днях<input name="days" type="number" min="1" max="365" defaultValue="30" required /></label><fieldset><legend>Доступные источники</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy || !!issued || !sources.length}>Создать ключ</button></form>}
+        {accessModal?.type === "userTeams" && <form onSubmit={(event) => updateMembership(event, accessModal.item)}><fieldset><legend>Команды для {accessModal.item.id}</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} defaultChecked={accessModal.item.teams.includes(team.id)} /> {team.id}</label>)}</fieldset><button disabled={busy}>Сохранить команды</button></form>}
+        {accessModal?.type === "password" && <form onSubmit={(event) => resetPassword(event, accessModal.item)}><label>Новый пароль для {accessModal.item.id}<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Сменить пароль</button></form>}
+        {accessModal?.type === "teamSources" && <form onSubmit={(event) => saveTeam(event, accessModal.item)}><fieldset><legend>Источники для {accessModal.item.id}</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} defaultChecked={accessModal.item.sources.includes(source.id)} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy}>Сохранить команду</button></form>}
+        {accessModal?.type === "keySources" && <form onSubmit={(event) => update(event, accessModal.item)}><fieldset><legend>Источники для {accessModal.item.id}</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} defaultChecked={accessModal.item.sources.includes(source.id)} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy}>Сохранить доступ</button></form>}
+        {message && <p role="alert">{message}</p>}
+      </dialog>
       {sharedSession ? <p>Вход выполнен через учётную запись. Для выхода используйте профиль.</p> : <button type="button" disabled={busy} onClick={logout}>Выйти из управления доступом</button>}
     </>}
-    {message && <p role="alert">{message}</p>}
+    {message && !accessModal && <p role="alert">{message}</p>}
   </div>;
 }
 function GitHubConnect() {
@@ -1069,14 +1086,14 @@ export function App() {
       </div>
     );
   const params = new URLSearchParams(window.location.search);
-  const v = { ...data.view, GitHubView: params.get("github") === "1" && !data.view.Query && !data.view.Page, GraphView: params.get("graph") === "1" && !data.view.Query && !data.view.Page, RecentView: params.get("recent") === "1" && !data.view.Query && !data.view.Page };
+  const v = { ...data.view, SettingsView: params.get("settings") === "1" && !data.view.Query && !data.view.Page, GitHubView: params.get("github") === "1" && !data.view.Query && !data.view.Page, GraphView: params.get("graph") === "1" && !data.view.Query && !data.view.Page, RecentView: params.get("recent") === "1" && !data.view.Query && !data.view.Page };
   return (
     <Features.Provider value={setFeature}>
       <Sidebar v={v} />
       <main>
         <Header v={v} />
         <SourceWarnings view={v} />
-        {v.GitHubView ? <GitHubConnect /> : v.RecentView ? <Recent v={v} /> : v.GraphView ? <Graph v={v} /> : v.Page ? (
+        {v.SettingsView ? <AccessSettings /> : v.GitHubView ? <GitHubConnect /> : v.RecentView ? <Recent v={v} /> : v.GraphView ? <Graph v={v} /> : v.Page ? (
           <Reading data={data} />
         ) : v.Query || v.Selected ? (
           <Results v={v} />

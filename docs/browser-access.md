@@ -146,3 +146,9 @@ private reading surface. It opens a dedicated page; adding an account and
 connecting a repository use separate dialogs. Existing administrator session
 checks remain in force, including the shared named-administrator reader
 session. Closing the account dialog discards its unsaved credential fields.
+
+The Settings navigation item opens the access-administration page. Users, teams
+and read keys are shown in separate sections; create and edit forms open in
+modal dialogs. The existing server-side administrator or access-management
+session checks and source permissions still apply. Newly issued key material is
+shown once after creation; closing an unfinished dialog discards its inputs.
