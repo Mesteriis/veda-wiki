@@ -61,8 +61,11 @@ synthetic Linux ARM64 container check for health, REST, isolation, embedded UI,
 SQLite restore and the local translation protocol. It did not use a real model.
 The amd64 archive was also installed on a fresh GitHub-hosted
 Ubuntu runner using the commands above; the service, empty public index, UI,
-state/key permissions and restart passed. This does not cover other Linux
-distributions, existing installations, remote access or MCP installation.
+state/key permissions and restart passed. A Python environment created from the
+archive's requirements also ran its MCP adapter as the service user: a
+synthetic private article was written, read and used for an unsaved reader
+proposal before and after restart, while the public index remained empty. This
+does not cover other distributions, remote access or independent agent identities.
 To repeat the ARM64 check on an already running
 ARM64 Docker host with the selected Python image already present:
 
