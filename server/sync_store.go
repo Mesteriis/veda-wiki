@@ -168,6 +168,9 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 	if !privateDependencies && sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
 		visibility = "public"
 	}
+	if (len(retained) > 0 || len(retainedLinks) > 0) && hasRootReference(rev.Text) && db.Version < 12 {
+		db.Version = 12
+	}
 	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained, Links: retainedLinks}
 }
 func (s *Store) publishJob(id string, expected int, confirm bool) error {

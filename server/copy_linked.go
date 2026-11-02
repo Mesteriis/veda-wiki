@@ -78,9 +78,11 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 	shadow.db.Sources[dst.ID] = validationSource
 	batchAssets := map[string]BlobRef{}
 	verifiedAssets := map[BlobRef]bool{}
+	rootReferences := false
 	var total int64
 	for _, item := range plan.Articles {
 		a := s.db.Articles[in.SourceID+"/"+item.SourcePath]
+		rootReferences = rootReferences || hasRootReference(a.Versions[item.Revision-1].Text)
 		deps, e := shadow.transferAssets(a.Versions[item.Revision-1].Text, item.SourcePath, item.DestinationPath, src, dst)
 		if e != nil {
 			return Database{}, Revision{}, transferDependencies{}, e
@@ -120,6 +122,9 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 		}
 		if shadow.db.Version < version {
 			shadow.db.Version = version
+		}
+		if rootReferences && (len(batchAssets) > 0 || len(remoteLinks) > 0 || len(bundle) > 0) && shadow.db.Version < 12 {
+			shadow.db.Version = 12
 		}
 	} else {
 		shadow.db.Sources[dst.ID] = dst

@@ -615,7 +615,11 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			if article.UpstreamHash != "" && latest.SHA == article.UpstreamHash {
 				continue
 			}
-			for name, ref := range retainedPendingAssets(latest.Text, article.Path, src.Assets) {
+			retained := retainedPendingAssets(latest.Text, article.Path, src.Assets)
+			if len(retained) > 0 && hasRootReference(latest.Text) && db.Version < 12 {
+				db.Version = 12
+			}
+			for name, ref := range retained {
 				if _, present := refs[name]; !present {
 					refs[name] = ref
 				}

@@ -222,6 +222,11 @@ when the target is public. The target must be a new path in another source.
 If two source IDs refer to the same GitHub repository and branch, moving to
 the same physical path is rejected even when one source view is stale.
 
+Pending work that retains repository-root image or link dependencies upgrades
+the store to v12; earlier binaries reject that version rather than silently
+dropping those dependencies. Preserve and test the matching backup before any
+rollback. Production v12 restore has not been verified.
+
 The destination and durable move record are created in one transaction. For a
 local target, the source is tombstoned in that transaction; for a connected
 target, the source remains visible until a later pull observes the queued

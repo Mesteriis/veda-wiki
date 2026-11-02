@@ -192,6 +192,12 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 	if _, err := s.copyArticle(in); err != nil {
 		t.Fatal(err)
 	}
+	if s.db.Version != 12 {
+		t.Fatal("root dependency bundle did not upgrade the store")
+	}
+	if _, err := openStore(s.dir); err != nil {
+		t.Fatal("root dependency store did not reopen", err)
+	}
 	manager.Once(context.Background())
 	if f.writeCount() != 1 || f.contents()["other/b.md"] != text || f.contents()["guide.md"] != "# Guide" || f.contents()["img/icon.png"] == "" {
 		t.Fatal("root dependencies were not committed together")
@@ -199,5 +205,40 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 	manager.Once(context.Background())
 	if s.jobs()[0].State != "complete" {
 		t.Fatal("root bundle was not observed", s.jobs()[0].State)
+	}
+}
+
+func TestOldBinaryRejectsRootDependencyStore(t *testing.T) {
+	old := os.Getenv("VEDA_OLD_V11_BINARY")
+	if old == "" {
+		t.Skip("old binary not provided")
+	}
+	s := testStore(t)
+	source(t, s, "from", "private")
+	fixtureAsset(t, s, "from", "img/icon.png")
+	if _, err := s.put("from", "a.md", "![Icon](/img/icon.png)", 0); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	connectFixture(t, s, f, true)
+	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmPublication: true})
+	if err != nil || s.db.Version != 12 {
+		t.Fatal("root dependency store not created", err)
+	}
+	state := filepath.Join(s.dir, "state.json")
+	before, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
+		t.Fatal("old binary did not reject v12")
+	}
+	after, err := os.ReadFile(state)
+	if err != nil || string(before) != string(after) {
+		t.Fatal("old binary changed v12 data")
 	}
 }

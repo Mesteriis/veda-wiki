@@ -280,6 +280,34 @@ type transferDependencies struct {
 	Links  map[string]string
 }
 
+// Earlier binaries do not retain repository-root references in pending work.
+// Such work requires a version gate before it is committed to disk.
+func hasRootReference(value string) bool {
+	root := markdown.Parser().Parse(text.NewReader([]byte(value)))
+	found := false
+	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		var destination []byte
+		switch n := node.(type) {
+		case *ast.Link:
+			destination = n.Destination
+		case *ast.Image:
+			destination = n.Destination
+		default:
+			return ast.WalkContinue, nil
+		}
+		u, err := url.Parse(string(destination))
+		if err == nil && u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") {
+			found = true
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	return found
+}
+
 func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target Source) (transferDependencies, error) {
 	document := []byte(value)
 	doc := markdown.Parser().Parse(text.NewReader(document))

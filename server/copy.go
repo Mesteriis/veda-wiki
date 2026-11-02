@@ -104,6 +104,9 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 			if db.Version < version {
 				db.Version = version
 			}
+			if hasRootReference(rev.Text) && db.Version < 12 {
+				db.Version = 12
+			}
 		}
 	}
 	return db, copied, nil
