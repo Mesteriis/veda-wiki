@@ -284,8 +284,8 @@ func TestSearchScratchMatchesOriginalScoring(t *testing.T) {
 		return score
 	}
 	rng := rand.New(rand.NewSource(42))
-	words := []string{"Container", "vPs", "LXC", "docker", "other", "КОНТЕЙНЕР", "K", ""}
-	queries := []string{"container vps", "LXC", "контейнер", "K", "docker vps", "other", "создай", "K"}
+	words := []string{"Container", "vPs", "LXC", "docker", "other", "КОНТЕЙНЕР", "K", "Ⱥ", "İ", "\xff", ""}
+	queries := []string{"container vps", "LXC", "контейнер", "K", "docker vps", "other", "создай", "K", "Ⱥ", "İ", "\xff"}
 	var scratch []byte
 	for i := 0; i < 1000; i++ {
 		var body strings.Builder

@@ -28,3 +28,19 @@ func BenchmarkFindArticlesLargeDocuments(b *testing.B) {
 func BenchmarkFindArticlesLargeDocumentsNoExactPhrase(b *testing.B) {
 	benchmarkFindArticlesLargeDocuments(b, "container proxmox", 0)
 }
+
+func BenchmarkFindArticlesLargeRussianDocumentsNoExactPhrase(b *testing.B) {
+	s := &Store{db: Database{Sources: map[string]Source{"infra": {ID: "infra", Kind: "wiki", Visibility: "private"}}, Articles: map[string]Article{}}}
+	text := "# Инфраструктура\n" + strings.Repeat("Контейнер VPS настройка сервиса\n", 2500)
+	for i := 0; i < 200; i++ {
+		p := fmt.Sprintf("infra/%03d.md", i)
+		s.db.Articles[p] = Article{SourceID: "infra", Path: p[len("infra/"):], Versions: []Revision{{Number: 1, Text: text}}}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if len(s.findArticles("контейнер proxmox", "", false)) != 0 {
+			b.Fatal("unexpected search result")
+		}
+	}
+}

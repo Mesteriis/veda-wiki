@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Search remains lexical. These aliases cover common infrastructure terms;
@@ -159,8 +160,8 @@ func searchScoreWithScratch(query, metadata, body string, terms [][]string, scra
 		return 1000
 	}
 	metadata = strings.ToLower(metadata)
-	// Reuse one request-local buffer for ASCII documents. Unicode documents
-	// retain Go's original case mapping, including non-ASCII to ASCII mappings.
+	// Reuse one request-local buffer. Unicode case mapping follows Go's
+	// strings.ToLower, including non-ASCII to ASCII mappings.
 	asciiBody := true
 	for i := 0; i < len(body); i++ {
 		if body[i] >= 0x80 {
@@ -182,13 +183,17 @@ func searchScoreWithScratch(query, metadata, body string, terms [][]string, scra
 			lowered[i] = c
 		}
 	} else {
-		body = strings.ToLower(body)
+		if cap(*scratch) < len(body) {
+			*scratch = make([]byte, 0, len(body))
+		}
+		lowered = (*scratch)[:0]
+		for _, r := range body {
+			lowered = utf8.AppendRune(lowered, unicode.ToLower(r))
+		}
+		*scratch = lowered
 	}
 	containsBody := func(word string) bool {
-		if asciiBody {
-			return bytes.Contains(lowered, []byte(word))
-		}
-		return strings.Contains(body, word)
+		return bytes.Contains(lowered, []byte(word))
 	}
 	if strings.Contains(metadata, query) || containsBody(query) {
 		return 1000
