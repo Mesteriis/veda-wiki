@@ -452,6 +452,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		result.Generation = generation
 		result.Unchanged = len(batch.Files)
 		s.markImportObserved(batch.SourceID)
+		s.markImportWithheld(batch.SourceID, batch.Withheld)
 		return result, nil
 	}
 	db := s.clone()
@@ -689,6 +690,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		return ImportResult{}, e
 	}
 	s.markImportObserved(batch.SourceID)
+	s.markImportWithheld(batch.SourceID, batch.Withheld)
 	return result, nil
 }
 
@@ -700,6 +702,15 @@ func (b *boundedGitOutput) Write(p []byte) (int, error) {
 		return 0, errors.New("Git output exceeds import limit")
 	}
 	return b.Buffer.Write(p)
+}
+
+// Caller holds the store mutex. Counts are only known after a full import
+// attempt, not after a head-only check, and are not retained across restart.
+func (s *Store) markImportWithheld(sourceID string, count int) {
+	if s.withheld == nil {
+		s.withheld = map[string]int{}
+	}
+	s.withheld[sourceID] = count
 }
 
 // Caller holds the store mutex; failed imports must never advance this clock.

@@ -16,6 +16,7 @@ type contextInstruction struct {
 
 type contextStatus struct {
 	LastImportObservedAt *string `json:"last_import_observed_at"`
+	LastImportWithheld   *int    `json:"last_import_withheld,omitempty"`
 	ImportPartial        bool    `json:"import_partial"`
 	ImportDirty          bool    `json:"import_dirty"`
 	UnresolvedConflicts  int     `json:"unresolved_conflicts"`
@@ -45,6 +46,9 @@ func (s *Store) agentContext(sourceID, target string, public bool) (agentContext
 		if observed, ok := s.observed[sourceID]; ok {
 			value := observed.UTC().Format(time.RFC3339Nano)
 			result.SourceStatus.LastImportObservedAt = &value
+		}
+		if count, ok := s.withheld[sourceID]; ok {
+			result.SourceStatus.LastImportWithheld = &count
 		}
 		for _, article := range s.db.Articles {
 			if article.SourceID != sourceID {

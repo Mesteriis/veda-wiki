@@ -227,6 +227,7 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 	selected := make(map[string]bool, len(scope))
 	db := Database{Version: s.db.Version, Sources: map[string]Source{}, Articles: map[string]Article{}, Connections: map[string]GitHubConnection{}}
 	observed := map[string]time.Time{}
+	withheld := map[string]int{}
 	for _, id := range scope {
 		selected[id] = true
 		if source, ok := s.db.Sources[id]; ok {
@@ -242,6 +243,9 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 		}
 		if t, ok := s.observed[id]; ok {
 			observed[id] = t
+		}
+		if count, ok := s.withheld[id]; ok {
+			withheld[id] = count
 		}
 	}
 	for key, article := range s.db.Articles {
@@ -266,5 +270,5 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 		}
 		db.Articles[key] = article
 	}
-	return &Store{dir: s.dir, db: db, observed: observed}, true, nil
+	return &Store{dir: s.dir, db: db, observed: observed, withheld: withheld}, true, nil
 }

@@ -44,6 +44,7 @@ type Source struct {
 type SourceView struct {
 	Source
 	LastImportObservedAt string `json:"last_import_observed_at,omitempty"`
+	LastImportWithheld   *int   `json:"last_import_withheld,omitempty"`
 	UnresolvedConflicts  int    `json:"unresolved_conflicts,omitempty"`
 }
 type Revision struct {
@@ -86,6 +87,7 @@ type Store struct {
 	dir        string
 	db         Database
 	observed   map[string]time.Time
+	withheld   map[string]int
 	sqlite     bool
 	invalid    bool
 	passwordMu sync.Mutex
@@ -606,6 +608,9 @@ func (s *Store) sources(public bool) []SourceView {
 			if !public {
 				if observed, ok := s.observed[src.ID]; ok {
 					view.LastImportObservedAt = observed.UTC().Format(time.RFC3339Nano)
+				}
+				if count, ok := s.withheld[src.ID]; ok {
+					view.LastImportWithheld = &count
 				}
 				view.UnresolvedConflicts = conflicts[src.ID]
 			}

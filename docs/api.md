@@ -220,8 +220,12 @@ imported snapshot. The latter does not re-download every blob. A failed import
 or stale connection observation does not advance it. The value is kept in
 memory and is absent after restart until another successful import; it is not
 a claim that the upstream checkout or infrastructure is currently correct.
-`unresolved_conflicts` counts pending conflicts. `import_partial` and
-`import_dirty` indicate known coverage and source-state limits. These fields
+`unresolved_conflicts` counts pending conflicts. `last_import_withheld`, when
+present for an authenticated reader, reports the number of items withheld or
+unavailable in the last accepted import attempt. It is not an exhaustive count
+of paths outside a curated import's scope. The count is kept in memory and is
+absent after restart until another import; a head-only check does not create it.
+`import_partial` and `import_dirty` indicate known coverage and source-state limits. These fields
 are omitted from public-only listings where applicable. MCP `veda_context`
 returns the same status alongside scope instructions.
 The context endpoint reads all ancestor `AGENTS.md` articles and status under
