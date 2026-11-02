@@ -375,6 +375,24 @@ func TestTranslationChunksDoNotSplitInsideFencesOrHTML(t *testing.T) {
 	}
 }
 
+func TestTranslationChunksAllowHTMLInFinalChunk(t *testing.T) {
+	original := strings.Repeat("Hello ", 3000) + "\n\n" + strings.Repeat("World ", 3000) + "\n\n<div>Keep HTML text</div>\n"
+	chunks, err := translationChunks(original, 32000)
+	if err != nil || len(chunks) < 2 || strings.Join(chunks, "") != original {
+		t.Fatal("safe final HTML chunk rejected", err)
+	}
+	var protected []string
+	for _, chunk := range chunks {
+		if len(chunk) > 32000 {
+			t.Fatal("chunk exceeds limit")
+		}
+		protected = append(protected, protectedMarkdown(chunk)...)
+	}
+	if !reflect.DeepEqual(protectedMarkdown(original), protected) {
+		t.Fatal("protected Markdown changed")
+	}
+}
+
 func TestLocalMLXTranslationResponse(t *testing.T) {
 	s := testStore(t)
 	if err := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); err != nil {
@@ -510,7 +528,7 @@ func TestTranslationChunksRejectCrossChunkReferenceDefinition(t *testing.T) {
 func TestLocalWorkerTranslatesLargeParagraphs(t *testing.T) {
 	s := testStore(t)
 	programSource(t, s, "program", "private")
-	original := strings.Repeat("Hello ", 3000) + "\n\n```sh\necho safe\n```\n\n" + strings.Repeat("Hello ", 3000)
+	original := strings.Repeat("Hello ", 3000) + "\n\n```sh\necho safe\n```\n\n" + strings.Repeat("Hello ", 3000) + "\n\n<div>Keep HTML text</div>\n"
 	if _, err := s.put("program", "docs/guide.md", original, 0); err != nil {
 		t.Fatal(err)
 	}

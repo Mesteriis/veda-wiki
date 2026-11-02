@@ -85,9 +85,11 @@ The worker processes one candidate per interval and retries failures after 15
 minutes. Documents over 32,000 bytes are split at top-level paragraph or
 heading boundaries, then validated and saved as one result. A split is rejected
 if it changes how protected Markdown is parsed, including references whose
-definitions are in another chunk. Large blocks without a safe split and large
-documents containing HTML require manual handling and are
-skipped for 24 hours. It does not detect the original language or verify translation
+definitions are in another chunk. Large blocks without a safe split require manual handling and are skipped for
+24 hours. Large documents containing HTML can be split only when all HTML is
+in the final chunk; otherwise they also require manual handling. This prevents
+a chunk boundary from crossing an HTML element that remains open after a blank
+line. HTML blocks themselves are preserved verbatim. It does not detect the original language or verify translation
 quality. It rejects unchanged output, truncated generation, stale revisions and
 changes to protected Markdown, including heading levels and list nesting, type, starting number and item
 count. This does not prove that translated prose preserves meaning.

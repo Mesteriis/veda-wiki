@@ -264,17 +264,6 @@ func translationChunks(original string, limit int) ([]string, error) {
 		return []string{original}, nil
 	}
 	root := markdown.Parser().Parse(text.NewReader([]byte(original)))
-	hasHTML := false
-	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering && (node.Kind() == ast.KindHTMLBlock || node.Kind() == ast.KindRawHTML) {
-			hasHTML = true
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	if hasHTML {
-		return nil, errors.New("large HTML-containing document requires manual handling")
-	}
 	boundaries := []int{0}
 	for node := root.FirstChild(); node != nil; node = node.NextSibling() {
 		if node.Kind() != ast.KindParagraph && node.Kind() != ast.KindHeading {
@@ -308,6 +297,22 @@ func translationChunks(original string, limit int) ([]string, error) {
 		}
 		chunks = append(chunks, original[start:end])
 		start = end
+	}
+	// Goldmark can end an HTML block at a blank line even when an HTML tag
+	// is still open. Only permit HTML in the final chunk: no translation
+	// boundary may occur after an opening tag whose closure is uncertain.
+	for _, chunk := range chunks[:len(chunks)-1] {
+		hasHTML := false
+		ast.Walk(markdown.Parser().Parse(text.NewReader([]byte(chunk))), func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+			if entering && (node.Kind() == ast.KindHTMLBlock || node.Kind() == ast.KindRawHTML) {
+				hasHTML = true
+				return ast.WalkStop, nil
+			}
+			return ast.WalkContinue, nil
+		})
+		if hasHTML {
+			return nil, errors.New("HTML before final translation chunk requires manual handling")
+		}
 	}
 	var protected []string
 	for _, chunk := range chunks {
