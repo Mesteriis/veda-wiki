@@ -30,6 +30,7 @@ var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.Wit
 type Page struct {
 	searchOriginal       string
 	searchDisplayed      string
+	searchSourceTitle    string
 	ProgramDocumentation bool          `json:"program_documentation,omitempty"`
 	UnresolvedConflict   bool          `json:"unresolved_conflict,omitempty"`
 	TranslationOrigin    string        `json:"translation_origin,omitempty"`
@@ -459,7 +460,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if name == "" && (env == "" || env == "all" || env == id) {
 			score := 1
 			if query != "" {
-				score = searchRevisions(query, p.Path, p.searchOriginal, p.searchDisplayed, terms)
+				score = searchRevisions(query, p.Path, p.searchSourceTitle, p.searchOriginal, p.searchDisplayed, terms)
 			}
 			if score > 0 {
 				v.Pages = append(v.Pages, p)

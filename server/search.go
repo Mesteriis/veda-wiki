@@ -36,9 +36,10 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 		score int
 	}
 	type candidate struct {
-		hit       searchHit
-		original  string
-		displayed string
+		hit         searchHit
+		sourceTitle string
+		original    string
+		displayed   string
 	}
 	var candidates []candidate
 	s.mu.RLock()
@@ -60,7 +61,7 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 		}
 		original := rev.Text
 		rev, _ = displayedRevision(a, rev, public)
-		candidates = append(candidates, candidate{hit: searchHit{SourceID: a.SourceID, Path: a.Path, Title: title(rev.Text, a.Path)}, original: original, displayed: rev.Text})
+		candidates = append(candidates, candidate{hit: searchHit{SourceID: a.SourceID, Path: a.Path, Title: title(rev.Text, a.Path)}, sourceTitle: src.Title, original: original, displayed: rev.Text})
 	}
 	s.mu.RUnlock()
 	sort.Slice(candidates, func(i, j int) bool {
@@ -70,7 +71,7 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 	terms := searchTerms(query)
 	var scratch []byte
 	for _, c := range candidates {
-		score := searchRevisionsWithScratch(query, c.hit.SourceID+"/"+c.hit.Path, c.original, c.displayed, terms, &scratch)
+		score := searchRevisionsWithScratch(query, c.hit.SourceID+"/"+c.hit.Path, c.sourceTitle, c.original, c.displayed, terms, &scratch)
 		if score == 0 {
 			continue
 		}
@@ -86,17 +87,17 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 
 // Score each text independently: words from different translations must not
 // combine into a match that exists in neither version.
-func searchRevisions(query, articlePath, original, displayed string, terms [][]string) int {
+func searchRevisions(query, articlePath, sourceTitle, original, displayed string, terms [][]string) int {
 	var scratch []byte
-	return searchRevisionsWithScratch(query, articlePath, original, displayed, terms, &scratch)
+	return searchRevisionsWithScratch(query, articlePath, sourceTitle, original, displayed, terms, &scratch)
 }
 
-func searchRevisionsWithScratch(query, articlePath, original, displayed string, terms [][]string, scratch *[]byte) int {
-	originalScore := searchScoreWithScratch(query, title(original, articlePath)+" "+articlePath, original, terms, scratch)
+func searchRevisionsWithScratch(query, articlePath, sourceTitle, original, displayed string, terms [][]string, scratch *[]byte) int {
+	originalScore := searchScoreWithScratch(query, title(original, articlePath)+" "+articlePath+" "+sourceTitle, original, terms, scratch)
 	if original == displayed {
 		return originalScore
 	}
-	displayedScore := searchScoreWithScratch(query, title(displayed, articlePath)+" "+articlePath, displayed, terms, scratch)
+	displayedScore := searchScoreWithScratch(query, title(displayed, articlePath)+" "+articlePath+" "+sourceTitle, displayed, terms, scratch)
 	return max(originalScore, displayedScore)
 }
 

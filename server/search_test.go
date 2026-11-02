@@ -190,6 +190,42 @@ func TestSearchKeepsPublicAndScopedSourcesSeparate(t *testing.T) {
 	}
 }
 
+func TestSearchIncludesVisibleSourceTitle(t *testing.T) {
+	s := testStore(t)
+	for _, src := range []Source{
+		{ID: "open", Title: "Example Handbook", Kind: "wiki", Visibility: "public"},
+		{ID: "private", Title: "Example Handbook", Kind: "wiki", Visibility: "private"},
+	} {
+		if err := s.addSource(src); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.put(src.ID, "guide.md", "# Setup\n\nLXC installation", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key, err := s.createAccessKey("reader", []string{"open"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner"}
+	for _, auth := range []string{"", key} {
+		for _, route := range []string{"/api/v1/search?q=example+handbook", "/api/state?q=example+handbook"} {
+			r := httptest.NewRequest("GET", route, nil)
+			if auth != "" {
+				r.Header.Set("Authorization", "Bearer "+auth)
+			}
+			out := httptest.NewRecorder()
+			w.ServeHTTP(out, r)
+			if out.Code != 200 || !strings.Contains(out.Body.String(), "guide.md") || strings.Contains(out.Body.String(), "private") {
+				t.Fatal("source title search failed or leaked restricted source", route, out.Code)
+			}
+		}
+	}
+	if hits := s.findArticles("example handbook", "", false); len(hits) != 2 {
+		t.Fatal("private search missed a source title", len(hits))
+	}
+}
+
 func TestCompactSearchPaginationAndScope(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "open", "public")

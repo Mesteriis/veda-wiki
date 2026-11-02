@@ -726,7 +726,7 @@ func (s *Store) snapshot(public bool) Snapshot {
 		if public && rev.Created > snap.Generated {
 			snap.Generated = rev.Created
 		}
-		snap.Pages = append(snap.Pages, Page{Path: key, Title: title(rev.Text, a.Path), Environment: src.ID, SHA: rev.SHA, Updated: rev.Created, searchOriginal: original, searchDisplayed: rev.Text})
+		snap.Pages = append(snap.Pages, Page{Path: key, Title: title(rev.Text, a.Path), Environment: src.ID, SHA: rev.SHA, Updated: rev.Created, searchOriginal: original, searchDisplayed: rev.Text, searchSourceTitle: src.Title})
 	}
 	sort.Slice(snap.Pages, func(i, j int) bool { return snap.Pages[i].Path < snap.Pages[j].Path })
 	return snap

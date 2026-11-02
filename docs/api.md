@@ -70,12 +70,12 @@ article graph, retaining still-referenced image and link dependencies. This
 does not retroactively remove already published content or resolve an ambiguous
 prepared push. See [GitHub synchronization](github.md) for queue recovery.
 
-Search matches exact phrases or meaningful words across visible titles, paths
+Search matches exact phrases or meaningful words across visible source titles, article titles, paths
 and article text. For translated articles it searches both the visible original
 revision and its visible translation, scores each text independently, and
 returns the displayed title. An unapproved translation is never searched on the
 public surface. Multiword queries require two distinct meaningful matches;
-title and path matches rank above body matches. A small set of infrastructure
+source title, article title and path matches rank above body matches. A small set of infrastructure
 aliases covers generic container terms, LXC and Docker, as well as VPS/VDS/VSP.
 Generic container queries include both technologies; explicit LXC and Docker
 queries remain distinct. This is lexical search, not
