@@ -22,6 +22,7 @@ jobs:
       - run: python -m unittest discover -s scripts -p test_package_release.py -v
       - run: make test
       - run: cd server && go build -o ../veda .
+      - run: node --test scripts/ui_poll.test.mjs
       - run: VEDA_TEST_CHROME="$(command -v google-chrome)" python scripts/smoke_ui.py
       - run: python -m pip install -r mcp/requirements.txt
       - run: python scripts/smoke.py

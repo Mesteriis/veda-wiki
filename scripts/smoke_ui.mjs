@@ -1,5 +1,6 @@
 // Connect only to the temporary Chrome DevTools port and synthetic VEDA URLs.
 import fs from 'node:fs';
+import { pollCondition } from './ui_poll.mjs';
 const [port, url, privateUrl, keyFile] = process.argv.slice(2);
 const key = fs.readFileSync(keyFile, 'utf8');
 let pages;
@@ -26,7 +27,9 @@ ws.onmessage = event => {
       const code = Number.isInteger(message.error.code) ? message.error.code : 'unknown';
       const known = ['Cannot find context with specified id', 'Inspected target navigated or closed'];
       const reason = known.includes(message.error.message) ? message.error.message : 'other';
-      call.reject(Error(`CDP error: method=${call.method} width=${currentWidth} code=${code} reason=${reason}`));
+      const error = Error(`CDP error: method=${call.method} width=${currentWidth} code=${code} reason=${reason}`);
+      error.contextChanged = call.method === 'Runtime.evaluate' && code === -32000 && known.includes(message.error.message);
+      call.reject(error);
     } else call.resolve(message.result);
   }
 };
@@ -40,13 +43,7 @@ const evaluate = async expression => {
   if (result.exceptionDetails) throw Error('page evaluation failed');
   return result.result.value;
 };
-const until = async expression => {
-  for (let i = 0; i < 80; i++) {
-    if (await evaluate(expression)) return;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  throw Error('page condition timed out');
-};
+const until = expression => pollCondition(evaluate, expression);
 await send('Page.enable');
 for (const width of [1672, 390, 320]) {
   currentWidth = width;
