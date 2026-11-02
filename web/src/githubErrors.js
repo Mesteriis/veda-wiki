@@ -10,3 +10,14 @@ export function githubErrorMessage(code, status, fallback) {
   if (status === 409) return "Настройки изменились или действует ограничение синхронизации. Обновите список и проверьте состояние.";
   return fallback;
 }
+
+// Estimate proof freshness using the browser clock; the server independently
+// enforces its own clock and authorization for every public read.
+export function githubVisibilityLabel(connection, now = Date.now()) {
+  const verified = Date.parse(connection.verified_at);
+  if (typeof connection.private !== 'boolean' || connection.paused || connection.verification !== 'verified' || !Number.isFinite(verified)
+      || verified > now + 60_000 || now - verified >= 600_000) {
+    return 'видимость не подтверждена';
+  }
+  return connection.private ? 'приватный' : 'публичный';
+}

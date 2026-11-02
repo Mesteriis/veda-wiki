@@ -113,7 +113,10 @@ connection changes during an uncertain remote write.
 The reading interface refreshes its state periodically and when the dialog is
 opened or closed, so imported pages appear without a browser reload. Anonymous
 GitHub API limits can delay verification; while verification is unavailable,
-public visibility fails closed until a successful retry.
+public visibility fails closed until a successful retry. The connection screen
+marks visibility unconfirmed when its latest proof is stale, paused or failed;
+its age indicator uses the browser clock and is informational. The server
+independently enforces visibility using its own clock.
 If a connected public repository yields an incomplete import (for example an
 invalid or withheld file), public readers cannot access that source until a
 complete snapshot has been imported. Private readers retain the local data.
