@@ -39,3 +39,11 @@ This is not a production workload or a storage limit. The specialized path is
 only for `put`; any future change to the categories it mutates must update that
 transaction and its recovery tests. Shallow snapshots alone are not sufficient
 evidence that nested values cannot change in place.
+
+For compact search over ASCII documents, one request-local buffer is reused
+while ranking visible revisions; Unicode text retains `strings.ToLower`
+semantics. No global cache or persisted index is introduced. On the synthetic
+200-document benchmark `BenchmarkFindArticlesLargeDocumentsNoExactPhrase`,
+three iterations on an Apple M5 Max measured about 41 ms and 185 KB allocated
+per request versus an earlier two-iteration measurement of about 45 ms and
+26.3 MB. This is not a production workload or a general Unicode benchmark.

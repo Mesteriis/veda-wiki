@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"sort"
 	"strings"
 	"time"
@@ -66,8 +67,9 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 	})
 	var matches []ranked
 	terms := searchTerms(query)
+	var scratch []byte
 	for _, c := range candidates {
-		score := searchRevisions(query, c.hit.SourceID+"/"+c.hit.Path, c.original, c.displayed, terms)
+		score := searchRevisionsWithScratch(query, c.hit.SourceID+"/"+c.hit.Path, c.original, c.displayed, terms, &scratch)
 		if score == 0 {
 			continue
 		}
@@ -84,11 +86,16 @@ func (s *Store) findArticles(query, sourceID string, public bool) []searchHit {
 // Score each text independently: words from different translations must not
 // combine into a match that exists in neither version.
 func searchRevisions(query, articlePath, original, displayed string, terms [][]string) int {
-	originalScore := searchScore(query, title(original, articlePath)+" "+articlePath, original, terms)
+	var scratch []byte
+	return searchRevisionsWithScratch(query, articlePath, original, displayed, terms, &scratch)
+}
+
+func searchRevisionsWithScratch(query, articlePath, original, displayed string, terms [][]string, scratch *[]byte) int {
+	originalScore := searchScoreWithScratch(query, title(original, articlePath)+" "+articlePath, original, terms, scratch)
 	if original == displayed {
 		return originalScore
 	}
-	displayedScore := searchScore(query, title(displayed, articlePath)+" "+articlePath, displayed, terms)
+	displayedScore := searchScoreWithScratch(query, title(displayed, articlePath)+" "+articlePath, displayed, terms, scratch)
 	return max(originalScore, displayedScore)
 }
 
@@ -128,6 +135,11 @@ func searchTerms(query string) [][]string {
 // An exact phrase always matches. For multiple meaningful words, require two
 // distinct matches and rank title/path hits above body hits.
 func searchScore(query, metadata, body string, terms [][]string) int {
+	var scratch []byte
+	return searchScoreWithScratch(query, metadata, body, terms, &scratch)
+}
+
+func searchScoreWithScratch(query, metadata, body string, terms [][]string, scratch *[]byte) int {
 	query = strings.ToLower(query)
 	// A verbatim ASCII match is already case-insensitively equal. Check it
 	// in a bounded prefix before allocating lowercased document copies. The
@@ -147,8 +159,38 @@ func searchScore(query, metadata, body string, terms [][]string) int {
 		return 1000
 	}
 	metadata = strings.ToLower(metadata)
-	body = strings.ToLower(body)
-	if strings.Contains(metadata, query) || strings.Contains(body, query) {
+	// Reuse one request-local buffer for ASCII documents. Unicode documents
+	// retain Go's original case mapping, including non-ASCII to ASCII mappings.
+	asciiBody := true
+	for i := 0; i < len(body); i++ {
+		if body[i] >= 0x80 {
+			asciiBody = false
+			break
+		}
+	}
+	var lowered []byte
+	if asciiBody {
+		if cap(*scratch) < len(body) {
+			*scratch = make([]byte, len(body))
+		}
+		lowered = (*scratch)[:len(body)]
+		for i := range body {
+			c := body[i]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			lowered[i] = c
+		}
+	} else {
+		body = strings.ToLower(body)
+	}
+	containsBody := func(word string) bool {
+		if asciiBody {
+			return bytes.Contains(lowered, []byte(word))
+		}
+		return strings.Contains(body, word)
+	}
+	if strings.Contains(metadata, query) || containsBody(query) {
 		return 1000
 	}
 	hits, score := 0, 0
@@ -158,7 +200,7 @@ func searchScore(query, metadata, body string, terms [][]string) int {
 			if strings.Contains(metadata, word) {
 				inMetadata = true
 			}
-			if strings.Contains(body, word) {
+			if containsBody(word) {
 				inBody = true
 			}
 		}

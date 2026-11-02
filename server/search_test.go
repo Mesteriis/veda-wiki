@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math/rand"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -245,6 +246,59 @@ func TestExactPhraseFastPathPreservesSearchRanking(t *testing.T) {
 	} {
 		if got := searchScore(tc.query, tc.metadata, tc.body, searchTerms(tc.query)); got != tc.want {
 			t.Fatalf("query %q got %d, want %d", tc.query, got, tc.want)
+		}
+	}
+}
+
+// Compare the request-local scratch path with the original strings.ToLower
+// semantics, including Unicode fallback and successive documents of different sizes.
+func TestSearchScratchMatchesOriginalScoring(t *testing.T) {
+	reference := func(query, metadata, body string, terms [][]string) int {
+		query, metadata, body = strings.ToLower(query), strings.ToLower(metadata), strings.ToLower(body)
+		if strings.Contains(metadata, query) || strings.Contains(body, query) {
+			return 1000
+		}
+		hits, score := 0, 0
+		for _, group := range terms {
+			inMetadata, inBody := false, false
+			for _, word := range group {
+				inMetadata = inMetadata || strings.Contains(metadata, word)
+				inBody = inBody || strings.Contains(body, word)
+			}
+			if inMetadata || inBody {
+				hits++
+				if inMetadata {
+					score += 3
+				} else {
+					score++
+				}
+			}
+		}
+		required := 1
+		if len(terms) > 1 {
+			required = 2
+		}
+		if len(terms) == 0 || hits < required {
+			return 0
+		}
+		return score
+	}
+	rng := rand.New(rand.NewSource(42))
+	words := []string{"Container", "vPs", "LXC", "docker", "other", "КОНТЕЙНЕР", "K", ""}
+	queries := []string{"container vps", "LXC", "контейнер", "K", "docker vps", "other", "создай", "K"}
+	var scratch []byte
+	for i := 0; i < 1000; i++ {
+		var body strings.Builder
+		for j := 0; j < rng.Intn(30); j++ {
+			body.WriteString(words[rng.Intn(len(words))])
+			body.WriteByte(' ')
+		}
+		q, meta := queries[rng.Intn(len(queries))], words[rng.Intn(len(words))]
+		terms := searchTerms(q)
+		got := searchScoreWithScratch(q, meta, body.String(), terms, &scratch)
+		want := reference(q, meta, body.String(), terms)
+		if got != want {
+			t.Fatalf("case %d query %q metadata %q: got %d want %d", i, q, meta, got, want)
 		}
 	}
 }
