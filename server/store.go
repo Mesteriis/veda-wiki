@@ -46,6 +46,7 @@ type SourceView struct {
 	LastImportObservedAt string `json:"last_import_observed_at,omitempty"`
 	LastImportWithheld   *int   `json:"last_import_withheld,omitempty"`
 	UnresolvedConflicts  int    `json:"unresolved_conflicts,omitempty"`
+	syncIssue            string
 }
 type Revision struct {
 	Number  int    `json:"revision"`
@@ -613,6 +614,7 @@ func (s *Store) sources(public bool) []SourceView {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := []SourceView{}
+	now := time.Now()
 	conflicts := map[string]int{}
 	if !public {
 		for _, a := range s.db.Articles {
@@ -624,12 +626,32 @@ func (s *Store) sources(public bool) []SourceView {
 		}
 	}
 	for _, src := range s.db.Sources {
-		if !public || sourcePublicReadable(s.db, src, time.Now()) {
+		if !public || sourcePublicReadable(s.db, src, now) {
 			if public {
 				src.ConnectionID = ""
 			}
 			view := SourceView{Source: src}
 			if !public {
+				if src.ConnectionID != "" {
+					conn, exists := s.db.Connections[src.ConnectionID]
+					switch {
+					case !exists:
+						view.syncIssue = "unverified"
+					case conn.Paused:
+						view.syncIssue = "paused"
+					case conn.State == "error":
+						view.syncIssue = "error"
+					case conn.State == "blocked" || conn.State == "conflict":
+						view.syncIssue = "attention"
+					case conn.State == "syncing":
+						view.syncIssue = "checking"
+					default:
+						verified, err := time.Parse(time.RFC3339Nano, conn.VerifiedAt)
+						if conn.Verification != "verified" || err != nil || verified.After(now.Add(time.Minute)) || now.Sub(verified) >= 10*time.Minute || !commitID.MatchString(conn.LastPull) || conn.LastPull != src.ImportCommit || !commitID.MatchString(conn.TreeSHA) {
+							view.syncIssue = "unverified"
+						}
+					}
+				}
 				if observed, ok := s.observed[src.ID]; ok {
 					view.LastImportObservedAt = observed.UTC().Format(time.RFC3339Nano)
 				}

@@ -52,6 +52,61 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 	}
 }
 
+func TestReaderWarningsReportOnlyVisibleGitHubFailures(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Local copy"})
+	m := connectFixture(t, s, f, false)
+	source(t, s, "other", "private")
+	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(token string, public bool) []SourceWarning {
+		t.Helper()
+		r := httptest.NewRequest("GET", "/api/state", nil)
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner", Public: public}).ServeHTTP(out, r)
+		var response struct {
+			View View `json:"view"`
+		}
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &response) != nil {
+			t.Fatal("state unavailable", out.Code)
+		}
+		return response.View.SourceWarnings
+	}
+	if got := read(key, false); len(got) != 0 {
+		t.Fatal("healthy source warned", got)
+	}
+	f.modify(func() { f.fail = true })
+	m.Once(context.Background())
+	if got := read(key, false); len(got) != 1 || got[0].ID != "handbook" || got[0].SyncIssue != "error" {
+		t.Fatal("scoped error missing", got)
+	}
+	if got := read("", true); len(got) != 0 {
+		t.Fatal("public state exposed private status", got)
+	}
+	if page, err := s.page("handbook/guide.md", false); err != nil || page.Text != "# Local copy" {
+		t.Fatal("outage removed local copy", err)
+	}
+	f.modify(func() { f.fail = false })
+	if err = s.retryConnection("handbook"); err != nil {
+		t.Fatal(err)
+	}
+	m.Once(context.Background())
+	if got := read(key, false); len(got) != 0 {
+		t.Fatal("warning remained after recovery", got)
+	}
+	if err = s.pauseConnection("handbook", true); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(key, false); len(got) != 1 || got[0].SyncIssue != "paused" {
+		t.Fatal("pause not reported", got)
+	}
+}
+
 func TestImportObservationIsTransientAndOnlyAdvancesOnSuccess(t *testing.T) {
 	s := testStore(t)
 	batch := testBatch()

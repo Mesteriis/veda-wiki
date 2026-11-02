@@ -15,7 +15,7 @@ Unknown translation origin is explicitly labelled in the interface.
 | Method | Route | Behavior |
 | --- | --- | --- |
 | GET | `/health` | Visible article count and visible revision timestamp |
-| GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path. Authenticated readers receive warnings for incomplete or dirty imports and unresolved conflicts in their visible sources |
+| GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path. Authenticated readers receive warnings for incomplete or dirty imports, unresolved conflicts and unverified, paused or failed GitHub synchronization in their visible sources |
 | GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/articles/excerpt?source_id=&path=&offset=&limit=&expected_sha256=` | Read up to 16,000 Unicode code points of the current visible revision; continuation requires the first response's SHA |
 | GET | `/api/v1/articles/display?source_id=&path=` | Read the displayed Markdown, translation status and original SHA under the caller's source permissions |

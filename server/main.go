@@ -70,6 +70,7 @@ type SourceWarning struct {
 	Dirty     bool
 	Conflicts int
 	Withheld  *int
+	SyncIssue string `json:",omitempty"`
 }
 type View struct {
 	Cards          []Card
@@ -367,8 +368,8 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	sources := map[string]Source{}
 	for _, source := range w.Store.sources(w.Public) {
 		sources[source.ID] = source.Source
-		if !w.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0) {
-			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld})
+		if !w.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0 || source.syncIssue != "") {
+			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld, SyncIssue: source.syncIssue})
 		}
 	}
 	for _, p := range s.Pages {
