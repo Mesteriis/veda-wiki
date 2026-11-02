@@ -211,9 +211,7 @@ function Header({ v }) {
         <F className="round" name="theme" label="Оформление">
           <I name="sun" />
         </F></>}
-        <F className="round profile" name="profile" label="Профиль">
-          V
-        </F>
+        {v.Public ? <F className="login-button" name="profile" label="Войти">Войти</F> : <F className="round profile" name="profile" label="Профиль">V</F>}
       </div>
     </header>
   );
@@ -963,7 +961,7 @@ export function App() {
         }}
       >
         <div className="dialog-head">
-          <h2>{descriptions[feature]?.[0] || "VEDA"}</h2>
+          <h2>{feature === "profile" && v.Public ? "Вход" : descriptions[feature]?.[0] || "VEDA"}</h2>
           <button aria-label="Закрыть" onClick={() => setFeature(null)}>
             <I name="x" />
           </button>

@@ -422,6 +422,14 @@ kbd {
   font-size: 18px;
   margin-left: 1px;
 }
+.login-button {
+  border: 1px solid var(--cyan);
+  border-radius: 5px;
+  background: #001319c2;
+  color: var(--cyan);
+  padding: 9px 16px;
+  white-space: nowrap;
+}
 .dashboard {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 389px;
