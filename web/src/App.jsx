@@ -100,7 +100,7 @@ function Sidebar({ v }) {
     ["affiliate", "Граф знаний", "/?graph=1"],
     ["star", "Избранное", null, "favorites"],
     ["clock", "Недавние", "/?recent=1"],
-    ["brand-github", "GitHub", null, "github"],
+    ["brand-github", "GitHub", "/?github=1", "github"],
     ["api", "API и MCP", null, "api"],
     ["settings", "Настройки", null, "settings"],
   ];
@@ -119,7 +119,7 @@ function Sidebar({ v }) {
             <a
               className={
                 "nav-item " +
-                ((href === "/" && !v.Query && !v.Selected && !v.Page && !v.GraphView && !v.RecentView) || (href === "/?env=all" && !!v.Selected && !v.Query && !v.Page) || (href === "/?graph=1" && v.GraphView) || (href === "/?recent=1" && v.RecentView)
+                ((href === "/" && !v.Query && !v.Selected && !v.Page && !v.GraphView && !v.RecentView && !v.GitHubView) || (href === "/?env=all" && !!v.Selected && !v.Query && !v.Page) || (href === "/?graph=1" && v.GraphView) || (href === "/?recent=1" && v.RecentView) || (href === "/?github=1" && v.GitHubView)
                   ? "selected"
                   : "")
               }
@@ -188,8 +188,8 @@ function Header({ v }) {
   return (
     <header className="masthead">
       <div className="masthead-title">
-        <h1>{v.RecentView ? "Недавние" : v.GraphView ? "Граф знаний" : v.Selected && !v.Query && !v.Page ? "Все статьи" : "Вики VEDA"}</h1>
-        <p>{v.RecentView ? "Страницы, которые вы недавно открывали" : v.GraphView ? "Связи между статьями базы знаний по источникам" : v.Selected && !v.Query && !v.Page ? "Полный каталог статей базы знаний" : "База знаний для работы, проектов и документации"}</p>
+        <h1>{v.GitHubView ? "Интеграции GitHub" : v.RecentView ? "Недавние" : v.GraphView ? "Граф знаний" : v.Selected && !v.Query && !v.Page ? "Все статьи" : "Вики VEDA"}</h1>
+        <p>{v.GitHubView ? "Подключение репозиториев и синхронизация с базой знаний" : v.RecentView ? "Страницы, которые вы недавно открывали" : v.GraphView ? "Связи между статьями базы знаний по источникам" : v.Selected && !v.Query && !v.Page ? "Полный каталог статей базы знаний" : "База знаний для работы, проектов и документации"}</p>
       </div>
       <form action="/" className="global-search" role="search">
         <label className="sr" htmlFor="search">
@@ -824,7 +824,8 @@ function AccessSettings() {
     catch { setMessage("Не удалось завершить сеанс."); }
     finally { setBusy(false); }
   }
-  return <div className="github-connect reader-access">
+  const selected = connections.find((connection) => connection.id === selectedConnection) || connections[0];
+  return <div className="github-connect github-page reader-access">
     <p>Ключи дают только чтение выбранных источников. Для агентов и пользователей можно выдавать отдельные ключи.</p>
     {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти в управление доступом</button></form><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></>}
     {status === true && <>
@@ -846,6 +847,10 @@ function GitHubConnect() {
   const [sharedSession, setSharedSession] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [repoAccount, setRepoAccount] = useState(null);
+  const [selectedConnection, setSelectedConnection] = useState(null);
+  const [githubDialog, setGithubDialog] = useState(null);
+  const githubDialogRef = useRef(null);
+  useEffect(() => { if (githubDialog) githubDialogRef.current?.showModal(); else githubDialogRef.current?.close(); }, [githubDialog]);
   const [connections, setConnections] = useState([]);
   const [mirrors, setMirrors] = useState([]);
   const [accountKind, setAccountKind] = useState("app");
@@ -902,7 +907,7 @@ function GitHubConnect() {
     const secret = accountKind === "app"
       ? { kind: "app", app_id: Number(data.get("app_id")), installation_id: Number(data.get("installation_id")), private_key: data.get("private_key") }
       : { kind: "token", token: data.get("token") };
-    try { await send("/api/admin/github/accounts", { id: data.get("id"), ...secret }); form.reset(); setMessage("Аккаунт подключён."); refresh().catch(() => setMessage("Аккаунт подключён, но не удалось обновить список.")); }
+    try { await send("/api/admin/github/accounts", { id: data.get("id"), ...secret }); form.reset(); setGithubDialog(null); setMessage("Аккаунт подключён."); refresh().catch(() => setMessage("Аккаунт подключён, но не удалось обновить список.")); }
     catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось подключить аккаунт. Проверьте данные и идентификатор.")); }
     finally { if (form.elements.token) form.elements.token.value = ""; if (form.elements.private_key) form.elements.private_key.value = ""; setBusy(false); }
   }
@@ -919,7 +924,7 @@ function GitHubConnect() {
     setBusy(true); setMessage("Проверяем доступ к репозиторию и его ветке…");
     try {
       await send("/api/admin/github/connections", { id: sourceId, repository, account_id: account, branch: data.get("branch"), write: data.has("write"), adopt_existing: adopted });
-      form.reset(); setMessage(adopted ? "Источник привязан. Проверьте конфликты и отключите прежний локальный импорт." : `Репозиторий подключён как ${sourceId}; импорт выполняется в фоне.`); refresh().catch(() => setMessage("Репозиторий подключён, но не удалось обновить список."));
+      form.reset(); setGithubDialog(null); setMessage(adopted ? "Источник привязан. Проверьте конфликты и отключите прежний локальный импорт." : `Репозиторий подключён как ${sourceId}; импорт выполняется в фоне.`); refresh().catch(() => setMessage("Репозиторий подключён, но не удалось обновить список."));
     } catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось подключить репозиторий. Проверьте адрес, ветку и права аккаунта.")); }
     finally { setBusy(false); }
   }
@@ -969,18 +974,25 @@ function GitHubConnect() {
     } catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось изменить согласование. Проверьте приватность и права записи источников.")); }
     finally { setBusy(false); }
   }
-  return <div className="github-connect reader-access">
+  const selected = connections.find((connection) => connection.id === selectedConnection) || connections[0];
+  return <div className="github-connect github-page reader-access">
     <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
     {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти</button></form><details><summary>Первый вход — установить пароль</summary><form onSubmit={setup}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Одноразовый код<input name="token" type="password" autoComplete="off" required /></label><label>Новый пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><label>Повторите пароль<input name="confirm" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Установить пароль</button></form></details><details><summary>Вход с ключом администратора</summary><form onSubmit={login}><label>Ключ администратора<input name="key" type="password" autoComplete="off" required /></label><button disabled={busy}>Войти</button></form></details></>}
     {status === true && <>
-      <form onSubmit={addAccount}><h3>Аккаунт GitHub</h3><label>Идентификатор<input name="id" required placeholder="personal" /></label><label>Способ подключения<select value={accountKind} onChange={(e) => setAccountKind(e.target.value)}><option value="app">GitHub App</option><option value="token">Токен</option></select></label>{accountKind === "app" ? <><label>App ID<input name="app_id" type="number" min="1" step="1" required /></label><label>Installation ID<input name="installation_id" type="number" min="1" step="1" required /></label><label>Приватный ключ App<textarea name="private_key" autoComplete="off" required rows="4" /></label></> : <label>Токен<input name="token" type="password" autoComplete="off" required /></label>}<button disabled={busy}>Сохранить аккаунт</button></form>
-      <form onSubmit={connect}><h3>Подключить репозиторий</h3><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" value={repoAccount || ""} onChange={(event) => setRepoAccount(event.target.value)}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><p>Идентификатор источника будет выбран автоматически; импорт и наблюдение начнутся после подключения.</p><details><summary>Дополнительные настройки источника</summary><label>Идентификатор источника<input name="id" placeholder="автоматически" /></label><label className="github-write"><input type="checkbox" name="adopt_existing" /> Привязать существующий приватный источник</label><p>Для привязки укажите его идентификатор и аккаунт. Локальные статьи сохранятся без автоматической отправки; прежний импорт нужно перенастроить.</p></details><button disabled={busy}>{busy ? "Проверяем…" : "Подключить"}</button></form>
-      <h3>Источники</h3>{connections.length ? <ul>{connections.map((c) => {
+      <div className="github-page-actions"><button type="button" className="github-action secondary" onClick={() => { setMessage(""); setGithubDialog("account"); }}>Добавить аккаунт</button><button type="button" className="github-action primary" onClick={() => { setMessage(""); setGithubDialog("repository"); }}>Подключить репозиторий</button></div>
+      <dialog className="github-action-dialog" ref={githubDialogRef} onClose={() => setGithubDialog(null)} onCancel={() => setGithubDialog(null)} onClick={(event) => { if (event.target === githubDialogRef.current) githubDialogRef.current.close(); }}>
+        <div className="dialog-head"><h2>{githubDialog === "account" ? "Аккаунт GitHub" : "Подключить репозиторий"}</h2><button type="button" aria-label="Закрыть" onClick={() => githubDialogRef.current.close()}><I name="x" /></button></div>
+        {githubDialog === "account" && <form onSubmit={addAccount}><label>Идентификатор<input name="id" required placeholder="personal" /></label><label>Способ подключения<select value={accountKind} onChange={(e) => setAccountKind(e.target.value)}><option value="app">GitHub App</option><option value="token">Токен</option></select></label>{accountKind === "app" ? <><label>App ID<input name="app_id" type="number" min="1" step="1" required /></label><label>Installation ID<input name="installation_id" type="number" min="1" step="1" required /></label><label>Приватный ключ App<textarea name="private_key" autoComplete="off" required rows="4" /></label></> : <label>Токен<input name="token" type="password" autoComplete="off" required /></label>}<button disabled={busy}>Сохранить аккаунт</button></form>}
+        {githubDialog === "repository" && <form onSubmit={connect}><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" value={repoAccount || ""} onChange={(event) => setRepoAccount(event.target.value)}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><p>Идентификатор источника будет выбран автоматически; импорт и наблюдение начнутся после подключения.</p><details><summary>Дополнительные настройки источника</summary><label>Идентификатор источника<input name="id" placeholder="автоматически" /></label><label className="github-write"><input type="checkbox" name="adopt_existing" /> Привязать существующий приватный источник</label><p>Для привязки укажите его идентификатор и аккаунт. Локальные статьи сохранятся без автоматической отправки; прежний импорт нужно перенастроить.</p></details><button disabled={busy}>{busy ? "Проверяем…" : "Подключить"}</button></form>}
+        {message && <p role="status">{message}</p>}
+      </dialog>
+      <div className="github-workspace"><aside className="github-accounts panel"><h2>Подключённые аккаунты</h2>{accounts.map((account) => <section className="github-account" key={account.id}><strong><I name="brand-github" />{account.login || account.id}</strong><small>{account.id}</small>{connections.filter((connection) => connection.account_id === account.id).map((connection) => <button type="button" className={selected?.id === connection.id ? "github-repo active" : "github-repo"} key={connection.id} onClick={() => setSelectedConnection(connection.id)}><I name="notes" />{connection.repository}</button>)}</section>)}{connections.filter((connection) => !accounts.some((account) => account.id === connection.account_id)).length > 0 && <section className="github-account"><strong>Другие подключения</strong>{connections.filter((connection) => !accounts.some((account) => account.id === connection.account_id)).map((connection) => <button type="button" className={selected?.id === connection.id ? "github-repo active" : "github-repo"} key={connection.id} onClick={() => setSelectedConnection(connection.id)}><I name="notes" />{connection.repository}</button>)}</section>}{!accounts.length && !connections.length && <p>Аккаунты и репозитории ещё не подключены.</p>}</aside>
+      <section className="github-repository panel">{selected ? [selected].map((c) => {
         const limited = c.last_error === "rate_limited" && Date.parse(c.next_attempt) > Date.now();
         const detail = limited ? `Лимит GitHub, повтор после ${new Date(c.next_attempt).toLocaleString()}` : c.last_error ? githubErrorMessage(c.last_error, 0, "Проверьте состояние источника.") : "";
-        return <li key={c.id}>{c.id}: {c.repository} · {githubVisibilityLabel(c)} · {stateLabels[c.state] || c.state}{detail ? ` (${detail})` : ""} <button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button> <button type="button" disabled={busy} onClick={() => pauseConnection(c)} aria-label={`${c.paused ? "Возобновить" : "Приостановить"} синхронизацию ${c.id}`}>{c.paused ? "Возобновить" : "Приостановить"}</button><details><summary>Настроить подключение {c.id}</summary><form key={c.config_revision} onSubmit={(e) => configureConnection(e, c)}><label>Аккаунт<select name="account" defaultValue={c.account_id || ""}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" defaultChecked={c.write} /> Разрешить запись в репозиторий</label><button disabled={busy}>Сохранить настройки</button></form></details></li>;
-      })}</ul> : <p>Репозитории ещё не подключены.</p>}
-      <h3>Фоновое согласование</h3>
+        return <div key={c.id}><div className="github-breadcrumb">GitHub / {c.account_id || "Публичный доступ"} / {c.repository}</div><h2>{c.repository}</h2><p>Источник: {c.id}</p><dl className="github-facts"><div><dt>Видимость</dt><dd>{githubVisibilityLabel(c)}</dd></div><div><dt>Аккаунт</dt><dd>{c.account_id || "Без аккаунта"}</dd></div><div><dt>Состояние синхронизации</dt><dd>{stateLabels[c.state] || "Состояние неизвестно"}{detail ? ` — ${detail}` : ""}</dd></div><div><dt>Последняя проверка</dt><dd>{c.verified_at ? new Date(c.verified_at).toLocaleString("ru-RU") : "Нет данных"}</dd></div><div><dt>Право на запись</dt><dd>{c.write ? "Разрешено" : "Только чтение"}</dd></div></dl><div className="github-repo-actions"><button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button> <button type="button" disabled={busy} onClick={() => pauseConnection(c)} aria-label={`${c.paused ? "Возобновить" : "Приостановить"} синхронизацию ${c.id}`}>{c.paused ? "Возобновить" : "Приостановить"}</button><details><summary>Настроить подключение {c.id}</summary><form key={c.config_revision} onSubmit={(e) => configureConnection(e, c)}><label>Аккаунт<select name="account" defaultValue={c.account_id || ""}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" defaultChecked={c.write} /> Разрешить запись в репозиторий</label><button disabled={busy}>Сохранить настройки</button></form></details></div></div>;
+      }) : <p>Выберите репозиторий или подключите новый.</p>}</section></div>
+      <details className="github-mirrors panel"><summary>Фоновое согласование источников</summary><h3>Фоновое согласование</h3>
       <p>Приватные источники остаются раздельными. Подключённый источник должен быть полностью синхронизирован и проверен. Расхождения требуют проверки; удаление не выполняется. Для включения нужна совместимая резервная копия: формат хранилища обновится.</p>
       <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); configureMirror(d.get("source"), d.get("destination"), true, 0); }}>
         <label>Исходный источник<input name="source" required placeholder="infra" /></label>
@@ -988,7 +1000,7 @@ function GitHubConnect() {
         <button disabled={busy}>Включить согласование</button>
       </form>
       {mirrors.length > 0 && <ul>{mirrors.map((m) => <li key={m.destination_id}>{m.source_id} → {m.destination_id} · {({pending:"Ожидает",ready:"Проход завершён",syncing:"Синхронизация",blocked:"Требует внимания",error:"Ошибка",paused:"Приостановлено"})[m.state] || "Состояние неизвестно"}{m.blocked ? ` · ожидают или требуют проверки: ${m.blocked}` : ""} <button type="button" disabled={busy} onClick={() => configureMirror(m.source_id, m.destination_id, !m.enabled, m.revision)}>{m.enabled ? "Приостановить" : "Возобновить"}</button>{m.blocked_paths?.length > 0 && <details><summary>Показать статьи</summary><ul>{m.blocked_paths.map((p) => <li key={p}>{p}</li>)}</ul>{m.blocked > m.blocked_paths.length && <p>Показаны первые {m.blocked_paths.length} из {m.blocked}.</p>}</details>}</li>)}</ul>}
-      <p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена. Во время проверки и на паузе публичные статьи источника временно скрыты; локальная копия остаётся доступной авторизованным читателям.</p>
+      </details><p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена. Во время проверки и на паузе публичные статьи источника временно скрыты; локальная копия остаётся доступной авторизованным читателям.</p>
       {sharedSession ? <p>Вход выполнен через учётную запись. Для выхода используйте профиль.</p> : <button onClick={logout} disabled={busy}>Выйти из управления</button>}
     </>}
     {message && <p role="status">{message}</p>}
@@ -1058,14 +1070,14 @@ export function App() {
       </div>
     );
   const params = new URLSearchParams(window.location.search);
-  const v = { ...data.view, GraphView: params.get("graph") === "1" && !data.view.Query && !data.view.Page, RecentView: params.get("recent") === "1" && !data.view.Query && !data.view.Page };
+  const v = { ...data.view, GitHubView: params.get("github") === "1" && !data.view.Query && !data.view.Page, GraphView: params.get("graph") === "1" && !data.view.Query && !data.view.Page, RecentView: params.get("recent") === "1" && !data.view.Query && !data.view.Page };
   return (
     <Features.Provider value={setFeature}>
       <Sidebar v={v} />
       <main>
         <Header v={v} />
         <SourceWarnings view={v} />
-        {v.RecentView ? <Recent v={v} /> : v.GraphView ? <Graph v={v} /> : v.Page ? (
+        {v.GitHubView ? <GitHubConnect /> : v.RecentView ? <Recent v={v} /> : v.GraphView ? <Graph v={v} /> : v.Page ? (
           <Reading data={data} />
         ) : v.Query || v.Selected ? (
           <Results v={v} />

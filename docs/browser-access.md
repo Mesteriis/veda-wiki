@@ -140,3 +140,9 @@ history, and the user can clear it manually. The history is not shared between
 normal independent tabs or synchronized across devices. Browser storage may be
 unavailable; that does not prevent reading articles. A tab opened with an opener
 may receive a browser-created initial copy of session storage.
+
+GitHub administration is available from the GitHub navigation item on the
+private reading surface. It opens a dedicated page; adding an account and
+connecting a repository use separate dialogs. Existing administrator session
+checks remain in force, including the shared named-administrator reader
+session. Closing the account dialog discards its unsaved credential fields.
