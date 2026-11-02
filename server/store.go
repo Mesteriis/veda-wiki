@@ -705,20 +705,17 @@ func (s *Store) article(sourceID, p string, public bool) (Article, error) {
 			return Article{}, ErrNotFound
 		}
 		a.Versions = []Revision{*a.Published}
-		a.Conflicts = nil
-		a.UpstreamHash = ""
-		a.PublishedLocal = false
 	}
 	if public {
 		a.Translation = nil
 		a.CopiedFrom = nil
+		a.Conflicts = nil
+		a.UpstreamHash = ""
 		a.Versions = a.Versions[len(a.Versions)-1:]
 		a.Versions[0].Number = 0
-		if a.Published != nil {
-			published := *a.Published
-			published.Number = 0
-			a.Published = &published
-		}
+		// The visible revision is already in Versions; do not expose internal
+		// publication bookkeeping or a different stored publication snapshot.
+		a.Published = nil
 		a.PublishedLocal = false
 	}
 	return a, nil

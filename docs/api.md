@@ -77,6 +77,9 @@ that surface. Public pages use the published revision or approved translation,
 not timestamps from unpublished private edits. The home cards are sorted by
 this value; it is not the filesystem modification time or proof that the
 upstream repository or infrastructure was recently checked.
+Public single-article responses include only the visible revision; conflict
+records, upstream hashes and internal publication snapshots are omitted for
+both local and GitHub-connected sources.
 
 Source body:
 
