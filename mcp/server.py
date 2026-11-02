@@ -130,7 +130,7 @@ def make_server(client):
             "source_id": string, "path": string, "offset": {"type": "integer", "minimum": 0},
             "limit": {"type": "integer", "minimum": 1, "maximum": 16000},
             "expected_sha256": {"type": "string", "minLength": 64, "maxLength": 64}}, ["source_id", "path"]),
-        "veda_prepare_update": ("Prepare a non-persistent proposed article update using the current revision, SHA and source status from one snapshot. It does not save or publish the proposed text. Check coverage and sync status; unresolved import conflicts must be resolved before a write. Reports when a pending write blocks conflict resolution. Stale revisions are refused.", {
+        "veda_prepare_update": ("Prepare a non-persistent proposed article update using the current revision, SHA and source status from one snapshot. It does not save or publish the proposed text. Check coverage and sync status; unresolved import conflicts must be resolved before a write. Reports pending writes and moves that block this article. Stale revisions are refused.", {
             "source_id": string, "path": string, "expected_revision": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "maxLength": MAX_ARTICLE_BYTES}}, ["source_id", "path", "expected_revision", "text"]),
         "veda_prepare_new_article": ("Prepare a non-persistent new Markdown article proposal and source status from one snapshot in a visible source. Refuses an existing visible article; deleted history or concurrent writes can still cause a conflict. It does not reserve the path, save the text, or approve publication.", {
@@ -235,8 +235,10 @@ def make_server(client):
                 result = {"source_id": arguments["source_id"], "path": arguments["path"],
                           "expected_revision": current["revision"], "base_sha256": current["sha256"],
                           "proposed_sha256": hashlib.sha256(proposed.encode("utf-8")).hexdigest(),
-                          "text": proposed, "saved": False, "unresolved_conflict": current["unresolved_conflict"], "conflict_resolution_blocked_by_write": current["conflict_resolution_blocked_by_write"], "source_status": current["source_status"],
-                          "note": ("Proposal only; a prepared write or active bundle blocks conflict resolution and needs investigation." if current["conflict_resolution_blocked_by_write"] and current["unresolved_conflict"]
+                          "text": proposed, "saved": False, "unresolved_conflict": current["unresolved_conflict"], "conflict_resolution_blocked_by_write": current["conflict_resolution_blocked_by_write"], "write_blocked_by_move": current["write_blocked_by_move"], "write_blocked_by_bundle": current["write_blocked_by_bundle"], "source_status": current["source_status"],
+                          "note": ("Proposal only; a move blocks writes. Investigate the move and any conflict before an authorized write." if current["write_blocked_by_move"]
+                                   else "Proposal only; a linked bundle blocks writes. Investigate the bundle and any conflict before an authorized write." if current["write_blocked_by_bundle"]
+                                   else "Proposal only; a prepared write or active bundle blocks conflict resolution and needs investigation." if current["conflict_resolution_blocked_by_write"] and current["unresolved_conflict"]
                                    else "Proposal only; resolve the import conflict before an authorized write." if current["unresolved_conflict"]
                                    else "Proposal only; review and an authorized write are still required. Conflict status may change before writing.")}
             elif name == "veda_prepare_new_article":

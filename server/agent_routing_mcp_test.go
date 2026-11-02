@@ -44,6 +44,10 @@ func TestAgentRoutesVPSRequestAcrossSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.mu.Lock()
+	s.db.Moves = map[string]Move{"fixture-move": {State: "deleting_source", SourceID: "vps", SourcePath: "ops/containers.md", DestinationID: "homelab", DestinationPath: "ops/other.md"}}
+	s.db.Outbox = map[string]SyncJob{"fixture-bundle": {State: "pending", SourceID: "homelab", Path: "ops/root.md", Bundle: map[string]string{"ops/containers.md": "fixture-hash"}}}
+	s.mu.Unlock()
 	server := httptest.NewServer(Wiki{Store: s, Token: "owner"})
 	defer server.Close()
 	keys := t.TempDir()
@@ -78,6 +82,12 @@ async def run(key, expected):
     assert ('Synthetic '+source) in article['text']
     proposal=await call('veda_prepare_update',{'source_id':source,'path':'ops/containers.md','expected_revision':article['revision'],'text':'# Proposed synthetic update'})
     assert proposal['saved'] is False and proposal['base_sha256']==article['sha256']
+    assert proposal['write_blocked_by_move']==(source=='vps')
+    assert proposal['write_blocked_by_bundle']==(source=='homelab')
+    if source=='vps':
+     assert 'move blocks writes' in proposal['note'] and 'homelab' not in json.dumps(proposal)
+    else:
+     assert 'bundle blocks writes' in proposal['note'] and 'ops/root.md' not in json.dumps(proposal)
     assert (await call('veda_read',{'source_id':source,'path':'ops/containers.md'}))['text']==article['text']
    if expected=={'vps'}:
     result=await s.call_tool('veda_context',{'source_id':'homelab','path':'ops/containers.md'})

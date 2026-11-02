@@ -25,7 +25,7 @@ func (s *Store) proposalBase(sourceID, path string) (map[string]any, error) {
 	}
 	blocked := conflictResolutionBlocked(s.db, sourceID, path)
 	rev := a.Versions[len(a.Versions)-1]
-	return map[string]any{"revision": rev.Number, "sha256": rev.SHA, "unresolved_conflict": unresolved, "conflict_resolution_blocked_by_write": blocked, "source_status": s.sourceStatusLocked(sourceID, src)}, nil
+	return map[string]any{"revision": rev.Number, "sha256": rev.SHA, "unresolved_conflict": unresolved, "conflict_resolution_blocked_by_write": blocked, "write_blocked_by_move": moveOperationLocks(s.db, sourceID, path), "write_blocked_by_bundle": bundleLocks(s.db, sourceID, path), "source_status": s.sourceStatusLocked(sourceID, src)}, nil
 }
 
 // newProposalBase observes the visible path and source status under one lock.

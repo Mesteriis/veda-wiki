@@ -121,6 +121,12 @@ proposals report the conflict and source status observed during preparation,
 which may change before a write. `conflict_resolution_blocked_by_write` reports
 whether the selected article has a nonterminal prepared write or linked bundle;
 it does not expose other paths or indicate that an ordinary write is blocked.
+`write_blocked_by_move` separately indicates that an active source-deletion
+phase locks this article, including destination dependencies. The scoped result
+does not disclose the other endpoint or move details; it can change before a
+write. `write_blocked_by_bundle` indicates a linked group also blocks normal
+writes to the selected article. Translation validation uses the same scoped
+move and bundle locks.
 The MCP adapter requires a server that returns
 this status in the proposal-base response. New-article proposals use
 `new-proposal-base`; the path check and source status come from one snapshot.

@@ -89,6 +89,10 @@ loading from the existence of a configuration file.
    anything. If a conflict is present, report it before an authorized write.
    When that flag is true, a prepared write or linked bundle requires
    investigation before conflict resolution; do not assume its outcome.
+   If `write_blocked_by_move` is true, a move currently blocks the selected
+   article; investigate its state before attempting an authorized write.
+   `write_blocked_by_bundle` similarly identifies a linked group that blocks
+   an ordinary write, including its linked dependencies.
 5. Present the proposal and its source, path, revision and base SHA for review.
    An authorized writer may submit it through REST or the owner MCP interface.
    The server rejects stale revisions and unresolved import conflicts; after a

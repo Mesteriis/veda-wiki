@@ -226,6 +226,10 @@ func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
 // A prepared deletion may have reached GitHub even when the response was lost.
 // Keep both local copies stable until a complete remote pull resolves it.
 func moveDeletionLocks(db Database, sourceID, p string) bool {
+	return bundleLocks(db, sourceID, p) || moveOperationLocks(db, sourceID, p)
+}
+
+func bundleLocks(db Database, sourceID, p string) bool {
 	for _, job := range db.Outbox {
 		if (len(job.Bundle) == 0 && !job.scopeBundle) || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
 			continue
@@ -243,6 +247,10 @@ func moveDeletionLocks(db Database, sourceID, p string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func moveOperationLocks(db Database, sourceID, p string) bool {
 	for _, m := range db.Moves {
 		if m.State == "deleting_source" {
 			if (m.SourceID == sourceID && m.SourcePath == p) || (m.DestinationID == sourceID && m.DestinationPath == p) {

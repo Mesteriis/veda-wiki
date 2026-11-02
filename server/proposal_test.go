@@ -31,7 +31,7 @@ func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 		out := httptest.NewRecorder()
 		(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
 		var body map[string]any
-		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != tc.blocked {
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != tc.blocked || body["write_blocked_by_bundle"] != false {
 			t.Fatal("incorrect article write status", tc.path, out.Code)
 		}
 		if strings.Contains(out.Body.String(), "prepared_commit") {
@@ -48,7 +48,7 @@ func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 		out := httptest.NewRecorder()
 		(Wiki{Store: s, Token: "owner"}).ServeHTTP(out, r)
 		var body map[string]any
-		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != true || strings.Contains(out.Body.String(), "linked.md") || strings.Contains(out.Body.String(), "dependency.md") {
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != true || body["write_blocked_by_bundle"] != true || strings.Contains(out.Body.String(), "linked.md") || strings.Contains(out.Body.String(), "dependency.md") {
 			t.Fatal("linked bundle status missing or leaked", path, out.Code)
 		}
 	}
