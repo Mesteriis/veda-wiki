@@ -42,6 +42,7 @@ or previously downloaded copies.
 
 The local importer implements metadata ingestion and program docs/ selection;
 see [repository import](import.md). Revision-bound moves are available with
-the restrictions documented in [the API](api.md). Per-user/team access,
-acceptance with VEDA-stored GitHub credentials and translation model
-qualification require further work.
+the restrictions documented in [the API](api.md). Named read-only users and
+teams have source-scoped access, but production account acceptance remains
+outstanding. Acceptance with VEDA-stored GitHub credentials and translation
+model qualification also require further work.
