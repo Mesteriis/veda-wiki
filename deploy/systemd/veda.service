@@ -1,0 +1,22 @@
+[Unit]
+Description=VEDA knowledge base
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=veda
+Group=veda
+StateDirectory=veda
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/local/bin/veda --data /var/lib/veda --listen 127.0.0.1:8080 --public-listen 127.0.0.1:8081
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target
