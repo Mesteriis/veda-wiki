@@ -47,18 +47,19 @@ type ImportConflict struct {
 	Resolution  string `json:"resolution,omitempty"`
 }
 type ImportBatch struct {
-	SourceID       string            `json:"source_id"`
-	Kind           string            `json:"kind"`
-	Metadata       *WikiMetadata     `json:"metadata,omitempty"`
-	Files          map[string]string `json:"files"`
-	Assets         map[string][]byte `json:"assets,omitempty"`
-	Commit         string            `json:"commit"`
-	Dirty          bool              `json:"dirty"`
-	Complete       bool              `json:"complete"`
-	Withheld       int               `json:"withheld"`
-	ExpectedImport *string           `json:"expected_import"`
-	Create         bool              `json:"create"`
-	Visibility     string            `json:"visibility,omitempty"`
+	withheldReasons map[string]int    // local preview only; never serialized
+	SourceID        string            `json:"source_id"`
+	Kind            string            `json:"kind"`
+	Metadata        *WikiMetadata     `json:"metadata,omitempty"`
+	Files           map[string]string `json:"files"`
+	Assets          map[string][]byte `json:"assets,omitempty"`
+	Commit          string            `json:"commit"`
+	Dirty           bool              `json:"dirty"`
+	Complete        bool              `json:"complete"`
+	Withheld        int               `json:"withheld"`
+	ExpectedImport  *string           `json:"expected_import"`
+	Create          bool              `json:"create"`
+	Visibility      string            `json:"visibility,omitempty"`
 }
 type ImportResult struct {
 	Generation string `json:"generation"`
@@ -143,7 +144,12 @@ func parseMetadata(b []byte) (*WikiMetadata, error) {
 // prepareCheckout never follows symlinks or evaluates repository hooks. Its
 // result is a bounded working-tree observation, not a claim of a clean commit.
 func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
-	result := ImportBatch{SourceID: sourceID, Files: map[string]string{}, Assets: map[string][]byte{}, Complete: true}
+	result := ImportBatch{SourceID: sourceID, Files: map[string]string{}, Assets: map[string][]byte{}, Complete: true, withheldReasons: map[string]int{}}
+	withhold := func(reason string) {
+		result.Withheld++
+		result.Complete = false
+		result.withheldReasons[reason]++
+	}
 	if !identifier.MatchString(sourceID) {
 		return result, ErrInvalid
 	}
@@ -290,8 +296,7 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			result.Withheld++
-			result.Complete = false
+			withhold("symlink")
 			return nil
 		}
 		if !entry.Type().IsRegular() {
@@ -317,16 +322,18 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 			return errors.New("checkout exceeds import limits")
 		}
 		if markdown {
-			if !utf8.Valid(b) || secretContent.Match(b) {
-				result.Withheld++
-				result.Complete = false
+			if !utf8.Valid(b) {
+				withhold("invalid_utf8")
+				return nil
+			}
+			if secretContent.Match(b) {
+				withhold("sensitive_pattern")
 				return nil
 			}
 			result.Files[name] = string(b)
 		} else {
 			if _, e := imageRef(b); e != nil {
-				result.Withheld++
-				result.Complete = false
+				withhold("unsupported_image")
 				return nil
 			}
 			result.Assets[name] = b

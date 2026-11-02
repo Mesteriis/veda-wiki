@@ -116,7 +116,7 @@ func importCommand(args []string) error {
 	if *preview {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"status": "preview", "kind": batch.Kind, "articles": len(batch.Files),
-			"assets": len(batch.Assets), "withheld": batch.Withheld,
+			"assets": len(batch.Assets), "withheld": batch.Withheld, "withheld_reasons": batch.withheldReasons,
 			"complete": batch.Complete, "dirty": batch.Dirty,
 		})
 	}

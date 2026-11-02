@@ -140,7 +140,7 @@ async def main():
                                              check=True, capture_output=True, text=True)
                     summary = json.loads(preview.stdout)
                     assert summary == {"status": "preview", "kind": "wiki", "articles": 1, "assets": 0,
-                                       "withheld": 0, "complete": True, "dirty": False}
+                                       "withheld": 0, "withheld_reasons": {}, "complete": True, "dirty": False}
                     assert "Imported original" not in preview.stdout and "untracked-private" not in preview.stdout
                     assert subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(checkout),
                                            "--preview", "--create"], capture_output=True).returncode != 0
@@ -151,13 +151,17 @@ async def main():
                     (partial_checkout / "guide.md").write_text("# Safe fixture")
                     (partial_checkout / "withheld-example.md").write_text("password=fixture-for-screening")
                     (partial_checkout / "linked.md").symlink_to("guide.md")
+                    (partial_checkout / "invalid.md").write_bytes(b"\xff")
+                    (partial_checkout / "invalid.png").write_bytes(b"not an image")
                     partial_git = ["git", "-C", str(partial_checkout)] + git[3:]
                     for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "Fixture"]):
                         subprocess.run(partial_git + args, check=True, capture_output=True)
                     partial = subprocess.run([str(ROOT / "veda"), "import", "--checkout", str(partial_checkout), "--preview"],
                                              check=True, capture_output=True, text=True)
                     partial_summary = json.loads(partial.stdout)
-                    assert partial_summary["withheld"] == 2 and partial_summary["complete"] is False
+                    assert partial_summary["withheld"] == 4 and partial_summary["complete"] is False
+                    assert partial_summary["withheld_reasons"] == {"symlink": 1, "invalid_utf8": 1,
+                        "sensitive_pattern": 1, "unsupported_image": 1}
                     assert "withheld-example" not in partial.stdout and "fixture-for-screening" not in partial.stdout
                     empty_checkout = Path(tmp) / "no-docs"
                     empty_checkout.mkdir()

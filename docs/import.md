@@ -25,7 +25,10 @@ To inspect the selected tracked checkout before connecting it, run:
 
 The command requires Git on the machine where the checkout is inspected.
 Preview reports only type, article and image counts, withheld count, completeness
-and dirty status. It does not contact VEDA, read an owner key, create a source,
+and dirty status. Withheld reasons are aggregate counts for symlinks, invalid
+UTF-8, sensitive-content patterns and unsupported images; a pattern match can
+be a false positive and is not an exhaustive secret scan. It does not contact
+VEDA, read an owner key, create a source,
 or list article names or content. It uses the same working-tree selection as a
 local import, so untracked files are excluded and `dirty` covers tracked changes
 only. It does not compare against an existing VEDA source, predict conflicts or
