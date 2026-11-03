@@ -40,7 +40,7 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
 });
 const evaluate = async expression => {
   const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (result.exceptionDetails) throw Error('page evaluation failed');
+  if (result.exceptionDetails) throw Object.assign(Error('page evaluation failed'), { pageException: result.exceptionDetails.exception?.description || result.exceptionDetails.text || 'exception' });
   return result.result.value;
 };
 const until = expression => pollCondition(evaluate, expression);
