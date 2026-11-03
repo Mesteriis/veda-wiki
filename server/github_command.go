@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"time"
 )
 
 func githubCommand(args []string) error {
@@ -21,6 +22,7 @@ func githubCommand(args []string) error {
 	account := flags.String("account", "", "Explicit stored account ID, empty for public anonymous import")
 	branch := flags.String("branch", "", "Branch (default: repository default)")
 	write := flags.Bool("write", false, "Enable background writes for this connection")
+	adopt := flags.Bool("adopt-existing", false, "Attach an existing private source to a private repository")
 	resume := flags.Bool("resume", false, "Resume rather than pause")
 	expected := flags.Int("expected-config", 0, "Expected connection configuration revision for configure")
 	if e := flags.Parse(args[1:]); e != nil {
@@ -69,7 +71,10 @@ func githubCommand(args []string) error {
 		if !identifier.MatchString(*id) || *repo == "" {
 			return ErrInvalid
 		}
-		if e = client.request("POST", "/api/v1/github/connections", connectRequest{ID: *id, Repository: *repo, AccountID: *account, Branch: *branch, Write: *write}, &result); e != nil {
+		if *adopt {
+			client.http.Timeout = 6 * time.Minute
+		}
+		if e = client.request("POST", "/api/v1/github/connections", connectRequest{ID: *id, Repository: *repo, AccountID: *account, Branch: *branch, Write: *write, AdoptExisting: *adopt}, &result); e != nil {
 			return e
 		}
 	case "configure":

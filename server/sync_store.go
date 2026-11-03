@@ -16,25 +16,64 @@ import (
 )
 
 type SyncJob struct {
-	ID             string `json:"id"`
-	SourceID       string `json:"source_id"`
-	Path           string `json:"path"`
-	Revision       int    `json:"revision"`
-	SHA            string `json:"sha256"`
-	State          string `json:"state"`
-	Created        string `json:"created_at"`
-	Attempts       int    `json:"attempts"`
-	LastError      string `json:"last_error,omitempty"`
-	PreparedCommit string `json:"prepared_commit,omitempty"`
-	ObservedCommit string `json:"observed_commit,omitempty"`
-	NextAttempt    string `json:"next_attempt,omitempty"`
-	Visibility     string `json:"visibility"`
+	scopePrepared    bool
+	scopeBundle      bool
+	scopeBundlePaths map[string]bool
+	ID               string             `json:"id"`
+	SourceID         string             `json:"source_id"`
+	Path             string             `json:"path"`
+	Revision         int                `json:"revision"`
+	SHA              string             `json:"sha256"`
+	State            string             `json:"state"`
+	Created          string             `json:"created_at"`
+	Attempts         int                `json:"attempts"`
+	LastError        string             `json:"last_error,omitempty"`
+	PreparedCommit   string             `json:"prepared_commit,omitempty"`
+	ObservedCommit   string             `json:"observed_commit,omitempty"`
+	NextAttempt      string             `json:"next_attempt,omitempty"`
+	Visibility       string             `json:"visibility"`
+	Assets           map[string]BlobRef `json:"assets,omitempty"`
+	Links            map[string]string  `json:"links,omitempty"`
+	Bundle           map[string]string  `json:"bundle,omitempty"`
 }
+
+var errImportedAssetUnavailable = errors.New("imported asset unavailable")
+
+// bundleContentsLocked checks the revisions that must be sent together.
+// Caller holds the store lock. Never substitute a newer local revision.
+func bundleContentsLocked(db Database, job SyncJob) (map[string]string, error) {
+	result := make(map[string]string, len(job.Bundle))
+	for name, sha := range job.Bundle {
+		a, ok := db.Articles[job.SourceID+"/"+name]
+		if !ok || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
+			return nil, ErrConflict
+		}
+		for _, conflict := range a.Conflicts {
+			if conflict.Resolution == "" {
+				return nil, ErrConflict
+			}
+		}
+		if job.Visibility == "public" && (a.Published == nil || a.Published.SHA != sha) {
+			return nil, ErrConflict
+		}
+		result[name] = a.Versions[len(a.Versions)-1].Text
+	}
+	return result, nil
+}
+
 type remoteProof struct {
 	ConnectionID   string
 	ConfigRevision int
 	Visibility     string
 	TreeSHA        string
+	Adoption       *adoptionProof
+}
+
+type adoptionProof struct {
+	Connection GitHubConnection
+	Account    GitHubAccount
+	Snapshot   string
+	Context    context.Context
 }
 
 func sourcePublic(db Database, src Source, now time.Time) bool {
@@ -48,6 +87,63 @@ func sourcePublic(db Database, src Source, now time.Time) bool {
 	verified, e := time.Parse(time.RFC3339Nano, c.VerifiedAt)
 	return ok && !c.Paused && c.Verification == "verified" && !c.Private && e == nil && !verified.After(now.Add(time.Minute)) && now.Sub(verified) < 10*time.Minute
 }
+
+// A partial import cannot establish which previously imported paths remain
+// public, regardless of whether the source is local or connected to GitHub.
+// Publication decisions still use sourcePublic, but readers fail closed until
+// the import is complete. Sources without an import are not partial.
+func sourcePublicReadable(db Database, src Source, now time.Time) bool {
+	if src.ConnectionID != "" {
+		c := db.Connections[src.ConnectionID]
+		// A visibility check alone does not establish which head was imported.
+		// Configuration changes clear the recorded head until a fresh pull.
+		// A sync of an unchanged head keeps serving the snapshot under its
+		// previous proof; connectionStatusFor does not refresh it at sync start.
+		// A newer observed head withholds the snapshot until it is imported.
+		if (c.PendingHead != "" && c.PendingHead != c.LastPull) || !commitID.MatchString(c.LastPull) || c.LastPull != src.ImportCommit || !commitID.MatchString(c.TreeSHA) {
+			return false
+		}
+	}
+	return sourcePublic(db, src, now) && !src.ImportPartial
+}
+
+// Record a changed remote head before fetching it, so the public snapshot of
+// the previous head is withheld until that head is imported.
+func (s *Store) observeChangedHead(expected GitHubConnection, head string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.db.Connections[expected.ID]
+	if s.invalid || !ok || c.Paused || c.ConfigRevision != expected.ConfigRevision || !commitID.MatchString(head) {
+		return ErrConflict
+	}
+	if c.PendingHead == head {
+		return nil
+	}
+	c.PendingHead = head
+	db := s.clone()
+	db.Connections[c.ID] = c
+	return s.commit(db)
+}
+
+// An unchanged, freshly verified GitHub head confirms the already imported
+// snapshot without downloading every blob again. Never accept an observation
+// from a request that raced with reconfiguration or a different import.
+func (s *Store) observeGitHubHead(expected GitHubConnection, head, tree string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.db.Connections[expected.ID]
+	src, exists := s.db.Sources[expected.ID]
+	if s.invalid || !ok || !exists || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || c.Private != expected.Private || c.Verification != "verified" || c.LastPull != head || c.TreeSHA != tree || src.ConnectionID != c.ID || src.ImportCommit != head || (src.Visibility == "private") != c.Private {
+		return ErrConflict
+	}
+	for _, ref := range src.Assets {
+		if s.verifyAsset(ref) != nil {
+			return errImportedAssetUnavailable
+		}
+	}
+	s.markImportObserved(c.ID)
+	return nil
+}
 func (s *Store) retryConnection(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -58,8 +154,15 @@ func (s *Store) retryConnection(id string) error {
 	if c.Paused {
 		return ErrConflict
 	}
+	if c.LastError == "rate_limited" {
+		if due, err := time.Parse(time.RFC3339Nano, c.NextAttempt); err == nil && due.After(time.Now()) {
+			return ErrConflict
+		}
+	}
 	c.NextAttempt = ""
-	c.State = "pending"
+	if c.State != "syncing" {
+		c.State = "pending"
+	}
 	db := s.clone()
 	db.Connections[id] = c
 	for key, j := range db.Outbox {
@@ -75,6 +178,11 @@ func (s *Store) sourceSyncState(id string) (string, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	state, code := "ready", ""
+	for _, move := range s.db.Moves {
+		if move.SourceConnectionID == id && (move.State == "waiting_source_delete" || move.State == "deleting_source") {
+			state, code = "pending", "move_pending"
+		}
+	}
 	for _, a := range s.db.Articles {
 		if a.SourceID == id {
 			for _, c := range a.Conflicts {
@@ -105,18 +213,37 @@ func enqueueWrite(db *Database, a Article, rev Revision) {
 	if db.Outbox == nil {
 		db.Outbox = map[string]SyncJob{}
 	}
+	retained := map[string]BlobRef{}
+	retainedLinks := map[string]string{}
+	privateDependencies := false
 	for id, job := range db.Outbox {
-		if job.SourceID == a.SourceID && job.Path == a.Path && (job.State == "pending" || job.State == "retry") {
+		if job.SourceID == a.SourceID && job.Path == a.Path && job.State != "complete" && job.State != "superseded" {
+			inherited := retainedPendingAssets(rev.Text, a.Path, job.Assets)
+			inheritedLinks := retainedPendingLinks(rev.Text, a.Path, job.Links)
+			if (len(inherited) > 0 || len(inheritedLinks) > 0) && job.Visibility != "public" {
+				privateDependencies = true
+			}
+			for p, ref := range inherited {
+				retained[p] = ref
+			}
+			for p, sha := range inheritedLinks {
+				retainedLinks[p] = sha
+			}
+		}
+		if job.SourceID == a.SourceID && job.Path == a.Path && job.PreparedCommit == "" && len(job.Bundle) == 0 && (job.State == "pending" || job.State == "retry" || (job.State == "blocked" && job.LastError == "credential_like_content")) {
 			job.State = "superseded"
 			db.Outbox[id] = job
 		}
 	}
 	id := a.SourceID + "/" + a.Path + "@" + strconv.Itoa(rev.Number)
 	visibility := "private"
-	if sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
+	if !privateDependencies && sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
 		visibility = "public"
 	}
-	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility}
+	if (len(retained) > 0 || len(retainedLinks) > 0) && hasRootReference(rev.Text) && db.Version < 12 {
+		db.Version = 12
+	}
+	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained, Links: retainedLinks}
 }
 func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if !confirm {
@@ -136,6 +263,12 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if secretContent.MatchString(a.Versions[expected-1].Text) {
 		return ErrInvalid
 	}
+	for name, sha := range job.Bundle {
+		linked, ok := s.db.Articles[job.SourceID+"/"+name]
+		if !ok || linked.Deleted || len(linked.Versions) == 0 || linked.Versions[len(linked.Versions)-1].SHA != sha || secretContent.MatchString(linked.Versions[len(linked.Versions)-1].Text) {
+			return ErrInvalid
+		}
+	}
 	job.Visibility = "public"
 	job.State = "pending"
 	job.LastError = ""
@@ -147,17 +280,77 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	a.PublishedLocal = true
 	db := s.clone()
 	db.Articles[job.SourceID+"/"+job.Path] = a
+	for name := range job.Bundle {
+		key := job.SourceID + "/" + name
+		linked := db.Articles[key]
+		published := linked.Versions[len(linked.Versions)-1]
+		published.Number = 0
+		published.Created = time.Now().UTC().Format(time.RFC3339Nano)
+		linked.Published, linked.PublishedLocal = &published, true
+		db.Articles[key] = linked
+	}
 	db.Outbox[id] = job
 	conn := db.Connections[src.ConnectionID]
 	conn.NextAttempt = ""
-	conn.State = "pending"
+	if conn.State != "syncing" {
+		conn.State = "pending"
+	}
 	db.Connections[conn.ID] = conn
 	return s.commit(db)
 }
-func observedWrite(db *Database, sourceID, p, hash, commit string) bool {
+
+// A prepared ref may have reached GitHub even after a lost response. Only a
+// never-prepared group can be cancelled without risking an uncertain update.
+func (s *Store) cancelBundle(id string, confirm bool) error {
+	if !confirm {
+		return ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.db.Outbox[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if len(job.Bundle) == 0 || job.PreparedCommit != "" || job.State == "complete" || job.State == "superseded" {
+		return ErrConflict
+	}
+	db := s.clone()
+	job.State = "superseded"
+	job.LastError, job.NextAttempt = "", ""
+	db.Outbox[id] = job
+	reconcileMoves(&db)
+	return s.commit(db)
+}
+func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {
 	matched := 0
+	firstPrepared := 0
+	matches := map[string]bool{}
 	for _, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.SHA == hash && job.Revision > matched && job.State != "complete" && job.State != "superseded" && job.State != "conflict" {
+		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && (firstPrepared == 0 || job.Revision < firstPrepared) {
+			firstPrepared = job.Revision
+		}
+	}
+	for id, job := range db.Outbox {
+		if job.SourceID != sourceID || job.Path != p {
+			continue
+		}
+		linksMatch := true
+		for name, sha := range job.Links {
+			if text, exists := files[name]; !exists || digest([]byte(text)) != sha {
+				linksMatch = false
+				break
+			}
+		}
+		for name, sha := range job.Bundle {
+			if text, exists := files[name]; !exists || digest([]byte(text)) != sha {
+				linksMatch = false
+				break
+			}
+		}
+		eligibleState := job.State != "complete" && job.State != "superseded" && (job.State != "conflict" || (job.PreparedCommit != "" && job.Revision == firstPrepared))
+		eligible := job.SourceID == sourceID && job.Path == p && job.SHA == hash && eligibleState && ((len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0) || (complete && assetsPresent(Source{Assets: assets}, job.Assets) && linksMatch))
+		matches[id] = eligible
+		if eligible && job.Revision > matched && (firstPrepared == 0 || job.Revision == firstPrepared) {
 			matched = job.Revision
 		}
 	}
@@ -174,9 +367,24 @@ func observedWrite(db *Database, sourceID, p, hash, commit string) bool {
 			}
 			job.LastError = ""
 			db.Outbox[id] = job
+		} else if firstPrepared != 0 && job.Revision > matched && job.PreparedCommit == "" && matches[id] {
+			// The same observed content also satisfies a later unprepared edit.
+			job.State, job.ObservedCommit, job.LastError = "complete", commit, ""
+			db.Outbox[id] = job
 		}
 	}
 	return true
+}
+
+// If a later local revision matches an external update, an older prepared
+// write still cannot be silently superseded or retried over that update.
+func preparedWriteDiffers(db Database, sourceID, p, hash string) bool {
+	for _, job := range db.Outbox {
+		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && job.SHA != hash {
+			return true
+		}
+	}
+	return false
 }
 func randomID() (string, error) {
 	b := make([]byte, 16)
@@ -306,6 +514,11 @@ func (s *Store) jobs() []SyncJob {
 	defer s.mu.RUnlock()
 	out := []SyncJob{}
 	for _, j := range s.db.Outbox {
+		// Older versions stored a successful ref-update response here before
+		// re-reading the branch. Only completed jobs have a confirmed pull.
+		if j.State != "complete" {
+			j.ObservedCommit = ""
+		}
 		out = append(out, j)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -319,14 +532,36 @@ func (s *Store) jobs() []SyncJob {
 	})
 	return out
 }
-func (s *Store) connectionStatus(id, state, verification, code string, info *repositoryInfo) error {
+
+// A skipped commit can be reused only while no local source exists and the
+// connection configuration still matches the one used for the remote read.
+func (s *Store) recordSkippedRepository(observed GitHubConnection, head, tree string) error {
+	if !commitID.MatchString(head) || !commitID.MatchString(tree) {
+		return ErrInvalid
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	c, ok := s.db.Connections[observed.ID]
+	_, exists := s.db.Sources[observed.ID]
+	if !ok || exists || c.Paused || c.ConfigRevision != observed.ConfigRevision || c.RepositoryID != observed.RepositoryID || c.Branch != observed.Branch || c.Private != observed.Private {
+		return ErrConflict
+	}
+	c.State, c.LastError, c.LastPull, c.TreeSHA = "skipped", "", head, tree
+	c.NextAttempt, c.Attempts = "", 0
+	db := s.clone()
+	db.Connections[c.ID] = c
+	return s.commit(db)
+}
+
+func (s *Store) connectionStatusFor(observed GitHubConnection, state, verification, code string, info *repositoryInfo, retryAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := observed.ID
 	c, ok := s.db.Connections[id]
 	if !ok {
 		return ErrNotFound
 	}
-	if c.Paused {
+	if c.Paused || c.ConfigRevision != observed.ConfigRevision {
 		return ErrConflict
 	}
 	c.State = state
@@ -338,19 +573,46 @@ func (s *Store) connectionStatus(id, state, verification, code string, info *rep
 		if c.RepositoryID != info.ID {
 			return ErrConflict
 		}
+		// A newly private repository is hidden at once. Visibility proof for
+		// the served snapshot is renewed only after the pull completes.
 		c.Private = *info.Private
-		c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		if state != "syncing" {
+			c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		}
 	}
 	if code != "" {
 		c.Attempts++
 		delay := time.Duration(1<<min(c.Attempts, 8)) * time.Second
-		c.NextAttempt = time.Now().Add(delay).UTC().Format(time.RFC3339Nano)
+		next := time.Now().Add(delay)
+		if code == "rate_limited" && retryAt.After(next) {
+			next = retryAt
+		}
+		c.NextAttempt = next.UTC().Format(time.RFC3339Nano)
 	} else {
 		c.Attempts = 0
 		c.NextAttempt = ""
 	}
 	db := s.clone()
 	db.Connections[id] = c
+	if code == "rate_limited" {
+		for otherID, other := range db.Connections {
+			if otherID == id || other.AccountID != c.AccountID {
+				continue
+			}
+			previous, _ := time.Parse(time.RFC3339Nano, other.NextAttempt)
+			next, _ := time.Parse(time.RFC3339Nano, c.NextAttempt)
+			if previous.After(next) && other.LastError == "rate_limited" {
+				next = previous
+			}
+			other.NextAttempt = next.UTC().Format(time.RFC3339Nano)
+			other.LastError = "rate_limited"
+			other.Verification = "unknown"
+			if !other.Paused {
+				other.State = "error"
+			}
+			db.Connections[otherID] = other
+		}
+	}
 	if info != nil && *info.Private {
 		if src, found := db.Sources[id]; found {
 			src.Visibility = "private"
@@ -359,20 +621,21 @@ func (s *Store) connectionStatus(id, state, verification, code string, info *rep
 	}
 	return s.commit(db)
 }
-func (s *Store) setJob(id, state, code, prepared, observed string) error {
+func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, code, prepared string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	j, ok := s.db.Outbox[id]
+	j, ok := s.db.Outbox[original.ID]
 	if !ok {
 		return ErrNotFound
+	}
+	c, connected := s.db.Connections[expected.ID]
+	if !connected || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || j.SourceID != expected.ID || j.Revision != original.Revision || j.SHA != original.SHA || j.Visibility != original.Visibility || j.State == "complete" || j.State == "superseded" || (j.State == "conflict" && state != "conflict") || (j.State != original.State && j.State != "prepared") {
+		return ErrConflict
 	}
 	j.State = state
 	j.LastError = code
 	if prepared != "" {
 		j.PreparedCommit = prepared
-	}
-	if observed != "" {
-		j.ObservedCommit = observed
 	}
 	if code != "" {
 		j.Attempts++
@@ -381,12 +644,54 @@ func (s *Store) setJob(id, state, code, prepared, observed string) error {
 		j.NextAttempt = ""
 	}
 	db := s.clone()
-	db.Outbox[id] = j
+	db.Outbox[original.ID] = j
+	return s.commit(db)
+}
+
+// Persist the prepared commit only while the same connection and job remain
+// eligible. A concurrent edit may have superseded the job during network I/O.
+func (s *Store) prepareJob(id, commit string, expected GitHubConnection) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.db.Outbox[id]
+	connection, connected := s.db.Connections[expected.ID]
+	if !ok || !connected || connection.Paused || !connection.Write || connection.ConfigRevision != expected.ConfigRevision || connection.RepositoryID != expected.RepositoryID || connection.Branch != expected.Branch || job.SourceID != expected.ID || job.State == "complete" || job.State == "superseded" || job.State == "conflict" {
+		return ErrConflict
+	}
+	if len(job.Bundle) > 0 {
+		a, ok := s.db.Articles[job.SourceID+"/"+job.Path]
+		if !ok || a.Deleted || len(a.Versions) != job.Revision || a.Versions[job.Revision-1].SHA != job.SHA {
+			return ErrConflict
+		}
+		for _, conflict := range a.Conflicts {
+			if conflict.Resolution == "" {
+				return ErrConflict
+			}
+		}
+		if job.Visibility == "public" && (a.Published == nil || a.Published.SHA != job.SHA) {
+			return ErrConflict
+		}
+		if _, err := bundleContentsLocked(s.db, job); err != nil {
+			return err
+		}
+		if !linksPresent(s.db, job.SourceID, job.Links) {
+			return ErrConflict
+		}
+	}
+	job.State = "prepared"
+	job.LastError = ""
+	job.NextAttempt = ""
+	job.PreparedCommit = commit
+	db := s.clone()
+	db.Outbox[id] = job
 	return s.commit(db)
 }
 func (s *Store) pauseConnection(id string, paused bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if moveDeletionLocksConnection(s.db, id) {
+		return ErrConflict
+	}
 	c, ok := s.db.Connections[id]
 	if !ok {
 		return ErrNotFound
@@ -398,7 +703,9 @@ func (s *Store) pauseConnection(id string, paused bool) error {
 		c.Verification = "unknown"
 	} else {
 		c.State = "pending"
-		c.NextAttempt = ""
+		if c.LastError != "rate_limited" {
+			c.NextAttempt = ""
+		}
 	}
 	db := s.clone()
 	db.Connections[id] = c

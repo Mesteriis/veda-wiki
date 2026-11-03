@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -28,14 +29,23 @@ var assets embed.FS
 var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
 type Page struct {
-	OriginalSHA string        `json:"original_sha256,omitempty"`
-	Translated  bool          `json:"translated,omitempty"`
-	Path        string        `json:"path"`
-	Title       string        `json:"title"`
-	Environment string        `json:"environment"`
-	SHA         string        `json:"sha256"`
-	Text        string        `json:"-"`
-	HTML        template.HTML `json:"-"`
+	searchOriginal            string
+	searchDisplayed           string
+	searchSourceTitle         string
+	ProgramDocumentation      bool          `json:"program_documentation,omitempty"`
+	UnresolvedConflict        bool          `json:"unresolved_conflict,omitempty"`
+	ConflictResolutionBlocked bool          `json:"conflict_resolution_blocked_by_write,omitempty"`
+	TranslationOrigin         string        `json:"translation_origin,omitempty"`
+	TranslationState          string        `json:"translation_state,omitempty"`
+	OriginalSHA               string        `json:"original_sha256,omitempty"`
+	Translated                bool          `json:"translated,omitempty"`
+	Path                      string        `json:"path"`
+	Title                     string        `json:"title"`
+	Environment               string        `json:"environment"`
+	SHA                       string        `json:"sha256"`
+	Updated                   string        `json:"updated_at,omitempty"`
+	Text                      string        `json:"-"`
+	HTML                      template.HTML `json:"-"`
 }
 type Snapshot struct {
 	Generated string `json:"generated_at"`
@@ -50,13 +60,27 @@ type Card struct {
 	ImageURL    string
 }
 type Group struct {
-	Name  string
-	ID    string
-	Count int
-	Pages []Page
+	Name        string
+	ID          string
+	Count       int
+	Pages       []Page
+	Description string `json:",omitempty"`
+	SourceURL   string `json:",omitempty"`
+}
+type SourceWarning struct {
+	ID                   string
+	Name                 string
+	Partial              bool
+	Dirty                bool
+	Conflicts            int
+	Withheld             *int
+	SyncIssue            string `json:",omitempty"`
+	LastImportObservedAt string `json:",omitempty"`
 }
 type View struct {
-	Cards []Card
+	GraphEdges     []GraphEdge
+	Cards          []Card
+	SourceWarnings []SourceWarning
 
 	Public      bool
 	Groups      []Group
@@ -79,8 +103,11 @@ type Wiki struct {
 	Token             string
 	ReaderToken       string
 	ReaderLocal       bool
+	ReaderKeyRequired bool
 	LocalImportSource string
 	Sessions          *readerSessions
+	AdminSessions     *readerSessions
+	AccessSessions    *readerSessions
 	Sync              *SyncManager
 }
 
@@ -117,6 +144,51 @@ func (ids *unicodeIDs) Generate(value []byte, _ ast.NodeKind) []byte {
 	return []byte(id)
 }
 func (ids *unicodeIDs) Put(value []byte) { ids.used[string(value)] = true }
+
+// Resolve repository paths independently of the source ID so a document
+// cannot navigate into a different source using parent segments.
+func sourceTarget(pagePath, destination string) (string, string, bool) {
+	parts := strings.SplitN(pagePath, "/", 2)
+	if len(parts) != 2 || !identifier.MatchString(parts[0]) || destination == "" {
+		return "", "", false
+	}
+	target, valid := repositoryTarget(parts[1], destination)
+	return parts[0], target, valid
+}
+
+func repositoryTarget(articlePath, destination string) (string, bool) {
+	if destination == "" {
+		return "", false
+	}
+	var target string
+	if strings.HasPrefix(destination, "/") {
+		target = path.Clean(strings.TrimPrefix(destination, "/"))
+	} else {
+		target = path.Clean(path.Join(path.Dir(articlePath), destination))
+	}
+	return target, safeRelative(target)
+}
+
+// A README has priority over index.md when resolving a directory. A fixed
+// README dependency therefore cannot be shadowed by a later index.md.
+func directoryReadmeTarget(articlePath, destination string) (string, bool) {
+	if destination == "" {
+		return "", false
+	}
+	base := path.Clean(path.Join(path.Dir(articlePath), destination))
+	if strings.HasPrefix(destination, "/") {
+		base = path.Clean(strings.TrimPrefix(destination, "/"))
+	}
+	if base == "." {
+		return "README.md", true
+	}
+	if !safeRelative(base) {
+		return "", false
+	}
+	target := base + "/README.md"
+	return target, safeRelative(target)
+}
+
 func render(p Page) (template.HTML, template.HTML, error) {
 	source := []byte(p.Text)
 	doc := markdown.Parser().Parse(text.NewReader(source), parser.WithContext(parser.NewContext(parser.WithIDs(&unicodeIDs{used: map[string]bool{}}))))
@@ -128,20 +200,35 @@ func render(p Page) (template.HTML, template.HTML, error) {
 		if link, ok := n.(*ast.Link); ok {
 			u, e := url.Parse(string(link.Destination))
 			if e == nil && u.Scheme == "" && u.Host == "" && u.Path != "" {
-				target := path.Clean(path.Join(path.Dir(p.Path), u.Path))
-				link.Destination = []byte("/?page=" + url.QueryEscape(target))
-				if u.Fragment != "" {
-					link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
+				sourceID, target, valid := sourceTarget(p.Path, u.Path)
+				if !valid {
+					parts := strings.SplitN(p.Path, "/", 2)
+					if len(parts) == 2 && identifier.MatchString(parts[0]) {
+						resolved := path.Clean(path.Join(path.Dir(parts[1]), u.Path))
+						if strings.HasPrefix(u.Path, "/") {
+							resolved = path.Clean(strings.TrimPrefix(u.Path, "/"))
+						}
+						if resolved == "." {
+							sourceID, target, valid = parts[0], "", true
+						}
+					}
+				}
+				if !valid {
+					link.Destination = nil
+				} else {
+					link.Destination = []byte("/?page=" + url.QueryEscape(sourceID+"/"+target))
+					if u.Fragment != "" {
+						link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
+					}
 				}
 			}
 		}
 		if image, ok := n.(*ast.Image); ok {
 			u, e := url.Parse(string(image.Destination))
-			parts := strings.SplitN(p.Path, "/", 2)
-			if e == nil && u.Scheme == "" && u.Host == "" && len(parts) == 2 {
-				target := path.Clean(path.Join(path.Dir(parts[1]), u.Path))
-				if safeRelative(target) {
-					image.Destination = []byte("/media/" + parts[0] + "/" + url.PathEscape(target))
+			if e == nil && u.Scheme == "" && u.Host == "" {
+				sourceID, target, valid := sourceTarget(p.Path, u.Path)
+				if valid {
+					image.Destination = []byte("/media/" + sourceID + "/" + url.PathEscape(target))
 				} else {
 					image.Destination = []byte("")
 				}
@@ -159,6 +246,16 @@ func render(p Page) (template.HTML, template.HTML, error) {
 	return template.HTML(out.String()), template.HTML(toc.String()), err
 }
 func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Referrer-Policy", "no-referrer")
+	if w.Store != nil {
+		w.Store.mu.RLock()
+		invalid := w.Store.invalid
+		w.Store.mu.RUnlock()
+		if invalid {
+			http.Error(rw, "Store unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	if len(w.AllowedHosts) > 0 {
 		host := r.Host
 		if parsed, _, err := net.SplitHostPort(host); err == nil {
@@ -177,13 +274,71 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if strings.HasPrefix(r.URL.Path, "/api/session/") {
+	if strings.HasPrefix(r.URL.Path, "/api/session/") || strings.HasPrefix(r.URL.Path, "/api/admin/session/") || strings.HasPrefix(r.URL.Path, "/api/access/session/") {
 		w.sessionAPI(rw, r)
+		return
+	}
+	if w.Store != nil && w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/local/bootstrap-admin" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
+		var in struct {
+			ID string `json:"id"`
+		}
+		if decodeLimited(rw, r, &in, 1024) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		token, err := w.Store.bootstrapAdmin(in.ID)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		rw.Header().Set("Cache-Control", "no-store")
+		jsonResponse(rw, 201, map[string]string{"setup_token": token})
+		return
+	}
+	if w.Store != nil && w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/local/createsuperuser" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
+		var in struct {
+			ID       string `json:"id"`
+			Password string `json:"password"`
+		}
+		if decodeLimited(rw, r, &in, 2048) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if err := w.Store.createSuperuser(in.ID, in.Password); err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 201, map[string]bool{"created": true})
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/admin/github/") {
+		w.adminGitHubAPI(rw, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/access/keys") || r.URL.Path == "/api/access/sources" || r.URL.Path == "/api/access/users" || r.URL.Path == "/api/access/teams" {
+		w.browserAccessAPI(rw, r)
+		return
+	}
+	if w.Store != nil && w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/local/remove-imported-source" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
+		var in struct {
+			Generation string `json:"expected_generation"`
+			Confirm    bool   `json:"confirm"`
+		}
+		if decodeLimited(rw, r, &in, 1024) != nil || !in.Confirm {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		count, err := w.Store.removeLocalImportedSource(w.LocalImportSource, in.Generation)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]any{"source_id": w.LocalImportSource, "articles_removed": count})
 		return
 	}
 	if w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/v1/import" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
 		var batch ImportBatch
-		if decodeLimited(rw, r, &batch, 40<<20) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
+		if decodeImport(rw, r, &batch) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
 			apiError(rw, ErrInvalid)
 			return
 		}
@@ -192,12 +347,54 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			apiError(rw, err)
 			return
 		}
+		if w.Sync != nil && (result.Generation != *batch.ExpectedImport || result.Conflicts > 0) && w.Store.hasEnabledMirror(batch.SourceID) {
+			w.Sync.Wake()
+		}
 		jsonResponse(rw, 200, result)
 		return
 	}
 	if w.Store != nil {
 		owner := w.authorized(r)
-		reader := (w.readerAuthorized(r) || (!w.Public && (w.ReaderLocal || w.Sessions.valid(r)))) && r.Method == "GET"
+		implicitLocal := w.ReaderLocal && !w.ReaderKeyRequired && r.Header.Get("Authorization") == ""
+		validation := r.Method == "POST" && (r.URL.Path == "/api/v1/articles/translation-validate" || r.URL.Path == "/api/v1/articles/transfer-plan") && r.Header.Get("Origin") == ""
+		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || (!validation && w.Sessions.valid(r))))) && (r.Method == "GET" || validation)
+		if !w.Public && !owner && !reader && r.Method == "GET" {
+			if hash, ok := w.Sessions.scopedCookie(r); ok {
+				scoped, valid, err := w.Store.scopedViewHash(hash, time.Now())
+				if err != nil {
+					http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				if valid {
+					w.Store, reader = scoped, true
+				}
+			}
+			if user, ok := w.Sessions.userCookie(r); ok && !reader {
+				scoped, valid, err := w.Store.scopedViewUser(user.ID, user.AuthVersion)
+				if err != nil {
+					http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				if valid {
+					w.Store, reader = scoped, true
+				}
+			}
+		}
+		if !w.Public && !owner && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			scoped, valid, err := w.Store.scopedView(token, time.Now())
+			if err != nil {
+				http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if valid {
+				if r.Method != "GET" && !validation {
+					http.Error(rw, "Read-only access", http.StatusForbidden)
+					return
+				}
+				w.Store, reader = scoped, true
+			}
+		}
 		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
 			w.api(rw, r, owner, reader)
 			return
@@ -249,10 +446,32 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	env := r.URL.Query().Get("env")
 	name := r.URL.Query().Get("page")
+	// Resolve directory links only against the already authorized snapshot.
+	// Exact page names win, then GitHub-style README, then index.
+	if name != "" {
+		visible := make(map[string]bool, len(s.Pages))
+		for _, page := range s.Pages {
+			visible[page.Path] = true
+		}
+		if !visible[name] {
+			base := strings.TrimSuffix(name, "/")
+			for _, suffix := range []string{"/README.md", "/index.md"} {
+				if visible[base+suffix] {
+					name = base + suffix
+					break
+				}
+			}
+		}
+	}
 	v := View{Public: w.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
+	if r.URL.Query().Get("graph") == "1" {
+		v.GraphEdges = graphEdges(s.Pages)
+	}
+	terms := searchTerms(query)
+	scores := map[string]int{}
 	w.Store.mu.RLock()
 	for _, source := range w.Store.db.Sources {
-		if source.ConnectionID != "" && (!w.Public || sourcePublic(w.Store.db, source, time.Now())) {
+		if source.ConnectionID != "" && (!w.Public || sourcePublicReadable(w.Store.db, source, time.Now())) {
 			v.GitHubCount++
 		}
 	}
@@ -261,6 +480,9 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	sources := map[string]Source{}
 	for _, source := range w.Store.sources(w.Public) {
 		sources[source.ID] = source.Source
+		if !w.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0 || source.syncIssue != "") {
+			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld, SyncIssue: source.syncIssue, LastImportObservedAt: source.LastImportObservedAt})
+		}
 	}
 	for _, p := range s.Pages {
 		id := p.Environment
@@ -274,6 +496,10 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				name = source.Title
 			}
 			g = &Group{Name: name, ID: id}
+			if source := sources[id]; source.Metadata != nil {
+				g.Description = source.Metadata.Description
+				g.SourceURL = source.Metadata.URL
+			}
 			groups[id] = g
 		}
 		g.Count++
@@ -292,22 +518,33 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			v.Page = &full
 		}
 		if name == "" && (env == "" || env == "all" || env == id) {
-			matched := query == "" || strings.Contains(strings.ToLower(p.Title+" "+p.Path), strings.ToLower(query))
-			if !matched {
-				if full, e := w.Store.page(p.Path, w.Public); e == nil {
-					matched = strings.Contains(strings.ToLower(full.Text), strings.ToLower(query))
-				}
+			score := 1
+			if query != "" {
+				score = searchRevisions(query, p.Path, p.searchSourceTitle, p.searchOriginal, p.searchDisplayed, terms)
 			}
-			if matched {
+			if score > 0 {
 				v.Pages = append(v.Pages, p)
+				scores[p.Path] = score
 			}
 		}
+	}
+	if query != "" {
+		sort.SliceStable(v.Pages, func(i, j int) bool { return scores[v.Pages[i].Path] > scores[v.Pages[j].Path] })
 	}
 	if name != "" && v.Page == nil {
 		http.NotFound(rw, r)
 		return
 	}
-	for i, p := range s.Pages {
+	recentPages := append([]Page(nil), s.Pages...)
+	sort.SliceStable(recentPages, func(i, j int) bool {
+		a, _ := time.Parse(time.RFC3339Nano, recentPages[i].Updated)
+		b, _ := time.Parse(time.RFC3339Nano, recentPages[j].Updated)
+		if a.Equal(b) {
+			return recentPages[i].Path < recentPages[j].Path
+		}
+		return a.After(b)
+	})
+	for i, p := range recentPages {
 		if i >= 4 {
 			break
 		}
@@ -323,12 +560,30 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	for _, g := range groups {
 		v.Groups = append(v.Groups, *g)
 	}
-	sort.Slice(v.Groups, func(i, j int) bool { return v.Groups[i].Name < v.Groups[j].Name })
+	sort.Slice(v.Groups, func(i, j int) bool {
+		if v.Groups[i].Name == v.Groups[j].Name {
+			return v.Groups[i].ID < v.Groups[j].ID
+		}
+		return v.Groups[i].Name < v.Groups[j].Name
+	})
 	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 	var body template.HTML
 	if v.Page != nil {
 		body = v.Page.HTML
 	}
-	json.NewEncoder(rw).Encode(map[string]any{"view": v, "html": body, "toc": v.TOC})
+	payload, err := json.Marshal(map[string]any{"view": v, "html": body, "toc": v.TOC})
+	if err != nil {
+		http.Error(rw, "State unavailable", http.StatusInternalServerError)
+		return
+	}
+	etag := fmt.Sprintf("\"%x\"", sha256.Sum256(payload))
+	rw.Header().Set("ETag", etag)
+	rw.Header().Add("Vary", "Cookie")
+	rw.Header().Add("Vary", "Authorization")
+	if r.Header.Get("If-None-Match") == etag {
+		rw.WriteHeader(http.StatusNotModified)
+		return
+	}
+	rw.Write(payload)
 }
 func label(id string) string { return id }

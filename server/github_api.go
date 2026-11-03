@@ -1,11 +1,44 @@
 package main
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// Browser administration is restricted to GitHub account and connection
+// management. The cookie cannot authorize the owner API or article writes.
+func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
+	if w.Public || w.Store == nil || !w.adminCookieValid(r, w.AdminSessions, adminSessionCookie) {
+		http.NotFound(rw, r)
+		return
+	}
+	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" && r.URL.Path != "/api/admin/github/sync" && r.URL.Path != "/api/admin/github/pause" && r.URL.Path != "/api/admin/github/mirrors" {
+		http.NotFound(rw, r)
+		return
+	}
+	if r.Method != "GET" && r.Method != "POST" && !(r.Method == "PUT" && r.URL.Path == "/api/admin/github/connections") {
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Method != "GET" && !sameOrigin(r) {
+		jsonResponse(rw, http.StatusForbidden, map[string]string{"error": "origin rejected"})
+		return
+	}
+	request := r.Clone(r.Context())
+	if r.URL.Path == "/api/admin/github/mirrors" {
+		request.URL.Path = "/api/v1/sources/mirrors"
+		request.Header = r.Header.Clone()
+		request.Header.Del("Origin") // same-origin was checked above for writes
+		w.api(rw, request, true, false)
+		return
+	}
+	request.URL.Path = strings.Replace(r.URL.Path, "/api/admin/github/", "/api/v1/github/", 1)
+	w.githubAPI(rw, request, true)
+}
 
 func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 	if !owner {
@@ -17,6 +50,24 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/github/cancel-bundle":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in struct {
+			ID      string `json:"job_id"`
+			Confirm bool   `json:"confirm_cancel"`
+		}
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if err := w.Store.cancelBundle(in.ID, in.Confirm); err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]string{"state": "superseded"})
 	case "/api/v1/github/publish-job":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)
@@ -94,6 +145,14 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 			apiError(rw, ErrInvalid)
 			return
 		}
+		if in.AdoptExisting {
+			// Adoption downloads and verifies a complete tree before committing.
+			// Give that request a bounded window without changing other routes.
+			_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(6 * time.Minute))
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+			defer cancel()
+			r = r.WithContext(ctx)
+		}
 		c, e := w.Sync.connect(r.Context(), in)
 		if e != nil {
 			apiError(rw, e)
@@ -134,7 +193,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		}
 		var in struct {
 			ID     string `json:"id"`
-			Paused bool   `json:"paused"`
+			Paused *bool  `json:"paused"`
 		}
 		if e := decodeBody(rw, r, &in); e != nil || !identifier.MatchString(in.ID) {
 			apiError(rw, ErrInvalid)
@@ -142,7 +201,11 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		}
 		var e error
 		if strings.HasSuffix(r.URL.Path, "/pause") {
-			e = w.Store.pauseConnection(in.ID, in.Paused)
+			if in.Paused == nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			e = w.Store.pauseConnection(in.ID, *in.Paused)
 		} else {
 			e = w.Store.retryConnection(in.ID)
 		}

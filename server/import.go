@@ -47,18 +47,19 @@ type ImportConflict struct {
 	Resolution  string `json:"resolution,omitempty"`
 }
 type ImportBatch struct {
-	SourceID       string            `json:"source_id"`
-	Kind           string            `json:"kind"`
-	Metadata       *WikiMetadata     `json:"metadata,omitempty"`
-	Files          map[string]string `json:"files"`
-	Assets         map[string][]byte `json:"assets,omitempty"`
-	Commit         string            `json:"commit"`
-	Dirty          bool              `json:"dirty"`
-	Complete       bool              `json:"complete"`
-	Withheld       int               `json:"withheld"`
-	ExpectedImport *string           `json:"expected_import"`
-	Create         bool              `json:"create"`
-	Visibility     string            `json:"visibility,omitempty"`
+	withheldReasons map[string]int    // local preview only; never serialized
+	SourceID        string            `json:"source_id"`
+	Kind            string            `json:"kind"`
+	Metadata        *WikiMetadata     `json:"metadata,omitempty"`
+	Files           map[string]string `json:"files"`
+	Assets          map[string][]byte `json:"assets,omitempty"`
+	Commit          string            `json:"commit"`
+	Dirty           bool              `json:"dirty"`
+	Complete        bool              `json:"complete"`
+	Withheld        int               `json:"withheld"`
+	ExpectedImport  *string           `json:"expected_import"`
+	Create          bool              `json:"create"`
+	Visibility      string            `json:"visibility,omitempty"`
 }
 type ImportResult struct {
 	Generation string `json:"generation"`
@@ -69,6 +70,11 @@ type ImportResult struct {
 	Unchanged  int    `json:"unchanged"`
 	Withheld   int    `json:"withheld"`
 }
+
+// Bound aggregate imported content separately from the JSON transport. Images
+// are base64-encoded in transport, and JSON text may require escaping.
+const maxImportBytes = 32 << 20
+const maxImportRequestBytes = 64 << 20
 
 var secretContent = regexp.MustCompile(`(?i)-----BEGIN .*PRIVATE KEY-----|\b(?:password|passwd|api[_-]?key|access[_-]?token|client_secret)\s*[=:]\s*["']?[^\s"']{6,}|\b(?:ghp_|github_pat_|sk-proj-)[A-Za-z0-9_\-]{12,}|https?://[^\s/]+:[^\s/]+@`)
 var commitID = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -143,7 +149,12 @@ func parseMetadata(b []byte) (*WikiMetadata, error) {
 // prepareCheckout never follows symlinks or evaluates repository hooks. Its
 // result is a bounded working-tree observation, not a claim of a clean commit.
 func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
-	result := ImportBatch{SourceID: sourceID, Files: map[string]string{}, Assets: map[string][]byte{}, Complete: true}
+	result := ImportBatch{SourceID: sourceID, Files: map[string]string{}, Assets: map[string][]byte{}, Complete: true, withheldReasons: map[string]int{}}
+	withhold := func(reason string) {
+		result.Withheld++
+		result.Complete = false
+		result.withheldReasons[reason]++
+	}
 	if !identifier.MatchString(sourceID) {
 		return result, ErrInvalid
 	}
@@ -213,6 +224,24 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		return result, e
 	}
 	result.Dirty = status != ""
+	unmergedText, e := git("ls-files", "--unmerged", "-z")
+	if e != nil {
+		return result, e
+	}
+	unmerged := map[string]bool{}
+	for _, record := range strings.Split(unmergedText, "\x00") {
+		if record == "" {
+			continue
+		}
+		_, name, ok := strings.Cut(record, "\t")
+		if !ok || name == "" {
+			return result, ErrInvalid
+		}
+		unmerged[name] = true
+	}
+	if unmerged["veda.yaml"] {
+		return result, ErrConflict
+	}
 	trackedText, e := git("ls-files", "-z", "--cached")
 	if e != nil {
 		return result, e
@@ -263,6 +292,17 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 	if result.Kind == "program" {
 		start = "docs"
 	}
+	// Git can leave an unmerged path absent from the working tree. Count it
+	// before traversal so a partial import cannot mistake it for a deletion.
+	for name := range unmerged {
+		if !importablePath(name, result.Kind) {
+			continue
+		}
+		switch strings.ToLower(path.Ext(name)) {
+		case ".md", ".markdown", ".png", ".jpg", ".jpeg", ".webp", ".gif":
+			withhold("unmerged")
+		}
+	}
 	total := 0
 	count := 0
 	entries := 0
@@ -289,9 +329,11 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		if !tracked[name] || !safeRelative(name) {
 			return nil
 		}
+		if unmerged[name] {
+			return nil
+		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			result.Withheld++
-			result.Complete = false
+			withhold("symlink")
 			return nil
 		}
 		if !entry.Type().IsRegular() {
@@ -303,7 +345,7 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		if !markdown && !image {
 			return nil
 		}
-		limit := int64(256000)
+		limit := int64(maxArticleBytes)
 		if image {
 			limit = 4 << 20
 		}
@@ -313,20 +355,22 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		}
 		count++
 		total += len(b)
-		if count > 2000 || total > 16<<20 {
+		if count > 2000 || total > maxImportBytes {
 			return errors.New("checkout exceeds import limits")
 		}
 		if markdown {
-			if !utf8.Valid(b) || secretContent.Match(b) {
-				result.Withheld++
-				result.Complete = false
+			if !utf8.Valid(b) {
+				withhold("invalid_utf8")
+				return nil
+			}
+			if secretContent.Match(b) {
+				withhold("sensitive_pattern")
 				return nil
 			}
 			result.Files[name] = string(b)
 		} else {
 			if _, e := imageRef(b); e != nil {
-				result.Withheld++
-				result.Complete = false
+				withhold("unsupported_image")
 				return nil
 			}
 			result.Assets[name] = b
@@ -349,6 +393,10 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 	if e != nil || statusAfter != status {
 		return result, ErrConflict
 	}
+	unmergedAfter, e := git("ls-files", "--unmerged", "-z")
+	if e != nil || unmergedAfter != unmergedText {
+		return result, ErrConflict
+	}
 	return result, nil
 }
 
@@ -369,6 +417,54 @@ func imageRef(b []byte) (BlobRef, error) {
 func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
 	return s.applyImport(batch, nil, false)
 }
+
+// Write verified immutable blobs before advancing the observation or metadata.
+// A failed metadata commit may leave an unreferenced blob, but never a partial
+// file at a referenced digest. The caller holds the store lock.
+func (s *Store) storeImportAssets(refs map[string]BlobRef, assets map[string][]byte) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	directory := path.Join(s.dir, "blobs")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return err
+	}
+	changed := false
+	for name, ref := range refs {
+		if s.verifyAsset(ref) == nil {
+			continue
+		}
+		f, err := os.CreateTemp(directory, ".blob-")
+		if err != nil {
+			return err
+		}
+		_, err = f.Write(assets[name])
+		if err == nil {
+			err = f.Sync()
+		}
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+		if err == nil {
+			err = os.Rename(f.Name(), path.Join(directory, ref.SHA))
+		}
+		os.Remove(f.Name())
+		if err != nil {
+			return err
+		}
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	dir, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
 func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalOnly bool) (ImportResult, error) {
 	result := ImportResult{Withheld: batch.Withheld}
 	if !identifier.MatchString(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !commitID.MatchString(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
@@ -383,7 +479,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	}
 	total := 0
 	for p, text := range batch.Files {
-		if !articlePath(p, batch.Kind) || len(text) > 256000 || !utf8.ValidString(text) || secretContent.MatchString(text) {
+		if !articlePath(p, batch.Kind) || len(text) > maxArticleBytes || !utf8.ValidString(text) || secretContent.MatchString(text) {
 			return result, ErrInvalid
 		}
 		total += len(text)
@@ -400,7 +496,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		refs[name] = ref
 		total += len(data)
 	}
-	if total > 16<<20 {
+	if total > maxImportBytes {
 		return result, ErrInvalid
 	}
 	if batch.Metadata != nil && batch.Metadata.Image != "" {
@@ -438,23 +534,60 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		return result, ErrInvalid
 	}
 	if proof != nil {
-		conn, ok := s.db.Connections[proof.ConnectionID]
-		if !ok || conn.Paused || conn.ConfigRevision != proof.ConfigRevision || conn.ID != batch.SourceID || (exists && src.ConnectionID != conn.ID) {
-			return result, ErrConflict
+		if proof.Adoption != nil {
+			adopt := proof.Adoption
+			conn := adopt.Connection
+			current, err := s.adoptionSnapshotLocked(batch.SourceID)
+			account, accountOK := s.db.Accounts[conn.AccountID]
+			if err != nil || !exists || current != adopt.Snapshot || !accountOK || account != adopt.Account || conn.AccountID == "" || conn.ID != batch.SourceID || conn.ID != proof.ConnectionID || conn.ConfigRevision != proof.ConfigRevision || !conn.Private || proof.Visibility != "private" || !batch.Complete || batch.Withheld != 0 {
+				return result, ErrConflict
+			}
+			for name, old := range src.Assets {
+				if incoming, ok := refs[name]; !ok || incoming != old {
+					return result, ErrConflict
+				}
+			}
+			src.ConnectionID = conn.ID
+		} else {
+			conn, ok := s.db.Connections[proof.ConnectionID]
+			if !ok || conn.Paused || conn.ConfigRevision != proof.ConfigRevision || conn.ID != batch.SourceID || (exists && src.ConnectionID != conn.ID) {
+				return result, ErrConflict
+			}
+			src.ConnectionID = conn.ID
 		}
-		src.ConnectionID = conn.ID
 		src.Visibility = proof.Visibility
 	}
 	if src.Kind != batch.Kind || src.ImportGeneration != *batch.ExpectedImport {
 		return result, ErrConflict
 	}
+	if e := s.storeImportAssets(refs, batch.Assets); e != nil {
+		return result, e
+	}
 	if proof == nil && exists && src.ImportGeneration == generation {
+		for _, ref := range src.Assets {
+			if s.verifyAsset(ref) != nil {
+				return ImportResult{}, errImportedAssetUnavailable
+			}
+		}
 		result.Generation = generation
 		result.Unchanged = len(batch.Files)
 		s.markImportObserved(batch.SourceID)
+		s.markImportWithheld(batch.SourceID, batch.Withheld)
 		return result, nil
 	}
 	db := s.clone()
+	if proof != nil && proof.Adoption != nil {
+		// A local checkout's old import base is not a GitHub merge base. Clear
+		// it so differing files become conflicts and absent files stay local.
+		for key, article := range db.Articles {
+			if article.SourceID == batch.SourceID {
+				article.UpstreamHash = ""
+				db.Articles[key] = article
+			}
+		}
+		conn := proof.Adoption.Connection
+		db.Connections[conn.ID] = conn
+	}
 	if proof != nil && proof.Visibility == "public" {
 		for key, a := range db.Articles {
 			if a.SourceID == batch.SourceID && (wasPrivate || !a.PublishedLocal) {
@@ -465,49 +598,6 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	// Immutable blobs are written before the metadata transaction. A failed commit
-	// may leave an unreferenced blob, never a reference to an incomplete file.
-	if len(refs) > 0 {
-		if e := os.MkdirAll(path.Join(s.dir, "blobs"), 0700); e != nil {
-			return result, e
-		}
-	}
-	for name, ref := range refs {
-		filename := path.Join(s.dir, "blobs", ref.SHA)
-		if b, e := os.ReadFile(filename); e == nil && digest(b) == ref.SHA {
-			continue
-		}
-		f, e := os.CreateTemp(path.Join(s.dir, "blobs"), ".blob-")
-		if e != nil {
-			return result, e
-		}
-		_, e = f.Write(batch.Assets[name])
-		if e == nil {
-			e = f.Sync()
-		}
-		closeErr := f.Close()
-		if e == nil {
-			e = closeErr
-		}
-		if e == nil {
-			e = os.Rename(f.Name(), filename)
-		}
-		os.Remove(f.Name())
-		if e != nil {
-			return result, e
-		}
-	}
-	if len(refs) > 0 {
-		dir, e := os.Open(path.Join(s.dir, "blobs"))
-		if e != nil {
-			return result, e
-		}
-		e = dir.Sync()
-		dir.Close()
-		if e != nil {
-			return result, e
-		}
-	}
 	paths := make([]string, 0, len(batch.Files))
 	for p := range batch.Files {
 		paths = append(paths, p)
@@ -526,7 +616,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			a.Published = &published
 			db.Articles[key] = a
 		}
-		if proof != nil && observedWrite(&db, batch.SourceID, p, hash, batch.Commit) {
+		if proof != nil && observedWrite(&db, batch.SourceID, p, hash, batch.Commit, refs, batch.Files, batch.Complete && batch.Withheld == 0) {
 			a.UpstreamHash = hash
 			a = supersedeImportConflicts(a)
 			db.Articles[key] = a
@@ -542,7 +632,7 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		if found {
 			latest = a.Versions[len(a.Versions)-1].SHA
 		}
-		if found && !a.Deleted && latest != hash && latest != a.UpstreamHash {
+		if found && !a.Deleted && latest != a.UpstreamHash && (latest != hash || (proof != nil && preparedWriteDiffers(db, batch.SourceID, p, hash))) {
 			if hasImportConflict(a, hash, false) {
 				result.Conflicts++
 				continue
@@ -578,6 +668,10 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			if _, present := batch.Files[a.Path]; present {
 				continue
 			}
+			if proof != nil && proof.Visibility == "public" && !a.PublishedLocal {
+				a.Published = nil
+				db.Articles[key] = a
+			}
 			latest := a.Versions[len(a.Versions)-1].SHA
 			if latest != a.UpstreamHash {
 				if hasImportConflict(a, "", true) {
@@ -595,6 +689,45 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 			db.Articles[key] = a
 		}
 	}
+	// Partial observations cannot prove that an old image was removed. A
+	// locally changed article also keeps its missing referenced images while
+	// an upstream deletion remains unresolved. Never carry private assets into
+	// a newly public source; publication needs a fresh, verified snapshot.
+	if exists && wasPrivate && src.Visibility == "private" {
+		if !batch.Complete || batch.Withheld > 0 {
+			for name, ref := range src.Assets {
+				if _, present := refs[name]; !present {
+					refs[name] = ref
+				}
+			}
+		}
+		for _, article := range db.Articles {
+			if article.SourceID != batch.SourceID || article.Deleted || len(article.Versions) == 0 {
+				continue
+			}
+			latest := article.Versions[len(article.Versions)-1]
+			if article.UpstreamHash != "" && latest.SHA == article.UpstreamHash {
+				continue
+			}
+			retained := retainedPendingAssets(latest.Text, article.Path, src.Assets)
+			if len(retained) > 0 && hasRootReference(latest.Text) && db.Version < 12 {
+				db.Version = 12
+			}
+			for name, ref := range retained {
+				if _, present := refs[name]; !present {
+					refs[name] = ref
+				}
+			}
+		}
+	}
+	// Retained images may not be present in the new batch and therefore cannot
+	// be repaired from it. Do not commit or report a successful observation if
+	// any image that would remain referenced is missing or corrupt.
+	for _, ref := range refs {
+		if s.verifyAsset(ref) != nil {
+			return ImportResult{}, errImportedAssetUnavailable
+		}
+	}
 	src.Metadata = batch.Metadata
 	src.Assets = refs
 	src.ImportCommit = batch.Commit
@@ -606,6 +739,43 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 	src.ImportGeneration = generation
 	result.Generation = src.ImportGeneration
 	db.Sources[src.ID] = src
+	// A prepared ref update may have succeeded even if its response was lost.
+	// Only a complete verified pull can establish that the source is absent.
+	if proof != nil && batch.Complete && batch.Withheld == 0 {
+		for id, move := range db.Moves {
+			if move.State != "deleting_source" || move.SourceConnectionID != proof.ConnectionID {
+				continue
+			}
+			if _, present := batch.Files[move.SourcePath]; present {
+				continue
+			}
+			original := db.Articles[move.SourceID+"/"+move.SourcePath]
+			if !original.Deleted {
+				continue
+			}
+			target, exists := db.Articles[move.DestinationID+"/"+move.DestinationPath]
+			destination, dstOK := db.Sources[move.DestinationID]
+			valid := exists && dstOK && !target.Deleted && len(target.Versions) == 1 && target.Versions[0].SHA == move.SHA && destination.ConnectionID == move.DestinationConnectionID && translationFingerprint(original.Translation) == move.TranslationFingerprint && translationFingerprint(target.Translation) == translationFingerprint(movedTranslation(original.Translation)) && assetsPresent(destination, move.Assets) && linksPresent(db, move.DestinationID, move.Links)
+			if s.verifyMoveAssets(move.Assets) != nil {
+				valid = false
+			}
+			for _, conflict := range target.Conflicts {
+				if conflict.Resolution == "" {
+					valid = false
+				}
+			}
+			if move.DestinationConnectionID != "" {
+				connection, ok := db.Connections[move.DestinationConnectionID]
+				valid = valid && ok && connection.RepositoryID == move.DestinationRepositoryID && connection.Branch == move.DestinationBranch
+			}
+			if !valid {
+				move.State = "destination_changed"
+			} else {
+				move.State = "complete"
+			}
+			db.Moves[id] = move
+		}
+	}
 	reconcileMoves(&db)
 	if proof != nil {
 		conn := db.Connections[proof.ConnectionID]
@@ -613,12 +783,16 @@ func (s *Store) applyImport(batch ImportBatch, proof *remoteProof, privateLocalO
 		conn.TreeSHA = proof.TreeSHA
 		db.Connections[conn.ID] = conn
 	}
+	if proof != nil && proof.Adoption != nil {
+		if err := proof.Adoption.Context.Err(); err != nil {
+			return ImportResult{}, err
+		}
+	}
 	if e := s.commit(db); e != nil {
 		return ImportResult{}, e
 	}
-	if proof == nil {
-		s.markImportObserved(batch.SourceID)
-	}
+	s.markImportObserved(batch.SourceID)
+	s.markImportWithheld(batch.SourceID, batch.Withheld)
 	return result, nil
 }
 
@@ -630,6 +804,15 @@ func (b *boundedGitOutput) Write(p []byte) (int, error) {
 		return 0, errors.New("Git output exceeds import limit")
 	}
 	return b.Buffer.Write(p)
+}
+
+// Caller holds the store mutex. Counts are only known after a full import
+// attempt, not after a head-only check, and are not retained across restart.
+func (s *Store) markImportWithheld(sourceID string, count int) {
+	if s.withheld == nil {
+		s.withheld = map[string]int{}
+	}
+	s.withheld[sourceID] = count
 }
 
 // Caller holds the store mutex; failed imports must never advance this clock.

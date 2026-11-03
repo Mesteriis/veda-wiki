@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -97,6 +99,81 @@ func TestCheckoutTypesMetadataAndExclusions(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestCheckoutWithholdsUnmergedDocumentation(t *testing.T) {
+	for _, removeWorkingFile := range []bool{false, true} {
+		t.Run(fmt.Sprintf("missing_worktree=%t", removeWorkingFile), func(t *testing.T) {
+			repo := gitFixture(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original", "other.md": "# Other"})
+			initial, err := prepareCheckout(repo, "handbook")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := testStore(t)
+			empty := ""
+			initial.Create, initial.Visibility, initial.ExpectedImport = true, "private", &empty
+			if _, err := s.importBatch(initial); err != nil {
+				t.Fatal(err)
+			}
+			gitTest(t, repo, "checkout", "-qb", "alternate")
+			writeFixture(t, repo, "guide.md", "# Alternate")
+			gitTest(t, repo, "commit", "-qam", "Alternate")
+			gitTest(t, repo, "checkout", "-q", "-")
+			writeFixture(t, repo, "guide.md", "# Main")
+			gitTest(t, repo, "commit", "-qam", "Main")
+			merge := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "merge", "alternate")
+			if err := merge.Run(); err == nil {
+				t.Fatal("fixture merge did not conflict")
+			}
+			if out, err := exec.Command("git", "-C", repo, "ls-files", "--unmerged", "--", "guide.md").Output(); err != nil || len(out) == 0 {
+				t.Fatal("fixture has no unmerged index entry", err)
+			}
+			if removeWorkingFile {
+				if err := os.Remove(filepath.Join(repo, "guide.md")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			batch, err := prepareCheckout(repo, "handbook")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if batch.Complete || batch.Withheld != 1 || batch.withheldReasons["unmerged"] != 1 {
+				t.Fatal("conflict not reported as partial", batch.Complete, batch.Withheld)
+			}
+			if _, ok := batch.Files["guide.md"]; ok {
+				t.Fatal("unmerged content was imported")
+			}
+			if batch.Files["other.md"] != "# Other" {
+				t.Fatal("unrelated document was lost")
+			}
+			batch = applyAgain(s, batch)
+			if _, err := s.importBatch(batch); err != nil {
+				t.Fatal(err)
+			}
+			if page, err := s.page("handbook/guide.md", false); err != nil || page.Text != "# Original" {
+				t.Fatal("partial import deleted the previous document", err)
+			}
+		})
+	}
+}
+
+func TestCheckoutRejectsUnmergedMetadata(t *testing.T) {
+	repo := gitFixture(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide"})
+	gitTest(t, repo, "checkout", "-qb", "alternate")
+	writeFixture(t, repo, "veda.yaml", strings.Replace(metadataFixture, "Handbook", "Alternate", 1))
+	gitTest(t, repo, "commit", "-qam", "Alternate")
+	gitTest(t, repo, "checkout", "-q", "-")
+	writeFixture(t, repo, "veda.yaml", strings.Replace(metadataFixture, "Handbook", "Main", 1))
+	gitTest(t, repo, "commit", "-qam", "Main")
+	if err := exec.Command("git", "-C", repo, "-c", "core.hooksPath=/dev/null", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "merge", "alternate").Run(); err == nil {
+		t.Fatal("fixture merge did not conflict")
+	}
+	if out, err := exec.Command("git", "-C", repo, "ls-files", "--unmerged", "--", "veda.yaml").Output(); err != nil || len(out) == 0 {
+		t.Fatal("fixture has no unmerged metadata entry", err)
+	}
+	if _, err := prepareCheckout(repo, "handbook"); !errors.Is(err, ErrConflict) {
+		t.Fatal("unmerged metadata accepted", err)
+	}
+}
 func TestCheckoutSymlinksSecretsAndSpecialFiles(t *testing.T) {
 	repo := gitFixture(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Safe"})
 	outside := filepath.Join(t.TempDir(), "outside.md")
@@ -175,6 +252,85 @@ func TestImportIsAtomicIdempotentAndPersists(t *testing.T) {
 	p, e = reopened.page("handbook/README.md", false)
 	if e != nil || p.Text != "# Initial" {
 		t.Fatal(e)
+	}
+}
+
+func TestUnchangedImportRepairsMissingOrCorruptAssets(t *testing.T) {
+	for _, damage := range []string{"missing", "corrupt", "symlink"} {
+		t.Run(damage, func(t *testing.T) {
+			s := testStore(t)
+			b := testBatch()
+			b.Assets = map[string][]byte{"images/test.png": smallPNG(t)}
+			first, err := s.importBatch(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b = applyAgain(s, b)
+			ref := s.db.Sources[b.SourceID].Assets["images/test.png"]
+			filename := filepath.Join(s.dir, "blobs", ref.SHA)
+			if err = os.Remove(filename); err != nil {
+				t.Fatal(err)
+			}
+			switch damage {
+			case "corrupt":
+				err = os.WriteFile(filename, []byte("corrupt"), 0600)
+			case "symlink":
+				target := filepath.Join(t.TempDir(), "target")
+				if err = os.WriteFile(target, []byte("unchanged"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				err = os.Symlink(target, filename)
+				defer func() {
+					content, readErr := os.ReadFile(target)
+					if readErr != nil || string(content) != "unchanged" {
+						t.Error("symlink target modified", readErr)
+					}
+				}()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := s.importBatch(b)
+			if err != nil || result.Generation != first.Generation || result.Unchanged != 1 || result.Created != 0 || result.Updated != 0 || result.Conflicts != 0 {
+				t.Fatal("unchanged import failed", result, err)
+			}
+			if err = s.verifyAsset(ref); err != nil {
+				t.Fatal("asset not repaired", err)
+			}
+			media := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/media/handbook/images/test.png", "", true)
+			if media.Code != 200 || !bytes.Equal(media.Body.Bytes(), b.Assets["images/test.png"]) {
+				t.Fatal("repaired asset not served", media.Code)
+			}
+			article, err := s.article(b.SourceID, "README.md", false)
+			if err != nil || len(article.Versions) != 1 {
+				t.Fatal("article history changed", err)
+			}
+		})
+	}
+}
+
+func TestFailedAssetRepairDoesNotAdvanceObservation(t *testing.T) {
+	s := testStore(t)
+	b := testBatch()
+	b.Assets = map[string][]byte{"image.png": smallPNG(t)}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	b = applyAgain(s, b)
+	previous := s.observed[b.SourceID]
+	ref := s.db.Sources[b.SourceID].Assets["image.png"]
+	filename := filepath.Join(s.dir, "blobs", ref.SHA)
+	if err := os.Remove(filename); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filename, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.importBatch(b); err == nil {
+		t.Fatal("failed repair reported success")
+	}
+	if !s.observed[b.SourceID].Equal(previous) {
+		t.Fatal("failed repair advanced observation")
 	}
 }
 
@@ -333,6 +489,129 @@ func TestImportDeletionsPartialCoverageAndLocalConflict(t *testing.T) {
 	}
 	if len(s.snapshot(false).Pages) != 1 {
 		t.Fatal("locally retained article deleted")
+	}
+}
+
+func TestPrivateImportPreservesImagesNeededByLocalEdits(t *testing.T) {
+	s := testStore(t)
+	b := testBatch()
+	b.Visibility = "private"
+	b.Files = map[string]string{"README.md": "# Original\n\n![image](images/keep.png)", "clean.md": "# Clean\n\n![other](images/remove.png)"}
+	b.Assets = map[string][]byte{"images/keep.png": smallPNG(t), "images/remove.png": smallPNG(t)}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("handbook", "README.md", "# Local edit\n\n![image](images/keep.png)", 1); err != nil {
+		t.Fatal(err)
+	}
+	b = applyAgain(s, b)
+	b.Files, b.Assets = map[string]string{}, map[string][]byte{}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.db.Sources["handbook"].Assets["images/keep.png"]; !ok {
+		t.Fatal("local edit lost its image")
+	}
+	if _, ok := s.db.Sources["handbook"].Assets["images/remove.png"]; ok {
+		t.Fatal("unreferenced upstream image retained")
+	}
+	if len(s.conflicts()) != 1 || !s.db.Articles["handbook/clean.md"].Deleted {
+		t.Fatal("deletion handling changed")
+	}
+	r := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/media/handbook/images/keep.png", "", true)
+	if r.Code != 200 {
+		t.Fatal("retained image unavailable", r.Code)
+	}
+}
+
+func TestPrivatePartialImportRetainsUnobservedImages(t *testing.T) {
+	s := testStore(t)
+	b := testBatch()
+	b.Visibility = "private"
+	b.Assets = map[string][]byte{"images/unobserved.png": smallPNG(t)}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	b = applyAgain(s, b)
+	b.Assets = map[string][]byte{}
+	b.Complete, b.Withheld = false, 1
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.db.Sources["handbook"].Assets["images/unobserved.png"]; !ok {
+		t.Fatal("partial observation removed an image")
+	}
+}
+
+func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("changed=%t", changed), func(t *testing.T) {
+			s := testStore(t)
+			b := testBatch()
+			b.Visibility = "private"
+			image := smallPNG(t)
+			b.Assets = map[string][]byte{"images/retained.png": image}
+			if _, err := s.importBatch(b); err != nil {
+				t.Fatal(err)
+			}
+			b = applyAgain(s, b)
+			b.Assets = map[string][]byte{}
+			b.Complete, b.Withheld = false, 1
+			if _, err := s.importBatch(b); err != nil {
+				t.Fatal(err)
+			}
+			b = applyAgain(s, b)
+			if changed {
+				b.Files["README.md"] = "# Changed"
+			}
+			before := s.observed[b.SourceID]
+			generation := s.db.Sources[b.SourceID].ImportGeneration
+			ref := s.db.Sources[b.SourceID].Assets["images/retained.png"]
+			filename := filepath.Join(s.dir, "blobs", ref.SHA)
+			if err := os.Remove(filename); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.importBatch(b); !errors.Is(err, errImportedAssetUnavailable) {
+				t.Fatal("missing retained image was accepted", err)
+			}
+			payload, err := json.Marshal(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := request(Wiki{Store: s, Token: "test-owner"}, "POST", "/api/v1/import", string(payload), true)
+			var body map[string]string
+			if response.Code != 503 || json.Unmarshal(response.Body.Bytes(), &body) != nil || body["error"] != "asset_unavailable" {
+				t.Fatal("import did not report the asset error", response.Code, response.Body.String())
+			}
+			if !s.observed[b.SourceID].Equal(before) || s.db.Sources[b.SourceID].ImportGeneration != generation {
+				t.Fatal("failed import advanced the source")
+			}
+			if err := os.WriteFile(filename, image, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.importBatch(b); err != nil {
+				t.Fatal("import did not recover", err)
+			}
+		})
+	}
+}
+
+func TestPrivateImagesAreNotRetainedOnGitHubPublication(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original\n\n![image](image.png)", "docs/image.png": string(smallPNG(t))})
+	f.modify(func() { f.private = true })
+	m := connectFixture(t, s, f, false)
+	if _, err := s.put("handbook", "docs/guide.md", "# Local edit\n\n![image](image.png)", 1); err != nil {
+		t.Fatal(err)
+	}
+	f.modify(func() { f.private = false })
+	f.advance(map[string]string{"src/main.go": "package main"})
+	m.Once(context.Background())
+	if _, ok := s.db.Sources["handbook"].Assets["docs/image.png"]; ok {
+		t.Fatal("private image survived publication")
+	}
+	if got := request(Wiki{Store: s, Public: true}, "GET", "/media/handbook/docs/image.png", "", false); got.Code != 404 {
+		t.Fatal("private image published", got.Code)
 	}
 }
 func TestImportMediaPrivacyIntegrityAndMarkdownLinks(t *testing.T) {

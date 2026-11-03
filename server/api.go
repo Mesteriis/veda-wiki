@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (w Wiki) authorized(r *http.Request) bool {
@@ -53,6 +55,14 @@ func decodeLimited(rw http.ResponseWriter, r *http.Request, dst any, limit int64
 	return nil
 }
 func apiError(rw http.ResponseWriter, err error) {
+	if errors.Is(err, errLocalImportActive) {
+		jsonResponse(rw, http.StatusConflict, map[string]string{"error": "local_import_active"})
+		return
+	}
+	if errors.Is(err, errImportedAssetUnavailable) {
+		jsonResponse(rw, http.StatusServiceUnavailable, map[string]string{"error": "asset_unavailable"})
+		return
+	}
 	var upstream *remoteError
 	if errors.As(err, &upstream) {
 		code := 502
@@ -85,8 +95,131 @@ func apiError(rw http.ResponseWriter, err error) {
 	jsonResponse(rw, code, map[string]string{"error": message})
 }
 func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
-	if r.Method != "GET" && (!owner || r.Header.Get("Origin") != "") {
+	validation := r.Method == "POST" && (r.URL.Path == "/api/v1/articles/translation-validate" || r.URL.Path == "/api/v1/articles/transfer-plan") && reader
+	if r.Method != "GET" && ((!owner && !validation) || r.Header.Get("Origin") != "") {
 		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required; browser writes are disabled"})
+		return
+	}
+	if r.URL.Path == "/api/v1/access-keys" || r.URL.Path == "/api/v1/access-keys/revoke" {
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.URL.Path == "/api/v1/access-keys" && r.Method == "GET" {
+			jsonResponse(rw, 200, w.Store.listAccessKeys())
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path == "/api/v1/access-keys/revoke" {
+			var input struct {
+				ID string `json:"id"`
+			}
+			if decodeBody(rw, r, &input) != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			if err := w.Store.revokeAccessKey(input.ID); err != nil {
+				apiError(rw, err)
+				return
+			}
+			jsonResponse(rw, 200, map[string]string{"status": "revoked"})
+			return
+		}
+		var input struct {
+			ID           string   `json:"id"`
+			Sources      []string `json:"sources"`
+			Expires      string   `json:"expires_at"`
+			ExpectedETag *string  `json:"expected_etag"`
+		}
+		if decodeBody(rw, r, &input) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		expiry, err := time.Parse(time.RFC3339Nano, input.Expires)
+		if err != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if input.ExpectedETag != nil {
+			updated, err := w.Store.updateAccessKey(input.ID, input.Sources, expiry, *input.ExpectedETag)
+			if err != nil {
+				apiError(rw, err)
+				return
+			}
+			jsonResponse(rw, http.StatusOK, updated)
+			return
+		}
+		key, err := w.Store.createAccessKey(input.ID, input.Sources, expiry)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 201, map[string]any{"id": input.ID, "sources": input.Sources, "expires_at": expiry.UTC().Format(time.RFC3339Nano), "key": key})
+		return
+	}
+	if r.URL.Path == "/api/v1/users" || r.URL.Path == "/api/v1/teams" {
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method == "GET" {
+			if r.URL.Path == "/api/v1/users" {
+				jsonResponse(rw, http.StatusOK, w.Store.userViews())
+			} else {
+				jsonResponse(rw, http.StatusOK, w.Store.teamViews())
+			}
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path == "/api/v1/teams" {
+			var in struct {
+				ID       string   `json:"id"`
+				Sources  []string `json:"sources"`
+				Expected *int     `json:"expected_revision"`
+			}
+			if decodeBody(rw, r, &in) != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			team, err := w.Store.saveTeam(in.ID, in.Sources, in.Expected)
+			if err != nil {
+				apiError(rw, err)
+				return
+			}
+			status := http.StatusOK
+			if in.Expected == nil {
+				status = http.StatusCreated
+			}
+			jsonResponse(rw, status, team)
+			return
+		}
+		var in struct {
+			ID       string    `json:"id"`
+			Teams    *[]string `json:"teams"`
+			Password *string   `json:"password"`
+			Disabled *bool     `json:"disabled"`
+			Expected *int      `json:"expected_revision"`
+		}
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		user, err := w.Store.saveUser(in.ID, in.Teams, in.Password, in.Disabled, in.Expected)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		status := http.StatusOK
+		if in.Expected == nil {
+			status = http.StatusCreated
+		}
+		jsonResponse(rw, status, user)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/v1/github/") {
@@ -94,6 +227,234 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/v1/articles/new-proposal-base":
+		if !owner && !reader {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
+		if !identifier.MatchString(sourceID) || !safePath(p) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.newProposalBase(sourceID, p)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, result)
+	case "/api/v1/articles/proposal-base":
+		if !owner && !reader {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
+		if !identifier.MatchString(sourceID) || !safePath(p) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.proposalBase(sourceID, p)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, result)
+	case "/api/v1/articles/display":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
+		if !identifier.MatchString(sourceID) || !safePath(p) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		page, err := w.Store.page(sourceID+"/"+p, !owner && !reader)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]any{
+			"source_id": sourceID, "path": p, "title": page.Title,
+			"text": page.Text, "sha256": page.SHA, "original_sha256": page.OriginalSHA,
+			"translated": page.Translated, "translation_state": page.TranslationState,
+			"translation_origin": page.TranslationOrigin, "program_documentation": page.ProgramDocumentation,
+		})
+	case "/api/v1/articles/excerpt", "/api/v1/articles/display-excerpt":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		q := r.URL.Query()
+		sourceID, p, expected := q.Get("source_id"), q.Get("path"), q.Get("expected_sha256")
+		display := r.URL.Path == "/api/v1/articles/display-excerpt"
+		expectedOriginal := q.Get("expected_original_sha256")
+		if !identifier.MatchString(sourceID) || p == "" || (expected != "" && len(expected) != 64) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if expected != "" {
+			if _, err := hexKey(expected); err != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+		}
+		if display && expectedOriginal != "" {
+			if _, err := hexKey(expectedOriginal); err != nil {
+				apiError(rw, ErrInvalid)
+				return
+			}
+		}
+		offset, limit := 0, 8000
+		if q.Has("offset") {
+			n, err := strconv.Atoi(q.Get("offset"))
+			if err != nil || n < 0 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			offset = n
+		}
+		if q.Has("limit") {
+			n, err := strconv.Atoi(q.Get("limit"))
+			if err != nil || n < 1 || n > 16000 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			limit = n
+		}
+		if offset > 0 && (expected == "" || (display && expectedOriginal == "")) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if display {
+			page, err := w.Store.page(sourceID+"/"+p, !owner && !reader)
+			if err != nil {
+				apiError(rw, err)
+				return
+			}
+			if (expected != "" && page.SHA != expected) || (expectedOriginal != "" && page.OriginalSHA != expectedOriginal) {
+				apiError(rw, ErrConflict)
+				return
+			}
+			text := []rune(page.Text)
+			if offset > len(text) {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			end := offset + min(limit, len(text)-offset)
+			var next *int
+			if end < len(text) {
+				next = &end
+			}
+			jsonResponse(rw, 200, map[string]any{"source_id": sourceID, "path": p, "sha256": page.SHA, "original_sha256": page.OriginalSHA, "translated": page.Translated, "translation_state": page.TranslationState, "translation_origin": page.TranslationOrigin, "program_documentation": page.ProgramDocumentation, "offset": offset, "next_offset": next, "total_characters": len(text), "text": string(text[offset:end])})
+			return
+		}
+		a, err := w.Store.article(sourceID, p, !owner && !reader)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		revision := a.Versions[len(a.Versions)-1]
+		if expected != "" && revision.SHA != expected {
+			apiError(rw, ErrConflict)
+			return
+		}
+		text := []rune(revision.Text)
+		if offset > len(text) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		end := offset + min(limit, len(text)-offset)
+		var next *int
+		if end < len(text) {
+			next = &end
+		}
+		jsonResponse(rw, 200, map[string]any{"source_id": sourceID, "path": p, "revision": revision.Number, "sha256": revision.SHA, "offset": offset, "next_offset": next, "total_characters": len(text), "text": string(text[offset:end])})
+	case "/api/v1/context":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		sourceID, target := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
+		if !identifier.MatchString(sourceID) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.agentContext(sourceID, target, !owner && !reader)
+		if errors.Is(err, errContextLimit) {
+			jsonResponse(rw, 413, map[string]string{"error": "context exceeds response limit"})
+			return
+		}
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		if len(encoded) >= 2000000 {
+			jsonResponse(rw, 413, map[string]string{"error": "context exceeds response limit"})
+			return
+		}
+		jsonResponse(rw, 200, result)
+	case "/api/v1/articles/translation-validate":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in translationRequest
+		if decodeLimited(rw, r, &in, 7<<20) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		result, err := w.Store.validateTranslation(in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, result)
+	case "/api/v1/search":
+		if r.Method != "GET" {
+			rw.WriteHeader(405)
+			return
+		}
+		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		sourceID := r.URL.Query().Get("source_id")
+		if query == "" || len(query) > 300 || (sourceID != "" && !identifier.MatchString(sourceID)) {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		limit, offset := 20, 0
+		if r.URL.Query().Has("limit") {
+			n, err := strconv.Atoi(r.URL.Query().Get("limit"))
+			if err != nil || n < 1 || n > 100 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			limit = n
+		}
+		if r.URL.Query().Has("offset") {
+			n, err := strconv.Atoi(r.URL.Query().Get("offset"))
+			if err != nil || n < 0 {
+				apiError(rw, ErrInvalid)
+				return
+			}
+			offset = n
+		}
+		all := w.Store.findArticles(query, sourceID, !owner && !reader)
+		start := min(offset, len(all))
+		end := start + min(limit, len(all)-start)
+		jsonResponse(rw, 200, map[string]any{"results": all[start:end], "total": len(all), "offset": offset})
 	case "/api/v1/moves/cancel":
 		if !owner {
 			http.NotFound(rw, r)
@@ -164,12 +525,17 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		}
 		jsonResponse(rw, 201, result)
 	case "/api/v1/articles/translation-needed":
-		if !owner {
+		if !owner && !reader {
 			http.NotFound(rw, r)
 			return
 		}
 		if r.Method != "GET" {
 			rw.WriteHeader(405)
+			return
+		}
+		sourceID := r.URL.Query().Get("source_id")
+		if sourceID != "" && !identifier.MatchString(sourceID) {
+			apiError(rw, ErrInvalid)
 			return
 		}
 		limit, offset := 30, 0
@@ -190,6 +556,15 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			offset = n
 		}
 		all := w.Store.translationCandidates()
+		if sourceID != "" {
+			filtered := make([]translationCandidate, 0)
+			for _, candidate := range all {
+				if candidate.SourceID == sourceID {
+					filtered = append(filtered, candidate)
+				}
+			}
+			all = filtered
+		}
 		start := min(offset, len(all))
 		end := min(start+limit, len(all))
 		jsonResponse(rw, 200, map[string]any{"candidates": all[start:end], "total": len(all), "offset": offset})
@@ -199,7 +574,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		var in translationRequest
-		if decodeBody(rw, r, &in) != nil {
+		if decodeLimited(rw, r, &in, 7<<20) != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
@@ -209,6 +584,78 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		jsonResponse(rw, 200, tr)
+	case "/api/v1/articles/transfer-plan":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in copyRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		plan, err := w.Store.planTransfer(in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, plan)
+	case "/api/v1/sources/mirrors":
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		if r.Method == "GET" {
+			jsonResponse(rw, 200, w.Store.mirrors())
+			return
+		}
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in mirrorRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		if in.Enabled != nil && *in.Enabled && w.Sync == nil {
+			jsonResponse(rw, http.StatusServiceUnavailable, map[string]string{"error": "sync_unavailable"})
+			return
+		}
+		_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(2 * time.Minute))
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		mirror, err := w.Store.configureMirror(ctx, in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		if w.Sync != nil && mirror.Enabled {
+			w.Sync.Wake()
+		}
+		jsonResponse(rw, 200, mirror)
+	case "/api/v1/sources/reconcile":
+		if r.Method != "POST" {
+			rw.WriteHeader(405)
+			return
+		}
+		var in reconcileRequest
+		if decodeBody(rw, r, &in) != nil {
+			apiError(rw, ErrInvalid)
+			return
+		}
+		_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(2 * time.Minute))
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		result, err := w.Store.reconcileSources(ctx, in)
+		if err != nil {
+			apiError(rw, err)
+			return
+		}
+		if w.Sync != nil {
+			w.Sync.Wake()
+		}
+		jsonResponse(rw, 200, result)
 	case "/api/v1/articles/copy":
 		if r.Method != "POST" {
 			rw.WriteHeader(405)
@@ -323,7 +770,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			return
 		}
 		var batch ImportBatch
-		if e := decodeLimited(rw, r, &batch, 40<<20); e != nil {
+		if e := decodeImport(rw, r, &batch); e != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
@@ -371,6 +818,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 			if reader && !owner {
 				a.Translation = nil
 				a.CopiedFrom = nil
+				a.ReconcileBase = nil
 				a.Published = nil
 				a.PublishedLocal = false
 				a.UpstreamHash = ""
@@ -383,7 +831,7 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 				Text     string `json:"text"`
 				Expected *int   `json:"expected_revision"`
 			}
-			if err := decodeBody(rw, r, &input); err != nil {
+			if err := decodeLimited(rw, r, &input, 7<<20); err != nil {
 				apiError(rw, ErrInvalid)
 				return
 			}

@@ -19,7 +19,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: python -m unittest discover -s scripts -p test_check_tracked_secrets.py -v
+      - run: python scripts/check_tracked_secrets.py
+      - run: python -m unittest discover -s scripts -p test_package_release.py -v
+      - run: python -m unittest discover -s scripts -p test_save_reader_key.py -v
       - run: make test
       - run: cd server && go build -o ../veda .
+      - run: python scripts/smoke_superuser.py
+      - run: python scripts/smoke_dual_listener.py
+      - run: node --test scripts/ui_poll.test.mjs
+      - run: VEDA_TEST_CHROME="$(command -v google-chrome)" python scripts/smoke_ui.py
       - run: python -m pip install -r mcp/requirements.txt
+      - run: python -m unittest discover -s scripts -p test_mcp_timeout.py -v
+      - run: python -m unittest discover -s scripts -p test_mcp_https.py -v
+      - run: python -m unittest discover -s scripts -p test_mcp_errors.py -v
+      - run: python -m unittest discover -s scripts -p test_check_agent_readers.py -v
+      - run: python scripts/smoke_mcp_https.py
       - run: python scripts/smoke.py
+      - run: python scripts/smoke_translation_auth.py
+      - run: python scripts/smoke_translation_auth.py --protocol openai
+      - run: python scripts/smoke_directory_restore.py
+      - run: python scripts/smoke_directory_restore.py --index
+      - run: cd server && VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^(TestMultiSourceMCPAfterSQLiteRestart|TestAgentRoutesVPSRequestAcrossSources|TestReconcileThroughMCP|TestMirrorThroughMCP)$' -v .
+      - run: cd server && VEDA_MIRROR_SCALE=realistic go test -run '^TestMirrorSyntheticScale$' -v -timeout 10m .
+      - name: Build Linux archives
+        run: |
+          python scripts/package_release.py --version ci --arch amd64 --output "$RUNNER_TEMP/veda-artifacts"
+          python scripts/package_release.py --version ci --arch arm64 --output "$RUNNER_TEMP/veda-artifacts"
+          cd "$RUNNER_TEMP/veda-artifacts"
+          sha256sum veda-ci-linux-amd64.tar.gz veda-ci-linux-arm64.tar.gz > SHA256SUMS
+      - name: Install archive on fresh systemd runner
+        run: scripts/smoke_fresh_systemd.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veda-linux-ci
+          path: ${{ runner.temp }}/veda-artifacts/
+          if-no-files-found: error

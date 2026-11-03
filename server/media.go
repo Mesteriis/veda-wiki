@@ -25,7 +25,7 @@ func (w Wiki) media(rw http.ResponseWriter, r *http.Request) {
 	w.Store.mu.RLock()
 	src, ok := w.Store.db.Sources[parts[0]]
 	ref, present := src.Assets[parts[1]]
-	visible := sourcePublic(w.Store.db, src, time.Now())
+	visible := sourcePublicReadable(w.Store.db, src, time.Now())
 	w.Store.mu.RUnlock()
 	if _, e := hexKey(ref.SHA); e != nil {
 		http.NotFound(rw, r)

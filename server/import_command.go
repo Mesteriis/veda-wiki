@@ -93,18 +93,42 @@ func importCommand(args []string) error {
 	key := flags.String("key-file", ".veda/owner.key", "Owner key file")
 	create := flags.Bool("create", false, "Create source when it does not exist")
 	visibility := flags.String("visibility", "private", "Explicit local source visibility when creating")
+	preview := flags.Bool("preview", false, "Inspect checkout coverage without contacting VEDA")
+	compareURL := flags.String("compare-url", "", "Compare a wiki checkout with a read-only loopback VEDA endpoint")
 	if e := flags.Parse(args); e != nil {
 		return e
 	}
-	if flags.NArg() != 0 || *checkout == "" || *sourceID == "" {
+	if flags.NArg() != 0 || *checkout == "" || (!*preview && *sourceID == "") || (*preview && *create) || (*compareURL != "" && (!*preview || *sourceID == "")) {
 		return ErrInvalid
+	}
+	if *preview && *sourceID == "" {
+		*sourceID = "preview"
 	}
 	batch, e := prepareCheckout(*checkout, *sourceID)
 	if errors.Is(e, ErrNoDocs) {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "skipped", "reason": "no veda.yaml or docs/"})
 	}
 	if e != nil {
+		if *preview {
+			return errors.New("checkout preview failed; inspect the checkout locally")
+		}
 		return e
+	}
+	if *preview {
+		result := map[string]any{
+			"status": "preview", "kind": batch.Kind, "articles": len(batch.Files),
+			"assets": len(batch.Assets), "withheld": batch.Withheld, "withheld_reasons": batch.withheldReasons,
+			"complete": batch.Complete, "dirty": batch.Dirty,
+		}
+		if *compareURL != "" {
+			comparison, err := compareWikiPreview(batch, *compareURL)
+			if err != nil {
+				return err
+			}
+			result["comparison"] = comparison.Articles
+			result["asset_comparison"] = comparison.Assets
+		}
+		return json.NewEncoder(os.Stdout).Encode(result)
 	}
 	client, e := newLocalClient(*base, *key)
 	if e != nil {

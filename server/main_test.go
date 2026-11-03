@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,55 @@ func request(w Wiki, method, url, body string, auth bool) *httptest.ResponseReco
 	rw := httptest.NewRecorder()
 	w.ServeHTTP(rw, r)
 	return rw
+}
+
+func TestReferrerPolicyOnPageAndError(t *testing.T) {
+	w := Wiki{Store: testStore(t), Public: true, AllowedHosts: []string{"example.com"}}
+	for _, target := range []string{"https://example.com/?key=synthetic", "https://other.example/"} {
+		r := request(w, "GET", target, "", false)
+		if got := r.Header().Get("Referrer-Policy"); got != "no-referrer" {
+			t.Fatalf("Referrer-Policy for %s = %q", target, got)
+		}
+	}
+}
+
+func TestDirectoryLinksResolveWithinVisibleSource(t *testing.T) {
+	s := testStore(t)
+	for _, item := range []struct{ id, visibility string }{{"alpha", "public"}, {"beta", "private"}} {
+		source(t, s, item.id, item.visibility)
+		for name, text := range map[string]string{"README.md": "# Root " + item.id, "docs/README.md": "# Preferred " + item.id, "docs/index.md": "# Index " + item.id, "index-only/index.md": "# Index only " + item.id, "guide.md": "# Guide\n\n[Docs](docs/)\n\n[Root](./)"} {
+			if _, err := s.put(item.id, name, text, 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	page, err := s.page("alpha/guide.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := render(page)
+	if err != nil || !strings.Contains(string(body), "page=alpha%2Fdocs") || !strings.Contains(string(body), "page=alpha%2F") {
+		t.Fatal("directory links were not source qualified")
+	}
+	w := Wiki{Store: s, Token: "test-owner", Public: true}
+	for _, tc := range []struct {
+		path, want string
+		status     int
+	}{
+		{"alpha/docs", "Preferred alpha", 200},
+		{"alpha/docs/", "Preferred alpha", 200},
+		{"alpha/docs/index.md", "Index alpha", 200},
+		{"alpha/index-only", "Index only alpha", 200},
+		{"alpha/", "Root alpha", 200},
+		{"beta/docs", "", 404},
+		{"alpha/missing", "", 404},
+		{"alpha/../beta/docs", "", 404},
+	} {
+		r := request(w, "GET", "/api/state?page="+url.QueryEscape(tc.path), "", false)
+		if r.Code != tc.status || (tc.want != "" && !strings.Contains(r.Body.String(), tc.want)) || strings.Contains(r.Body.String(), "Preferred beta") {
+			t.Fatalf("directory resolution failed for %s: %d", tc.path, r.Code)
+		}
+	}
 }
 func TestPersistenceAndOptimisticConcurrency(t *testing.T) {
 	s := testStore(t)
@@ -264,5 +314,39 @@ func TestUnicodeHeadingFragments(t *testing.T) {
 		if !strings.Contains(string(toc), `href="#`+id+`"`) {
 			t.Fatalf("missing TOC %s", id)
 		}
+	}
+}
+
+func TestMarkdownLinksStayInTheirSource(t *testing.T) {
+	p := Page{Path: "alpha/chapter/page.md", Text: "[Local](../guide.md#part)\n\n[Root](/docs/start.md)\n\n[Escape](../../beta/secret.md)\n\n[Encoded](%2e%2e/%2e%2e/beta/secret.md)\n\n[Outside](https://example.com/page)"}
+	body, _, err := render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(body)
+	for _, expected := range []string{"page=alpha%2Fguide.md#part", "page=alpha%2Fdocs%2Fstart.md", "https://example.com/page"} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("missing expected link %q", expected)
+		}
+	}
+	if strings.Contains(html, "page=beta") || strings.Contains(html, "beta%2Fsecret.md") {
+		t.Fatal("link escaped the source")
+	}
+}
+
+func TestMarkdownImagesStayInTheirSource(t *testing.T) {
+	p := Page{Path: "alpha/chapter/page.md", Text: "![Local](../images/a.png)\n\n![Root](/images/b.png)\n\n![Escape](../../beta/image.png)\n\n![Encoded](%2e%2e/%2e%2e/beta/image.png)"}
+	body, _, err := render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(body)
+	for _, expected := range []string{"/media/alpha/images%2Fa.png", "/media/alpha/images%2Fb.png"} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("missing expected image %q", expected)
+		}
+	}
+	if strings.Contains(html, "/media/beta/") || strings.Contains(html, "beta%2Fimage.png") {
+		t.Fatal("image escaped the source")
 	}
 }

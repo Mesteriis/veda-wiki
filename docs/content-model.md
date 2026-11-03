@@ -4,6 +4,10 @@ VEDA owns a local versioned article store. Connected repositories synchronize in
 background without becoming the only durable copy. Multiple sources stay
 separate and are combined for reading/search; source ID plus path identifies
 an article. Matching paths do not cause automatic cross-source replacement.
+The web knowledge tree shows a combined directory view by default when more than
+one source is visible, with a switch to browse by source. Each entry keeps its source name, ID and separate link;
+matching paths are shown as separate articles, not merged into one text. Both
+views use the same visibility-filtered data as the rest of the interface.
 
 ## Repository types
 
@@ -36,7 +40,9 @@ permission/content checks. Private revision history must not become public as a
 side effect. Hiding a previously public article cannot erase external Git history
 or previously downloaded copies.
 
-The current local importer implements metadata ingestion and program docs/
-selection; see [repository import](import.md). The implementation intentionally
-has no source visibility update or move operation yet. Per-user/team access,
-translation workers require further work.
+The local importer implements metadata ingestion and program docs/ selection;
+see [repository import](import.md). Revision-bound moves are available with
+the restrictions documented in [the API](api.md). Named read-only users and
+teams have source-scoped access, but production account acceptance remains
+outstanding. Acceptance with VEDA-stored GitHub credentials and translation
+model qualification also require further work.
