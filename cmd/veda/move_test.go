@@ -229,35 +229,6 @@ func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
 	}
 }
 
-func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	if _, e := s.put("from", "a.md", "# Local", 0); e != nil {
-		t.Fatal(e)
-	}
-	req := moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md"}
-	if _, e := s.moveArticle(req); e != ErrInvalid {
-		t.Fatal("move without consent", e)
-	}
-	req.ConfirmMove = true
-	m, e := s.moveArticle(req)
-	if e != nil || m.State != "complete" {
-		t.Fatal(m, e)
-	}
-	if _, e := s.article("from", "a.md", false); e != ErrNotFound {
-		t.Fatal("source still visible", e)
-	}
-	target, e := s.article("to", "a.md", false)
-	if e != nil || target.Versions[0].Text != "# Local" || target.CopiedFrom == nil {
-		t.Fatal("destination missing", e)
-	}
-	reopened, e := openStore(s.Dir())
-	if e != nil || reopened.DB().Version != 2 || !reopened.DB().Articles["from/a.md"].Deleted || len(reopened.DB().Articles["from/a.md"].Versions) != 1 || reopened.moves()[0].State != "complete" {
-		t.Fatal("move history not durable", e)
-	}
-}
-
 func TestConnectedSourceMoveWaitsForRemoteDeletion(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
@@ -664,26 +635,5 @@ func TestMoveKeepsSourceWhenTranslationIsAddedWhileWaiting(t *testing.T) {
 	a, e := s.article("program", "docs/a.md", false)
 	if e != nil || a.Translation == nil || s.moves()[0].State != "source_changed" {
 		t.Fatal("translation was lost", e, s.moves())
-	}
-}
-
-func TestMovePrivateToPublicRequiresSeparatePublicationConsent(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "local", "private")
-	source(t, s, "public", "public")
-	s.put("local", "a.md", "# Private", 0)
-	req := moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "public", DestinationPath: "a.md", ConfirmMove: true}
-	if _, e := s.moveArticle(req); e != ErrInvalid {
-		t.Fatal("publication without consent accepted", e)
-	}
-	if _, e := s.article("local", "a.md", false); e != nil {
-		t.Fatal("source lost on refusal", e)
-	}
-	req.ConfirmPublication = true
-	if m, e := s.moveArticle(req); e != nil || m.State != "complete" {
-		t.Fatal("approved move failed", m, e)
-	}
-	if _, e := s.article("public", "a.md", true); e != nil {
-		t.Fatal("approved destination not visible", e)
 	}
 }

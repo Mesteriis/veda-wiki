@@ -67,7 +67,7 @@ func (s *Store) observeGitHubHead(expected GitHubConnection, head, tree string) 
 		return ErrConflict
 	}
 	for _, ref := range src.Assets {
-		if s.verifyAsset(ref) != nil {
+		if s.VerifyBlob(ref) != nil {
 			return importer.ErrAssetUnavailable
 		}
 	}
@@ -215,6 +215,19 @@ func (s *Store) cancelBundle(id string, confirm bool) error {
 	reconcileMoves(&db)
 	return s.Commit(db)
 }
+
+// readAsset returns a stored image after checking it against ref.
+func (s *Store) readAsset(ref BlobRef) ([]byte, error) {
+	content, err := s.ReadBlob(ref.SHA)
+	if err != nil {
+		return nil, err
+	}
+	if verified, check := imageRef(content); check != nil || verified != ref {
+		return nil, ErrInvalid
+	}
+	return content, nil
+}
+
 func randomID() (string, error) {
 	b := make([]byte, 16)
 	_, e := rand.Read(b)

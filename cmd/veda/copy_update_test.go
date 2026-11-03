@@ -52,34 +52,6 @@ func TestCopyUpdatesExistingDestinationWithRevisionGuards(t *testing.T) {
 	}
 }
 
-func TestCopyUpdateRejectsConcurrentConflictAndLinkedGraph(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "a", "private")
-	source(t, s, "b", "private")
-	if _, err := s.put("a", "x.md", "# Source", 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.put("b", "x.md", "# Target", 0); err != nil {
-		t.Fatal(err)
-	}
-	expected := 1
-	req := copyRequest{SourceID: "a", SourcePath: "x.md", ExpectedRevision: 1, DestinationID: "b", DestinationPath: "x.md", ExpectedDestinationRevision: &expected}
-	if _, err := s.put("b", "x.md", "# Concurrent", 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.copyArticle(req); !errors.Is(err, ErrConflict) {
-		t.Fatal("concurrent edit overwritten", err)
-	}
-	expected = 2
-	req.IncludeLinked = true
-	if _, err := s.copyArticle(req); !errors.Is(err, ErrInvalid) {
-		t.Fatal("linked update accepted without graph support", err)
-	}
-	if len(s.DB().Articles["b/x.md"].Versions) != 2 {
-		t.Fatal("failed update changed destination")
-	}
-}
-
 func TestCopyUpdateQueuesImageWithExistingDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
@@ -186,64 +158,5 @@ func TestCopyUpdateReconcilesWaitingMove(t *testing.T) {
 	}
 	if s.DB().Moves[move.ID].State != "destination_changed" || s.DB().Articles["one/README.md"].Deleted {
 		t.Fatal("move was not reconciled safely")
-	}
-}
-
-func TestCopyUpdatePublicDestinationRequiresPublicationApproval(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "private", "private")
-	source(t, s, "public", "public")
-	if _, err := s.put("private", "x.md", "# Private", 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.put("public", "x.md", "# Public", 0); err != nil {
-		t.Fatal(err)
-	}
-	expected := 1
-	req := copyRequest{SourceID: "private", SourcePath: "x.md", ExpectedRevision: 1, DestinationID: "public", DestinationPath: "x.md", ExpectedDestinationRevision: &expected}
-	if _, err := s.copyArticle(req); !errors.Is(err, ErrInvalid) {
-		t.Fatal("private update published without approval", err)
-	}
-	if s.DB().Articles["public/x.md"].Versions[0].Text != "# Public" {
-		t.Fatal("rejected update changed article")
-	}
-	req.ConfirmPublication = true
-	if _, err := s.copyArticle(req); err != nil {
-		t.Fatal(err)
-	}
-	a := s.DB().Articles["public/x.md"]
-	if a.Published == nil || a.Published.Text != "# Private" || len(a.Versions) != 2 {
-		t.Fatal("approved update not published")
-	}
-}
-
-func TestCopyUpdateSQLiteReopen(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "a", "private")
-	source(t, s, "b", "private")
-	if _, err := s.put("a", "x.md", "# From", 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.put("b", "x.md", "# Before", 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateSQLite(s.Dir()); err != nil {
-		t.Fatal(err)
-	}
-	s, err := openStore(s.Dir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected := 1
-	if _, err = s.copyArticle(copyRequest{SourceID: "a", SourcePath: "x.md", ExpectedRevision: 1, DestinationID: "b", DestinationPath: "x.md", ExpectedDestinationRevision: &expected}); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := openStore(s.Dir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := reopened.DB().Articles["b/x.md"]
-	if len(a.Versions) != 2 || a.Versions[0].Text != "# Before" || a.CopiedFrom == nil || a.CopiedFrom.SHA != a.Versions[1].SHA {
-		t.Fatal("update did not survive reopen")
 	}
 }

@@ -64,30 +64,6 @@ func TestCopyArticlePublicationAndProvenance(t *testing.T) {
 		t.Fatal("provenance lost after restart", e)
 	}
 }
-func TestCopyArticleChecksRevisionAndRejectsSecrets(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "one", "private")
-	source(t, s, "two", "public")
-	if _, e := s.put("one", "a.md", "# Original", 0); e != nil {
-		t.Fatal(e)
-	}
-	req := copyRequest{SourceID: "one", SourcePath: "a.md", ExpectedRevision: 2, DestinationID: "two", DestinationPath: "a.md", ConfirmPublication: true}
-	if _, e := s.copyArticle(req); e != ErrConflict {
-		t.Fatal("stale revision accepted", e)
-	}
-	if _, e := s.put("one", "secret.md", "password = fixture-secret-value", 0); e != nil {
-		t.Fatal(e)
-	}
-	secret := copyRequest{SourceID: "one", SourcePath: "secret.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "secret.md", ConfirmPublication: true}
-	if _, e := s.copyArticle(secret); e != ErrInvalid {
-		t.Fatal("secret-like content published", e)
-	}
-	req.ExpectedRevision = 1
-	req.DestinationPath = "../a.md"
-	if _, e := s.copyArticle(req); e != ErrInvalid {
-		t.Fatal("invalid destination accepted", e)
-	}
-}
 func TestCopyQueuesAndSynchronizesDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "private", "private")

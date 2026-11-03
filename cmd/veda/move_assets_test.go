@@ -129,35 +129,6 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 	}
 }
 
-func TestCopyImageRejectsCollisionAndPreservesSource(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	ref := fixtureAsset(t, s, "from", "img/icon.png")
-	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md"}); err != nil {
-		t.Fatal(err)
-	}
-	if s.DB().Sources["to"].Assets["img/icon.png"] != ref || s.DB().Articles["from/a.md"].Deleted {
-		t.Fatal("copy lost data")
-	}
-	s.put("from", "b.md", "![icon](img/icon.png)", 0)
-	db := s.Clone()
-	dst := db.Sources["to"]
-	dst.Assets = map[string]BlobRef{"img/icon.png": {SHA: strings.Repeat("a", 64), MIME: "image/png"}}
-	db.Sources["to"] = dst
-	s.Lock()
-	*s.DB() = db
-	s.Unlock()
-	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "b.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "b.md"})
-	if err != ErrConflict {
-		t.Fatal("collision accepted", err)
-	}
-	if _, exists := s.DB().Articles["to/b.md"]; exists {
-		t.Fatal("failed copy committed")
-	}
-}
-
 func TestMoveImageWaitsForVerifiedBlobBeforeRemoteDeletion(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "![icon](img/icon.png)", "img/icon.png": string(smallPNG(t))})
@@ -254,18 +225,6 @@ func TestPublicImageCopyRequiresPublicationConfirmation(t *testing.T) {
 	}
 	if r := request(Wiki{Store: s}, "GET", "/media/to/img/icon.png", "", false); r.Code != 200 {
 		t.Fatal("confirmed public image unavailable", r.Code)
-	}
-}
-
-func TestCopyRejectsUnresolvedLinksAndRawHTML(t *testing.T) {
-	for _, text := range []string{"[guide](other.md)", "<img src=\"local.png\">", "<a href=\"other.md\">link</a>"} {
-		s := testStore(t)
-		source(t, s, "from", "private")
-		source(t, s, "to", "private")
-		s.put("from", "a.md", text, 0)
-		if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "b.md"}); err != ErrInvalid {
-			t.Fatal("unresolved dependency accepted", err)
-		}
 	}
 }
 
@@ -677,35 +636,5 @@ func TestImageTransferRejectsImportedDestination(t *testing.T) {
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "imported", DestinationPath: "b.md", ConfirmMove: true})
 	if err != ErrInvalid || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("imported destination accepted", err)
-	}
-}
-
-func TestImageTransferLimitsDependencies(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	ref := fixtureAsset(t, s, "from", "img/0.png")
-	s.Lock()
-	db := s.Clone()
-	src := db.Sources["from"]
-	src.Assets = map[string]BlobRef{}
-	var content strings.Builder
-	for i := 0; i < 2001; i++ {
-		name := fmt.Sprintf("img/%d.png", i)
-		src.Assets[name] = ref
-		fmt.Fprintf(&content, "![image](%s)\n", name)
-	}
-	db.Sources["from"] = src
-	if err := s.Commit(db); err != nil {
-		s.Unlock()
-		t.Fatal(err)
-	}
-	s.Unlock()
-	if _, err := s.put("from", "a.md", content.String(), 0); err != nil {
-		t.Fatal(err)
-	}
-	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "b.md"})
-	if err != ErrInvalid {
-		t.Fatal("dependency limit not enforced", err)
 	}
 }

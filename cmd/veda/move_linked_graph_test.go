@@ -7,22 +7,6 @@ import (
 	"testing"
 )
 
-func TestMoveLinkedGraphToLocalIsAtomic(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	s.put("from", "a.md", "[B](b.md)", 0)
-	s.put("from", "b.md", "[A](a.md)", 0)
-	move, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md", ConfirmMove: true, IncludeLinked: true})
-	if err != nil || move.State != "complete" || !s.DB().Articles["from/a.md"].Deleted || s.DB().Articles["from/b.md"].Deleted || s.DB().Articles["to/b.md"].CopiedFrom == nil {
-		t.Fatal(move, err)
-	}
-	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 8 || len(reopened.moves()[0].Links) != 1 {
-		t.Fatal("move not durable", err)
-	}
-}
-
 func TestPreparedRemoteDeletionLocksLinkedDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "to", "private")

@@ -6,6 +6,7 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/search"
 	"github.com/Mesteriis/veda-wiki/internal/store"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 )
 
 // Temporary aliases while the backend moves into internal packages. Each
@@ -66,15 +67,8 @@ var (
 	conflictResolutionBlocked   = domain.ConflictResolutionBlocked
 	displayedRevision           = domain.DisplayedRevision
 	translationFingerprint      = domain.TranslationFingerprint
-	movedTranslation            = domain.MovedTranslation
 	linksPresent                = domain.LinksPresent
-	retainedPendingAssets       = domain.RetainedPendingAssets
-	retainedPendingLinks        = domain.RetainedPendingLinks
-	hasRootReference            = domain.HasRootReference
-	repositoryTarget            = domain.RepositoryTarget
-	directoryReadmeTarget       = domain.DirectoryReadmeTarget
 	importablePath              = domain.ImportablePath
-	remoteAssetPath             = domain.RemoteAssetPath
 	imageRef                    = domain.ImageRef
 	migrateSQLite               = store.MigrateSQLite
 	atomicPrivateFile           = store.WritePrivateFile
@@ -94,4 +88,43 @@ func (s *Store) findArticles(query, sourceID string, public bool) []search.Hit {
 	candidates := search.Candidates(*s.DB(), sourceID, public, time.Now())
 	s.RUnlock()
 	return search.Rank(candidates, query)
+}
+
+type copyRequest = transfer.CopyRequest
+
+// transfer returns the copy and move service for this store. Plans report
+// source statuses as the agent context does.
+func (s *Store) transfer() transfer.Service {
+	return transfer.Service{Store: s.Store, Status: func(_ *Database, sourceID string, src Source) any {
+		return s.sourceStatusLocked(sourceID, src)
+	}}
+}
+
+// The source reconciler still runs under the transitional store lock. These
+// adapters stage a transfer on a clone of the locked state; the caller commits.
+
+func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
+	db := s.Clone()
+	rev, err := s.transfer().PrepareCopy(&db, in)
+	if err != nil {
+		return Database{}, Revision{}, err
+	}
+	return db, rev, nil
+}
+
+func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, transfer.Dependencies, error) {
+	db := s.Clone()
+	rev, deps, err := s.transfer().PrepareLinkedCopy(&db, in)
+	if err != nil {
+		return Database{}, Revision{}, transfer.Dependencies{}, err
+	}
+	return db, rev, deps, nil
+}
+
+func (s *Store) planTransferLocked(in copyRequest) (transfer.Plan, error) {
+	return transfer.BuildPlan(s.DB(), in)
+}
+
+func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target Source) (transfer.Dependencies, error) {
+	return s.transfer().ResolveDependencies(s.DB(), value, sourcePath, targetPath, src, target)
 }

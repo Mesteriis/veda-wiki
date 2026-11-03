@@ -8,47 +8,6 @@ import (
 	"time"
 )
 
-func TestTransferPlanCyclesAndDestinationStates(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	s.put("from", "a.md", "[B](b.md) [C](c.md)", 0)
-	s.put("from", "b.md", "[A](a.md)", 0)
-	s.put("from", "c.md", "# C", 0)
-	s.put("to", "b.md", "[A](a.md)", 0)
-	s.put("to", "c.md", "# different", 0)
-	before, _ := json.Marshal(*s.DB())
-	p, err := s.planTransfer(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md"})
-	if err != nil || len(p.Articles) != 3 {
-		t.Fatal(p, err)
-	}
-	if p.Articles[0].Destination != "missing" || p.Articles[1].Destination != "matching" || p.Articles[2].Destination != "conflict" {
-		t.Fatal(p)
-	}
-	after, _ := json.Marshal(*s.DB())
-	if string(before) != string(after) {
-		t.Fatal("plan changed state")
-	}
-}
-func TestTransferPlanRejectsMissingAndAmbiguousPaths(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	s.put("from", "a.md", "[B](b.md)", 0)
-	req := copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "renamed.md"}
-	if _, err := s.planTransfer(req); err != ErrNotFound {
-		t.Fatal(err)
-	}
-	s.put("from", "b.md", "[A](a.md)", 0)
-	if _, err := s.planTransfer(req); err != ErrConflict {
-		t.Fatal(err)
-	}
-	req.ExpectedRevision = 2
-	if _, err := s.planTransfer(req); err != ErrConflict {
-		t.Fatal(err)
-	}
-}
-
 func TestTransferPlanReaderAccessAndBrowserBoundary(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")

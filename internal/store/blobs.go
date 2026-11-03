@@ -51,6 +51,22 @@ func (s *Store) VerifyBlob(ref domain.BlobRef) error {
 	return nil
 }
 
+// VerifyBlobs checks each distinct blob of refs once with VerifyBlob and
+// returns the first failure.
+func (s *Store) VerifyBlobs(refs map[string]domain.BlobRef) error {
+	seen := map[domain.BlobRef]bool{}
+	for _, ref := range refs {
+		if seen[ref] {
+			continue
+		}
+		if err := s.VerifyBlob(ref); err != nil {
+			return err
+		}
+		seen[ref] = true
+	}
+	return nil
+}
+
 // syncDir makes renames in dir durable. Tests replace it to count syncs.
 var syncDir = func(dir string) error {
 	d, err := os.Open(dir)

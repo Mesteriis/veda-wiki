@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 	"io"
 	"net/http"
 	"strconv"
@@ -484,7 +485,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			apiError(rw, ErrInvalid)
 			return
 		}
-		if err := w.Store.cancelMove(in.ID, in.Confirm); err != nil {
+		if err := w.Store.transfer().CancelMove(in.ID, in.Confirm); err != nil {
 			apiError(rw, err)
 			return
 		}
@@ -495,7 +496,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			return
 		}
 		if r.Method == "GET" {
-			all := w.Store.moves()
+			all := w.Store.transfer().Moves()
 			limit, offset := 30, 0
 			if r.URL.Query().Has("limit") {
 				n, e := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -522,12 +523,12 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			rw.WriteHeader(405)
 			return
 		}
-		var in moveRequest
+		var in transfer.MoveRequest
 		if decodeBody(rw, r, &in) != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		result, e := w.Store.moveArticle(in)
+		result, e := w.Store.transfer().Move(in)
 		if e != nil {
 			apiError(rw, e)
 			return
@@ -601,12 +602,12 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			rw.WriteHeader(405)
 			return
 		}
-		var in copyRequest
+		var in transfer.CopyRequest
 		if decodeBody(rw, r, &in) != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		plan, err := w.Store.planTransfer(in)
+		plan, err := w.Store.transfer().PlanTransfer(in)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -673,12 +674,12 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			rw.WriteHeader(405)
 			return
 		}
-		var in copyRequest
+		var in transfer.CopyRequest
 		if err := decodeBody(rw, r, &in); err != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		rev, err := w.Store.copyArticle(in)
+		rev, err := w.Store.transfer().Copy(in)
 		if err != nil {
 			apiError(rw, err)
 			return

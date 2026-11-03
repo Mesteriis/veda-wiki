@@ -653,7 +653,7 @@ func (m *SyncManager) syncWrites(ctx context.Context, c GitHubConnection, head, 
 // stored commit keeps both articles locked until a complete pull resolves it.
 func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection, head, token string) (bool, error) {
 	var firstErr error
-	for _, move := range m.store.moves() {
+	for _, move := range m.store.transfer().Moves() {
 		if move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
 			continue
 		}
@@ -725,7 +725,7 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 				return true, err
 			}
 		}
-		linked, err := m.store.linkContents(candidate.DestinationID, candidate.Links)
+		linked, err := m.store.transfer().LinkContents(candidate.DestinationID, candidate.Links)
 		if err != nil {
 			return true, err
 		}
@@ -762,7 +762,7 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 		if move.State != "waiting_source_delete" && move.State != "deleting_source" {
 			return true, m.store.Commit(db)
 		}
-		if err := m.store.verifyMoveAssets(move.Assets); err != nil {
+		if err := m.store.VerifyBlobs(move.Assets); err != nil {
 			return true, err
 		}
 		original := db.Articles[move.SourceID+"/"+move.SourcePath]
@@ -935,7 +935,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 	if tree.SHA != treeSHA {
 		return nil, ErrConflict
 	}
-	linked, err := m.store.linkContents(c.ID, job.Links)
+	linked, err := m.store.transfer().LinkContents(c.ID, job.Links)
 	if err != nil {
 		return nil, err
 	}

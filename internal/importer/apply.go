@@ -132,19 +132,9 @@ func (s Service) storeAssets(refs map[string]domain.BlobRef, assets map[string][
 	return nil
 }
 
-// verifyAssets checks each distinct blob once.
-func (s Service) verifyAssets(assets map[string]domain.BlobRef) bool {
-	seen := map[domain.BlobRef]bool{}
-	for _, ref := range assets {
-		if seen[ref] {
-			continue
-		}
-		if s.Store.VerifyBlob(ref) != nil {
-			return false
-		}
-		seen[ref] = true
-	}
-	return true
+// assetsAvailable reports whether every referenced blob is stored intact.
+func (s Service) assetsAvailable(assets map[string]domain.BlobRef) bool {
+	return s.Store.VerifyBlobs(assets) == nil
 }
 
 // apply runs inside the import transaction. It reports unchanged when the
@@ -318,7 +308,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 	result.Generation = src.ImportGeneration
 	db.Sources[src.ID] = src
 	if proof != nil && batch.Complete && batch.Withheld == 0 {
-		domain.ConfirmSourceDeletions(db, proof.ConnectionID, batch.Files, s.verifyAssets)
+		domain.ConfirmSourceDeletions(db, proof.ConnectionID, batch.Files, s.assetsAvailable)
 	}
 	domain.ReconcileMoves(db)
 	if proof != nil {
