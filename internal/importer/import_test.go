@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 )
 
 func TestImportIsAtomicIdempotentAndPersists(t *testing.T) {
@@ -256,5 +258,35 @@ func TestLargeImportUsesVersionGate(t *testing.T) {
 	}
 	if _, err := s.reopen(s.Store.Dir()); err != nil {
 		t.Fatal("large import could not reopen", err)
+	}
+}
+
+// A remote proof carries the hooks that commit its connection state with the
+// content; without them the pull would be applied but never recorded.
+func TestApplyRejectsProofWithoutHooks(t *testing.T) {
+	s := newFixture(t)
+	storetest.Mutate(t, s.Store, func(db *domain.Database) {
+		db.Connections = map[string]domain.GitHubConnection{"handbook": {ID: "handbook", ConfigRevision: 1}}
+	})
+	proof := func() *RemoteProof {
+		return &RemoteProof{ConnectionID: "handbook", ConfigRevision: 1, Visibility: "private", Record: func(*domain.Database) {}}
+	}
+	missingRecord := proof()
+	missingRecord.Record = nil
+	missingAttach := proof()
+	missingAttach.Adoption = &AdoptionProof{Context: context.Background()}
+	for name, p := range map[string]*RemoteProof{"record": missingRecord, "attach": missingAttach} {
+		if _, err := s.Apply(testBatch(), p, false); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("proof without %s hook accepted: %v", name, err)
+		}
+		if _, ok := s.db().Sources["handbook"]; ok {
+			t.Fatalf("proof without %s hook committed content", name)
+		}
+	}
+	recorded := false
+	complete := proof()
+	complete.Record = func(*domain.Database) { recorded = true }
+	if _, err := s.Apply(testBatch(), complete, false); err != nil || !recorded {
+		t.Fatal("proof with its hook rejected", err)
 	}
 }

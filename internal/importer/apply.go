@@ -36,6 +36,10 @@ func (s Service) Apply(batch Batch, proof *RemoteProof, localRoot bool) (Result,
 	if !domain.IDPattern.MatchString(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !domain.CommitIDPattern.MatchString(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
 		return result, domain.ErrInvalid
 	}
+	// A proof without its hook would apply the pull without recording it.
+	if proof != nil && (proof.Record == nil || proof.Adoption != nil && proof.Adoption.Attach == nil) {
+		return result, domain.ErrInvalid
+	}
 	if batch.Kind == "wiki" {
 		if e := domain.ValidateMetadata(batch.Metadata); e != nil {
 			return result, e
@@ -207,7 +211,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 	for p := range batch.Files {
 		previousPublished[p] = db.Articles[batch.SourceID+"/"+p].Published
 	}
-	if proof != nil && proof.Adoption != nil && proof.Adoption.Attach != nil {
+	if proof != nil && proof.Adoption != nil {
 		proof.Adoption.Attach(db)
 	}
 	if proof != nil && proof.Visibility == "public" {
@@ -311,7 +315,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 		domain.ConfirmSourceDeletions(db, proof.ConnectionID, batch.Files, s.assetsAvailable)
 	}
 	domain.ReconcileMoves(db)
-	if proof != nil && proof.Record != nil {
+	if proof != nil {
 		proof.Record(db)
 	}
 	if proof != nil && proof.Adoption != nil {

@@ -64,7 +64,7 @@ type RemoteProof struct {
 	Adoption       *AdoptionProof
 	// Record runs inside the import transaction once the content is applied
 	// and moves are reconciled. The synchronizer records the pull there, so
-	// the observed head commits atomically with the content.
+	// the observed head commits atomically with the content. It is required.
 	Record func(db *domain.Database)
 }
 
@@ -77,6 +77,7 @@ type AdoptionProof struct {
 	Context    context.Context
 	// Attach runs inside the import transaction after the adoption checks and
 	// before any article is compared; the synchronizer attaches Connection.
+	// It is required.
 	Attach func(db *domain.Database)
 }
 
