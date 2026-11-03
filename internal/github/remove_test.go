@@ -1,15 +1,17 @@
-package main
+package github_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 func TestGitHubRemovePreparesBeforeNonForceUpdate(t *testing.T) {
@@ -100,12 +102,12 @@ func TestGitHubRemoveRejectsUnverifiedSource(t *testing.T) {
 	}
 	prepared := false
 	_, err = client.Remove(context.Background(), f.Name, "main", head, tree, "docs/a.md", "# Changed", "", func(string) error { prepared = true; return nil })
-	if err != ErrConflict || prepared || f.WriteCount() != 0 {
+	if err != domain.ErrConflict || prepared || f.WriteCount() != 0 {
 		t.Fatalf("changed source accepted: %v", err)
 	}
 	tree.Truncated = true
 	_, err = client.Remove(context.Background(), f.Name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error { prepared = true; return nil })
-	if err != ErrInvalid || prepared || f.WriteCount() != 0 {
+	if err != domain.ErrInvalid || prepared || f.WriteCount() != 0 {
 		t.Fatalf("truncated tree accepted: %v", err)
 	}
 }
@@ -195,4 +197,12 @@ func TestGitHubRemovePreservesOtherFiles(t *testing.T) {
 	if err != nil || commit != prepared || f.WriteCount() != 1 || len(files) != 1 || files["docs/other.md"] != "# Other" {
 		t.Fatalf("deletion failed to preserve other files: %v", err)
 	}
+}
+
+func jsonResponse(rw http.ResponseWriter, status int, v any) {
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set("Cache-Control", "no-store")
+	rw.Header().Set("X-Content-Type-Options", "nosniff")
+	rw.WriteHeader(status)
+	json.NewEncoder(rw).Encode(v)
 }
