@@ -82,6 +82,10 @@ func toolHandler(c *client.Client, schema *inputSchema, h handler) sdk.ToolHandl
 	return func(ctx context.Context, request *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		args, err := schema.parse(request.Params.Arguments)
 		if err != nil {
+			var invalid *validationError
+			if errors.As(err, &invalid) {
+				return refused("Input validation error: " + invalid.reason), nil
+			}
 			return refused(genericRefusal), nil
 		}
 		result, err := h(ctx, c, args)
@@ -110,6 +114,9 @@ func succeeded(result any) (*sdk.CallToolResult, error) {
 	text, err := pythonJSON(compact)
 	if err != nil {
 		return refused(genericRefusal), nil
+	}
+	if len(compact) == 0 || compact[0] != '{' {
+		return refused(genericRefusal), nil // structured content must be an object
 	}
 	return &sdk.CallToolResult{
 		Content:           []sdk.Content{&sdk.TextContent{Text: string(text)}},

@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -118,10 +121,10 @@ func (s *inputSchema) parse(raw json.RawMessage) (arguments, error) {
 	var decoded any
 	if len(bytes.TrimSpace(raw)) > 0 {
 		if err := decoder.Decode(&decoded); err != nil {
-			return nil, errInvalid
+			return nil, invalidArguments("arguments must be a JSON object")
 		}
 		if _, err := decoder.Token(); err != io.EOF {
-			return nil, errInvalid
+			return nil, invalidArguments("arguments must be a JSON object")
 		}
 	}
 	fields, ok := decoded.(map[string]any)
@@ -129,15 +132,16 @@ func (s *inputSchema) parse(raw json.RawMessage) (arguments, error) {
 		fields, ok = map[string]any{}, true
 	}
 	if !ok {
-		return nil, errInvalid
+		return nil, invalidArguments("arguments must be a JSON object")
 	}
 	args := arguments{}
-	for name, value := range fields {
+	for _, name := range slices.Sorted(maps.Keys(fields)) { // stable reasons
+		value := fields[name]
 		property := s.Properties[name]
 		if property == nil {
-			return nil, errInvalid
+			return nil, invalidArguments("unknown property " + quoteName(name))
 		}
-		checked, err := property.check(value)
+		checked, err := property.check(name, value)
 		if err != nil {
 			return nil, err
 		}
@@ -145,49 +149,57 @@ func (s *inputSchema) parse(raw json.RawMessage) (arguments, error) {
 	}
 	for _, name := range s.Required {
 		if _, ok := args[name]; !ok {
-			return nil, errInvalid
+			return nil, invalidArguments("missing required property " + quoteName(name))
 		}
 	}
 	return args, nil
 }
 
 // check validates one value and returns it as string, bool or int64.
-func (p *propertySchema) check(value any) (any, error) {
+func (p *propertySchema) check(name string, value any) (any, error) {
+	property := quoteName(name)
 	var checked any
 	switch p.Type {
 	case "string":
 		s, ok := value.(string)
 		if !ok {
-			return nil, errInvalid
+			return nil, invalidArguments("property " + property + " has the wrong type")
 		}
 		length := utf8.RuneCountInString(s) // JSON Schema counts code points.
-		if (p.MinLength != nil && length < *p.MinLength) || (p.MaxLength != nil && length > *p.MaxLength) ||
-			(p.pattern != nil && !p.pattern.MatchString(s)) {
-			return nil, errInvalid
+		switch {
+		case p.MinLength != nil && length < *p.MinLength:
+			return nil, invalidArguments("property " + property + " is too short")
+		case p.MaxLength != nil && length > *p.MaxLength:
+			return nil, invalidArguments("property " + property + " is too long")
+		case p.pattern != nil && !p.pattern.MatchString(s):
+			return nil, invalidArguments("property " + property + " does not match the required pattern")
 		}
 		checked = s
 	case "integer":
 		n, ok := integer(value)
-		if !ok || (p.Minimum != nil && n < *p.Minimum) || (p.Maximum != nil && n > *p.Maximum) {
-			return nil, errInvalid
+		if !ok {
+			return nil, invalidArguments("property " + property + " has the wrong type")
+		}
+		if (p.Minimum != nil && n < *p.Minimum) || (p.Maximum != nil && n > *p.Maximum) {
+			return nil, invalidArguments("property " + property + " out of range")
 		}
 		checked = n
 	case "boolean":
 		b, ok := value.(bool)
 		if !ok {
-			return nil, errInvalid
+			return nil, invalidArguments("property " + property + " has the wrong type")
 		}
 		checked = b
 	default:
 		checked = value
 	}
 	if p.Const != nil && checked != true {
-		return nil, errInvalid
+		return nil, invalidArguments("property " + property + " must be true")
 	}
 	if p.Enum != nil {
 		s, ok := checked.(string)
 		if !ok || !slices.Contains(p.Enum, s) {
-			return nil, errInvalid
+			return nil, invalidArguments("property " + property + " is not an allowed value")
 		}
 	}
 	return checked, nil
@@ -208,4 +220,21 @@ func integer(value any) (int64, bool) {
 		return 0, false
 	}
 	return int64(f), true
+}
+
+// validationError is an argument failure whose reason names a property but
+// never carries an argument value.
+type validationError struct{ reason string }
+
+func (e *validationError) Error() string { return e.reason }
+
+func invalidArguments(reason string) error { return &validationError{reason} }
+
+// quoteName renders a property name for a reason. Names the caller chose are
+// kept only when short and printable.
+func quoteName(name string) string {
+	if utf8.RuneCountInString(name) > 64 || strings.ContainsFunc(name, func(r rune) bool { return !unicode.IsPrint(r) || r == '\'' }) {
+		return "'?'"
+	}
+	return "'" + name + "'"
 }

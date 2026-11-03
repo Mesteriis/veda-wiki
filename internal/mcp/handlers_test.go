@@ -15,7 +15,7 @@ func TestUnknownArgumentRefusedWithoutRequest(t *testing.T) {
 	fake, base := startREST(t, nil)
 	session := connect(t, base, false)
 	got := refusal(t, call(t, session, "veda_read", `{"source_id":"a","path":"b","extra":1}`))
-	if got != genericRefusal || fake.count() != 0 {
+	if got != "Input validation error: unknown property 'extra'" || fake.count() != 0 {
 		t.Fatalf("%q requests=%d", got, fake.count())
 	}
 }
@@ -272,5 +272,16 @@ func TestForwardingRoutes(t *testing.T) {
 		if got := requests[before]; got.Method != tc.method || got.URI != tc.uri || got.Body != tc.body {
 			t.Fatalf("%s: %+v", tc.tool, got)
 		}
+	}
+}
+
+func TestNonObjectResultIsRefused(t *testing.T) {
+	fake, base := startREST(t, map[string]string{"GET /api/v1/search": `[{"path":"b"}]`})
+	session := connect(t, base, true)
+	if got := refusal(t, call(t, session, "veda_find", `{"query":"q"}`)); got != genericRefusal {
+		t.Fatalf("%q", got)
+	}
+	if fake.count() != 1 {
+		t.Fatalf("requests=%d", fake.count())
 	}
 }
