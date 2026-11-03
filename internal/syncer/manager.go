@@ -3,8 +3,12 @@
 // the store, the write outbox and move deletions, publication approval,
 // source mirrors and source reconciliation.
 //
-// It is the only package that changes the Outbox, Connections, Accounts and
-// SourceMirrors collections, apart from shared rules in domain.
+// It is the only package that changes the Connections, Accounts and
+// SourceMirrors collections and the only one that edits outbox jobs itself.
+// Other packages change the Outbox only through domain rules: saving or
+// copying an article queues writes (domain.EnqueueWrite, EnqueueBundle,
+// AddWriteDependencies) and an import settles the writes it observes
+// (domain.ObservedWrite). The store only persists the collections.
 package syncer
 
 import (
@@ -57,7 +61,9 @@ func (m *Manager) Wake() {
 }
 
 // Woken reports whether a wake-up is pending that Run has not taken yet, and
-// takes it. Handlers that wake the manager use it to prove they did.
+// takes it. It is a test seam: handler tests in other packages use it to
+// prove that a request woke the manager. Production code must not call it,
+// because it would consume a wake-up meant for Run.
 func (m *Manager) Woken() bool {
 	select {
 	case <-m.wake:
@@ -133,7 +139,9 @@ func (m *Manager) Once(ctx context.Context) {
 
 // SyncSource runs one synchronization step of connection c at once, as Once
 // does for each due connection. The step's status and import checks reject a
-// connection that was paused or reconfigured since c was read.
+// connection that was paused or reconfigured since c was read. It is a test
+// seam for handler tests in other packages; production synchronizes through
+// Run and Once.
 func (m *Manager) SyncSource(ctx context.Context, c domain.GitHubConnection) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

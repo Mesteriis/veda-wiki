@@ -5,7 +5,6 @@
 package transfer
 
 import (
-	"strconv"
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
@@ -136,27 +135,9 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 
 // queueDependencies adds the copy's images and links to its outbox job.
 func queueDependencies(db *domain.Database, b domain.Article, copied domain.Revision, dependencies Dependencies, text string) error {
-	id := b.SourceID + "/" + b.Path + "@" + strconv.Itoa(copied.Number)
-	job := db.Outbox[id]
-	if job.Assets == nil {
-		job.Assets = map[string]domain.BlobRef{}
+	if err := domain.AddWriteDependencies(db, b, copied, dependencies.Assets, dependencies.Links); err != nil {
+		return err
 	}
-	for name, ref := range dependencies.Assets {
-		if old, ok := job.Assets[name]; ok && old != ref {
-			return domain.ErrConflict
-		}
-		job.Assets[name] = ref
-	}
-	if job.Links == nil {
-		job.Links = map[string]string{}
-	}
-	for name, sha := range dependencies.Links {
-		if old, ok := job.Links[name]; ok && old != sha {
-			return domain.ErrConflict
-		}
-		job.Links[name] = sha
-	}
-	db.Outbox[id] = job
 	version := 7
 	if len(dependencies.Links) > 0 {
 		version = 8

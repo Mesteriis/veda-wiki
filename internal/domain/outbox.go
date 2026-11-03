@@ -36,7 +36,7 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 			db.Outbox[id] = job
 		}
 	}
-	id := a.SourceID + "/" + a.Path + "@" + strconv.Itoa(rev.Number)
+	id := writeJobID(a, rev)
 	visibility := "private"
 	if !privateDependencies && SourcePublic(*db, db.Sources[a.SourceID], now) {
 		visibility = "public"
@@ -45,6 +45,50 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 		db.Version = 12
 	}
 	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained, Links: retainedLinks}
+}
+
+// writeJobID is the outbox ID of the write of revision rev of a.
+func writeJobID(a Article, rev Revision) string {
+	return a.SourceID + "/" + a.Path + "@" + strconv.Itoa(rev.Number)
+}
+
+// AddWriteDependencies merges images and link hashes into the job that
+// EnqueueWrite queued for revision rev of a, so the remote write carries them.
+// A name already queued with another reference or hash is a conflict.
+func AddWriteDependencies(db *Database, a Article, rev Revision, assets map[string]BlobRef, links map[string]string) error {
+	id := writeJobID(a, rev)
+	job := db.Outbox[id]
+	if job.Assets == nil {
+		job.Assets = map[string]BlobRef{}
+	}
+	for name, ref := range assets {
+		if old, ok := job.Assets[name]; ok && old != ref {
+			return ErrConflict
+		}
+		job.Assets[name] = ref
+	}
+	if job.Links == nil {
+		job.Links = map[string]string{}
+	}
+	for name, sha := range links {
+		if old, ok := job.Links[name]; ok && old != sha {
+			return ErrConflict
+		}
+		job.Links[name] = sha
+	}
+	db.Outbox[id] = job
+	return nil
+}
+
+// EnqueueBundle queues revision root of a as EnqueueWrite does and sets the
+// job's images, link hashes and bundled articles, which the remote write
+// commits together with root.
+func EnqueueBundle(db *Database, a Article, root Revision, assets map[string]BlobRef, links, bundle map[string]string, now time.Time) {
+	EnqueueWrite(db, a, root, now)
+	id := writeJobID(a, root)
+	job := db.Outbox[id]
+	job.Assets, job.Links, job.Bundle = assets, links, bundle
+	db.Outbox[id] = job
 }
 
 func BundleLocks(db Database, sourceID, p string) bool {

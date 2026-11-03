@@ -118,11 +118,7 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 		dst.Assets = observedAssets
 		db.Sources[dst.ID] = dst
 		a := db.Articles[in.DestinationID+"/"+in.DestinationPath]
-		domain.EnqueueWrite(db, a, root, time.Now())
-		id := a.SourceID + "/" + a.Path + "@1"
-		job := db.Outbox[id]
-		job.Assets, job.Links, job.Bundle = batchAssets, remoteLinks, bundle
-		db.Outbox[id] = job
+		domain.EnqueueBundle(db, a, root, batchAssets, remoteLinks, bundle, time.Now())
 		version := 7
 		if len(remoteLinks) > 0 {
 			version = 8
