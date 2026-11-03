@@ -7,8 +7,9 @@ with a synthetic key file; no VEDA service or real key is involved.
 
 Pass --veda BINARY to dump `BINARY mcp` and compare it with the golden file.
 The golden file itself was produced from the former Python adapter
-(mcp/server.py as of commit 4c595a2); to reproduce it, extract that file with
-`git show 4c595a2:mcp/server.py > SERVER.py` (it needs the mcp SDK) and pass
+(its server module under mcp/ as of commit 4c595a2); to reproduce it, extract
+that module with `git show 4c595a2:mcp/<module>.py > SERVER.py` (list the
+directory with `git ls-tree 4c595a2 mcp/`; the SDK is required) and pass
 --adapter SERVER.py.
 """
 import argparse

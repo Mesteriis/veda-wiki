@@ -1,7 +1,7 @@
 // Package mcp is the VEDA MCP server: the tool table, strict argument
 // validation and handlers that call the REST service through client.Client.
 // Its tools, schemas, instructions and results match the former Python
-// adapter mcp/server.py.
+// adapter (testdata/tools.json is its golden tool list).
 package mcp
 
 import (

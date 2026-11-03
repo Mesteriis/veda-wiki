@@ -12,7 +12,7 @@ class ReleasePackageTest(unittest.TestCase):
     def fixture(self, root):
         for name in ('README.md', 'LICENSE', 'deploy/systemd/veda.service',
                      'web/public/assets/fonts/LICENSE', 'web/public/assets/icons/LICENSE',
-                     'docs/guide.md', 'mcp/server.py', '.veda/owner.key'):
+                     'docs/guide.md', 'mcp/leftover.py', '.veda/owner.key'):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('synthetic ' + name)

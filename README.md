@@ -1,7 +1,7 @@
 # VEDA
 
 A reading-first knowledge base for people and agents. React UI, Go service,
-local versioned Markdown articles, REST API and an MCP adapter.
+local versioned Markdown articles, REST API and MCP server (`veda mcp`).
 
 **Early development:** local source creation and article create/read/update work.
 GitHub connections and background synchronization are implemented and tested
@@ -60,12 +60,10 @@ expires or fails. Program sources accept article paths below
 
 ## MCP
 
-Requires Python 3.11+. Install the adapter into a dedicated virtual environment:
+MCP is served by the same binary, with no Python required:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -r mcp/requirements.txt
-.venv/bin/python mcp/server.py --key-file .veda/owner.key
+veda mcp --key-file .veda/owner.key
 ```
 
 Register that command with your MCP client, using absolute paths appropriate to
@@ -74,8 +72,8 @@ and the proposal workflow, see [agent setup](docs/agent-workflow.md). stdio is
 the MCP transport; use `--url` to choose the loopback
 REST endpoint. For a local read-only agent, the service can instead expose a Unix socket in a
 private directory owned by the service user. Start VEDA with `--reader-socket
-/path/to/private/reader.sock`, then use the MCP adapter with `--reader-socket`
-pointing to that socket. This adapter advertises sources, search, read, context,
+/path/to/private/reader.sock`, then run `veda mcp` with `--reader-socket`
+pointing to that socket. This server advertises sources, search, read, context,
 the scoped translation queue, and non-persistent preparation of new articles,
 updates and translations; it has no write/admin access. The socket's directory must
 be 0700 and owned by the server user. Anyone sharing that OS identity can read
