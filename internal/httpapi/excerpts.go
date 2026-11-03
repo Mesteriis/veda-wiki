@@ -19,7 +19,7 @@ func (h handler) excerpt(rw http.ResponseWriter, r *http.Request, public bool) {
 	sourceID, p, expected := q.Get("source_id"), q.Get("path"), q.Get("expected_sha256")
 	display := r.URL.Path == "/api/v1/articles/display-excerpt"
 	expectedOriginal := q.Get("expected_original_sha256")
-	if !domain.IDPattern.MatchString(sourceID) || p == "" || (expected != "" && len(expected) != 64) {
+	if !domain.ValidID(sourceID) || p == "" || (expected != "" && len(expected) != 64) {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}

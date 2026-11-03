@@ -13,7 +13,7 @@ import (
 // ParseMetadata strictly decodes veda.yaml: bounded UTF-8 without credentials,
 // no anchors, aliases or unknown fields, and exactly one document.
 func ParseMetadata(b []byte) (*domain.WikiMetadata, error) {
-	if len(b) > 16384 || !utf8.Valid(b) || domain.CredentialPattern.Match(b) {
+	if len(b) > 16384 || !utf8.Valid(b) || domain.CredentialLike(string(b)) {
 		return nil, domain.ErrInvalid
 	}
 	var node yaml.Node

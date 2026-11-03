@@ -37,7 +37,7 @@ func (m *Manager) observeChangedHead(expected domain.GitHubConnection, head stri
 	return m.update(func(tx *store.Tx) error {
 		db := tx.DB()
 		c, ok := db.Connections[expected.ID]
-		if tx.StoreInvalid() || !ok || c.Paused || c.ConfigRevision != expected.ConfigRevision || !domain.CommitIDPattern.MatchString(head) {
+		if tx.StoreInvalid() || !ok || c.Paused || c.ConfigRevision != expected.ConfigRevision || !domain.ValidCommitID(head) {
 			return domain.ErrConflict
 		}
 		if c.PendingHead == head {
@@ -147,7 +147,7 @@ func syncState(db *domain.Database, id string) (string, string) {
 // A skipped commit can be reused only while no local source exists and the
 // connection configuration still matches the one used for the remote read.
 func (m *Manager) recordSkippedRepository(observed domain.GitHubConnection, head, tree string) error {
-	if !domain.CommitIDPattern.MatchString(head) || !domain.CommitIDPattern.MatchString(tree) {
+	if !domain.ValidCommitID(head) || !domain.ValidCommitID(tree) {
 		return domain.ErrInvalid
 	}
 	return m.store.Update(func(tx *store.Tx) error {

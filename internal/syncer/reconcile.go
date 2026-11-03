@@ -93,7 +93,7 @@ type reconciliation struct {
 // request when mirrorRevision is nil.
 func (m *Manager) reconcile(ctx context.Context, in ReconcileRequest, mirrorRevision *int) (ReconcileResult, error) {
 	r := &reconciliation{ctx: ctx, transfer: m.transfer, result: ReconcileResult{Blocked: []string{}}}
-	if !domain.IDPattern.MatchString(in.SourceID) || !domain.IDPattern.MatchString(in.DestinationID) || in.SourceID == in.DestinationID {
+	if !domain.ValidID(in.SourceID) || !domain.ValidID(in.DestinationID) || in.SourceID == in.DestinationID {
 		return r.result, domain.ErrInvalid
 	}
 	if in.Limit == 0 {
@@ -166,7 +166,7 @@ func (r *reconciliation) path(p string) (bool, error) {
 		return false, nil
 	}
 	rev := a.Versions[len(a.Versions)-1]
-	unsafe := domain.CredentialPattern.MatchString(rev.Text)
+	unsafe := domain.CredentialLike(rev.Text)
 	for _, c := range a.Conflicts {
 		if c.Resolution == "" {
 			unsafe = true

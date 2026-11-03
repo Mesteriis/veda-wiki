@@ -32,7 +32,7 @@ func randomID() (string, error) {
 // SaveAccount verifies a GitHub credential and stores it under a new account
 // ID. The returned account never carries the secret reference.
 func (m *Manager) SaveAccount(ctx context.Context, id string, secret github.Secret) (domain.GitHubAccount, error) {
-	if !domain.IDPattern.MatchString(id) {
+	if !domain.ValidID(id) {
 		return domain.GitHubAccount{}, domain.ErrInvalid
 	}
 	login, e := m.github.VerifyAccount(ctx, secret)

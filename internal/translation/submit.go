@@ -66,7 +66,7 @@ func (s Service) save(in Request, privateDraft bool) (domain.Translation, error)
 			return domain.ErrInvalid
 		}
 		public := domain.SourcePublic(*db, src, time.Now())
-		if public && ((!in.ConfirmPublication && !privateDraft) || domain.CredentialPattern.MatchString(in.Text)) {
+		if public && ((!in.ConfirmPublication && !privateDraft) || domain.CredentialLike(in.Text)) {
 			return domain.ErrInvalid
 		}
 		origin := ""

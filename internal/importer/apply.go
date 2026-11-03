@@ -33,7 +33,7 @@ func (s Service) Import(batch Batch) (Result, error) {
 // recorded under the same write lock, after its commit.
 func (s Service) Apply(batch Batch, proof *RemoteProof, localRoot bool) (Result, error) {
 	result := Result{Withheld: batch.Withheld}
-	if !domain.IDPattern.MatchString(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !domain.CommitIDPattern.MatchString(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
+	if !domain.ValidID(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !domain.ValidCommitID(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
 		return result, domain.ErrInvalid
 	}
 	// A proof without its hook would apply the pull without recording it.
@@ -49,7 +49,7 @@ func (s Service) Apply(batch Batch, proof *RemoteProof, localRoot bool) (Result,
 	}
 	total := 0
 	for p, text := range batch.Files {
-		if !domain.ArticlePath(p, batch.Kind) || len(text) > domain.MaxArticleBytes || !utf8.ValidString(text) || domain.CredentialPattern.MatchString(text) {
+		if !domain.ArticlePath(p, batch.Kind) || len(text) > domain.MaxArticleBytes || !utf8.ValidString(text) || domain.CredentialLike(text) {
 			return result, domain.ErrInvalid
 		}
 		total += len(text)

@@ -83,7 +83,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	now := time.Now()
 	targetPublic := domain.SourcePublic(*db, destination, now)
 	sourcePublicRevision := domain.SourcePublicReadable(*db, source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
-	if targetPublic && (domain.CredentialPattern.MatchString(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
+	if targetPublic && (domain.CredentialLike(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 		return domain.Revision{}, domain.ErrInvalid
 	}
 	copied := domain.Revision{Number: len(b.Versions) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}

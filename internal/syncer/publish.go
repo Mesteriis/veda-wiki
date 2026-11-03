@@ -24,12 +24,12 @@ func (m *Manager) PublishJob(id string, expected int, confirm bool) error {
 		if !ok || a.Deleted || expected != len(a.Versions) || job.Revision != expected || job.State == "complete" || job.State == "superseded" || !domain.SourcePublic(*db, src, time.Now()) {
 			return domain.ErrConflict
 		}
-		if domain.CredentialPattern.MatchString(a.Versions[expected-1].Text) {
+		if domain.CredentialLike(a.Versions[expected-1].Text) {
 			return domain.ErrInvalid
 		}
 		for name, sha := range job.Bundle {
 			linked, ok := db.Articles[job.SourceID+"/"+name]
-			if !ok || linked.Deleted || len(linked.Versions) == 0 || linked.Versions[len(linked.Versions)-1].SHA != sha || domain.CredentialPattern.MatchString(linked.Versions[len(linked.Versions)-1].Text) {
+			if !ok || linked.Deleted || len(linked.Versions) == 0 || linked.Versions[len(linked.Versions)-1].SHA != sha || domain.CredentialLike(linked.Versions[len(linked.Versions)-1].Text) {
 				return domain.ErrInvalid
 			}
 		}

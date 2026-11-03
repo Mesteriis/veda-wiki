@@ -27,7 +27,7 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 		result.Complete = false
 		result.withheldReasons[reason]++
 	}
-	if !domain.IDPattern.MatchString(sourceID) {
+	if !domain.ValidID(sourceID) {
 		return result, domain.ErrInvalid
 	}
 	info, e := os.Lstat(directory)
@@ -87,7 +87,7 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 		return result, errors.New("select the Git checkout root")
 	}
 	head, e := git("rev-parse", "--verify", "HEAD")
-	if e != nil || !domain.CommitIDPattern.MatchString(head) {
+	if e != nil || !domain.ValidCommitID(head) {
 		return result, errors.New("checkout requires an existing Git commit")
 	}
 	result.Commit = head
@@ -236,7 +236,7 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 				withhold("invalid_utf8")
 				return nil
 			}
-			if domain.CredentialPattern.Match(b) {
+			if domain.CredentialLike(string(b)) {
 				withhold("sensitive_pattern")
 				return nil
 			}

@@ -79,7 +79,7 @@ func (m *Manager) pushPending(ctx context.Context, c domain.GitHubConnection, he
 		if job.Revision > len(a.Versions) || a.Versions[job.Revision-1].SHA != job.SHA {
 			return domain.ErrInvalid
 		}
-		if domain.CredentialPattern.MatchString(a.Versions[job.Revision-1].Text) {
+		if domain.CredentialLike(a.Versions[job.Revision-1].Text) {
 			if err := m.setJobFor(c, job, "blocked", "credential_like_content", ""); err != nil {
 				return err
 			}
@@ -156,7 +156,7 @@ func (m *Manager) pushPending(ctx context.Context, c domain.GitHubConnection, he
 func bundleHasCredentialLikeText(files map[string][]byte) bool {
 	for name, content := range files {
 		ext := strings.ToLower(path.Ext(name))
-		if (ext == ".md" || ext == ".markdown") && domain.CredentialPattern.Match(content) {
+		if (ext == ".md" || ext == ".markdown") && domain.CredentialLike(string(content)) {
 			return true
 		}
 	}
@@ -287,7 +287,7 @@ func (m *Manager) pendingBundle(ctx context.Context, c domain.GitHubConnection, 
 			}
 		}
 		if entry, exists := entries[name]; exists {
-			if entry.Type != "blob" || (entry.Mode != "100644" && entry.Mode != "100755") || !domain.CommitIDPattern.MatchString(entry.SHA) {
+			if entry.Type != "blob" || (entry.Mode != "100644" && entry.Mode != "100755") || !domain.ValidCommitID(entry.SHA) {
 				return nil, domain.ErrConflict
 			}
 			if github.BlobDigest(data, len(entry.SHA)) == entry.SHA {

@@ -138,7 +138,7 @@ func BuildPlan(db *domain.Database, in CopyRequest) (Plan, error) {
 				state = "matching"
 			}
 		}
-		result.Articles = append(result.Articles, PlanItem{SourcePath: current.from, DestinationPath: current.to, Revision: len(a.Versions), SHA: rev.SHA, Destination: state, CredentialLike: domain.CredentialPattern.MatchString(rev.Text)})
+		result.Articles = append(result.Articles, PlanItem{SourcePath: current.from, DestinationPath: current.to, Revision: len(a.Versions), SHA: rev.SHA, Destination: state, CredentialLike: domain.CredentialLike(rev.Text)})
 		rootNode := domain.Markdown.Parser().Parse(text.NewReader([]byte(rev.Text)))
 		var parseErr error
 		ast.Walk(rootNode, func(node ast.Node, entering bool) (ast.WalkStatus, error) {

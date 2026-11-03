@@ -148,7 +148,7 @@ func (m *Manager) Configure(ctx context.Context, in ConfigureRequest) (domain.Gi
 // it attaches an existing private local source whose content matches the
 // complete private repository, in one import transaction.
 func (m *Manager) Connect(ctx context.Context, in ConnectRequest) (domain.GitHubConnection, error) {
-	if !domain.IDPattern.MatchString(in.ID) {
+	if !domain.ValidID(in.ID) {
 		return domain.GitHubConnection{}, domain.ErrInvalid
 	}
 	var snapshot string

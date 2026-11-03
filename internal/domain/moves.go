@@ -108,6 +108,8 @@ func MoveDeletionLocks(db Database, sourceID, p string) bool {
 	return BundleLocks(db, sourceID, p) || MoveOperationLocks(db, sourceID, p)
 }
 
+// MoveOperationLocks reports whether a move that is deleting its source
+// locks article p of sourceID as an endpoint or a link dependency.
 func MoveOperationLocks(db Database, sourceID, p string) bool {
 	for _, m := range db.Moves {
 		if m.State == "deleting_source" {
@@ -124,6 +126,8 @@ func MoveOperationLocks(db Database, sourceID, p string) bool {
 	return false
 }
 
+// MoveDeletionLocksConnection reports whether a move that is deleting its
+// source involves connection id.
 func MoveDeletionLocksConnection(db Database, id string) bool {
 	for _, m := range db.Moves {
 		if m.State == "deleting_source" && (m.SourceConnectionID == id || m.DestinationConnectionID == id) {
@@ -133,6 +137,7 @@ func MoveDeletionLocksConnection(db Database, id string) bool {
 	return false
 }
 
+// TranslationFingerprint returns a digest of tr, or "" for no translation.
 func TranslationFingerprint(tr *Translation) string {
 	if tr == nil {
 		return ""
@@ -141,6 +146,8 @@ func TranslationFingerprint(tr *Translation) string {
 	return Digest(b)
 }
 
+// MovedTranslation copies tr for a moved or copied article; the copy needs
+// public approval again.
 func MovedTranslation(tr *Translation) *Translation {
 	if tr == nil {
 		return nil
@@ -150,6 +157,8 @@ func MovedTranslation(tr *Translation) *Translation {
 	return &copy
 }
 
+// AssetsPresent reports whether source holds every expected image with the
+// expected reference.
 func AssetsPresent(source Source, expected map[string]BlobRef) bool {
 	for name, ref := range expected {
 		if actual, ok := source.Assets[name]; !ok || actual != ref {
@@ -159,6 +168,8 @@ func AssetsPresent(source Source, expected map[string]BlobRef) bool {
 	return true
 }
 
+// LinksPresent reports whether every expected article of sourceID exists,
+// is live and has the expected current revision digest.
 func LinksPresent(db Database, sourceID string, expected map[string]string) bool {
 	src, ok := db.Sources[sourceID]
 	if !ok {

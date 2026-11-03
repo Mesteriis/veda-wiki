@@ -95,7 +95,7 @@ func (s *fixture) put(sourceID, p, text string, expected int) (domain.Revision, 
 		}
 		now := time.Now()
 		public := domain.SourcePublic(*db, src, now)
-		if public && domain.CredentialPattern.MatchString(text) {
+		if public && domain.CredentialLike(text) {
 			return domain.ErrInvalid
 		}
 		rev = domain.Revision{Number: expected + 1, Text: text, SHA: domain.Digest([]byte(text)), Created: now.UTC().Format(time.RFC3339Nano)}

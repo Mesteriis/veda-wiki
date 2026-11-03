@@ -9,8 +9,13 @@ import (
 	"github.com/yuin/goldmark/parser"
 )
 
+// Markdown is the GitHub-flavoured Markdown parser shared by rendering,
+// link and dependency resolution.
 var Markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
+// RepositoryTarget resolves a link destination written in articlePath to a
+// repository-relative path; a leading slash is relative to the repository
+// root. The flag reports whether the result is a safe relative path.
 func RepositoryTarget(articlePath, destination string) (string, bool) {
 	if destination == "" {
 		return "", false

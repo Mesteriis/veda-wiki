@@ -77,7 +77,7 @@ func (h handler) display(rw http.ResponseWriter, r *http.Request, public bool) {
 		return
 	}
 	sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
-	if !domain.IDPattern.MatchString(sourceID) || !domain.SafeArticlePath(p) {
+	if !domain.ValidID(sourceID) || !domain.SafeArticlePath(p) {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}
@@ -101,7 +101,7 @@ func (h handler) search(rw http.ResponseWriter, r *http.Request, public bool) {
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	sourceID := r.URL.Query().Get("source_id")
-	if query == "" || len(query) > 300 || (sourceID != "" && !domain.IDPattern.MatchString(sourceID)) {
+	if query == "" || len(query) > 300 || (sourceID != "" && !domain.ValidID(sourceID)) {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}

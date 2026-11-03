@@ -38,7 +38,7 @@ type Service struct {
 }
 
 func validTranslationFingerprint(value *string) bool {
-	return value == nil || *value == "" || (len(*value) == 64 && domain.CommitIDPattern.MatchString(*value))
+	return value == nil || *value == "" || (len(*value) == 64 && domain.ValidCommitID(*value))
 }
 
 func (in Request) valid() bool {
@@ -91,7 +91,7 @@ func (s Service) Validate(in Request) (map[string]any, error) {
 			"source_id": in.SourceID, "path": in.Path, "expected_revision": in.ExpectedRevision,
 			"original_sha256": rev.SHA, "translation_fingerprint": domain.TranslationFingerprint(a.Translation), "structural_valid": reflect.DeepEqual(protectedMarkdown(rev.Text), protectedMarkdown(in.Text)),
 			"russian_prose": containsRussianProse(in.Text), "unchanged": strings.TrimSpace(rev.Text) == strings.TrimSpace(in.Text),
-			"credential_like": domain.CredentialPattern.MatchString(in.Text), "saved": false,
+			"credential_like": domain.CredentialLike(in.Text), "saved": false,
 			"source_status": status,
 		}
 		return nil

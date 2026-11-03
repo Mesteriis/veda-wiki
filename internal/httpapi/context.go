@@ -19,7 +19,7 @@ func (h handler) context(rw http.ResponseWriter, r *http.Request, public bool) {
 		return
 	}
 	sourceID, target := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
-	if !domain.IDPattern.MatchString(sourceID) {
+	if !domain.ValidID(sourceID) {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}
@@ -52,7 +52,7 @@ func (h handler) proposalBase(rw http.ResponseWriter, r *http.Request, create bo
 		return
 	}
 	sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
-	if !domain.IDPattern.MatchString(sourceID) || !domain.SafeArticlePath(p) {
+	if !domain.ValidID(sourceID) || !domain.SafeArticlePath(p) {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}

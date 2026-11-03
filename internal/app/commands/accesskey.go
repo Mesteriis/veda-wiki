@@ -36,7 +36,7 @@ func AccessKey(args []string, output io.Writer) error {
 	if action != "create" && action != "list" && action != "revoke" {
 		return domain.ErrInvalid
 	}
-	if action != "list" && !domain.IDPattern.MatchString(*id) {
+	if action != "list" && !domain.ValidID(*id) {
 		return domain.ErrInvalid
 	}
 	var expiry time.Time
@@ -53,7 +53,7 @@ func AccessKey(args []string, output io.Writer) error {
 		}
 		seen := map[string]bool{}
 		for _, id := range sourceIDs {
-			if !domain.IDPattern.MatchString(id) || seen[id] {
+			if !domain.ValidID(id) || seen[id] {
 				return domain.ErrInvalid
 			}
 			seen[id] = true

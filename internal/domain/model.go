@@ -4,6 +4,8 @@ import (
 	"html/template"
 )
 
+// Source is one wiki or program documentation source and the state of its
+// last import.
 type Source struct {
 	ID               string             `json:"id"`
 	Title            string             `json:"title"`
@@ -28,6 +30,7 @@ type SourceView struct {
 	SyncIssue            string `json:"-"`
 }
 
+// Revision is one immutable version of an article's text.
 type Revision struct {
 	Number  int    `json:"revision"`
 	Text    string `json:"text"`
@@ -35,6 +38,8 @@ type Revision struct {
 	Created string `json:"created_at"`
 }
 
+// Article is one Markdown file of a source with its revision history,
+// import conflicts, translation and publication state.
 type Article struct {
 	Translation    *Translation     `json:"translation,omitempty"`
 	CopiedFrom     *CopyOrigin      `json:"copied_from,omitempty"`
@@ -49,6 +54,7 @@ type Article struct {
 	PublishedLocal bool             `json:"published_local,omitempty"`
 }
 
+// Database is the whole persisted state of the data directory.
 type Database struct {
 	Version       int                         `json:"version"`
 	Updated       string                      `json:"updated_at"`
@@ -64,6 +70,7 @@ type Database struct {
 	SourceMirrors map[string]SourceMirror     `json:"source_mirrors,omitempty"`
 }
 
+// Translation is a translated draft of one original revision.
 type Translation struct {
 	Origin         string `json:"origin,omitempty"`
 	Language       string `json:"language"`
@@ -93,6 +100,8 @@ type ReconcileBase struct {
 	SHA      string `json:"sha256"`
 }
 
+// ImportConflict records an incoming remote change that collided with a
+// local revision, and its resolution.
 type ImportConflict struct {
 	Incoming    string `json:"incoming"`
 	IncomingSHA string `json:"incoming_sha256"`
@@ -103,11 +112,13 @@ type ImportConflict struct {
 	Resolution  string `json:"resolution,omitempty"`
 }
 
+// BlobRef names a stored image blob by digest and media type.
 type BlobRef struct {
 	SHA  string `json:"sha256"`
 	MIME string `json:"mime"`
 }
 
+// WikiMetadata is the content of a wiki source's veda.yaml.
 type WikiMetadata struct {
 	SchemaVersion int    `json:"schema_version" yaml:"schema_version"`
 	Kind          string `json:"kind" yaml:"kind"`
@@ -117,6 +128,8 @@ type WikiMetadata struct {
 	URL           string `json:"url,omitempty" yaml:"url,omitempty"`
 }
 
+// SyncJob is one outbox entry: a revision, and the images, links and
+// bundled articles it depends on, waiting to be written to GitHub.
 type SyncJob struct {
 	ScopePrepared    bool               `json:"-"`
 	ScopeBundle      bool               `json:"-"`
@@ -171,6 +184,7 @@ type AccessKey struct {
 	Expires string   `json:"expires_at"`
 }
 
+// WikiUser is a human account; its password hash never appears in views.
 type WikiUser struct {
 	ID           string   `json:"id"`
 	Admin        bool     `json:"admin,omitempty"`
@@ -191,6 +205,8 @@ type WikiTeam struct {
 	Revision int      `json:"revision"`
 }
 
+// GitHubAccount is a GitHub credential; the secret itself is stored outside
+// the database and only referenced.
 type GitHubAccount struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`
@@ -198,6 +214,8 @@ type GitHubAccount struct {
 	SecretRef string `json:"secret_ref,omitempty"`
 }
 
+// GitHubConnection binds a source to a GitHub repository branch and records
+// its verification and synchronization state.
 type GitHubConnection struct {
 	ID             string `json:"id"`
 	Repository     string `json:"repository"`
@@ -236,6 +254,8 @@ type SourceMirror struct {
 	More          bool     `json:"more"`
 }
 
+// Page is an article as served to a reader, with its rendered HTML and
+// display metadata.
 type Page struct {
 	SearchOriginal            string        `json:"-"`
 	SearchDisplayed           string        `json:"-"`

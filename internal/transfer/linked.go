@@ -45,7 +45,7 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 		a := db.Articles[in.SourceID+"/"+item.SourcePath]
 		rev := a.Versions[item.Revision-1]
 		sourcePublicRevision := domain.SourcePublicReadable(*db, src, now) && (src.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
-		if public && (domain.CredentialPattern.MatchString(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
+		if public && (domain.CredentialLike(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 			return domain.Revision{}, Dependencies{}, domain.ErrInvalid
 		}
 		if item.Destination == "matching" {

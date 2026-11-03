@@ -43,7 +43,7 @@ func GitHub(args []string) error {
 	var result any
 	switch action {
 	case "account":
-		if !domain.IDPattern.MatchString(*id) || *secretFile == "" {
+		if !domain.ValidID(*id) || *secretFile == "" {
 			return domain.ErrInvalid
 		}
 		info, e := os.Lstat(*secretFile)
@@ -73,7 +73,7 @@ func GitHub(args []string) error {
 			return e
 		}
 	case "connect":
-		if !domain.IDPattern.MatchString(*id) || *repo == "" {
+		if !domain.ValidID(*id) || *repo == "" {
 			return domain.ErrInvalid
 		}
 		if *adopt {
@@ -83,7 +83,7 @@ func GitHub(args []string) error {
 			return e
 		}
 	case "configure":
-		if !domain.IDPattern.MatchString(*id) || *expected < 1 {
+		if !domain.ValidID(*id) || *expected < 1 {
 			return domain.ErrInvalid
 		}
 		in := syncer.ConfigureRequest{ID: *id, Expected: expected}
@@ -111,14 +111,14 @@ func GitHub(args []string) error {
 		}
 		result = map[string]any{"accounts": accounts, "connections": conns, "outbox": outbox}
 	case "sync":
-		if !domain.IDPattern.MatchString(*id) {
+		if !domain.ValidID(*id) {
 			return domain.ErrInvalid
 		}
 		if e = client.request("POST", "/api/v1/github/sync", map[string]string{"id": *id}, &result); e != nil {
 			return e
 		}
 	case "pause":
-		if !domain.IDPattern.MatchString(*id) {
+		if !domain.ValidID(*id) {
 			return domain.ErrInvalid
 		}
 		if e = client.request("POST", "/api/v1/github/pause", map[string]any{"id": *id, "paused": !*resume}, &result); e != nil {

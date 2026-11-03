@@ -25,7 +25,7 @@ type PreviewComparison struct {
 // ComparePreview reads the source at a loopback VEDA endpoint and compares the
 // batch with it.
 func ComparePreview(batch Batch, endpoint string) (*PreviewComparison, error) {
-	if batch.Kind != "wiki" || !domain.IDPattern.MatchString(batch.SourceID) {
+	if batch.Kind != "wiki" || !domain.ValidID(batch.SourceID) {
 		return nil, domain.ErrInvalid
 	}
 	u, err := url.Parse(endpoint)

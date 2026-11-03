@@ -21,7 +21,7 @@ import (
 // cachedBlob returns a verified Git blob from the local object cache, from
 // identical local private content, or from GitHub, and caches it.
 func (m *Manager) cachedBlob(ctx context.Context, c domain.GitHubConnection, entry github.TreeEntry, token string) ([]byte, error) {
-	if !domain.CommitIDPattern.MatchString(entry.SHA) {
+	if !domain.ValidCommitID(entry.SHA) {
 		return nil, domain.ErrInvalid
 	}
 	dir := filepath.Join(m.store.Dir(), "git-objects", fmt.Sprint(c.RepositoryID))
@@ -180,7 +180,7 @@ func (m *Manager) remoteBatch(ctx context.Context, c domain.GitHubConnection, he
 			return batch, &github.RemoteError{Code: "repository_limit"}
 		}
 		if markdown {
-			if !utf8.Valid(b) || domain.CredentialPattern.Match(b) {
+			if !utf8.Valid(b) || domain.CredentialLike(string(b)) {
 				batch.Withheld++
 				batch.Complete = false
 				continue
@@ -259,11 +259,11 @@ func (m *Manager) syncSource(ctx context.Context, c domain.GitHubConnection) {
 	m.read(func(db *domain.Database) { source, exists = db.Sources[c.ID] })
 	matchingVisibility := exists && (source.Visibility == "private") == c.Private
 	repairingAssets := false
-	if !exists && c.State == "skipped" && !visibilityChanged && head == c.LastPull && domain.CommitIDPattern.MatchString(c.TreeSHA) {
+	if !exists && c.State == "skipped" && !visibilityChanged && head == c.LastPull && domain.ValidCommitID(c.TreeSHA) {
 		m.connectionStatusFor(c, "skipped", "verified", "", &info, time.Time{})
 		return
 	}
-	if matchingVisibility && !visibilityChanged && head == c.LastPull && domain.CommitIDPattern.MatchString(c.TreeSHA) {
+	if matchingVisibility && !visibilityChanged && head == c.LastPull && domain.ValidCommitID(c.TreeSHA) {
 		if err := m.observeGitHubHead(c, head, c.TreeSHA); err == nil {
 			m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
 			return

@@ -10,6 +10,9 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+// EnqueueWrite queues revision rev of a for writing to GitHub. It supersedes
+// the article's unprepared pending jobs and keeps the image and link
+// dependencies of queued jobs that rev still references.
 func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 	if db.Outbox == nil {
 		db.Outbox = map[string]SyncJob{}
@@ -91,6 +94,8 @@ func EnqueueBundle(db *Database, a Article, root Revision, assets map[string]Blo
 	db.Outbox[id] = job
 }
 
+// BundleLocks reports whether an active bundled outbox job of sourceID
+// writes or depends on article p.
 func BundleLocks(db Database, sourceID, p string) bool {
 	for _, job := range db.Outbox {
 		if (len(job.Bundle) == 0 && !job.ScopeBundle) || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
@@ -161,6 +166,8 @@ func RetainedPendingAssets(value, articlePath string, candidates map[string]Blob
 	return refs
 }
 
+// RetainedPendingLinks keeps only the link dependencies still referenced by
+// a later revision of a queued article.
 func RetainedPendingLinks(value, articlePath string, candidates map[string]string) map[string]string {
 	if len(candidates) == 0 {
 		return nil

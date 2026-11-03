@@ -68,7 +68,7 @@ func mirrorWouldCycle(db *domain.Database, sourceID, destinationID string) bool 
 // ConfigureMirror enables or pauses a mirror. Enabling requires a verified,
 // writable private destination connection and a reconcilable source.
 func (m *Manager) ConfigureMirror(ctx context.Context, in MirrorRequest) (domain.SourceMirror, error) {
-	if !domain.IDPattern.MatchString(in.SourceID) || !domain.IDPattern.MatchString(in.DestinationID) || in.SourceID == in.DestinationID || in.Enabled == nil || in.ExpectedRevision == nil || *in.ExpectedRevision < 0 {
+	if !domain.ValidID(in.SourceID) || !domain.ValidID(in.DestinationID) || in.SourceID == in.DestinationID || in.Enabled == nil || in.ExpectedRevision == nil || *in.ExpectedRevision < 0 {
 		return domain.SourceMirror{}, domain.ErrInvalid
 	}
 	var mirror domain.SourceMirror

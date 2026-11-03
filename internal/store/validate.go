@@ -34,7 +34,7 @@ func Validate(db *domain.Database) error {
 		db.SourceMirrors = map[string]domain.SourceMirror{}
 	}
 	for id, mirror := range db.SourceMirrors {
-		if db.Version < 19 || id != mirror.DestinationID || mirror.SourceID == id || !domain.IDPattern.MatchString(mirror.SourceID) || !domain.IDPattern.MatchString(id) || mirror.Revision < 1 {
+		if db.Version < 19 || id != mirror.DestinationID || mirror.SourceID == id || !domain.ValidID(mirror.SourceID) || !domain.ValidID(id) || mirror.Revision < 1 {
 			return errors.New("invalid source mirror")
 		}
 		if _, ok := db.Sources[mirror.SourceID]; !ok {
@@ -77,7 +77,7 @@ func Validate(db *domain.Database) error {
 		return err
 	}
 	for id, a := range db.Accounts {
-		if !domain.IDPattern.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !domain.ValidGitHubName(a.Login) || len(a.SecretRef) != 32 {
+		if !domain.ValidID(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !domain.ValidGitHubName(a.Login) || len(a.SecretRef) != 32 {
 			return errors.New("invalid stored GitHub account")
 		}
 		if _, e := hex.DecodeString(a.SecretRef); e != nil {
@@ -86,7 +86,7 @@ func Validate(db *domain.Database) error {
 	}
 	for id, c := range db.Connections {
 		repo, e := domain.RepositoryName(c.Repository)
-		if e != nil || repo != c.Repository || !domain.IDPattern.MatchString(id) || id != c.ID || c.RepositoryID < 1 || !domain.ValidBranch(c.Branch) || c.ConfigRevision < 1 {
+		if e != nil || repo != c.Repository || !domain.ValidID(id) || id != c.ID || c.RepositoryID < 1 || !domain.ValidBranch(c.Branch) || c.ConfigRevision < 1 {
 			return errors.New("invalid stored GitHub connection")
 		}
 		if c.AccountID != "" {
@@ -96,7 +96,7 @@ func Validate(db *domain.Database) error {
 		}
 	}
 	for id, src := range db.Sources {
-		if id != src.ID || !domain.IDPattern.MatchString(id) || (src.Kind != "wiki" && src.Kind != "program") || (src.Visibility != "public" && src.Visibility != "private") {
+		if id != src.ID || !domain.ValidID(id) || (src.Kind != "wiki" && src.Kind != "program") || (src.Visibility != "public" && src.Visibility != "private") {
 			return errors.New("invalid stored source")
 		}
 		if src.Metadata != nil {
@@ -167,7 +167,7 @@ func Validate(db *domain.Database) error {
 			}
 		}
 		for _, c := range article.Conflicts {
-			if !domain.CommitIDPattern.MatchString(c.Commit) || (c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) || (!c.Deleted && (domain.Digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > domain.MaxArticleBytes || (len(c.Incoming) > domain.LegacyArticleBytes && db.Version < 13))) {
+			if !domain.ValidCommitID(c.Commit) || (c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) || (!c.Deleted && (domain.Digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > domain.MaxArticleBytes || (len(c.Incoming) > domain.LegacyArticleBytes && db.Version < 13))) {
 				return errors.New("invalid stored conflict")
 			}
 		}
@@ -226,14 +226,14 @@ func Validate(db *domain.Database) error {
 			if m.SourceRepositoryID != 0 || m.SourceBranch != "" {
 				return errors.New("invalid move source identity")
 			}
-		} else if db.Version < 3 || !domain.IDPattern.MatchString(m.SourceConnectionID) || m.SourceRepositoryID < 1 || !domain.ValidBranch(m.SourceBranch) {
+		} else if db.Version < 3 || !domain.ValidID(m.SourceConnectionID) || m.SourceRepositoryID < 1 || !domain.ValidBranch(m.SourceBranch) {
 			return errors.New("invalid move source identity")
 		}
 		if m.DestinationConnectionID == "" {
 			if m.DestinationRepositoryID != 0 || m.DestinationBranch != "" {
 				return errors.New("invalid move destination identity")
 			}
-		} else if !domain.IDPattern.MatchString(m.DestinationConnectionID) || m.DestinationRepositoryID < 1 || !domain.ValidBranch(m.DestinationBranch) {
+		} else if !domain.ValidID(m.DestinationConnectionID) || m.DestinationRepositoryID < 1 || !domain.ValidBranch(m.DestinationBranch) {
 			return errors.New("invalid move destination identity")
 		}
 		switch m.State {
@@ -243,7 +243,7 @@ func Validate(db *domain.Database) error {
 				return errors.New("invalid move state")
 			}
 		case "deleting_source":
-			if m.SourceConnectionID == "" || db.Version < 3 || !domain.CommitIDPattern.MatchString(m.PreparedDeletion) {
+			if m.SourceConnectionID == "" || db.Version < 3 || !domain.ValidCommitID(m.PreparedDeletion) {
 				return errors.New("invalid prepared deletion")
 			}
 		default:

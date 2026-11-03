@@ -76,7 +76,7 @@ func ValidateMetadata(m *WikiMetadata) error {
 
 // ValidateAccessKey checks a stored access key against the known sources.
 func ValidateAccessKey(id string, key AccessKey, sources map[string]Source) error {
-	if !IDPattern.MatchString(id) || key.ID != id || len(key.Hash) != 64 || len(key.Sources) == 0 || len(key.Sources) > 100 {
+	if !idPattern.MatchString(id) || key.ID != id || len(key.Hash) != 64 || len(key.Sources) == 0 || len(key.Sources) > 100 {
 		return errors.New("invalid stored access key")
 	}
 	if _, err := hex.DecodeString(key.Hash); err != nil {
@@ -99,7 +99,7 @@ func ValidatePeople(db Database) error {
 		return errors.New("users and teams require store version 15")
 	}
 	for id, team := range db.Teams {
-		if id != team.ID || !IDPattern.MatchString(id) || team.Revision < 1 || team.Revision > 1000000000 || len(team.Sources) == 0 || len(team.Sources) > 100 {
+		if id != team.ID || !idPattern.MatchString(id) || team.Revision < 1 || team.Revision > 1000000000 || len(team.Sources) == 0 || len(team.Sources) > 100 {
 			return errors.New("invalid team")
 		}
 		for i, source := range team.Sources {
@@ -117,7 +117,7 @@ func ValidatePeople(db Database) error {
 				return errors.New("invalid administrator setup")
 			}
 		}
-		if id != user.ID || !IDPattern.MatchString(id) || user.Revision < 1 || user.Revision > 1000000000 || user.AuthVersion < 1 || user.AuthVersion > 1000000000 || len(user.Teams) > 100 {
+		if id != user.ID || !idPattern.MatchString(id) || user.Revision < 1 || user.Revision > 1000000000 || user.AuthVersion < 1 || user.AuthVersion > 1000000000 || len(user.Teams) > 100 {
 			return errors.New("invalid user")
 		}
 		salt, e := hex.DecodeString(user.Salt)

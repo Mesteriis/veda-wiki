@@ -198,7 +198,7 @@ func (h handler) githubAPI(rw http.ResponseWriter, r *http.Request) {
 			ID     string `json:"id"`
 			Paused *bool  `json:"paused"`
 		}
-		if e := decodeBody(rw, r, &in); e != nil || !domain.IDPattern.MatchString(in.ID) {
+		if e := decodeBody(rw, r, &in); e != nil || !domain.ValidID(in.ID) {
 			apiError(rw, domain.ErrInvalid)
 			return
 		}

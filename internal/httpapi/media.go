@@ -25,7 +25,7 @@ func (h handler) media(rw http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/media/")
 	parts := strings.SplitN(name, "/", 2)
-	if len(parts) != 2 || !domain.IDPattern.MatchString(parts[0]) || !domain.SafeRelative(parts[1]) {
+	if len(parts) != 2 || !domain.ValidID(parts[0]) || !domain.SafeRelative(parts[1]) {
 		http.NotFound(rw, r)
 		return
 	}

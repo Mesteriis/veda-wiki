@@ -37,7 +37,7 @@ func CreateSuperuser(args []string) error {
 			return errors.New("username input failed")
 		}
 	}
-	if !domain.IDPattern.MatchString(*username) {
+	if !domain.ValidID(*username) {
 		return errors.New("invalid username")
 	}
 	fmt.Fprint(os.Stderr, "Password: ")

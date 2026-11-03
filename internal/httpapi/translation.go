@@ -34,7 +34,7 @@ func (h handler) translationNeeded(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sourceID := r.URL.Query().Get("source_id")
-	if sourceID != "" && !domain.IDPattern.MatchString(sourceID) {
+	if sourceID != "" && !domain.ValidID(sourceID) {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}

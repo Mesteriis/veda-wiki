@@ -57,7 +57,7 @@ func Run(ctx context.Context, args []string) (err error) {
 	if (*translationURL == "") != (*translationModel == "") || (*translationProtocol != "ollama" && *translationProtocol != "mlx" && *translationProtocol != "openai") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
 		return errors.New("invalid local translation configuration")
 	}
-	if *localImportSource != "" && (*readerSocket == "" || !domain.IDPattern.MatchString(*localImportSource)) {
+	if *localImportSource != "" && (*readerSocket == "" || !domain.ValidID(*localImportSource)) {
 		return errors.New("invalid local import source")
 	}
 	if (*tlsCert == "") != (*tlsKey == "") {
