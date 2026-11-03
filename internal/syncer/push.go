@@ -156,7 +156,7 @@ func (m *Manager) pushPending(ctx context.Context, c domain.GitHubConnection, he
 func bundleHasCredentialLikeText(files map[string][]byte) bool {
 	for name, content := range files {
 		ext := strings.ToLower(path.Ext(name))
-		if (ext == ".md" || ext == ".markdown") && domain.CredentialLike(string(content)) {
+		if (ext == ".md" || ext == ".markdown") && domain.CredentialLikeBytes(content) {
 			return true
 		}
 	}

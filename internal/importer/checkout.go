@@ -236,7 +236,7 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 				withhold("invalid_utf8")
 				return nil
 			}
-			if domain.CredentialLike(string(b)) {
+			if domain.CredentialLikeBytes(b) {
 				withhold("sensitive_pattern")
 				return nil
 			}

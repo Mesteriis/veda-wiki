@@ -27,6 +27,9 @@ func ValidCommitID(s string) bool { return commitIDPattern.MatchString(s) }
 // CredentialLike reports whether s contains credential-like content.
 func CredentialLike(s string) bool { return credentialPattern.MatchString(s) }
 
+// CredentialLikeBytes is CredentialLike for b without copying it to a string.
+func CredentialLikeBytes(b []byte) bool { return credentialPattern.Match(b) }
+
 // SafeArticlePath reports whether p is a clean relative Markdown path.
 func SafeArticlePath(p string) bool {
 	return p != "" && !strings.HasPrefix(p, "/") && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../") && (strings.EqualFold(path.Ext(p), ".md") || strings.EqualFold(path.Ext(p), ".markdown"))

@@ -44,6 +44,9 @@ func TestIdentifierCommitAndCredentialChecks(t *testing.T) {
 	if !CredentialLike("password=synthetic-fixture-only") || CredentialLike("# Plain text") {
 		t.Fatal("credential check changed")
 	}
+	if !CredentialLikeBytes([]byte("password=synthetic-fixture-only")) || CredentialLikeBytes([]byte("# Plain text")) {
+		t.Fatal("credential bytes check differs from the string check")
+	}
 	if _, err := HexKey(strings.Repeat("f", 64)); err != nil {
 		t.Fatal(err)
 	}

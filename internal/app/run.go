@@ -25,6 +25,10 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
+// serve is the serving loop Run ends in; tests replace it to drive the
+// writer-lock contract without real traffic.
+var serve = serveUntilStopped
+
 // Run starts the service with the server flags in args (the command line
 // without the program name) and returns when it stops. A SIGINT or SIGTERM
 // starts the bounded shutdown. If the drain times out, the writer lock stays
@@ -191,5 +195,5 @@ func Run(ctx context.Context, args []string) (err error) {
 	if socketListener != nil {
 		endpoints = append(endpoints, makeServer(socketListener, false, true))
 	}
-	return serveUntilStopped(ctx, stop, endpoints, &workers)
+	return serve(ctx, stop, endpoints, &workers)
 }

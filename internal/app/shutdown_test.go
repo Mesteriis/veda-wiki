@@ -148,7 +148,6 @@ func TestDrainTimeoutKeepsWriterLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lock.Close()
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
@@ -157,6 +156,8 @@ func TestDrainTimeoutKeepsWriterLock(t *testing.T) {
 	if lockable(t, path) || abandonedWriterLock != lock {
 		t.Fatal("writer lock released after drain timeout")
 	}
+	// The abandoned lock stays open for the process; close it once, here,
+	// through the clean-stop path.
 	releaseWriterLock(lock, nil)
 	if !lockable(t, path) {
 		t.Fatal("writer lock kept after a clean stop")

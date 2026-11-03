@@ -180,7 +180,7 @@ func (m *Manager) remoteBatch(ctx context.Context, c domain.GitHubConnection, he
 			return batch, &github.RemoteError{Code: "repository_limit"}
 		}
 		if markdown {
-			if !utf8.Valid(b) || domain.CredentialLike(string(b)) {
+			if !utf8.Valid(b) || domain.CredentialLikeBytes(b) {
 				batch.Withheld++
 				batch.Complete = false
 				continue
