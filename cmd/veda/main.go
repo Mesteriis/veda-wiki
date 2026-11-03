@@ -236,8 +236,7 @@ func render(p Page) (template.HTML, template.HTML, error) {
 		}
 		if h, ok := n.(*ast.Heading); ok {
 			if id, exists := h.AttributeString("id"); exists {
-				//lint:ignore SA1019 goldmark Node.Text semantics (soft breaks, nested nodes) are preserved until a reviewed migration
-				fmt.Fprintf(&toc, "<a class=level%d href=\"#%s\">%s</a>", h.Level, template.HTMLEscapeString(headingID(id)), template.HTMLEscapeString(string(h.Text(source))))
+				fmt.Fprintf(&toc, "<a class=level%d href=\"#%s\">%s</a>", h.Level, template.HTMLEscapeString(headingID(id)), template.HTMLEscapeString(string(nodeText(h, source))))
 			}
 		}
 		return ast.WalkContinue, nil
