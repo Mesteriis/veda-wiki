@@ -25,7 +25,7 @@ func TestBlockedTranslationQueueIsScopedAndWorkerContinues(t *testing.T) {
 	a.Conflicts = []ImportConflict{{}}
 	s.DB().Articles["alpha/docs/setup.md"] = a
 	s.Unlock()
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestTranslationQueueRespectsReaderScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestTranslationQueueRespectsReaderScope(t *testing.T) {
 	if call("reader", false).Code != 200 {
 		t.Fatal("reader cannot list queue")
 	}
-	if err = s.revokeAccessKey("agent"); err != nil {
+	if err = s.auth().RevokeAccessKey("agent"); err != nil {
 		t.Fatal(err)
 	}
 	if call(key, false).Code != 404 {
@@ -118,7 +118,7 @@ func TestTranslationQueueSourceFilterBeforePagination(t *testing.T) {
 			}
 		}
 	}
-	key, err := s.createAccessKey("scoped", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("scoped", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestDisplayArticleTranslationVisibilityAndStaleness(t *testing.T) {
 	if _, err = s.saveTranslation(translationRequest{SourceID: "alpha", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка"}, true); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

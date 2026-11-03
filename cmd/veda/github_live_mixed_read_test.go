@@ -120,7 +120,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 	if wikiPath == "" || programPath == "" {
 		t.Fatal("documentation absent from a source")
 	}
-	key, err := s.createAccessKey("fixture", []string{"wiki", "program"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("fixture", []string{"wiki", "program"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

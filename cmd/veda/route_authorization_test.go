@@ -12,7 +12,7 @@ import (
 func TestMutatingRoutesRefuseNonOwners(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "alpha", "private")
-	scoped, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	scoped, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

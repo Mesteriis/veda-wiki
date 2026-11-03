@@ -1,11 +1,15 @@
 package main
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/Mesteriis/veda-wiki/internal/auth"
+)
 
 // This session is separate from reader and GitHub administration sessions and
 // can manage only scoped reader keys. Article and GitHub APIs stay unavailable.
 func (w Wiki) browserAccessAPI(rw http.ResponseWriter, r *http.Request) {
-	if w.Public || w.Store == nil || !w.adminCookieValid(r, w.AccessSessions, accessSessionCookie) {
+	if w.Public || w.Store == nil || !w.adminCookieValid(r, w.AccessSessions, auth.AccessCookie) {
 		http.NotFound(rw, r)
 		return
 	}
@@ -31,7 +35,7 @@ func (w Wiki) browserAccessAPI(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Method == "POST" && !sameOrigin(r) {
+	if r.Method == "POST" && !auth.SameOrigin(r) {
 		jsonResponse(rw, http.StatusForbidden, map[string]string{"error": "origin rejected"})
 		return
 	}

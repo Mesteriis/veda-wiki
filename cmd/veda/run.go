@@ -17,6 +17,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 )
 
 func main() {
@@ -168,9 +170,9 @@ func main() {
 		workers.Add(1)
 		go func() { defer workers.Done(); worker.Run(ctx, *translationInterval) }()
 	}
-	sessions := &readerSessions{}
-	adminSessions := &readerSessions{}
-	accessSessions := &readerSessions{}
+	sessions := &auth.Sessions{}
+	adminSessions := &auth.Sessions{}
+	accessSessions := &auth.Sessions{}
 	workers.Add(1)
 	go func() { defer workers.Done(); manager.Run(ctx, *interval) }()
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {

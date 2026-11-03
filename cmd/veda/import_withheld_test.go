@@ -17,7 +17,7 @@ func TestImportWithheldCountIsScopedTransientAndOnlyUpdatedOnSuccess(t *testing.
 		t.Fatal(err)
 	}
 	source(t, s, "other", "private")
-	key, err := s.createAccessKey("limited", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("limited", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,11 +46,11 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}}
+	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader", Sessions: &auth.Sessions{}, AdminSessions: &auth.Sessions{}}
 	call := func(method, path, body, origin string, cookie *http.Cookie, public bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1234"
@@ -127,7 +128,7 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if call("GET", "/api/state?page=alpha%2Fguide.md", "", "", cookie, false).Code != 200 {
 		t.Fatal("valid scope not restored in fixture")
 	}
-	if err := s.revokeAccessKey("person"); err != nil {
+	if err := s.auth().RevokeAccessKey("person"); err != nil {
 		t.Fatal(err)
 	}
 	if call("GET", "/api/state?page=alpha%2Fguide.md", "", "", cookie, false).Code != 404 {
@@ -144,12 +145,17 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 
 func TestRevokedScopedSessionsDoNotExhaustSessionLimit(t *testing.T) {
 	s := testStore(t)
-	sessions := &readerSessions{active: map[[32]byte]time.Time{}, scoped: map[[32]byte][32]byte{}}
+	sessions := &auth.Sessions{}
+	// 100 unexpired sessions scoped to a key digest the store does not hold.
 	for i := 0; i < 100; i++ {
-		var cookieHash [32]byte
-		cookieHash[0] = byte(i)
-		sessions.active[cookieHash] = time.Now().Add(time.Hour)
-		sessions.scoped[cookieHash] = [32]byte{1}
+		_, err := sessions.Issue(auth.Login{
+			Now:          time.Now().Add(time.Hour - 8*time.Hour),
+			Authenticate: func() (auth.Grant, bool) { return auth.Grant{Scoped: true, Scope: [32]byte{1}}, true },
+			Current:      func(auth.Grant) bool { return true },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	w := Wiki{Store: s, ReaderToken: "reader", Sessions: sessions}
 	r := httptest.NewRequest("POST", "http://localhost:8080/api/session/login", strings.NewReader(`{"key":"reader"}`))
@@ -157,7 +163,7 @@ func TestRevokedScopedSessionsDoNotExhaustSessionLimit(t *testing.T) {
 	r.Header.Set("Origin", "http://localhost:8080")
 	out := httptest.NewRecorder()
 	w.ServeHTTP(out, r)
-	if out.Code != 200 || len(sessions.active) != 1 || len(sessions.scoped) != 0 {
+	if active, scoped := sessions.Count(); out.Code != 200 || active != 1 || scoped != 0 {
 		t.Fatal("revoked sessions occupied the session limit", out.Code)
 	}
 }

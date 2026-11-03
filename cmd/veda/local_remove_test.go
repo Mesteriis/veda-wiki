@@ -46,7 +46,7 @@ func TestRemoveLocalSourceGuardAndSQLite(t *testing.T) {
 	if _, err = s.removeLocalImportedSource("handbook", "wrong"); err != ErrConflict {
 		t.Fatal("stale generation accepted", err)
 	}
-	if _, err = s.saveTeam("fixture-team", []string{"handbook"}, nil); err != nil {
+	if _, err = s.auth().SaveTeam("fixture-team", []string{"handbook"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.removeLocalImportedSource("handbook", generation); err != ErrConflict {

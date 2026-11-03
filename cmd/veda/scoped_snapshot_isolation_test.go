@@ -18,7 +18,7 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	if _, err := s.put("beta", "secret.md", "# Other", 0); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	s.DB().Articles["alpha/guide.md"] = a
 	s.MarkObserved("alpha", observed)
 	s.Unlock()
-	view, valid, err := s.scopedView(key, time.Now())
+	view, valid, err := scopedView(s, key, time.Now())
 	if err != nil || !valid {
 		t.Fatal("snapshot failed", err)
 	}
@@ -84,7 +84,7 @@ func TestScopedSnapshotDuringConcurrentMutation(t *testing.T) {
 	if _, err := s.put("alpha", "guide.md", "first", 0); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestScopedSnapshotDuringConcurrentMutation(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 2000; i++ {
-		view, valid, err := s.scopedView(key, time.Now())
+		view, valid, err := scopedView(s, key, time.Now())
 		if err != nil || !valid {
 			wg.Wait()
 			t.Fatal("snapshot failed", err)

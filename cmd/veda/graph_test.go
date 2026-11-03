@@ -58,7 +58,7 @@ func TestGraphRespectsScopedReader(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	key, err := s.createAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

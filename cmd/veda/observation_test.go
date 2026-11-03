@@ -58,7 +58,7 @@ func TestReaderWarningsReportOnlyVisibleGitHubFailures(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Local copy"})
 	m := connectFixture(t, s, f, false)
 	source(t, s, "other", "private")
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestStateShowsWarningsOnlyForVisiblePrivateSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

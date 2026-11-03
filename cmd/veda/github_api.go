@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"net"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 // Browser administration is restricted to GitHub account and connection
 // management. The cookie cannot authorize the owner API or article writes.
 func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
-	if w.Public || w.Store == nil || !w.adminCookieValid(r, w.AdminSessions, adminSessionCookie) {
+	if w.Public || w.Store == nil || !w.adminCookieValid(r, w.AdminSessions, auth.AdminCookie) {
 		http.NotFound(rw, r)
 		return
 	}
@@ -25,7 +26,7 @@ func (w Wiki) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Method != "GET" && !sameOrigin(r) {
+	if r.Method != "GET" && !auth.SameOrigin(r) {
 		jsonResponse(rw, http.StatusForbidden, map[string]string{"error": "origin rejected"})
 		return
 	}

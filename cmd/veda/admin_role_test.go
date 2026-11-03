@@ -4,64 +4,26 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
-func TestAdministratorRoleInvalidatesOldSessionsAndSurvivesReopen(t *testing.T) {
-	s := testStore(t)
-	groups := []string{}
-	password := "synthetic password"
-	user, err := s.saveUser("admin", &groups, &password, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldVersion, ok := s.authenticateUser("admin", password)
-	if !ok || s.adminSessionValid("admin", oldVersion) {
-		t.Fatal("reader is administrator")
-	}
-	if err = s.setUserAdmin("admin", true, user.Revision); err != nil {
-		t.Fatal(err)
-	}
-	if s.adminSessionValid("admin", oldVersion) || s.userSessionValid("admin", oldVersion) {
-		t.Fatal("old session survived role change")
-	}
-	version, ok := s.authenticateUser("admin", password)
-	if !ok || !s.adminSessionValid("admin", version) || s.DB().Version != 20 {
-		t.Fatal("administrator not active")
-	}
-	reopened, err := openStore(s.Dir())
-	if err != nil || !reopened.adminSessionValid("admin", version) {
-		t.Fatal("role did not survive reopen", err)
-	}
-	if err = reopened.setUserAdmin("admin", false, user.Revision); err != ErrConflict {
-		t.Fatal("stale role update accepted", err)
-	}
-	if err = reopened.setUserAdmin("admin", false, user.Revision+1); err != nil {
-		t.Fatal(err)
-	}
-	if reopened.adminSessionValid("admin", version) {
-		t.Fatal("revoked role still active")
-	}
-}
 
 func TestAdministratorSessionRequiresRoleAndIsRevoked(t *testing.T) {
 	s := testStore(t)
 	groups := []string{}
 	password := "synthetic password"
-	user, err := s.saveUser("admin", &groups, &password, nil, nil)
+	user, err := s.auth().SaveUser("admin", &groups, &password, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "owner", Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client()), AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}}
+	w := Wiki{Store: s, Token: "owner", Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client()), AdminSessions: &auth.Sessions{}, AccessSessions: &auth.Sessions{}}
 	call := func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1234"
@@ -79,7 +41,7 @@ func TestAdministratorSessionRequiresRoleAndIsRevoked(t *testing.T) {
 	if r := call("POST", "/api/admin/session/login", body, nil); r.Code != 403 {
 		t.Fatal("reader gained admin", r.Code)
 	}
-	if err := s.setUserAdmin("admin", true, user.Revision); err != nil {
+	if err := s.auth().SetUserAdmin("admin", true, user.Revision); err != nil {
 		t.Fatal(err)
 	}
 	login := call("POST", "/api/admin/session/login", body, nil)
@@ -101,7 +63,7 @@ func TestAdministratorSessionRequiresRoleAndIsRevoked(t *testing.T) {
 	if r := call("POST", "/api/v1/articles", `{}`, cookie); r.Code != 403 {
 		t.Fatal("admin session gained API write", r.Code)
 	}
-	if err := s.setUserAdmin("admin", false, user.Revision+1); err != nil {
+	if err := s.auth().SetUserAdmin("admin", false, user.Revision+1); err != nil {
 		t.Fatal(err)
 	}
 	if r := call("GET", "/api/admin/github/accounts", "", cookie); r.Code != 404 {
@@ -114,7 +76,7 @@ func TestAdministratorSessionRequiresRoleAndIsRevoked(t *testing.T) {
 
 func TestAdministratorBootstrapIsOneTimeAndLocalRootOnly(t *testing.T) {
 	s := testStore(t)
-	w := Wiki{Store: s, ReaderLocal: true, LocalImportSource: "infra", AdminSessions: &readerSessions{}}
+	w := Wiki{Store: s, ReaderLocal: true, LocalImportSource: "infra", AdminSessions: &auth.Sessions{}}
 	provision := func(root bool, origin string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "http://localhost/api/local/bootstrap-admin", strings.NewReader(`{"id":"operator"}`))
 		if root {
@@ -144,7 +106,7 @@ func TestAdministratorBootstrapIsOneTimeAndLocalRootOnly(t *testing.T) {
 	if err != nil || strings.Contains(string(raw), response.Token) {
 		t.Fatal("setup token persisted in plaintext", err)
 	}
-	if _, ok := s.authenticateUser("operator", response.Token); ok {
+	if _, ok := s.auth().AuthenticateUser("operator", response.Token); ok {
 		t.Fatal("setup token accepted as password")
 	}
 	oldToken := response.Token
@@ -152,34 +114,34 @@ func TestAdministratorBootstrapIsOneTimeAndLocalRootOnly(t *testing.T) {
 	if rotated.Code != 201 || json.Unmarshal(rotated.Body.Bytes(), &response) != nil || response.Token == oldToken {
 		t.Fatal("pending setup could not be reissued")
 	}
-	if err := s.finishAdminSetup("operator", oldToken, "synthetic long password"); err == nil {
+	if err := s.auth().FinishAdminSetup("operator", oldToken, "synthetic long password"); err == nil {
 		t.Fatal("old setup token accepted")
 	}
-	if err := s.finishAdminSetup("operator", "wrong synthetic token", "synthetic long password"); err == nil {
+	if err := s.auth().FinishAdminSetup("operator", "wrong synthetic token", "synthetic long password"); err == nil {
 		t.Fatal("wrong token accepted")
 	}
-	if err := s.finishAdminSetup("operator", response.Token, "synthetic long password"); err != nil {
+	if err := s.auth().FinishAdminSetup("operator", response.Token, "synthetic long password"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.finishAdminSetup("operator", response.Token, "different long password"); err == nil {
+	if err := s.auth().FinishAdminSetup("operator", response.Token, "different long password"); err == nil {
 		t.Fatal("reused token accepted")
 	}
 	if provision(true, "").Code == 201 {
 		t.Fatal("configured administrator replaced")
 	}
-	version, ok := s.authenticateUser("operator", "synthetic long password")
-	if !ok || !s.adminSessionValid("operator", version) {
+	version, ok := s.auth().AuthenticateUser("operator", "synthetic long password")
+	if !ok || !s.auth().AdminSessionValid("operator", version) {
 		t.Fatal("created administrator cannot login")
 	}
 }
 
 func TestAdminSetupRequiresSecureSameOriginAndExpires(t *testing.T) {
 	s := testStore(t)
-	token, err := s.bootstrapAdmin("operator")
+	token, err := s.auth().BootstrapAdmin("operator")
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, AdminSessions: &readerSessions{}}
+	w := Wiki{Store: s, AdminSessions: &auth.Sessions{}}
 	body, _ := json.Marshal(map[string]string{"username": "operator", "setup_token": token, "password": "synthetic password"})
 	call := func(origin, remote string, public bool) int {
 		r := httptest.NewRequest("POST", "http://localhost:8080/api/admin/session/setup", bytes.NewReader(body))
@@ -202,114 +164,24 @@ func TestAdminSetupRequiresSecureSameOriginAndExpires(t *testing.T) {
 	}
 }
 
-func TestAdminSetupExpiredTokenRejected(t *testing.T) {
-	s := testStore(t)
-	token, err := s.bootstrapAdmin("operator")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.Lock()
-	u := s.DB().Users["operator"]
-	u.SetupExpires = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
-	s.DB().Users["operator"] = u
-	s.Unlock()
-	if err := s.finishAdminSetup("operator", token, "synthetic long password"); err == nil {
-		t.Fatal("expired setup token accepted")
-	}
-}
 
-func TestAdminBootstrapSurvivesSQLiteRestart(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "fixture", "private")
-	if err := migrateSQLite(s.Dir()); err != nil {
-		t.Fatal(err)
-	}
-	s, err := openStore(s.Dir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	token, err := s.bootstrapAdmin("operator")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err = openStore(s.Dir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.finishAdminSetup("operator", token, "synthetic password"); err != nil {
-		t.Fatal(err)
-	}
-	s, err = openStore(s.Dir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	v, ok := s.authenticateUser("operator", "synthetic password")
-	if !ok || !s.adminSessionValid("operator", v) {
-		t.Fatal("admin login not restored")
-	}
-}
 
-func TestOlderBinaryRefusesAdministratorStore(t *testing.T) {
-	old := os.Getenv("VEDA_PRE_ADMIN_BINARY")
-	if old == "" {
-		t.Skip("pre-administrator binary not provided")
-	}
-	for _, sqlite := range []bool{false, true} {
-		t.Run(map[bool]string{false: "json", true: "sqlite"}[sqlite], func(t *testing.T) {
-			s := testStore(t)
-			source(t, s, "fixture", "private")
-			if sqlite {
-				if err := migrateSQLite(s.Dir()); err != nil {
-					t.Fatal(err)
-				}
-				var err error
-				s, err = openStore(s.Dir())
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			if _, err := s.bootstrapAdmin("operator"); err != nil {
-				t.Fatal(err)
-			}
-			name := "state.json"
-			if sqlite {
-				name = "state.sqlite"
-			}
-			file := filepath.Join(s.Dir(), name)
-			before, err := os.ReadFile(file)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-			var exit *exec.ExitError
-			if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-				t.Fatal("old binary did not refuse administrator store")
-			}
-			after, err := os.ReadFile(file)
-			if err != nil || !bytes.Equal(before, after) {
-				t.Fatal("old binary changed store")
-			}
-		})
-	}
-}
 
 func TestNamedAdministratorReaderSessionGrantsAdminWithoutSecondLogin(t *testing.T) {
 	s := testStore(t)
 	groups := []string{}
 	password := "synthetic password"
-	admin, err := s.saveUser("administrator", &groups, &password, nil, nil)
+	admin, err := s.auth().SaveUser("administrator", &groups, &password, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.setUserAdmin("administrator", true, admin.Revision); err != nil {
+	if err = s.auth().SetUserAdmin("administrator", true, admin.Revision); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.saveUser("reader", &groups, &password, nil, nil); err != nil {
+	if _, err = s.auth().SaveUser("reader", &groups, &password, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader-key", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client())}
+	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader-key", Sessions: &auth.Sessions{}, AdminSessions: &auth.Sessions{}, AccessSessions: &auth.Sessions{}, Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client())}
 	call := func(method, path, body, origin string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1"
@@ -367,14 +239,14 @@ func TestReaderLogoutRevokesIndependentAdminCookies(t *testing.T) {
 	s := testStore(t)
 	groups := []string{}
 	password := "synthetic password"
-	u, err := s.saveUser("admin", &groups, &password, nil, nil)
+	u, err := s.auth().SaveUser("admin", &groups, &password, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.setUserAdmin("admin", true, u.Revision); err != nil {
+	if err = s.auth().SetUserAdmin("admin", true, u.Revision); err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "owner", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client())}
+	w := Wiki{Store: s, Token: "owner", Sessions: &auth.Sessions{}, AdminSessions: &auth.Sessions{}, AccessSessions: &auth.Sessions{}, Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client())}
 	call := func(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1"

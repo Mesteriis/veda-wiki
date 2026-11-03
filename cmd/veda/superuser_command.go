@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"golang.org/x/term"
+
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 )
 
 func createSuperuserCommand(args []string) error {
@@ -50,7 +52,7 @@ func createSuperuserCommand(args []string) error {
 	if !bytes.Equal(password, confirm) {
 		return errors.New("passwords do not match")
 	}
-	if !passwordValid(string(password)) {
+	if !auth.PasswordValid(string(password)) {
 		return errors.New("password must contain 10–128 characters")
 	}
 	if err := submitSuperuser(*socket, *username, string(password)); err != nil {

@@ -117,7 +117,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			return
 		}
 		if r.URL.Path == "/api/v1/access-keys" && r.Method == "GET" {
-			jsonResponse(rw, 200, w.Store.listAccessKeys())
+			jsonResponse(rw, 200, w.Store.auth().ListAccessKeys())
 			return
 		}
 		if r.Method != "POST" {
@@ -132,7 +132,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 				apiError(rw, ErrInvalid)
 				return
 			}
-			if err := w.Store.revokeAccessKey(input.ID); err != nil {
+			if err := w.Store.auth().RevokeAccessKey(input.ID); err != nil {
 				apiError(rw, err)
 				return
 			}
@@ -155,7 +155,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			return
 		}
 		if input.ExpectedETag != nil {
-			updated, err := w.Store.updateAccessKey(input.ID, input.Sources, expiry, *input.ExpectedETag)
+			updated, err := w.Store.auth().UpdateAccessKey(input.ID, input.Sources, expiry, *input.ExpectedETag)
 			if err != nil {
 				apiError(rw, err)
 				return
@@ -163,7 +163,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			jsonResponse(rw, http.StatusOK, updated)
 			return
 		}
-		key, err := w.Store.createAccessKey(input.ID, input.Sources, expiry)
+		key, err := w.Store.auth().CreateAccessKey(input.ID, input.Sources, expiry)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -178,9 +178,9 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 		}
 		if r.Method == "GET" {
 			if r.URL.Path == "/api/v1/users" {
-				jsonResponse(rw, http.StatusOK, w.Store.userViews())
+				jsonResponse(rw, http.StatusOK, w.Store.auth().UserViews())
 			} else {
-				jsonResponse(rw, http.StatusOK, w.Store.teamViews())
+				jsonResponse(rw, http.StatusOK, w.Store.auth().TeamViews())
 			}
 			return
 		}
@@ -198,7 +198,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 				apiError(rw, ErrInvalid)
 				return
 			}
-			team, err := w.Store.saveTeam(in.ID, in.Sources, in.Expected)
+			team, err := w.Store.auth().SaveTeam(in.ID, in.Sources, in.Expected)
 			if err != nil {
 				apiError(rw, err)
 				return
@@ -221,7 +221,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			apiError(rw, ErrInvalid)
 			return
 		}
-		user, err := w.Store.saveUser(in.ID, in.Teams, in.Password, in.Disabled, in.Expected)
+		user, err := w.Store.auth().SaveUser(in.ID, in.Teams, in.Password, in.Disabled, in.Expected)
 		if err != nil {
 			apiError(rw, err)
 			return

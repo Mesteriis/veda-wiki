@@ -98,7 +98,7 @@ func TestTransferPlanScopedReadersNeedBothSources(t *testing.T) {
 	if _, err := s.put("from", "a.md", "# A", 0); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("scoped-plan", []string{"from", "to"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("scoped-plan", []string{"from", "to"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestTransferPlanScopedReadersNeedBothSources(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("read-only plan changed state")
 	}
-	if err = s.revokeAccessKey("scoped-plan"); err != nil {
+	if err = s.auth().RevokeAccessKey("scoped-plan"); err != nil {
 		t.Fatal(err)
 	}
 	if got := call("/api/v1/articles/transfer-plan", key, plan); got.Code == 200 {
@@ -195,7 +195,7 @@ func TestTransferPlanIncludesBothAuthorizedSourceStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("plan-status", []string{"from", "to"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("plan-status", []string{"from", "to"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +14,7 @@ func TestBrowserAccessAdministrationBoundaries(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "allowed", "private")
 	source(t, s, "other", "private")
-	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}}
+	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader", Sessions: &auth.Sessions{}, AdminSessions: &auth.Sessions{}, AccessSessions: &auth.Sessions{}}
 	call := func(method, path, body, origin string, cookie *http.Cookie, public bool, remote string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = remote
@@ -45,7 +46,7 @@ func TestBrowserAccessAdministrationBoundaries(t *testing.T) {
 		t.Fatal("login failed", login.Code)
 	}
 	cookie := login.Result().Cookies()[0]
-	if cookie.Name != accessSessionCookie || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+	if cookie.Name != auth.AccessCookie || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
 		t.Fatal("invalid cookie")
 	}
 	githubLogin := call("POST", "/api/admin/session/login", `{"key":"owner"}`, origin, nil, false, local)
@@ -81,14 +82,14 @@ func TestBrowserAccessAdministrationBoundaries(t *testing.T) {
 	if created.Code != 201 || json.Unmarshal(created.Body.Bytes(), &result) != nil || len(result.Key) != 64 {
 		t.Fatal("key creation failed", created.Code)
 	}
-	if got := s.accessScope(result.Key, time.Now()); len(got) != 1 || got[0] != "allowed" {
+	if got := s.auth().AccessScope(result.Key, time.Now()); len(got) != 1 || got[0] != "allowed" {
 		t.Fatal("incorrect key scope")
 	}
 	listed := call("GET", "/api/access/keys", "", "", cookie, false, local)
 	if listed.Code != 200 || strings.Contains(listed.Body.String(), result.Key) {
 		t.Fatal("key leaked in list")
 	}
-	var keys []AccessKeyView
+	var keys []auth.AccessKeyView
 	if json.Unmarshal(listed.Body.Bytes(), &keys) != nil || len(keys) != 1 || keys[0].ETag == "" {
 		t.Fatal("missing key version")
 	}
@@ -99,7 +100,7 @@ func TestBrowserAccessAdministrationBoundaries(t *testing.T) {
 	if r := call("POST", "/api/access/keys", update, origin, cookie, false, local); r.Code != 200 {
 		t.Fatal("access update failed", r.Code)
 	}
-	if got := s.accessScope(result.Key, time.Now()); len(got) != 1 || got[0] != "other" {
+	if got := s.auth().AccessScope(result.Key, time.Now()); len(got) != 1 || got[0] != "other" {
 		t.Fatal("scope update not enforced")
 	}
 	if r := call("POST", "/api/access/keys", update, origin, cookie, false, local); r.Code != 409 {
@@ -120,7 +121,7 @@ func TestBrowserAccessAdministrationBoundaries(t *testing.T) {
 	if r := call("POST", "/api/access/keys/revoke", `{"id":"test-agent"}`, origin, cookie, true, local); r.Code != 404 {
 		t.Fatal("public administration", r.Code)
 	}
-	if r := call("POST", "/api/access/keys/revoke", `{"id":"test-agent"}`, origin, cookie, false, local); r.Code != 200 || s.accessScope(result.Key, time.Now()) != nil {
+	if r := call("POST", "/api/access/keys/revoke", `{"id":"test-agent"}`, origin, cookie, false, local); r.Code != 200 || s.auth().AccessScope(result.Key, time.Now()) != nil {
 		t.Fatal("revoke failed", r.Code)
 	}
 	if r := call("POST", "/api/access/session/logout", "", origin, cookie, false, local); r.Code != 200 {

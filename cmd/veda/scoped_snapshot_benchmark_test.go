@@ -17,7 +17,7 @@ func BenchmarkScopedSnapshotLargeDocuments(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		view, valid, err := s.scopedViewLocked([]string{"docs"})
+		view, valid, err := s.ScopedWhere(func(*Database) []string { return []string{"docs"} })
 		if err != nil || !valid || len(view.DB().Articles) != 200 {
 			b.Fatal("snapshot failed")
 		}

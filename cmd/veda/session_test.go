@@ -1,12 +1,11 @@
 package main
 
 import (
-	"crypto/sha256"
 	"crypto/tls"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ func TestReaderSessionBoundaries(t *testing.T) {
 	if _, e := store.put("private", "guide.md", "# private fixture", 0); e != nil {
 		t.Fatal(e)
 	}
-	sessions := &readerSessions{}
+	sessions := &auth.Sessions{}
 	w := Wiki{Store: store, Token: "owner", ReaderToken: "read-only", Sessions: sessions, AllowedHosts: []string{"localhost"}}
 	request := func(method, path, body, origin string, cookie *http.Cookie, public bool, remote, host string, tlsOn bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(body))
@@ -89,7 +88,7 @@ func TestReaderSessionBoundaries(t *testing.T) {
 func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	store := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
-	w := Wiki{Store: store, Token: "owner", ReaderToken: "reader", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, Sync: newSyncManager(store, f.Client())}
+	w := Wiki{Store: store, Token: "owner", ReaderToken: "reader", Sessions: &auth.Sessions{}, AdminSessions: &auth.Sessions{}, Sync: newSyncManager(store, f.Client())}
 	request := func(method, path, body, origin string, cookie *http.Cookie, public bool, remote string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.Host, r.RemoteAddr = "localhost:8080", remote
@@ -125,7 +124,7 @@ func TestAdminGitHubSessionBoundaries(t *testing.T) {
 		t.Fatal("admin login failed", r.Code)
 	}
 	cookie := r.Result().Cookies()[0]
-	if cookie.Name != adminSessionCookie || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+	if cookie.Name != auth.AdminCookie || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
 		t.Fatal("insecure cookie")
 	}
 	readerLogin := request("POST", "/api/session/login", `{"key":"reader"}`, "http://localhost:8080", nil, false, "127.0.0.1:1")
@@ -212,17 +211,23 @@ func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	}
 }
 func TestReaderSessionExpiryAndRateLimit(t *testing.T) {
-	token := strings.Repeat("a", 64)
-	expired := sha256.Sum256([]byte(token))
-	expirySessions := &readerSessions{active: map[[32]byte]time.Time{expired: time.Now().Add(-time.Second)}}
+	expirySessions := &auth.Sessions{}
+	// A full session that expired one second ago.
+	token, err := expirySessions.Issue(auth.Login{
+		Now:          time.Now().Add(-time.Second - 8*time.Hour),
+		Authenticate: func() (auth.Grant, bool) { return auth.Grant{}, true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	req := httptest.NewRequest("GET", "http://localhost/", nil)
 	req.Host = "localhost"
 	req.RemoteAddr = "127.0.0.1:1"
-	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
-	if expirySessions.valid(req) {
+	req.AddCookie(&http.Cookie{Name: auth.ReaderCookie, Value: token})
+	if expirySessions.Valid(req) {
 		t.Fatal("expired session accepted")
 	}
-	s := &readerSessions{active: map[[32]byte]time.Time{}}
+	s := &auth.Sessions{}
 	key := strings.Repeat("b", 64)
 	w := Wiki{ReaderToken: key, Sessions: s}
 	login := func(body string) int {
@@ -248,24 +253,5 @@ func TestReaderSessionExpiryAndRateLimit(t *testing.T) {
 	}
 	if code := login(`{"key":"` + key + `"}`); code != 200 {
 		t.Fatal("failed attempts locked out a valid key", code)
-	}
-}
-
-func TestLoginAttemptTableIsBounded(t *testing.T) {
-	s := &readerSessions{}
-	now := time.Now()
-	for i := 0; i < attemptIdentityMax; i++ {
-		if !s.allowAttempt("user", strconv.Itoa(i), now) {
-			t.Fatal("identity rejected before the table was full", i)
-		}
-	}
-	if s.allowAttempt("user", "new", now) {
-		t.Fatal("full table accepted a new identity")
-	}
-	if !s.allowAttempt("user", "0", now) {
-		t.Fatal("full table locked out a known identity below its limit")
-	}
-	if !s.allowAttempt("user", "new", now.Add(2*time.Minute)) || len(s.attempts) != 1 {
-		t.Fatal("expired identities were not pruned", len(s.attempts))
 	}
 }

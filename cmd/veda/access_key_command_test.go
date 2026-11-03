@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,7 +38,7 @@ func TestAccessKeyCommandCreatesPrivateFileAndRevokes(t *testing.T) {
 	if info, err := os.Stat(keyPath); err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal("incorrect key file permissions")
 	}
-	if got := s.accessScope(string(key), time.Now()); len(got) != 1 || got[0] != "alpha" {
+	if got := s.auth().AccessScope(string(key), time.Now()); len(got) != 1 || got[0] != "alpha" {
 		t.Fatal("wrong scope")
 	}
 	if err := accessKeyCommand(args, &output); err == nil {
@@ -51,7 +52,7 @@ func TestAccessKeyCommandCreatesPrivateFileAndRevokes(t *testing.T) {
 	if err := accessKeyCommand(append([]string{"list"}, common...), &output); err != nil {
 		t.Fatal(err)
 	}
-	var metadata []AccessKeyView
+	var metadata []auth.AccessKeyView
 	if json.Unmarshal(output.Bytes(), &metadata) != nil || len(metadata) != 1 || strings.Contains(output.String(), string(key)) {
 		t.Fatal("invalid or sensitive list")
 	}
@@ -59,7 +60,7 @@ func TestAccessKeyCommandCreatesPrivateFileAndRevokes(t *testing.T) {
 	if err := accessKeyCommand(append([]string{"revoke", "--id", "agent"}, common...), &output); err != nil {
 		t.Fatal(err)
 	}
-	if s.accessScope(string(key), time.Now()) != nil {
+	if s.auth().AccessScope(string(key), time.Now()) != nil {
 		t.Fatal("key not revoked")
 	}
 }

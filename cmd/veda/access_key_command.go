@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 )
 
 // accessKeyCommand writes new key material only to an exclusively created
@@ -63,7 +65,7 @@ func accessKeyCommand(args []string, output io.Writer) error {
 	}
 	switch action {
 	case "list":
-		var result []AccessKeyView
+		var result []auth.AccessKeyView
 		if err = client.request("GET", "/api/v1/access-keys", nil, &result); err != nil {
 			return err
 		}
@@ -114,7 +116,7 @@ func accessKeyCommand(args []string, output io.Writer) error {
 		if err != nil || closeErr != nil {
 			return errors.New("key created but directory sync failed; verify file durability or revoke the key")
 		}
-		return json.NewEncoder(output).Encode(AccessKeyView{ID: result.ID, Sources: result.Sources, Expires: result.Expires})
+		return json.NewEncoder(output).Encode(auth.AccessKeyView{ID: result.ID, Sources: result.Sources, Expires: result.Expires})
 	}
 	return ErrInvalid
 }

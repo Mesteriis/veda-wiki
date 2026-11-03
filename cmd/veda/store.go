@@ -8,12 +8,16 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
 // Store adds the operations not yet moved into their owning packages to the
 // shared store. Each restructure task moves its area's methods out.
 type Store struct{ *store.Store }
+
+// auth returns the credential service for this store.
+func (s *Store) auth() auth.Service { return auth.Service{Store: s.Store} }
 
 func openStore(dir string) (*Store, error) {
 	st, err := store.Open(dir)

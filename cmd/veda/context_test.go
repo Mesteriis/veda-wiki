@@ -31,7 +31,7 @@ func TestAgentContextScopesAndReportsStatus(t *testing.T) {
 	a.Conflicts = []ImportConflict{{}}
 	s.DB().Articles["alpha/infra/AGENTS.md"] = a
 	s.Unlock()
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
 			t.Fatalf("incorrect per-page write blocker visibility for %s", tc.path)
 		}
 	}
-	key, err := s.createAccessKey("reader", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestScopedContextReportsConnectionFailure(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Context"})
 	m := connectFixture(t, s, f, false)
 	source(t, s, "other", "private")
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestContextReportsUnconfirmedWritesInScopedSnapshot(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	source(t, s, "other", "private")
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Instructions"})
 	connectFixture(t, s, f, false)
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

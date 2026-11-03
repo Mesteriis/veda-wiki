@@ -2,18 +2,16 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
@@ -24,13 +22,13 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	team, err := s.saveTeam("ops", []string{"alpha"}, nil)
+	team, err := s.auth().SaveTeam("ops", []string{"alpha"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	groups := []string{"ops"}
 	password := "fixture passphrase 1"
-	user, err := s.saveUser("person", &groups, &password, nil, nil)
+	user, err := s.auth().SaveUser("person", &groups, &password, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,11 +36,11 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 	if err != nil || strings.Contains(string(raw), password) {
 		t.Fatal("plaintext password stored", err)
 	}
-	views, _ := json.Marshal(s.userViews())
+	views, _ := json.Marshal(s.auth().UserViews())
 	if strings.Contains(string(views), "password") || strings.Contains(string(views), "salt") {
 		t.Fatal("password metadata exposed")
 	}
-	w := Wiki{Store: s, Token: "test-owner", Sessions: &readerSessions{}, AccessSessions: &readerSessions{}}
+	w := Wiki{Store: s, Token: "test-owner", Sessions: &auth.Sessions{}, AccessSessions: &auth.Sessions{}}
 	call := func(method, path, body, origin, bearer string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1234"
@@ -81,13 +79,13 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 	if r := call("POST", "/api/v1/articles", `{}`, origin, "", cookie); r.Code != 403 {
 		t.Fatal("user wrote article", r.Code)
 	}
-	if _, err = s.saveTeam("ops", []string{"beta"}, &team.Revision); err != nil {
+	if _, err = s.auth().SaveTeam("ops", []string{"beta"}, &team.Revision); err != nil {
 		t.Fatal(err)
 	}
 	if read("alpha") != 404 || read("beta") != 200 {
 		t.Fatal("team update did not take effect in existing session")
 	}
-	if _, err = s.saveTeam("ops", []string{"alpha"}, &team.Revision); err != ErrConflict {
+	if _, err = s.auth().SaveTeam("ops", []string{"alpha"}, &team.Revision); err != ErrConflict {
 		t.Fatal("stale team update accepted", err)
 	}
 	if err = migrateSQLite(s.Dir()); err != nil {
@@ -102,7 +100,7 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 		t.Fatal("SQLite restart lost user or team")
 	}
 	disabled := true
-	user, err = s.saveUser("person", nil, nil, &disabled, &user.Revision)
+	user, err = s.auth().SaveUser("person", nil, nil, &disabled, &user.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +108,7 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 		t.Fatal("disabled user retained access")
 	}
 	disabled = false
-	user, err = s.saveUser("person", nil, nil, &disabled, &user.Revision)
+	user, err = s.auth().SaveUser("person", nil, nil, &disabled, &user.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +121,7 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 	}
 	cookie = login.Result().Cookies()[0]
 	changed := "different fixture passphrase"
-	if _, err = s.saveUser("person", nil, &changed, nil, &user.Revision); err != nil {
+	if _, err = s.auth().SaveUser("person", nil, &changed, nil, &user.Revision); err != nil {
 		t.Fatal(err)
 	}
 	if read("beta") != 404 {
@@ -134,58 +132,11 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 	}
 }
 
-func TestOldBinaryRejectsHumanStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_PEOPLE_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	for _, sqlite := range []bool{false, true} {
-		t.Run(fmt.Sprint("sqlite=", sqlite), func(t *testing.T) {
-			s := testStore(t)
-			source(t, s, "alpha", "private")
-			if sqlite {
-				if err := migrateSQLite(s.Dir()); err != nil {
-					t.Fatal(err)
-				}
-				var err error
-				s, err = openStore(s.Dir())
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			if _, err := s.saveTeam("ops", []string{"alpha"}, nil); err != nil {
-				t.Fatal(err)
-			}
-			groups, password := []string{"ops"}, "synthetic test password"
-			if _, err := s.saveUser("person", &groups, &password, nil, nil); err != nil {
-				t.Fatal(err)
-			}
-			file := filepath.Join(s.Dir(), "state.json")
-			if sqlite {
-				file = filepath.Join(s.Dir(), sqliteFile)
-			}
-			before, err := os.ReadFile(file)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-			if err == nil || ctx.Err() != nil || (!strings.Contains(string(out), "unsupported store") && !strings.Contains(string(out), "unknown SQLite record category")) {
-				t.Fatal("old binary accepted human store")
-			}
-			after, err := os.ReadFile(file)
-			if err != nil || sha256.Sum256(before) != sha256.Sum256(after) {
-				t.Fatal("old binary changed data", err)
-			}
-		})
-	}
-}
 
 func TestHumanAdministrationBoundaries(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "private", "private")
-	w := Wiki{Store: s, Token: "test-owner", Sessions: &readerSessions{}, AccessSessions: &readerSessions{}}
+	w := Wiki{Store: s, Token: "test-owner", Sessions: &auth.Sessions{}, AccessSessions: &auth.Sessions{}}
 	create := `{"id":"ops","sources":["private"]}`
 	if r := request(w, "POST", "/api/v1/teams", create, false); r.Code != 403 {
 		t.Fatal("anonymous team write", r.Code)
@@ -207,15 +158,15 @@ func TestHumanAdministrationBoundaries(t *testing.T) {
 func TestHumanPasswordChangeRevokesAllSessions(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "alpha", "private")
-	if _, err := s.saveTeam("ops", []string{"alpha"}, nil); err != nil {
+	if _, err := s.auth().SaveTeam("ops", []string{"alpha"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	teams := []string{"ops"}
 	password := "synthetic old password"
-	if _, err := s.saveUser("person", &teams, &password, nil, nil); err != nil {
+	if _, err := s.auth().SaveUser("person", &teams, &password, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "test-owner", Sessions: &readerSessions{}}
+	w := Wiki{Store: s, Token: "test-owner", Sessions: &auth.Sessions{}}
 	call := func(method, path, body, origin string, cookie *http.Cookie, public bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1234"
@@ -271,15 +222,15 @@ func TestHumanPasswordChangeRevokesAllSessions(t *testing.T) {
 func TestHumanLoginUsesGenericFailuresAndRateLimit(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "alpha", "private")
-	if _, err := s.saveTeam("ops", []string{"alpha"}, nil); err != nil {
+	if _, err := s.auth().SaveTeam("ops", []string{"alpha"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	teams := []string{"ops"}
 	password := "синтетический пароль длинный"
-	if _, err := s.saveUser("person", &teams, &password, nil, nil); err != nil {
+	if _, err := s.auth().SaveUser("person", &teams, &password, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Sessions: &readerSessions{}}
+	w := Wiki{Store: s, Sessions: &auth.Sessions{}}
 	login := func(id, secret string) *httptest.ResponseRecorder {
 		data, _ := json.Marshal(map[string]string{"username": id, "password": secret})
 		r := httptest.NewRequest("POST", "http://localhost:8080/api/session/login", strings.NewReader(string(data)))
@@ -326,13 +277,11 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 	if err != nil || s.DB().Version != 15 {
 		t.Fatal("invalid restored user store", err)
 	}
-	version, ok := s.authenticateUser("person", "synthetic fixture password")
+	version, ok := s.auth().AuthenticateUser("person", "synthetic fixture password")
 	if !ok {
 		t.Fatal("restored user login failed")
 	}
-	s.RLock()
-	scope := s.userScopeLocked("person", version)
-	s.RUnlock()
+	scope := s.auth().UserScope("person", version)
 	if len(scope) != 1 || scope[0] != "from" {
 		t.Fatal("restored team scope incorrect")
 	}
@@ -353,27 +302,4 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 	}
 }
 
-// The browser access-management path cannot remove the last active
-// administrator. Owner provisioning (setUserAdmin) remains the recovery path.
-func TestLastActiveAdministratorCannotBeDisabled(t *testing.T) {
-	s := testStore(t)
-	password := "синтетический пароль администратора"
-	if err := s.createSuperuser("first-admin", password); err != nil {
-		t.Fatal(err)
-	}
-	disabled := true
-	if _, err := s.saveUser("first-admin", nil, nil, &disabled, intPointer(1)); err != ErrConflict {
-		t.Fatal("last active administrator disabled", err)
-	}
-	if err := s.createSuperuser("second-admin", password); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.saveUser("first-admin", nil, nil, &disabled, intPointer(1)); err != nil {
-		t.Fatal("administrator with an active peer could not be disabled", err)
-	}
-	if _, err := s.saveUser("second-admin", nil, nil, &disabled, intPointer(1)); err != ErrConflict {
-		t.Fatal("remaining administrator disabled", err)
-	}
-}
 
-func intPointer(v int) *int { return &v }

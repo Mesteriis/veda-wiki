@@ -29,11 +29,11 @@ func TestAgentRoutesVPSRequestAcrossSources(t *testing.T) {
 			}
 		}
 	}
-	both, err := s.createAccessKey("both", []string{"vps", "homelab"}, time.Now().Add(time.Hour))
+	both, err := s.auth().CreateAccessKey("both", []string{"vps", "homelab"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	restricted, err := s.createAccessKey("vps-only", []string{"vps"}, time.Now().Add(time.Hour))
+	restricted, err := s.auth().CreateAccessKey("vps-only", []string{"vps"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

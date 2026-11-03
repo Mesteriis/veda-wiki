@@ -297,3 +297,13 @@ func TestHostGuardAndUnknownFields(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+// scopedView returns the access key's snapshot with the remaining cmd store
+// methods.
+func scopedView(s *Store, token string, now time.Time) (*Store, bool, error) {
+	view, valid, err := s.auth().ScopedView(token, now)
+	if view == nil {
+		return nil, valid, err
+	}
+	return &Store{view}, valid, err
+}

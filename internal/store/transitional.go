@@ -4,7 +4,6 @@
 package store
 
 import (
-	"sync"
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
@@ -39,9 +38,6 @@ func (s *Store) CommitConnections(db domain.Database) error {
 
 // InvalidLocked is Invalid for a caller that already holds the lock.
 func (s *Store) InvalidLocked() bool { return s.invalid }
-
-// ScopedLocked is Scoped for a caller that already holds the read lock.
-func (s *Store) ScopedLocked(sources []string) *Store { return s.scopedLocked(sources) }
 
 // Detached wraps an uncommitted candidate state for code that runs store
 // methods over it. It never commits.
@@ -79,6 +75,3 @@ func (s *Store) ForgetImportObservation(sourceID string) {
 	delete(s.observed, sourceID)
 	delete(s.withheld, sourceID)
 }
-
-// PasswordMutex serializes password hashing; Task 6 moves it to auth.
-func (s *Store) PasswordMutex() *sync.Mutex { return &s.passwordMu }

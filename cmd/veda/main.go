@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/render"
 	"github.com/Mesteriis/veda-wiki/internal/search"
 	"html/template"
@@ -79,9 +80,9 @@ type Wiki struct {
 	ReaderLocal       bool
 	ReaderKeyRequired bool
 	LocalImportSource string
-	Sessions          *readerSessions
-	AdminSessions     *readerSessions
-	AccessSessions    *readerSessions
+	Sessions          *auth.Sessions
+	AdminSessions     *auth.Sessions
+	AccessSessions    *auth.Sessions
 	Sync              *SyncManager
 }
 
@@ -126,7 +127,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		token, err := w.Store.bootstrapAdmin(in.ID)
+		token, err := w.Store.auth().BootstrapAdmin(in.ID)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -144,7 +145,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		if err := w.Store.createSuperuser(in.ID, in.Password); err != nil {
+		if err := w.Store.auth().CreateSuperuser(in.ID, in.Password); err != nil {
 			apiError(rw, err)
 			return
 		}
@@ -197,32 +198,32 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		owner := w.authorized(r)
 		implicitLocal := w.ReaderLocal && !w.ReaderKeyRequired && r.Header.Get("Authorization") == ""
 		validation := r.Method == "POST" && (r.URL.Path == "/api/v1/articles/translation-validate" || r.URL.Path == "/api/v1/articles/transfer-plan") && r.Header.Get("Origin") == ""
-		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || (!validation && w.Sessions.valid(r))))) && (r.Method == "GET" || validation)
+		reader := (w.readerAuthorized(r) || (!w.Public && (implicitLocal || (!validation && w.Sessions.Valid(r))))) && (r.Method == "GET" || validation)
 		if !w.Public && !owner && !reader && r.Method == "GET" {
-			if hash, ok := w.Sessions.scopedCookie(r); ok {
-				scoped, valid, err := w.Store.scopedViewHash(hash, time.Now())
+			if hash, ok := w.Sessions.ScopedCookie(r); ok {
+				scoped, valid, err := w.Store.auth().ScopedViewHash(hash, time.Now())
 				if err != nil {
 					http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
 					return
 				}
 				if valid {
-					w.Store, reader = scoped, true
+					w.Store, reader = &Store{scoped}, true
 				}
 			}
-			if user, ok := w.Sessions.userCookie(r); ok && !reader {
-				scoped, valid, err := w.Store.scopedViewUser(user.ID, user.AuthVersion)
+			if user, ok := w.Sessions.UserCookie(r); ok && !reader {
+				scoped, valid, err := w.Store.auth().ScopedViewUser(user.ID, user.AuthVersion)
 				if err != nil {
 					http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
 					return
 				}
 				if valid {
-					w.Store, reader = scoped, true
+					w.Store, reader = &Store{scoped}, true
 				}
 			}
 		}
 		if !w.Public && !owner && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			scoped, valid, err := w.Store.scopedView(token, time.Now())
+			scoped, valid, err := w.Store.auth().ScopedView(token, time.Now())
 			if err != nil {
 				http.Error(rw, "Access unavailable", http.StatusServiceUnavailable)
 				return
@@ -232,7 +233,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 					http.Error(rw, "Read-only access", http.StatusForbidden)
 					return
 				}
-				w.Store, reader = scoped, true
+				w.Store, reader = &Store{scoped}, true
 			}
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/v1/") {

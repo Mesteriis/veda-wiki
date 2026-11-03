@@ -16,6 +16,20 @@ func (s *Store) Scoped(sources []string) (*Store, error) {
 	return s.scopedLocked(sources), nil
 }
 
+// ScopedWhere evaluates scope and builds the snapshot of the sources it
+// returns under one read lock, so an authorization decision and the data it
+// grants come from the same state. A nil scope grants nothing: the result is
+// (nil, false, nil). scope must not modify db or retain any part of it.
+func (s *Store) ScopedWhere(scope func(db *domain.Database) []string) (*Store, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sources := scope(&s.db)
+	if sources == nil {
+		return nil, false, nil
+	}
+	return s.scopedLocked(sources), true, nil
+}
+
 // scopedLocked builds an immutable snapshot of the selected sources for a
 // restricted reader. It holds no import baselines, commit IDs, revisions or
 // link hashes beyond what reader views need. The caller holds the read lock,

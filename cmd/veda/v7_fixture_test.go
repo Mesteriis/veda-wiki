@@ -40,7 +40,7 @@ func TestExportV7RestoreFixture(t *testing.T) {
 	if err = s.pauseConnection("handbook", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.createAccessKey("fixture", []string{"from"}, time.Now().Add(30*24*time.Hour)); err != nil {
+	if _, err = s.auth().CreateAccessKey("fixture", []string{"from"}, time.Now().Add(30*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	s.Lock()

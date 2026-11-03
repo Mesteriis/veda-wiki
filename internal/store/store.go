@@ -30,9 +30,8 @@ type Store struct {
 	readOnly bool
 	// Import observations are process-local and not persisted. Task 7 moves
 	// them to the importer.
-	observed   map[string]time.Time
-	withheld   map[string]int
-	passwordMu sync.Mutex
+	observed map[string]time.Time
+	withheld map[string]int
 }
 
 var errReadOnly = errors.New("read-only store")

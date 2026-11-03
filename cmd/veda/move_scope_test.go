@@ -22,7 +22,7 @@ func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 	}
 	keys := map[string]string{}
 	for _, id := range []string{"source", "destination"} {
-		key, err := s.createAccessKey(id, []string{id}, time.Now().Add(time.Hour))
+		key, err := s.auth().CreateAccessKey(id, []string{id}, time.Now().Add(time.Hour))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -39,7 +39,7 @@ func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 		{"destination", "docs/item.md", true}, {"destination", "docs/dependency.md", true},
 		{"destination", "docs/unrelated.md", false},
 	} {
-		view, valid, err := s.scopedView(keys[tc.source], time.Now())
+		view, valid, err := scopedView(s, keys[tc.source], time.Now())
 		if err != nil || !valid {
 			t.Fatal("scoped view unavailable", err)
 		}

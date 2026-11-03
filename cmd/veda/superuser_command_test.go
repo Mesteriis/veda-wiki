@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 func TestCreateSuperuserRestrictedAndActivatesPending(t *testing.T) {
 	s := testStore(t)
-	token, err := s.bootstrapAdmin("operator")
+	token, err := s.auth().BootstrapAdmin("operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +35,11 @@ func TestCreateSuperuserRestrictedAndActivatesPending(t *testing.T) {
 	if request(true, false) != 201 {
 		t.Fatal("pending account not activated")
 	}
-	if err := s.finishAdminSetup("operator", token, "different synthetic password"); err == nil {
+	if err := s.auth().FinishAdminSetup("operator", token, "different synthetic password"); err == nil {
 		t.Fatal("old setup token remained valid")
 	}
-	v, ok := s.authenticateUser("operator", "synthetic long password")
-	if !ok || !s.adminSessionValid("operator", v) {
+	v, ok := s.auth().AuthenticateUser("operator", "synthetic long password")
+	if !ok || !s.auth().AdminSessionValid("operator", v) {
 		t.Fatal("administrator cannot authenticate")
 	}
 	if request(true, false) != 409 {
@@ -60,17 +61,17 @@ func TestCreateSuperuserRejectsNonInteractiveTerminal(t *testing.T) {
 }
 
 func TestPasswordMinimumTenCharacters(t *testing.T) {
-	if passwordValid("123456789") || !passwordValid("1234567890") || !passwordValid("абвгдежзий") {
+	if auth.PasswordValid("123456789") || !auth.PasswordValid("1234567890") || !auth.PasswordValid("абвгдежзий") {
 		t.Fatal("incorrect minimum password length")
 	}
 	s := testStore(t)
-	if err := s.createSuperuser("short", "123456789"); err != ErrInvalid {
+	if err := s.auth().CreateSuperuser("short", "123456789"); err != ErrInvalid {
 		t.Fatal("nine-character password accepted")
 	}
-	if err := s.createSuperuser("valid", "1234567890"); err != nil {
+	if err := s.auth().CreateSuperuser("valid", "1234567890"); err != nil {
 		t.Fatal("ten-character password refused", err)
 	}
-	if _, ok := s.authenticateUser("valid", "1234567890"); !ok {
+	if _, ok := s.auth().AuthenticateUser("valid", "1234567890"); !ok {
 		t.Fatal("ten-character password cannot authenticate")
 	}
 }

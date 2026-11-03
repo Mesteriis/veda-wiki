@@ -45,11 +45,11 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	both, err := s.createAccessKey("both", []string{"one", "two"}, time.Now().Add(time.Hour))
+	both, err := s.auth().CreateAccessKey("both", []string{"one", "two"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	limited, err := s.createAccessKey("oneonly", []string{"one"}, time.Now().Add(time.Hour))
+	limited, err := s.auth().CreateAccessKey("oneonly", []string{"one"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

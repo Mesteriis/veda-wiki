@@ -21,7 +21,7 @@ func TestExcerptScopedUnicodeAndRevision(t *testing.T) {
 	if _, err := s.put("beta", "guide.md", "# Other secret", 0); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestDisplayExcerptTranslationScopeAndRevision(t *testing.T) {
 	if _, err = s.submitTranslation(in); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

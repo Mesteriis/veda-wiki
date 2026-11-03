@@ -20,7 +20,7 @@ func TestReaderTranslationValidationIsScopedAndNonMutating(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	key, err := s.createAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestReaderTranslationValidationIsScopedAndNonMutating(t *testing.T) {
 	if !bytes.Equal(after, before) {
 		t.Fatal("validation mutated state")
 	}
-	if err := s.revokeAccessKey("reader"); err != nil {
+	if err := s.auth().RevokeAccessKey("reader"); err != nil {
 		t.Fatal(err)
 	}
 	if call(in, key, "", false, false).Code != 403 {
@@ -107,7 +107,7 @@ func TestTranslationValidationReportsPausedSource(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Guide\n\nRun `install`."})
 	connectFixture(t, s, f, false)
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -138,7 +138,7 @@ func TestSearchKeepsPublicAndScopedSourcesSeparate(t *testing.T) {
 	source(t, s, "private", "private")
 	s.put("open", "docs/guide.md", "# LXC guide\nVPS installation", 0)
 	s.put("private", "docs/secret.md", "# LXC private canary\nVPS installation", 0)
-	key, err := s.createAccessKey("reader", []string{"open"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"open"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestSearchIncludesVisibleSourceTitle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	key, err := s.createAccessKey("reader", []string{"open"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"open"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestCompactSearchPaginationAndScope(t *testing.T) {
 	s.put("open", "docs/a.md", "# LXC alpha\nVPS", 0)
 	s.put("open", "docs/b.md", "# LXC beta\nVPS", 0)
 	s.put("private", "docs/hidden.md", "# LXC secret\nVPS", 0)
-	key, err := s.createAccessKey("agent", []string{"open"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"open"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

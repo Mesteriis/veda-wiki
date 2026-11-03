@@ -31,7 +31,7 @@ func TestMovePreservesMatchingRelativeLink(t *testing.T) {
 	if err != nil || m.State != "complete" || m.Links["guide.md"] != rev.SHA {
 		t.Fatal("linked move", m, err)
 	}
-	if _, err := s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
+	if _, err := s.auth().CreateAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())

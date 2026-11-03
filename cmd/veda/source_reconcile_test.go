@@ -118,7 +118,7 @@ func TestReconcileLinkedGraphAndPrivateBaseline(t *testing.T) {
 	if strings.Contains(r1.Body.String(), "reconcile_base") {
 		t.Fatal("baseline leaked to public")
 	}
-	scoped, ok, err := s.scopedViewLocked([]string{"handbook"})
+	scoped, ok, err := s.ScopedWhere(func(*Database) []string { return []string{"handbook"} })
 	if err != nil || !ok || scoped.DB().Articles["handbook/a.md"].ReconcileBase != nil {
 		t.Fatal("baseline leaked to scoped reader", err)
 	}

@@ -21,7 +21,7 @@ func TestCreateBrowserAdminFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.createSuperuser("browser-admin", "synthetic admin password"); err != nil {
+	if err := s.auth().CreateSuperuser("browser-admin", "synthetic admin password"); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -12,44 +12,6 @@ import (
 	"time"
 )
 
-func TestAccessKeyScopePersistenceExpiryAndRevocation(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "alpha", "private")
-	source(t, s, "beta", "private")
-	expiry := time.Now().Add(time.Hour)
-	key, err := s.createAccessKey("agent", []string{"alpha"}, expiry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state, err := os.ReadFile(filepath.Join(s.Dir(), "state.json"))
-	if err != nil || strings.Contains(string(state), key) {
-		t.Fatal("bearer token was stored", err)
-	}
-	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 4 {
-		t.Fatal("key store did not persist", err)
-	}
-	scope := reopened.accessScope(key, time.Now())
-	if len(scope) != 1 || scope[0] != "alpha" {
-		t.Fatal("wrong scope")
-	}
-	if reopened.accessScope(key, expiry.Add(time.Second)) != nil {
-		t.Fatal("expired key accepted")
-	}
-	if reopened.accessScope(strings.Repeat("0", 64), time.Now()) != nil {
-		t.Fatal("invalid key accepted")
-	}
-	if err := reopened.revokeAccessKey("agent"); err != nil {
-		t.Fatal(err)
-	}
-	if reopened.accessScope(key, time.Now()) != nil {
-		t.Fatal("revoked key accepted")
-	}
-	reopened, err = openStore(s.Dir())
-	if err != nil || reopened.accessScope(key, time.Now()) != nil {
-		t.Fatal("revocation not durable", err)
-	}
-}
 
 func TestAccessKeyAdministrationRequiresOwnerAndDoesNotListSecrets(t *testing.T) {
 	s := testStore(t)
@@ -76,7 +38,7 @@ func TestAccessKeyAdministrationRequiresOwnerAndDoesNotListSecrets(t *testing.T)
 	if got := request(w, "POST", "/api/v1/access-keys/revoke", `{"id":"codex"}`, true); got.Code != 200 {
 		t.Fatal("key revocation failed", got.Code)
 	}
-	if s.accessScope(out.Key, time.Now()) != nil {
+	if s.auth().AccessScope(out.Key, time.Now()) != nil {
 		t.Fatal("revoked key accepted")
 	}
 }
@@ -119,7 +81,7 @@ func TestScopedReaderCannotCrossSourceBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +119,7 @@ func TestScopedReaderCannotCrossSourceBoundaries(t *testing.T) {
 	if got := call("GET", "/api/v1/articles?source_id=alpha&path=guide.md", true); got.Code != 404 {
 		t.Fatal("public listener accepted private scope", got.Code)
 	}
-	if err := s.revokeAccessKey("agent"); err != nil {
+	if err := s.auth().RevokeAccessKey("agent"); err != nil {
 		t.Fatal(err)
 	}
 	if got := call("GET", "/api/v1/articles?source_id=alpha&path=guide.md", false); got.Code != 404 {
@@ -174,7 +136,7 @@ func TestReaderSocketScopedKeyCannotFallBackAfterRevocation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +158,7 @@ func TestReaderSocketScopedKeyCannotFallBackAfterRevocation(t *testing.T) {
 	if call(strings.Repeat("0", 64), false, "beta") != 404 {
 		t.Fatal("invalid explicit key fell back to socket access")
 	}
-	if err := s.revokeAccessKey("agent"); err != nil {
+	if err := s.auth().RevokeAccessKey("agent"); err != nil {
 		t.Fatal(err)
 	}
 	if call(key, true, "alpha") != 404 || call(key, false, "alpha") != 404 {
@@ -204,28 +166,13 @@ func TestReaderSocketScopedKeyCannotFallBackAfterRevocation(t *testing.T) {
 	}
 }
 
-func TestAccessKeyCreationRejectsInvalidScope(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "alpha", "private")
-	for _, scope := range [][]string{nil, {"missing"}, {"alpha", "alpha"}} {
-		if _, err := s.createAccessKey("agent", scope, time.Now().Add(time.Hour)); err != ErrInvalid {
-			t.Fatalf("scope accepted: %v", err)
-		}
-	}
-	if _, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(-time.Second)); err != ErrInvalid {
-		t.Fatal("expired key created", err)
-	}
-	if s.DB().Version != 1 || len(s.DB().AccessKeys) != 0 {
-		t.Fatal("invalid request mutated store")
-	}
-}
 
 func TestGitHubSourceMovePreservesVersion4AndAccessKeys(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	connectFixture(t, s, f, true)
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +181,7 @@ func TestGitHubSourceMovePreservesVersion4AndAccessKeys(t *testing.T) {
 		t.Fatal("move did not start", err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
+	if err != nil || reopened.DB().Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
 		t.Fatal("move downgraded or lost scoped access", err)
 	}
 }
@@ -248,18 +195,18 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	if err != nil || s.DB().Version != 3 {
 		t.Fatal("version 3 move not created", err)
 	}
-	key, err := s.createAccessKey("agent", []string{"local"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"local"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
+	if err != nil || reopened.DB().Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
 		t.Fatal("version upgrade lost access", err)
 	}
 	manager := newSyncManager(reopened, f.Client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if reopened.moves()[0].State != "complete" || len(reopened.accessScope(key, time.Now())) != 1 {
+	if reopened.moves()[0].State != "complete" || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
 		t.Fatal("move or access lost after upgrade")
 	}
 }

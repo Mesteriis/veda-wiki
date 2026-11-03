@@ -76,7 +76,7 @@ func TestStateETagDoesNotKeepRevokedReaderContent(t *testing.T) {
 	if _, err := s.put("private", "secret.md", "# Private fixture", 0); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("agent", []string{"private"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"private"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestStateETagDoesNotKeepRevokedReaderContent(t *testing.T) {
 	if first.Code != 200 || !strings.Contains(first.Body.String(), "Private fixture") {
 		t.Fatal("scoped reader could not read its source")
 	}
-	if err := s.revokeAccessKey("agent"); err != nil {
+	if err := s.auth().RevokeAccessKey("agent"); err != nil {
 		t.Fatal(err)
 	}
 	after := call(first.Header().Get("ETag"))

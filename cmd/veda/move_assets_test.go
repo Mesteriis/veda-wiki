@@ -85,7 +85,7 @@ func TestMoveCopiesRelativeImageToLocalDestination(t *testing.T) {
 	if s.DB().Sources["to"].Assets["nested/img/icon.png"] != ref {
 		t.Fatal("target image missing")
 	}
-	if _, err := s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
+	if _, err := s.auth().CreateAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
@@ -116,7 +116,7 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
+	if _, err = s.auth().CreateAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
@@ -291,7 +291,7 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 	if s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted || s.DB().Sources["handbook"].Assets["img/icon.png"] != ref {
 		t.Fatal("observed bundle did not finish move", s.moves())
 	}
-	if _, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour)); err != nil {
+	if _, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())

@@ -19,7 +19,7 @@ func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 	}
 	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,14 +62,14 @@ func TestScopedBundleLocksLinkedTranslationValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("reader", []string{"program"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("reader", []string{"program"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.Lock()
 	s.DB().Outbox = map[string]SyncJob{"bundle": {SourceID: "program", Path: "docs/root.md", State: "pending", Bundle: map[string]string{"docs/linked.md": rev.SHA}}}
 	s.Unlock()
-	view, valid, err := s.scopedView(key, time.Now())
+	view, valid, err := scopedView(s, key, time.Now())
 	if err != nil || !valid {
 		t.Fatal("scoped snapshot unavailable", err)
 	}
@@ -111,7 +111,7 @@ func testProposalConflict(t *testing.T, sqlite bool) {
 	if _, err := s.put("other", "hidden.md", "# Hidden", 0); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestNewProposalBaseChecksScopeAndVisiblePath(t *testing.T) {
 	if _, err := s.put("alpha", "exists.md", "# Existing", 0); err != nil {
 		t.Fatal(err)
 	}
-	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

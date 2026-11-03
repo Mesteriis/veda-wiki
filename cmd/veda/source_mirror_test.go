@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
@@ -312,7 +313,7 @@ func TestOldBinaryRejectsMirrorStore(t *testing.T) {
 
 func TestMirrorAdminSessionBoundaries(t *testing.T) {
 	s, m, _ := mirrorFixture(t)
-	w := Wiki{Store: s, Token: "owner", AdminSessions: &readerSessions{}, Sync: m}
+	w := Wiki{Store: s, Token: "owner", AdminSessions: &auth.Sessions{}, Sync: m}
 	call := func(method, path, body, origin string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.Host = "localhost:8080"
