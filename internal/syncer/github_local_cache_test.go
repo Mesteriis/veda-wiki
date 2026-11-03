@@ -1,11 +1,9 @@
-package main
+package syncer
 
 import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +11,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 func TestPrivateAdoptionReusesOnlyVerifiedLocalBlobs(t *testing.T) {
@@ -50,12 +52,14 @@ func TestPrivateAdoptionReusesOnlyVerifiedLocalBlobs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.connected {
-				src := s.DB().Sources["handbook"]
-				src.ConnectionID = "handbook"
-				s.DB().Sources["handbook"] = src
+				s.mutate(func(db *domain.Database) {
+					src := db.Sources["handbook"]
+					src.ConnectionID = "handbook"
+					db.Sources["handbook"] = src
+				})
 			}
 			if tc.corrupt {
-				ref := s.DB().Sources["handbook"].Assets[name]
+				ref := s.db().Sources["handbook"].Assets[name]
 				if err := os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), []byte("corrupt"), 0600); err != nil {
 					t.Fatal(err)
 				}
@@ -71,12 +75,12 @@ func TestPrivateAdoptionReusesOnlyVerifiedLocalBlobs(t *testing.T) {
 			defer gateway.Close()
 			m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 			entry := github.TreeEntry{Path: name, SHA: github.BlobDigest(remote, 40), Size: int64(len(remote))}
-			result, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, githubtest.Access)
+			result, err := m.cachedBlob(context.Background(), domain.GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, githubtest.Access)
 			if err != nil || !bytes.Equal(result, remote) || requests.Load() != tc.wantRequests {
 				t.Fatal("incorrect verified blob reuse", err, requests.Load())
 			}
 			// Both locally reused and fetched objects must be reusable after attachment.
-			result, err = m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, githubtest.Access)
+			result, err = m.cachedBlob(context.Background(), domain.GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, githubtest.Access)
 			if err != nil || !bytes.Equal(result, remote) || requests.Load() != tc.wantRequests {
 				t.Fatal("cache replay failed", err, requests.Load())
 			}
@@ -114,7 +118,7 @@ func TestAdoptionReusesUnchangedArticlesAcrossRepository(t *testing.T) {
 	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", AdoptExisting: true}); err != nil {
+	if _, err := m.Connect(context.Background(), ConnectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", AdoptExisting: true}); err != nil {
 		t.Fatal(err)
 	}
 	if requests.Load() != 2 || len(s.conflicts()) != 1 {
@@ -158,14 +162,14 @@ func TestPrivateRepositoryImportReusesSeparateLocalSource(t *testing.T) {
 	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator"}); err != nil {
+	if _, err := m.Connect(context.Background(), ConnectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator"}); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if requests.Load() != 2 || len(s.DB().Sources["handbook"].Assets) != 1 || s.DB().Articles["handbook/topic/000.md"].Versions[0].Text != "# Different upstream" {
+	if requests.Load() != 2 || len(s.db().Sources["handbook"].Assets) != 1 || s.db().Articles["handbook/topic/000.md"].Versions[0].Text != "# Different upstream" {
 		t.Fatal("separate source did not reuse exact private objects", requests.Load())
 	}
-	if s.DB().Articles["local/topic/000.md"].Versions[0].Text == s.DB().Articles["handbook/topic/000.md"].Versions[0].Text {
+	if s.db().Articles["local/topic/000.md"].Versions[0].Text == s.db().Articles["handbook/topic/000.md"].Versions[0].Text {
 		t.Fatal("independent source was overwritten")
 	}
 }
@@ -190,7 +194,7 @@ func TestPrivateCacheDoesNotReuseDifferentPath(t *testing.T) {
 	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 	body := []byte("# Same")
 	entry := github.TreeEntry{Path: "guide.md", SHA: github.BlobDigest(body, 40), Size: int64(len(body))}
-	_, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, githubtest.Access)
+	_, err := m.cachedBlob(context.Background(), domain.GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, githubtest.Access)
 	if err != nil || requests.Load() != 1 {
 		t.Fatal("different path reused", err, requests.Load())
 	}
@@ -215,7 +219,7 @@ func TestPrivateLocalCacheSupportsSHA256Objects(t *testing.T) {
 	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 	body := []byte("# Initial")
 	entry := github.TreeEntry{Path: "README.md", SHA: github.BlobDigest(body, 64), Size: int64(len(body))}
-	got, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "remote", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, githubtest.Access)
+	got, err := m.cachedBlob(context.Background(), domain.GitHubConnection{ID: "remote", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, githubtest.Access)
 	if err != nil || !bytes.Equal(got, body) || requests.Load() != 0 {
 		t.Fatal("SHA-256 local object not reused", err)
 	}

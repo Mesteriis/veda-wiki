@@ -1,15 +1,17 @@
-package main
+package syncer
 
 import (
 	"context"
 	"errors"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 )
 
 func TestMoveLinkedGraphToGitHubWaitsForFullObservation(t *testing.T) {
@@ -20,16 +22,16 @@ func TestMoveLinkedGraphToGitHubWaitsForFullObservation(t *testing.T) {
 	s.put("from", "b.md", "[A](a.md)", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
-	move, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true})
+	move, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true})
 	if err != nil || move.State != "waiting_destination" {
 		t.Fatal(move, err)
 	}
 	m.Once(context.Background())
-	if s.DB().Articles["from/a.md"].Deleted || f.Contents()["a.md"] == "" || f.Contents()["b.md"] == "" || f.Contents()["img/icon.png"] == "" {
+	if s.db().Articles["from/a.md"].Deleted || f.Contents()["a.md"] == "" || f.Contents()["b.md"] == "" || f.Contents()["img/icon.png"] == "" {
 		t.Fatal("invalid pre-observation state")
 	}
 	m.Once(context.Background())
-	if s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted || s.DB().Articles["from/b.md"].Deleted {
+	if s.moves()[0].State != "complete" || !s.db().Articles["from/a.md"].Deleted || s.db().Articles["from/b.md"].Deleted {
 		t.Fatal("incorrect completed move", s.moves())
 	}
 }
@@ -45,10 +47,10 @@ func TestOldBinaryRejectsConnectedGraphMoveStore(t *testing.T) {
 	s.put("from", "b.md", "# B", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
-	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true}); err != nil {
+	if _, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true}); err != nil {
 		t.Fatal(err)
 	}
-	if s.DB().Version != 10 {
+	if s.db().Version != 10 {
 		t.Fatal("graph move did not upgrade store")
 	}
 	state := filepath.Join(s.Dir(), "state.json")
@@ -75,14 +77,14 @@ func TestCancelledLinkedBundleKeepsSource(t *testing.T) {
 	s.put("from", "b.md", "# B", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
-	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true})
+	_, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = s.cancelBundle(s.jobs()[0].ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if s.moves()[0].State != "destination_changed" || s.DB().Articles["from/a.md"].Deleted {
+	if s.moves()[0].State != "destination_changed" || s.db().Articles["from/a.md"].Deleted {
 		t.Fatal("cancelled move removed source", s.moves())
 	}
 }
@@ -90,7 +92,7 @@ func TestConnectedLinkedGraphRechecksRemoteBeforeDeleting(t *testing.T) {
 	s, m, one, two := connectedMoveFixtures(t)
 	one.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
 	syncFixtureSource(t, m, "one")
-	move, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 2, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true, IncludeLinked: true})
+	move, err := s.moveArticle(transfer.MoveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 2, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true, IncludeLinked: true})
 	if err != nil || move.State != "waiting_destination" {
 		t.Fatal(move, err)
 	}
@@ -110,7 +112,7 @@ func TestConnectedLinkedGraphCompletesAcrossRepositories(t *testing.T) {
 	s, m, one, two := connectedMoveFixtures(t)
 	one.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
 	syncFixtureSource(t, m, "one")
-	_, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 2, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true, IncludeLinked: true})
+	_, err := s.moveArticle(transfer.MoveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 2, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true, IncludeLinked: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,16 +135,16 @@ func TestLinkedMoveRecoversLostDestinationResponse(t *testing.T) {
 	s.put("from", "b.md", "# B", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
-	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true})
+	_, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
-	if s.DB().Articles["from/a.md"].Deleted || f.WriteCount() != 1 {
+	if s.db().Articles["from/a.md"].Deleted || f.WriteCount() != 1 {
 		t.Fatal("source removed before confirmation")
 	}
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}

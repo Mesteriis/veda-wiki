@@ -62,6 +62,10 @@ type RemoteProof struct {
 	Visibility     string
 	TreeSHA        string
 	Adoption       *AdoptionProof
+	// Record runs inside the import transaction once the content is applied
+	// and moves are reconciled. The synchronizer records the pull there, so
+	// the observed head commits atomically with the content.
+	Record func(db *domain.Database)
 }
 
 // AdoptionProof is the local state a private source had when a connection
@@ -71,6 +75,9 @@ type AdoptionProof struct {
 	Account    domain.GitHubAccount
 	Snapshot   string
 	Context    context.Context
+	// Attach runs inside the import transaction after the adoption checks and
+	// before any article is compared; the synchronizer attaches Connection.
+	Attach func(db *domain.Database)
 }
 
 // Service runs imports against a store and records their observations.

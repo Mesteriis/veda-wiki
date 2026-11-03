@@ -1,9 +1,12 @@
-package main
+package syncer
 
 import (
 	"encoding/json"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"testing"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 )
 
 func TestHiddenPartialSourceRequiresPublicationApprovalForTransfer(t *testing.T) {
@@ -26,18 +29,18 @@ func TestHiddenPartialSourceRequiresPublicationApprovalForTransfer(t *testing.T)
 			} else {
 				f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": text, "b.md": "# Other"})
 				connectFixture(t, s, f, true)
-				s.Lock()
-				src := s.DB().Sources["handbook"]
-				src.ImportPartial = true
-				s.DB().Sources["handbook"] = src
-				s.Unlock()
+				s.mutate(func(db *domain.Database) {
+					src := db.Sources["handbook"]
+					src.ImportPartial = true
+					db.Sources["handbook"] = src
+				})
 			}
 			source(t, s, "target", "public")
-			if _, err := s.page("handbook/a.md", true); err != ErrNotFound {
+			if _, err := s.page("handbook/a.md", true); err != domain.ErrNotFound {
 				t.Fatal("partial source unexpectedly visible", err)
 			}
-			copyReq := copyRequest{SourceID: "handbook", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: "a.md", IncludeLinked: linked}
-			moveReq := moveRequest{SourceID: "handbook", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: "a.md", IncludeLinked: linked, ConfirmMove: true}
+			copyReq := transfer.CopyRequest{SourceID: "handbook", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: "a.md", IncludeLinked: linked}
+			moveReq := transfer.MoveRequest{SourceID: "handbook", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: "a.md", IncludeLinked: linked, ConfirmMove: true}
 			run := func(approved bool) error {
 				if op == "copy" || op == "copy-linked" {
 					copyReq.ConfirmPublication = approved
@@ -48,14 +51,14 @@ func TestHiddenPartialSourceRequiresPublicationApprovalForTransfer(t *testing.T)
 				_, err := s.moveArticle(moveReq)
 				return err
 			}
-			before, err := json.Marshal(*s.DB())
+			before, err := json.Marshal(s.db())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := run(false); err != ErrInvalid {
+			if err := run(false); err != domain.ErrInvalid {
 				t.Fatal("hidden source published without approval", err)
 			}
-			after, err := json.Marshal(*s.DB())
+			after, err := json.Marshal(s.db())
 			if err != nil || string(before) != string(after) {
 				t.Fatal("refused transfer changed state", err)
 			}

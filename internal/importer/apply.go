@@ -207,8 +207,8 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 	for p := range batch.Files {
 		previousPublished[p] = db.Articles[batch.SourceID+"/"+p].Published
 	}
-	if proof != nil && proof.Adoption != nil {
-		domain.AdoptConnection(db, proof.Adoption.Connection)
+	if proof != nil && proof.Adoption != nil && proof.Adoption.Attach != nil {
+		proof.Adoption.Attach(db)
 	}
 	if proof != nil && proof.Visibility == "public" {
 		for key, a := range db.Articles {
@@ -311,8 +311,8 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 		domain.ConfirmSourceDeletions(db, proof.ConnectionID, batch.Files, s.assetsAvailable)
 	}
 	domain.ReconcileMoves(db)
-	if proof != nil {
-		domain.RecordPull(db, proof.ConnectionID, batch.Commit, proof.TreeSHA)
+	if proof != nil && proof.Record != nil {
+		proof.Record(db)
 	}
 	if proof != nil && proof.Adoption != nil {
 		if err := proof.Adoption.Context.Err(); err != nil {

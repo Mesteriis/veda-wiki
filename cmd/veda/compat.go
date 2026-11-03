@@ -4,8 +4,10 @@ import (
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/search"
 	"github.com/Mesteriis/veda-wiki/internal/store"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
 	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
@@ -44,34 +46,29 @@ var (
 	ErrNotFound = domain.ErrNotFound
 
 	identifier    = domain.IDPattern
-	commitID      = domain.CommitIDPattern
 	secretContent = domain.CredentialPattern
 )
 
 var (
-	safePath                    = domain.SafeArticlePath
-	safeRelative                = domain.SafeRelative
-	articlePath                 = domain.ArticlePath
-	digest                      = domain.Digest
-	hexKey                      = domain.HexKey
-	title                       = domain.Title
-	sourcePublic                = domain.SourcePublic
-	sourcePublicReadable        = domain.SourcePublicReadable
-	sourceSyncIssue             = domain.SourceSyncIssue
-	enqueueWrite                = domain.EnqueueWrite
-	reconcileMoves              = domain.ReconcileMoves
-	moveDeletionLocks           = domain.MoveDeletionLocks
-	moveDeletionLocksConnection = domain.MoveDeletionLocksConnection
-	bundleLocks                 = domain.BundleLocks
-	moveOperationLocks          = domain.MoveOperationLocks
-	conflictResolutionBlocked   = domain.ConflictResolutionBlocked
-	displayedRevision           = domain.DisplayedRevision
-	linksPresent                = domain.LinksPresent
-	importablePath              = domain.ImportablePath
-	imageRef                    = domain.ImageRef
-	migrateSQLite               = store.MigrateSQLite
-	atomicPrivateFile           = store.WritePrivateFile
-	privateDataDir              = store.PrivateDataDir
+	safePath                  = domain.SafeArticlePath
+	safeRelative              = domain.SafeRelative
+	articlePath               = domain.ArticlePath
+	digest                    = domain.Digest
+	hexKey                    = domain.HexKey
+	title                     = domain.Title
+	sourcePublic              = domain.SourcePublic
+	sourcePublicReadable      = domain.SourcePublicReadable
+	sourceSyncIssue           = domain.SourceSyncIssue
+	enqueueWrite              = domain.EnqueueWrite
+	reconcileMoves            = domain.ReconcileMoves
+	moveDeletionLocks         = domain.MoveDeletionLocks
+	bundleLocks               = domain.BundleLocks
+	moveOperationLocks        = domain.MoveOperationLocks
+	conflictResolutionBlocked = domain.ConflictResolutionBlocked
+	displayedRevision         = domain.DisplayedRevision
+	imageRef                  = domain.ImageRef
+	migrateSQLite             = store.MigrateSQLite
+	privateDataDir            = store.PrivateDataDir
 )
 
 const (
@@ -112,31 +109,18 @@ func (s *Store) transfer() transfer.Service {
 	}}
 }
 
-// The source reconciler still runs under the transitional store lock. These
-// adapters stage a transfer on a clone of the locked state; the caller commits.
+// syncer returns the synchronization manager for this store. Operations that
+// do not reach GitHub accept a nil client.
+func (s *Store) syncer(g *github.Client) *syncer.Manager {
+	imp := s.importer()
+	return syncer.New(s.Store, g, &imp)
+}
 
-func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
-	db := s.Clone()
-	rev, err := s.transfer().PrepareCopy(&db, in)
-	if err != nil {
-		return Database{}, Revision{}, err
+// syncer returns the running manager, or one without a GitHub client for
+// mirror and reconciliation requests to a handler that runs no manager.
+func (w Wiki) syncer() *syncer.Manager {
+	if w.Sync != nil {
+		return w.Sync
 	}
-	return db, rev, nil
-}
-
-func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, transfer.Dependencies, error) {
-	db := s.Clone()
-	rev, deps, err := s.transfer().PrepareLinkedCopy(&db, in)
-	if err != nil {
-		return Database{}, Revision{}, transfer.Dependencies{}, err
-	}
-	return db, rev, deps, nil
-}
-
-func (s *Store) planTransferLocked(in copyRequest) (transfer.Plan, error) {
-	return transfer.BuildPlan(s.DB(), in)
-}
-
-func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target Source) (transfer.Dependencies, error) {
-	return s.transfer().ResolveDependencies(s.DB(), value, sourcePath, targetPath, src, target)
+	return w.Store.syncer(nil)
 }

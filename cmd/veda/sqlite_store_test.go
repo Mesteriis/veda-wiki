@@ -3,14 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
-	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 )
 
 func TestSQLiteMigrationRestoresPendingSync(t *testing.T) {
@@ -275,7 +275,7 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
-		if _, err := m.connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name, AccountID: "operator", Write: true}); err != nil {
+		if _, err := m.Connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name, AccountID: "operator", Write: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -312,39 +312,5 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 	a, err := reopened.article("two", "docs/guide.md", false)
 	if err != nil || len(a.Versions) != 1 || a.Versions[0].Text != "# Second original" {
 		t.Fatal("second local article changed", err)
-	}
-}
-
-// Sync status changes run twice per connection and cycle. On SQLite they must
-// persist only connection records, not reserialize every article's history.
-func TestSQLiteConnectionStatusWritesOnlyConnections(t *testing.T) {
-	s := testStore(t)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
-	connectFixture(t, s, f, false)
-	if err := migrateSQLite(s.Dir()); err != nil {
-		t.Fatal(err)
-	}
-	s, err := openStore(s.Dir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	// An uncommitted in-memory change reveals whether article rows are rewritten.
-	a := s.DB().Articles["handbook/README.md"]
-	a.Versions = append([]Revision(nil), a.Versions...)
-	a.Versions[0].Text = "# Not committed"
-	a.Versions[0].SHA = digest([]byte(a.Versions[0].Text))
-	s.DB().Articles["handbook/README.md"] = a
-	if err = s.connectionStatusFor(s.connections()[0], "syncing", "verified", "", nil, time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := openStore(s.Dir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reopened.connections()[0].State != "syncing" {
-		t.Fatal("connection status was not persisted")
-	}
-	if text := reopened.DB().Articles["handbook/README.md"].Versions[0].Text; text != "# Original" {
-		t.Fatal("status update rewrote article records", text)
 	}
 }

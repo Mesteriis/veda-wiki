@@ -160,8 +160,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var workers sync.WaitGroup
-	manager := newSyncManager(store, github.New())
-	manager.localImportSource = *localImportSource
+	manager := store.syncer(github.New())
+	manager.LocalImportSource = *localImportSource
 	if *translationURL != "" {
 		worker, err := translation.NewWorker(store.Store, *translationURL, *translationModel, *translationProtocol)
 		if err != nil {

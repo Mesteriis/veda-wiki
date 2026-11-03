@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"net"
 	"net/http"
 	"strconv"
@@ -65,7 +66,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		if err := w.Store.cancelBundle(in.ID, in.Confirm); err != nil {
+		if err := w.Sync.CancelBundle(in.ID, in.Confirm); err != nil {
 			apiError(rw, err)
 			return
 		}
@@ -84,7 +85,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		if e := w.Store.publishJob(in.ID, in.Expected, in.Confirm); e != nil {
+		if e := w.Sync.PublishJob(in.ID, in.Expected, in.Confirm); e != nil {
 			apiError(rw, e)
 			return
 		}
@@ -92,7 +93,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		jsonResponse(rw, 200, map[string]string{"state": "publication_approved"})
 	case "/api/v1/github/accounts":
 		if r.Method == "GET" {
-			jsonResponse(rw, 200, w.Store.accounts())
+			jsonResponse(rw, 200, w.Sync.Accounts())
 			return
 		}
 		if r.Method != "POST" {
@@ -113,7 +114,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		a, e := w.Store.saveAccount(r.Context(), w.Sync.github, in.ID, in.Secret)
+		a, e := w.Sync.SaveAccount(r.Context(), in.ID, in.Secret)
 		if e != nil {
 			apiError(rw, e)
 			return
@@ -121,16 +122,16 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		jsonResponse(rw, 201, a)
 	case "/api/v1/github/connections":
 		if r.Method == "GET" {
-			jsonResponse(rw, 200, w.Store.connections())
+			jsonResponse(rw, 200, w.Sync.Connections())
 			return
 		}
 		if r.Method == "PUT" {
-			var in configureRequest
+			var in syncer.ConfigureRequest
 			if e := decodeBody(rw, r, &in); e != nil {
 				apiError(rw, ErrInvalid)
 				return
 			}
-			c, e := w.Sync.configure(r.Context(), in)
+			c, e := w.Sync.Configure(r.Context(), in)
 			if e != nil {
 				apiError(rw, e)
 				return
@@ -142,7 +143,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 			rw.WriteHeader(405)
 			return
 		}
-		var in connectRequest
+		var in syncer.ConnectRequest
 		if e := decodeBody(rw, r, &in); e != nil {
 			apiError(rw, ErrInvalid)
 			return
@@ -155,7 +156,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 			defer cancel()
 			r = r.WithContext(ctx)
 		}
-		c, e := w.Sync.connect(r.Context(), in)
+		c, e := w.Sync.Connect(r.Context(), in)
 		if e != nil {
 			apiError(rw, e)
 			return
@@ -166,7 +167,7 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 			rw.WriteHeader(405)
 			return
 		}
-		jobs := w.Store.jobs()
+		jobs := w.Sync.Jobs()
 		limit, offset := 30, 0
 		query := r.URL.Query()
 		if query.Has("limit") {
@@ -207,9 +208,9 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 				apiError(rw, ErrInvalid)
 				return
 			}
-			e = w.Store.pauseConnection(in.ID, *in.Paused)
+			e = w.Sync.PauseConnection(in.ID, *in.Paused)
 		} else {
-			e = w.Store.retryConnection(in.ID)
+			e = w.Sync.RetryConnection(in.ID)
 		}
 		if e != nil {
 			apiError(rw, e)

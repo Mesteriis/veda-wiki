@@ -1,10 +1,8 @@
-package main
+package syncer
 
 import (
 	"bytes"
 	"context"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"io"
 	"net"
 	"net/http"
@@ -18,6 +16,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/store"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 )
 
 // The child runs only in an isolated test subprocess with a synthetic store and
@@ -31,7 +34,7 @@ func TestSyncRecoveryFixtureProcess(t *testing.T) {
 	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || net.ParseIP(u.Hostname()) == nil || !net.ParseIP(u.Hostname()).IsLoopback() || !filepath.IsAbs(dir) {
 		t.Fatal("invalid fixture parameters")
 	}
-	s, err := openStore(dir)
+	s, err := openStore(t, dir)
 	if err != nil {
 		t.Fatal("fixture reopen failed", err)
 	}
@@ -65,11 +68,11 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.Dir()); err != nil {
+	if err := store.MigrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +131,7 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 		t.Fatal("fixture process unexpectedly exited normally")
 	}
 	releaseOnce.Do(func() { close(released) })
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +147,7 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 	if err := recovery.Run(); err != nil {
 		t.Fatal("recovery process failed", err)
 	}
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,11 +161,11 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.Dir()); err != nil {
+	if err := store.MigrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +231,7 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 	if err := child.Wait(); err == nil {
 		t.Fatal("fixture process unexpectedly exited normally")
 	}
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +270,7 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 	if err := recovery.Wait(); err != nil {
 		t.Fatal("recovery process failed", err)
 	}
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,11 +284,11 @@ func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.Dir()); err != nil {
+	if err := store.MigrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +343,7 @@ func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
 		t.Fatal("fixture process unexpectedly exited normally")
 	}
 	releaseOnce.Do(func() { close(release) })
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +359,7 @@ func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
 	if err := recovery.Run(); err != nil {
 		t.Fatal("recovery process failed", err)
 	}
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,11 +373,11 @@ func TestSQLiteLaterEditAfterLostResponseRecoversInFreshProcess(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.Dir()); err != nil {
+	if err := store.MigrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +406,7 @@ func TestSQLiteLaterEditAfterLostResponseRecoversInFreshProcess(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatal("recovery subprocess failed", err)
 	}
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +429,7 @@ func TestSQLitePreparedWriteRecoversInFreshProcess(t *testing.T) {
 	if f.WriteCount() != 1 || len(jobs) != 1 || jobs[0].PreparedCommit == "" {
 		t.Fatal("fixture did not preserve ambiguous commit")
 	}
-	if err := migrateSQLite(s.Dir()); err != nil {
+	if err := store.MigrateSQLite(s.Dir()); err != nil {
 		t.Fatal("fixture migration failed", err)
 	}
 	exe, err := os.Executable()
@@ -440,7 +443,7 @@ func TestSQLitePreparedWriteRecoversInFreshProcess(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatal("recovery subprocess failed", err)
 	}
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,17 +460,17 @@ func TestSQLiteIndexDirectoryMoveRecoversInFreshProcess(t *testing.T) {
 	s.put("from", "docs/index.md", "# Synthetic index", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
-	move, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmMove: true, ConfirmPublication: true})
-	if err != nil || move.State != "waiting_destination" || s.DB().Version != 17 {
+	move, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmMove: true, ConfirmPublication: true})
+	if err != nil || move.State != "waiting_destination" || s.db().Version != 17 {
 		t.Fatal("fixture move not queued", err)
 	}
 	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
 	jobs := s.jobs()
-	if f.WriteCount() != 1 || len(jobs) != 1 || jobs[0].PreparedCommit == "" || s.DB().Articles["from/guide.md"].Deleted {
+	if f.WriteCount() != 1 || len(jobs) != 1 || jobs[0].PreparedCommit == "" || s.db().Articles["from/guide.md"].Deleted {
 		t.Fatal("ambiguous move was not retained")
 	}
-	if err = migrateSQLite(s.Dir()); err != nil {
+	if err = store.MigrateSQLite(s.Dir()); err != nil {
 		t.Fatal("fixture migration failed", err)
 	}
 	exe, err := os.Executable()
@@ -481,12 +484,12 @@ func TestSQLiteIndexDirectoryMoveRecoversInFreshProcess(t *testing.T) {
 	if err = cmd.Run(); err != nil {
 		t.Fatal("recovery subprocess failed", err)
 	}
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
 	jobs = reopened.jobs()
-	if len(jobs) != 1 || jobs[0].State != "complete" || f.WriteCount() != 1 || f.Contents()["docs/README.md"] != "# Synthetic index" || reopened.moves()[0].State != "complete" || !reopened.DB().Articles["from/guide.md"].Deleted || reopened.DB().Articles["from/docs/index.md"].Deleted {
+	if len(jobs) != 1 || jobs[0].State != "complete" || f.WriteCount() != 1 || f.Contents()["docs/README.md"] != "# Synthetic index" || reopened.moves()[0].State != "complete" || !reopened.db().Articles["from/guide.md"].Deleted || reopened.db().Articles["from/docs/index.md"].Deleted {
 		t.Fatal("recovery lost or duplicated the mapped move")
 	}
 }

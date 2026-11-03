@@ -12,10 +12,6 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) { return s.transfer().
 
 func (s *Store) moves() []Move { return s.transfer().Moves() }
 
-func (s *Store) cancelMove(id string, confirm bool) error {
-	return s.transfer().CancelMove(id, confirm)
-}
-
 func (s *Store) planTransfer(in copyRequest) (transfer.Plan, error) {
 	return s.transfer().PlanTransfer(in)
 }

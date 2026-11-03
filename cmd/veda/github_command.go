@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"io"
 	"os"
 	"time"
@@ -75,14 +76,14 @@ func githubCommand(args []string) error {
 		if *adopt {
 			client.http.Timeout = 6 * time.Minute
 		}
-		if e = client.request("POST", "/api/v1/github/connections", connectRequest{ID: *id, Repository: *repo, AccountID: *account, Branch: *branch, Write: *write, AdoptExisting: *adopt}, &result); e != nil {
+		if e = client.request("POST", "/api/v1/github/connections", syncer.ConnectRequest{ID: *id, Repository: *repo, AccountID: *account, Branch: *branch, Write: *write, AdoptExisting: *adopt}, &result); e != nil {
 			return e
 		}
 	case "configure":
 		if !identifier.MatchString(*id) || *expected < 1 {
 			return ErrInvalid
 		}
-		in := configureRequest{ID: *id, Expected: expected}
+		in := syncer.ConfigureRequest{ID: *id, Expected: expected}
 		flags.Visit(func(f *flag.Flag) {
 			if f.Name == "account" {
 				in.AccountID = account

@@ -1,4 +1,4 @@
-package main
+package syncer
 
 import (
 	"context"
@@ -10,14 +10,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 // This is a simulated GitHub App installation: it exercises VEDA's stored
@@ -84,7 +86,7 @@ func TestGitHubAppStoredCredentialSync(t *testing.T) {
 	if _, err = store.saveAccount(ctx, client, "app", secret); err != nil {
 		t.Fatal("account verification failed", err)
 	}
-	store, err = openStore(store.Dir())
+	store, err = store.reopen()
 	if err != nil {
 		t.Fatal("cannot reopen store", err)
 	}
@@ -96,14 +98,14 @@ func TestGitHubAppStoredCredentialSync(t *testing.T) {
 		t.Fatal("read-only installation token failed", err)
 	}
 	manager := newSyncManager(store, client)
-	if _, err = manager.connect(ctx, connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "app", Write: true}); err != nil {
+	if _, err = manager.Connect(ctx, ConnectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "app", Write: true}); err != nil {
 		t.Fatal("connect failed", err)
 	}
 	manager.Once(ctx)
 	if p, e := store.page("handbook/guide.md", false); e != nil || p.Text != "# Initial" {
 		t.Fatal("private import failed", e)
 	}
-	if _, e := store.page("handbook/guide.md", true); e != ErrNotFound {
+	if _, e := store.page("handbook/guide.md", true); e != domain.ErrNotFound {
 		t.Fatal("private content exposed", e)
 	}
 	if _, err = store.put("handbook", "guide.md", "# Local update", 1); err != nil {

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/importer"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"net/url"
 )
 
@@ -84,7 +85,7 @@ type Wiki struct {
 	Sessions          *auth.Sessions
 	AdminSessions     *auth.Sessions
 	AccessSessions    *auth.Sessions
-	Sync              *SyncManager
+	Sync              *syncer.Manager
 }
 
 func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -189,7 +190,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			apiError(rw, err)
 			return
 		}
-		if w.Sync != nil && (result.Generation != *batch.ExpectedImport || result.Conflicts > 0) && w.Store.hasEnabledMirror(batch.SourceID) {
+		if w.Sync != nil && (result.Generation != *batch.ExpectedImport || result.Conflicts > 0) && w.Sync.HasEnabledMirror(batch.SourceID) {
 			w.Sync.Wake()
 		}
 		jsonResponse(rw, 200, result)

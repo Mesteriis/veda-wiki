@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
 	"io"
 	"net/http"
@@ -58,7 +59,7 @@ func decodeLimited(rw http.ResponseWriter, r *http.Request, dst any, limit int64
 	return nil
 }
 func apiError(rw http.ResponseWriter, err error) {
-	if errors.Is(err, errLocalImportActive) {
+	if errors.Is(err, syncer.ErrLocalImportActive) {
 		jsonResponse(rw, http.StatusConflict, map[string]string{"error": "local_import_active"})
 		return
 	}
@@ -619,14 +620,14 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			return
 		}
 		if r.Method == "GET" {
-			jsonResponse(rw, 200, w.Store.mirrors())
+			jsonResponse(rw, 200, w.syncer().Mirrors())
 			return
 		}
 		if r.Method != "POST" {
 			rw.WriteHeader(405)
 			return
 		}
-		var in mirrorRequest
+		var in syncer.MirrorRequest
 		if decodeBody(rw, r, &in) != nil {
 			apiError(rw, ErrInvalid)
 			return
@@ -638,7 +639,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 		_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(2 * time.Minute))
 		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 		defer cancel()
-		mirror, err := w.Store.configureMirror(ctx, in)
+		mirror, err := w.syncer().ConfigureMirror(ctx, in)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -652,7 +653,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			rw.WriteHeader(405)
 			return
 		}
-		var in reconcileRequest
+		var in syncer.ReconcileRequest
 		if decodeBody(rw, r, &in) != nil {
 			apiError(rw, ErrInvalid)
 			return
@@ -660,7 +661,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 		_ = http.NewResponseController(rw).SetWriteDeadline(time.Now().Add(2 * time.Minute))
 		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 		defer cancel()
-		result, err := w.Store.reconcileSources(ctx, in)
+		result, err := w.syncer().ReconcileSources(ctx, in)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -769,7 +770,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			return
 		}
 		if w.Sync != nil {
-			w.Store.retryConnection(in.SourceID)
+			w.Sync.RetryConnection(in.SourceID)
 			w.Sync.Wake()
 		}
 		jsonResponse(rw, 200, map[string]string{"status": "resolved"})

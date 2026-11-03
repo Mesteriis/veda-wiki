@@ -1,15 +1,17 @@
-package main
+package syncer
 
 import (
 	"context"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
@@ -36,8 +38,8 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 	}))
 	defer gateway.Close()
 	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
-	for _, in := range []connectRequest{{ID: "one", Repository: "org/handbook"}, {ID: "two", Repository: "org/second"}} {
-		if _, err := m.connect(context.Background(), in); err != nil {
+	for _, in := range []ConnectRequest{{ID: "one", Repository: "org/handbook"}, {ID: "two", Repository: "org/second"}} {
+		if _, err := m.Connect(context.Background(), in); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -56,7 +58,7 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 	if _, err := s.page("two/docs/b.md", false); err != nil {
 		t.Fatal("shared cooldown lost local content", err)
 	}
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +66,7 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 		if c.LastError != "rate_limited" {
 			t.Fatalf("missing cooldown for %s", c.ID)
 		}
-		if err := reopened.retryConnection(c.ID); err != ErrConflict {
+		if err := reopened.retryConnection(c.ID); err != domain.ErrConflict {
 			t.Fatalf("manual retry of %s bypassed cooldown", c.ID)
 		}
 	}
@@ -74,7 +76,7 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 	if err := reopened.pauseConnection("two", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := reopened.retryConnection("two"); err != ErrConflict {
+	if err := reopened.retryConnection("two"); err != domain.ErrConflict {
 		t.Fatal("pause bypassed cooldown", err)
 	}
 }
@@ -87,7 +89,7 @@ func TestRateLimitRetryDeadlineSurvivesRestart(t *testing.T) {
 	if err := s.connectionStatusFor(s.connections()[0], "error", "unknown", "rate_limited", nil, due); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +98,7 @@ func TestRateLimitRetryDeadlineSurvivesRestart(t *testing.T) {
 	if err != nil || got.Before(due) {
 		t.Fatal("retry deadline lost", err)
 	}
-	if err = reopened.retryConnection("handbook"); err != ErrConflict {
+	if err = reopened.retryConnection("handbook"); err != domain.ErrConflict {
 		t.Fatal("manual retry bypassed limit", err)
 	}
 }
@@ -111,7 +113,7 @@ func TestConfigureKeepsRateLimitForSameAccount(t *testing.T) {
 	}
 	c := s.connections()[0]
 	write := false
-	updated, err := m.configure(context.Background(), configureRequest{ID: c.ID, Write: &write, Expected: &c.ConfigRevision})
+	updated, err := m.Configure(context.Background(), ConfigureRequest{ID: c.ID, Write: &write, Expected: &c.ConfigRevision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +122,7 @@ func TestConfigureKeepsRateLimitForSameAccount(t *testing.T) {
 		t.Fatal("configuration discarded cooldown")
 	}
 	write = true
-	if _, err = m.configure(context.Background(), configureRequest{ID: c.ID, Write: &write, Expected: &updated.ConfigRevision}); err != ErrConflict {
+	if _, err = m.Configure(context.Background(), ConfigureRequest{ID: c.ID, Write: &write, Expected: &updated.ConfigRevision}); err != domain.ErrConflict {
 		t.Fatal("configuration bypassed rate limit", err)
 	}
 }

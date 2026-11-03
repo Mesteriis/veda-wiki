@@ -1,11 +1,9 @@
-package main
+package syncer
 
 import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +12,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
 // Opt-in scale rehearsal: all content and credentials are synthetic.
@@ -94,20 +96,20 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", Write: true}); err != nil {
+	if _, err := m.Connect(context.Background(), ConnectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", Write: true}); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if err := migrateSQLite(s.Dir()); err != nil {
+	if err := store.MigrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.Dir())
+	s, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
 	yes := true
 	version := 0
-	if _, err = s.configureMirror(context.Background(), mirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &yes, ExpectedRevision: &version}); err != nil {
+	if _, err = s.configureMirror(context.Background(), MirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &yes, ExpectedRevision: &version}); err != nil {
 		t.Fatal(err)
 	}
 	m = newSyncManager(s, client)
@@ -132,17 +134,17 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	if s.mirrors()[0].State != "blocked" || s.mirrors()[0].Blocked != 2 || len(s.jobs()) != 10 || f.WriteCount() != 10 {
 		t.Fatal("scale reconciliation did not converge", s.mirrors()[0].State, passes)
 	}
-	s, err = openStore(s.Dir())
+	s, err = s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
 	baselines := 0
-	for _, a := range s.DB().Articles {
+	for _, a := range s.db().Articles {
 		if a.SourceID == "handbook" && a.ReconcileBase != nil {
 			baselines++
 		}
 	}
-	if baselines != 534 || len(s.DB().Sources["handbook"].Assets) != 147 || len(f.Contents()) != 1+611+147 {
+	if baselines != 534 || len(s.db().Sources["handbook"].Assets) != 147 || len(f.Contents()) != 1+611+147 {
 		t.Fatal("scale state mismatch", baselines)
 	}
 	if requests.Load() != 78 {
@@ -150,7 +152,7 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	}
 	for _, i := range []int{524, 525} {
 		name := fmt.Sprintf("pages/page-%03d.md", i)
-		if f.Contents()[name] != fmt.Sprintf("# Independently changed %d", i) || s.DB().Articles["local/"+name].Deleted {
+		if f.Contents()[name] != fmt.Sprintf("# Independently changed %d", i) || s.db().Articles["local/"+name].Deleted {
 			t.Fatal("divergent article was changed")
 		}
 	}

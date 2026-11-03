@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testing.T) {
@@ -29,7 +30,7 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 		t.Fatal(err)
 	}
 	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
-		if _, err := manager.connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name, AccountID: "operator"}); err != nil {
+		if _, err := manager.Connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name, AccountID: "operator"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -114,7 +115,7 @@ func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 	client := github.NewForTest(gateway.URL, gateway.Client())
 	manager := newSyncManager(s, client)
 	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
-		if _, err := manager.connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name}); err != nil {
+		if _, err := manager.Connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name}); err != nil {
 			t.Fatal(err)
 		}
 	}

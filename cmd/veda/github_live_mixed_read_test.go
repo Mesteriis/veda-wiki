@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/Mesteriis/veda-wiki/internal/github"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github"
 )
 
 // Read-only live acceptance. gh owns its credential; VEDA receives no token.
@@ -74,7 +75,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 		{ID: "wiki", Repository: repos[0], Branch: "feature/veda-live-source-20261101-221944"},
 		{ID: "program", Repository: repos[1]},
 	} {
-		if _, err := m.connect(ctx, request); err != nil {
+		if _, err := m.Connect(ctx, request); err != nil {
 			t.Fatal("public connection failed", err)
 		}
 	}

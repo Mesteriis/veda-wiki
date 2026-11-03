@@ -1,22 +1,19 @@
 package main
 
 import (
-	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 )
 
 // Import names for the cmd tests that remain until their areas move.
 
 type (
-	ImportBatch   = importer.Batch
-	ImportResult  = importer.Result
-	remoteProof   = importer.RemoteProof
-	adoptionProof = importer.AdoptionProof
+	ImportBatch  = importer.Batch
+	ImportResult = importer.Result
+	remoteProof  = importer.RemoteProof
 )
 
 var (
 	errImportedAssetUnavailable = importer.ErrAssetUnavailable
-	observedWrite               = domain.ObservedWrite
 )
 
 const maxImportRequestBytes = importer.MaxRequestBytes

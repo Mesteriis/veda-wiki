@@ -1,16 +1,17 @@
-package main
+package syncer
 
 import (
 	"context"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"testing"
+
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 func TestConnectAcceptsGitHubLinkWithTrailingSlash(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Fixture"})
 	m := newSyncManager(s, f.Client())
-	c, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: " https://github.com/org/handbook/ "})
+	c, err := m.Connect(context.Background(), ConnectRequest{ID: "handbook", Repository: " https://github.com/org/handbook/ "})
 	if err != nil || c.Repository != "org/handbook" || c.Private || c.Write {
 		t.Fatal("public link did not connect", err)
 	}

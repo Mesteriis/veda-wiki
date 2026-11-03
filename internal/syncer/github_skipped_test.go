@@ -1,15 +1,18 @@
-package main
+package syncer
 
 import (
 	"context"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
 func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
@@ -27,7 +30,7 @@ func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 	}))
 	defer gateway.Close()
 	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
-	if _, err := m.connect(context.Background(), connectRequest{ID: "program", Repository: "org/handbook"}); err != nil {
+	if _, err := m.Connect(context.Background(), ConnectRequest{ID: "program", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
@@ -38,7 +41,7 @@ func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 		t.Fatal("imported a repository without docs")
 	}
 	firstTree, firstRepo := treeCalls.Load(), repoCalls.Load()
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,11 +64,11 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Original guide"})
 	m := newSyncManager(s, f.Client())
-	if _, err := m.connect(context.Background(), connectRequest{ID: "program", Repository: "org/handbook"}); err != nil {
+	if _, err := m.Connect(context.Background(), ConnectRequest{ID: "program", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	before := s.DB().Sources["program"].ImportGeneration
+	before := s.db().Sources["program"].ImportGeneration
 	if _, err := s.page("program/docs/guide.md", true); err != nil {
 		t.Fatal("initial public document unavailable", err)
 	}
@@ -74,7 +77,7 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	if c := s.connections()[0]; c.State != "error" || c.Verification != "unknown" || c.LastError != "invalid_docs_directory" {
 		t.Fatal("invalid docs entry was accepted or misclassified", c.State, c.Verification, c.LastError)
 	}
-	if s.DB().Sources["program"].ImportGeneration != before || s.DB().Articles["program/docs/guide.md"].Deleted {
+	if s.db().Sources["program"].ImportGeneration != before || s.db().Articles["program/docs/guide.md"].Deleted {
 		t.Fatal("invalid docs entry changed the local snapshot")
 	}
 	if _, err := s.page("program/docs/guide.md", false); err != nil {
@@ -83,7 +86,7 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	if _, err := s.page("program/docs/guide.md", true); err == nil {
 		t.Fatal("stale snapshot remained publicly visible")
 	}
-	reopened, err := openStore(s.Dir())
+	reopened, err := s.reopen()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +112,7 @@ func TestProgramDocsSymlinkAndSubmoduleAreRejected(t *testing.T) {
 		{Path: "docs", Type: "commit", Mode: "160000"},
 		{Path: "docs", Type: "tree", Mode: "160000"},
 	} {
-		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "program"}, strings.Repeat("a", 40), "", github.Tree{Tree: []github.TreeEntry{entry}})
+		_, err := m.remoteBatch(context.Background(), domain.GitHubConnection{ID: "program"}, strings.Repeat("a", 40), "", github.Tree{Tree: []github.TreeEntry{entry}})
 		if github.ErrorCode(err) != "invalid_docs_directory" {
 			t.Fatalf("invalid docs entry accepted: %s %s: %v", entry.Type, entry.Mode, err)
 		}
@@ -131,7 +134,7 @@ func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 	}))
 	defer gateway.Close()
 	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
-	if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
+	if _, err := m.Connect(context.Background(), ConnectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
@@ -170,7 +173,7 @@ func TestReconfigurationRequiresFreshImportedHead(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := newSyncManager(s, f.Client())
-	if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
+	if _, err := m.Connect(context.Background(), ConnectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
@@ -179,7 +182,7 @@ func TestReconfigurationRequiresFreshImportedHead(t *testing.T) {
 	}
 	c := s.connections()[0]
 	write := false
-	if _, err := m.configure(context.Background(), configureRequest{ID: c.ID, Write: &write, Expected: &c.ConfigRevision}); err != nil {
+	if _, err := m.Configure(context.Background(), ConfigureRequest{ID: c.ID, Write: &write, Expected: &c.ConfigRevision}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.page("source/README.md", true); err == nil {
@@ -206,7 +209,7 @@ func TestChangedRepositoryTypeClosesPublicSnapshotAndRecovers(t *testing.T) {
 			s := testStore(t)
 			f := githubtest.New(t, tc.original)
 			m := newSyncManager(s, f.Client())
-			if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
+			if _, err := m.Connect(context.Background(), ConnectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 				t.Fatal(err)
 			}
 			m.Once(context.Background())
@@ -224,7 +227,7 @@ func TestChangedRepositoryTypeClosesPublicSnapshotAndRecovers(t *testing.T) {
 			if _, err := s.page("source/"+tc.oldPath, false); err != nil {
 				t.Fatal("local article was lost", err)
 			}
-			reopened, err := openStore(s.Dir())
+			reopened, err := s.reopen()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -263,22 +266,22 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 				original := map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original wiki"}
 				f := githubtest.New(t, original)
 				m := newSyncManager(s, f.Client())
-				if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
+				if _, err := m.Connect(context.Background(), ConnectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 					t.Fatal(err)
 				}
 				m.Once(context.Background())
 				if sqlite {
-					if err := migrateSQLite(s.Dir()); err != nil {
+					if err := store.MigrateSQLite(s.Dir()); err != nil {
 						t.Fatal(err)
 					}
 					var err error
-					s, err = openStore(s.Dir())
+					s, err = s.reopen()
 					if err != nil {
 						t.Fatal(err)
 					}
 					m = newSyncManager(s, f.Client())
 				}
-				before := s.DB().Sources["source"].ImportGeneration
+				before := s.db().Sources["source"].ImportGeneration
 				f.Advance(tc.files)
 				m.Once(context.Background())
 				c := s.connections()[0]
@@ -286,13 +289,13 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 					t.Fatal("incorrect metadata failure state", c.State, c.LastError)
 				}
 				p, err := s.page("source/README.md", false)
-				if err != nil || p.Text != "# Original wiki" || s.DB().Sources["source"].ImportGeneration != before {
+				if err != nil || p.Text != "# Original wiki" || s.db().Sources["source"].ImportGeneration != before {
 					t.Fatal("invalid metadata changed local snapshot", err)
 				}
 				if _, err := s.page("source/README.md", true); err == nil {
 					t.Fatal("unverified public snapshot exposed")
 				}
-				s, err = openStore(s.Dir())
+				s, err = s.reopen()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -320,7 +323,7 @@ func TestWikiMetadataMustBeRegularFile(t *testing.T) {
 		{Path: "veda.yaml", Type: "commit", Mode: "160000"},
 		{Path: "veda.yaml", Type: "blob", Mode: "100644", Size: 16385},
 	} {
-		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "source"}, strings.Repeat("a", 40), "", github.Tree{Tree: []github.TreeEntry{entry}})
+		_, err := m.remoteBatch(context.Background(), domain.GitHubConnection{ID: "source"}, strings.Repeat("a", 40), "", github.Tree{Tree: []github.TreeEntry{entry}})
 		if github.ErrorCode(err) != "invalid_veda_metadata" {
 			t.Fatal("invalid manifest accepted", entry.Mode, err)
 		}

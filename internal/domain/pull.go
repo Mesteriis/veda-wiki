@@ -58,27 +58,6 @@ func AdoptionSnapshot(db Database, id string) (string, error) {
 	return Digest(raw), nil
 }
 
-// AdoptConnection records conn for the source with the same ID. A local
-// checkout's old import base is not a GitHub merge base, so it is cleared:
-// differing files become conflicts and absent files stay local.
-func AdoptConnection(db *Database, conn GitHubConnection) {
-	for key, article := range db.Articles {
-		if article.SourceID == conn.ID {
-			article.UpstreamHash = ""
-			db.Articles[key] = article
-		}
-	}
-	db.Connections[conn.ID] = conn
-}
-
-// RecordPull stores the commit and tree a connection was last imported from.
-func RecordPull(db *Database, connectionID, commit, treeSHA string) {
-	conn := db.Connections[connectionID]
-	conn.LastPull = commit
-	conn.TreeSHA = treeSHA
-	db.Connections[conn.ID] = conn
-}
-
 // ObservedWrite completes the queued writes of path p that the observed
 // content satisfies and reports whether any did.
 func ObservedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {

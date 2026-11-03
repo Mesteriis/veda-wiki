@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
@@ -37,16 +38,8 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 	if s.sources(false)[0].LastImportObservedAt != observed {
 		t.Fatal("failed GitHub check advanced observation")
 	}
-	conn := s.connections()[0]
-	if err = s.pauseConnection("handbook", true); err != nil {
-		t.Fatal(err)
-	}
-	if err = s.observeGitHubHead(conn, conn.LastPull, conn.TreeSHA); err != ErrConflict {
-		t.Fatal("stale connection advanced observation", err)
-	}
-	if s.sources(false)[0].LastImportObservedAt != observed {
-		t.Fatal("stale observation changed timestamp")
-	}
+	// internal/syncer TestStaleConnectionCannotConfirmObservedHead covers a
+	// stale confirmation of the unchanged head.
 	reopened, err := openStore(s.Dir())
 	if err != nil || reopened.sources(false)[0].LastImportObservedAt != "" {
 		t.Fatal("observation persisted across restart", err)

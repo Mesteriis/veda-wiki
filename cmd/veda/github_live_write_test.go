@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +15,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 // This opt-in test uses gh as a credential-owning transport. VEDA receives
@@ -237,7 +238,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	}
 	for i, b := range branches {
 		id := []string{"source", "target"}[i]
-		if _, err := manager.connect(ctx, connectRequest{ID: id, Repository: repos[i], AccountID: "fixture", Branch: b, Write: true}); err != nil {
+		if _, err := manager.Connect(ctx, connectRequest{ID: id, Repository: repos[i], AccountID: "fixture", Branch: b, Write: true}); err != nil {
 			t.Fatalf("connect %s: %v", id, err)
 		}
 	}

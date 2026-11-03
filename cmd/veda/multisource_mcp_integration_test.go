@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 )
 
 // Optional integration exercise using the real MCP SDK, two fake GitHub
@@ -38,10 +39,10 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.connect(context.Background(), connectRequest{ID: "one", Repository: "org/handbook"}); err != nil {
+	if _, err := manager.Connect(context.Background(), connectRequest{ID: "one", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.connect(context.Background(), connectRequest{ID: "two", Repository: "org/second", AccountID: "operator", Write: true}); err != nil {
+	if _, err := manager.Connect(context.Background(), connectRequest{ID: "two", Repository: "org/second", AccountID: "operator", Write: true}); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
