@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -45,8 +46,8 @@ func TestAgentRoutesVPSRequestAcrossSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Lock()
-	s.DB().Moves = map[string]Move{"fixture-move": {State: "deleting_source", SourceID: "vps", SourcePath: "ops/containers.md", DestinationID: "homelab", DestinationPath: "ops/other.md"}}
-	s.DB().Outbox = map[string]SyncJob{"fixture-bundle": {State: "pending", SourceID: "homelab", Path: "ops/root.md", Bundle: map[string]string{"ops/containers.md": "fixture-hash"}}}
+	s.DB().Moves = map[string]domain.Move{"fixture-move": {State: "deleting_source", SourceID: "vps", SourcePath: "ops/containers.md", DestinationID: "homelab", DestinationPath: "ops/other.md"}}
+	s.DB().Outbox = map[string]domain.SyncJob{"fixture-bundle": {State: "pending", SourceID: "homelab", Path: "ops/root.md", Bundle: map[string]string{"ops/containers.md": "fixture-hash"}}}
 	s.Unlock()
 	server := httptest.NewServer(Wiki{Store: s, Token: "owner"})
 	defer server.Close()

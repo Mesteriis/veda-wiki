@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/Mesteriis/veda-wiki/internal/render"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 	"strings"
 	"testing"
 )
@@ -18,7 +19,7 @@ func TestCopyLinkedRootPathsPreserveSourceDependencies(t *testing.T) {
 	if _, err := s.put("from", "chapter/a.md", text, 0); err != nil {
 		t.Fatal(err)
 	}
-	in := copyRequest{SourceID: "from", SourcePath: "chapter/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "other/b.md", IncludeLinked: true}
+	in := transfer.CopyRequest{SourceID: "from", SourcePath: "chapter/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "other/b.md", IncludeLinked: true}
 	plan, err := s.planTransfer(in)
 	if err != nil || len(plan.Articles) != 2 {
 		t.Fatal("root link was not planned", err)

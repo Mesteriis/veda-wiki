@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"net/http"
@@ -30,7 +31,7 @@ func TestProgramImportTranslationAndUpstreamChange(t *testing.T) {
 	if err != nil || !page.Translated {
 		t.Fatal("translation not visible", err)
 	}
-	if _, err = s.article("handbook", "README.md", false); err != ErrNotFound {
+	if _, err = s.article("handbook", "README.md", false); err != domain.ErrNotFound {
 		t.Fatal("non-docs content imported", err)
 	}
 	f.Advance(map[string]string{"README.md": "# Not imported", "docs/setup.md": "# Setup revised\n\nRun `install`.", "src/main.go": "package example"})

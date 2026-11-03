@@ -29,7 +29,7 @@ def main():
         root = Path(tmp)
         data = root / 'data'
         data.mkdir(mode=0o700)
-        subprocess.run(['go', 'test', '-run', '^TestCreateBrowserAdminFixture$', '-count=1', './cmd/veda'],
+        subprocess.run(['go', 'test', '-run', '^TestCreateBrowserAdminFixture$', '-count=1', './internal/httpapi'],
                        cwd=ROOT, env={**os.environ, 'VEDA_UI_ADMIN_FIXTURE_DIR': str(data)},
                        stdout=subprocess.DEVNULL, check=True, timeout=60)
         for name, char in [('owner.key', 'd'), ('reader.key', 'e')]:

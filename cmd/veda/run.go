@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"flag"
-	"github.com/Mesteriis/veda-wiki/internal/github"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"log"
 	"net"
 	"net/http"
@@ -20,6 +18,12 @@ import (
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/auth"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/httpapi"
+	"github.com/Mesteriis/veda-wiki/internal/importer"
+	"github.com/Mesteriis/veda-wiki/internal/store"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 func main() {
@@ -110,10 +114,12 @@ func main() {
 		log.Fatal("data directory already in use")
 	}
 	// Open only after taking the process lock, including SQLite recovery.
-	store, err := openStore(*data)
+	st, err := store.Open(*data)
 	if err != nil {
 		log.Fatal(err)
 	}
+	// One set of import observations serves every listener and the syncer.
+	observations := &importer.Observations{}
 	token, err := loadOrCreateKey(*data, "owner.key")
 	if err != nil {
 		log.Fatal("owner key unavailable or invalid")
@@ -160,10 +166,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var workers sync.WaitGroup
-	manager := store.syncer(github.New())
+	imp := importer.Service{Store: st, Observations: observations}
+	manager := syncer.New(st, github.New(), &imp)
 	manager.LocalImportSource = *localImportSource
 	if *translationURL != "" {
-		worker, err := translation.NewWorker(store.Store, *translationURL, *translationModel, *translationProtocol)
+		worker, err := translation.NewWorker(st, *translationURL, *translationModel, *translationProtocol)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -177,21 +184,23 @@ func main() {
 	workers.Add(1)
 	go func() { defer workers.Done(); manager.Run(ctx, *interval) }()
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
-		handler := Wiki{Store: store, Token: string(token), ReaderToken: string(readerToken), Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Public: publicOnly, AllowedHosts: hostList, Sync: manager}
+		cfg := httpapi.Config{OwnerToken: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList}
+		deps := httpapi.Deps{Store: st, Observations: observations, Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Sync: manager}
 		if readerOnly {
-			handler.Token = ""
-			handler.ReaderToken = ""
-			handler.Sessions = nil
-			handler.AdminSessions = nil
-			handler.AccessSessions = nil
-			handler.ReaderLocal = true
-			handler.ReaderKeyRequired = *readerKeyRequired
-			handler.LocalImportSource = *localImportSource
+			cfg.OwnerToken = ""
+			cfg.ReaderToken = ""
+			deps.Sessions = nil
+			deps.AdminSessions = nil
+			deps.AccessSessions = nil
+			cfg.ReaderLocal = true
+			cfg.ReaderKeyRequired = *readerKeyRequired
+			cfg.LocalImportSource = *localImportSource
 		}
+		handler := httpapi.New(cfg, deps)
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 		if readerOnly && *localImportSource != "" {
 			server.ConnContext = func(ctx context.Context, conn net.Conn) context.Context {
-				return context.WithValue(ctx, localRootKey{}, peerIsRoot(conn))
+				return context.WithValue(ctx, httpapi.LocalRootKey{}, peerIsRoot(conn))
 			}
 		}
 		endpoint := servedListener{server: server, listener: l}
@@ -337,6 +346,3 @@ func listenReaderSocket(name string) (net.Listener, error) {
 	}
 	return listener, nil
 }
-
-// localRootKey is set only from kernel credentials on the Unix listener.
-type localRootKey struct{}

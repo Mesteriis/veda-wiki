@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +38,7 @@ func TestExportV12RestoreFixture(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
-	m, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, IncludeLinked: true})
+	m, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, IncludeLinked: true})
 	if err != nil || m.State != "waiting_destination" || s.DB().Version != 12 {
 		t.Fatal("fixture move", err, m)
 	}
@@ -63,7 +65,7 @@ func TestExportV12RestoreFixture(t *testing.T) {
 		}
 	}
 	reopened, err := openStore(dir)
-	if err != nil || reopened.DB().Version != 12 || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || reopened.jobs()[0].Bundle["related.md"] != digest([]byte("# Related fixture")) || !reopened.DB().Connections["handbook"].Paused {
+	if err != nil || reopened.DB().Version != 12 || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || reopened.jobs()[0].Bundle["related.md"] != domain.Digest([]byte("# Related fixture")) || !reopened.DB().Connections["handbook"].Paused {
 		t.Fatal("fixture validation", err)
 	}
 }
@@ -90,7 +92,7 @@ func TestResumeV12RestoreFixture(t *testing.T) {
 		t.Fatal("restored queue did not complete")
 	}
 	ref := s.DB().Sources["handbook"].Assets["img/icon.png"]
-	if ref.SHA == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["b.md"] == "" || f.Contents()["related.md"] != "# Related fixture" {
+	if ref.SHA == "" || domain.Digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["b.md"] == "" || f.Contents()["related.md"] != "# Related fixture" {
 		t.Fatal("restored image or article missing")
 	}
 }

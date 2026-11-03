@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,10 +40,10 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Connect(context.Background(), connectRequest{ID: "one", Repository: "org/handbook"}); err != nil {
+	if _, err := manager.Connect(context.Background(), syncer.ConnectRequest{ID: "one", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Connect(context.Background(), connectRequest{ID: "two", Repository: "org/second", AccountID: "operator", Write: true}); err != nil {
+	if _, err := manager.Connect(context.Background(), syncer.ConnectRequest{ID: "two", Repository: "org/second", AccountID: "operator", Write: true}); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())

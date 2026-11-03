@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/syncer"
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -140,7 +143,7 @@ func TestSQLiteArticleUpdatePersistsMoveReconciliation(t *testing.T) {
 	source(t, s, "local", "private")
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	connectFixture(t, s, f, true)
-	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
+	move, err := s.moveArticle(transfer.MoveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil || move.State != "waiting_source_delete" {
 		t.Fatal("fixture move not pending", err)
 	}
@@ -175,7 +178,7 @@ func TestSQLiteArticleUpdatePersistsOtherArticleWhenMoveCompletes(t *testing.T) 
 	}
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	connectFixture(t, s, f, true)
-	move, err := s.moveArticle(moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true})
+	move, err := s.moveArticle(transfer.MoveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil || move.State != "waiting_destination" {
 		t.Fatal("fixture move not pending", err)
 	}
@@ -204,7 +207,7 @@ func TestSQLiteArticleUpdatePersistsOtherArticleWhenMoveCompletes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = reopened.article("local", "a.md", false); err != ErrNotFound || reopened.moves()[0].State != "complete" {
+	if _, err = reopened.article("local", "a.md", false); err != domain.ErrNotFound || reopened.moves()[0].State != "complete" {
 		t.Fatal("completed move did not persist source deletion", err)
 	}
 	other, err := reopened.article("local", "other.md", false)
@@ -275,7 +278,7 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
-		if _, err := m.Connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name, AccountID: "operator", Write: true}); err != nil {
+		if _, err := m.Connect(context.Background(), syncer.ConnectRequest{ID: repo.id, Repository: repo.name, AccountID: "operator", Write: true}); err != nil {
 			t.Fatal(err)
 		}
 	}

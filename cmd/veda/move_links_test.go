@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Mesteriis/veda-wiki/internal/transfer"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ func TestMovePreservesMatchingRelativeLink(t *testing.T) {
 	if _, err = s.put("from", "section/a.md", "# Article\n\n[Read](../guide.md#start)", 0); err != nil {
 		t.Fatal(err)
 	}
-	m, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "section/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "chapter/b.md", ConfirmMove: true})
+	m, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "section/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "chapter/b.md", ConfirmMove: true})
 	if err != nil || m.State != "complete" || m.Links["guide.md"] != rev.SHA {
 		t.Fatal("linked move", m, err)
 	}

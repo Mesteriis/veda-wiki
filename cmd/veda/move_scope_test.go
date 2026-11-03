@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"strings"
 	"testing"
 	"time"
@@ -9,7 +11,7 @@ import (
 
 func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 	s := testStore(t)
-	revisions := map[string]Revision{}
+	revisions := map[string]domain.Revision{}
 	for _, id := range []string{"source", "destination"} {
 		programSource(t, s, id, "private")
 		for _, p := range []string{"docs/item.md", "docs/dependency.md", "docs/unrelated.md"} {
@@ -29,7 +31,7 @@ func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 		keys[id] = key
 	}
 	s.Lock()
-	s.DB().Moves = map[string]Move{"private-move-id": {State: "deleting_source", SourceID: "source", SourcePath: "docs/item.md", DestinationID: "destination", DestinationPath: "docs/item.md", Links: map[string]string{"docs/dependency.md": "private-link-hash"}, PreparedDeletion: "private-commit-id"}}
+	s.DB().Moves = map[string]domain.Move{"private-move-id": {State: "deleting_source", SourceID: "source", SourcePath: "docs/item.md", DestinationID: "destination", DestinationPath: "docs/item.md", Links: map[string]string{"docs/dependency.md": "private-link-hash"}, PreparedDeletion: "private-commit-id"}}
 	s.Unlock()
 	for _, tc := range []struct {
 		source, path string
@@ -63,8 +65,8 @@ func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 			t.Fatal("other source exposed")
 		}
 		rev := revisions[tc.source+"/"+tc.path]
-		_, err = view.translation().Validate(translationRequest{SourceID: tc.source, Path: tc.path, ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
-		if tc.blocked && err != ErrConflict || !tc.blocked && err != nil {
+		_, err = view.translation().Validate(translation.Request{SourceID: tc.source, Path: tc.path, ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
+		if tc.blocked && err != domain.ErrConflict || !tc.blocked && err != nil {
 			t.Fatal("scoped translation lock mismatch", tc.source, tc.path, err)
 		}
 	}

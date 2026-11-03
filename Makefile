@@ -1,8 +1,8 @@
 .PHONY: build test frontend lint
 frontend:
 	cd web && npm ci --no-audit --no-fund && npm run build
-	rm -rf cmd/veda/ui
-	cp -R web/dist cmd/veda/ui
+	rm -rf internal/webui/dist
+	cp -R web/dist internal/webui/dist
 build: frontend
 	go build -trimpath -o veda ./cmd/veda
 lint:

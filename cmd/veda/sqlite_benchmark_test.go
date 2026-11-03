@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,7 +16,7 @@ func BenchmarkSQLiteSingleArticleUpdateLargeCorpus(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err = s.addSource(Source{ID: "docs", Title: "Docs", Kind: "wiki", Visibility: "private"}); err != nil {
+	if err = s.addSource(domain.Source{ID: "docs", Title: "Docs", Kind: "wiki", Visibility: "private"}); err != nil {
 		b.Fatal(err)
 	}
 	if err = migrateSQLite(dir); err != nil {
@@ -27,10 +28,10 @@ func BenchmarkSQLiteSingleArticleUpdateLargeCorpus(b *testing.B) {
 	}
 	state := s.Clone()
 	text := "# Operations\n" + strings.Repeat("container vps service documentation\n", 3500)
-	sha := digest([]byte(text))
+	sha := domain.Digest([]byte(text))
 	for i := 0; i < 200; i++ {
 		p := fmt.Sprintf("%03d.md", i)
-		state.Articles["docs/"+p] = Article{SourceID: "docs", Path: p, Versions: []Revision{{Number: 1, Text: text, SHA: sha}}}
+		state.Articles["docs/"+p] = domain.Article{SourceID: "docs", Path: p, Versions: []domain.Revision{{Number: 1, Text: text, SHA: sha}}}
 	}
 	if err = s.Commit(state); err != nil {
 		b.Fatal(err)

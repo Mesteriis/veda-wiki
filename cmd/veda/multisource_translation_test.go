@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"strings"
 	"testing"
 )
@@ -22,7 +24,7 @@ func TestTranslationsStayBoundToSourceAndOriginalAfterRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = s.translation().Submit(translationRequest{
+		_, err = s.translation().Submit(translation.Request{
 			SourceID: fixture.id, Path: "docs/guide.md", ExpectedRevision: 1,
 			OriginalSHA: article.Versions[0].SHA, Text: fixture.translation,
 			ConfirmPublication: fixture.visibility == "public",
@@ -42,7 +44,7 @@ func TestTranslationsStayBoundToSourceAndOriginalAfterRestart(t *testing.T) {
 	if page, err := s.page("alpha/docs/guide.md", true); err != nil || !page.Translated || !strings.Contains(page.Text, "Общая") {
 		t.Fatal("public translation missing after restart", err)
 	}
-	if _, err := s.page("beta/docs/guide.md", true); err != ErrNotFound {
+	if _, err := s.page("beta/docs/guide.md", true); err != domain.ErrNotFound {
 		t.Fatal("private translation exposed", err)
 	}
 	if page, err := s.page("beta/docs/guide.md", false); err != nil || !page.Translated || !strings.Contains(page.Text, "Локальная") {

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"github.com/Mesteriis/veda-wiki/internal/auth"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/httpapi"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -20,7 +22,7 @@ func TestCreateSuperuserRestrictedAndActivatesPending(t *testing.T) {
 	request := func(root bool, origin bool) int {
 		r := httptest.NewRequest("POST", "http://localhost/api/local/createsuperuser", strings.NewReader(body))
 		if root {
-			r = r.WithContext(context.WithValue(r.Context(), localRootKey{}, true))
+			r = r.WithContext(context.WithValue(r.Context(), httpapi.LocalRootKey{}, true))
 		}
 		if origin {
 			r.Header.Set("Origin", "http://localhost")
@@ -65,7 +67,7 @@ func TestPasswordMinimumTenCharacters(t *testing.T) {
 		t.Fatal("incorrect minimum password length")
 	}
 	s := testStore(t)
-	if err := s.auth().CreateSuperuser("short", "123456789"); err != ErrInvalid {
+	if err := s.auth().CreateSuperuser("short", "123456789"); err != domain.ErrInvalid {
 		t.Fatal("nine-character password accepted")
 	}
 	if err := s.auth().CreateSuperuser("valid", "1234567890"); err != nil {

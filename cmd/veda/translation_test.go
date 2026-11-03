@@ -1,13 +1,15 @@
 package main
 
 import (
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"strings"
 	"testing"
 )
 
 func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 	s := testStore(t)
-	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
+	if e := s.addSource(domain.Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
 		t.Fatal(e)
 	}
 	original := "# Setup\n\nRun `install` and [read](guide.md).\n\n```sh\necho hello\n```\n"
@@ -19,15 +21,15 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 	if e != nil || !initial.ProgramDocumentation || initial.Translated || initial.TranslationState != "unavailable" {
 		t.Fatal("original program documentation is not identified", e)
 	}
-	in := translationRequest{SourceID: "program", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Установка\n\nВыполните `install` и [читайте](guide.md).\n\n```sh\necho hello\n```\n"}
+	in := translation.Request{SourceID: "program", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Установка\n\nВыполните `install` и [читайте](guide.md).\n\n```sh\necho hello\n```\n"}
 	broken := in
 	broken.Text = strings.Replace(in.Text, "echo hello", "echo goodbye", 1)
-	if _, e = s.translation().Submit(broken); e != ErrInvalid {
+	if _, e = s.translation().Submit(broken); e != domain.ErrInvalid {
 		t.Fatal("changed code accepted", e)
 	}
 	broken = in
 	broken.Text = strings.Replace(in.Text, "guide.md", "other.md", 1)
-	if _, e = s.translation().Submit(broken); e != ErrInvalid {
+	if _, e = s.translation().Submit(broken); e != domain.ErrInvalid {
 		t.Fatal("changed link accepted", e)
 	}
 	if _, e = s.translation().Submit(in); e != nil {
@@ -48,7 +50,7 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 	if e != nil || !got.ProgramDocumentation || got.Translated || got.TranslationState != "stale" || !strings.Contains(got.Text, "Changed upstream") {
 		t.Fatal("stale translation displayed", e)
 	}
-	if _, e = s.translation().Submit(in); e != ErrConflict {
+	if _, e = s.translation().Submit(in); e != domain.ErrConflict {
 		t.Fatal("stale submission accepted", e)
 	}
 	reopened, e := openStore(s.Dir())
@@ -84,7 +86,7 @@ func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			proposal := translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 2, OriginalSHA: local.SHA, Text: "# Локальная правка"}
+			proposal := translation.Request{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 2, OriginalSHA: local.SHA, Text: "# Локальная правка"}
 			if _, err = s.translation().Validate(proposal); err != nil {
 				t.Fatal("valid proposal rejected", err)
 			}
@@ -94,13 +96,13 @@ func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
 			if err != nil || result.Conflicts != 1 {
 				t.Fatal("conflict not created", err)
 			}
-			if _, err = s.translation().Validate(proposal); err != ErrConflict {
+			if _, err = s.translation().Validate(proposal); err != domain.ErrConflict {
 				t.Fatal("conflicted validation accepted", err)
 			}
-			if _, err = s.translation().Submit(proposal); err != ErrConflict {
+			if _, err = s.translation().Submit(proposal); err != domain.ErrConflict {
 				t.Fatal("conflicted submission accepted", err)
 			}
-			if _, err = s.translation().SaveDraft(proposal); err != ErrConflict {
+			if _, err = s.translation().SaveDraft(proposal); err != domain.ErrConflict {
 				t.Fatal("conflicted automatic draft accepted", err)
 			}
 			if candidates := s.translation().Candidates(); len(candidates) != 1 || candidates[0].State != "blocked_conflict" {
@@ -110,7 +112,7 @@ func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = reopened.translation().Submit(proposal); err != ErrConflict {
+			if _, err = reopened.translation().Submit(proposal); err != domain.ErrConflict {
 				t.Fatal("restart lost conflict", err)
 			}
 			if err = reopened.resolveConflict("handbook", "docs/guide.md", 0, 2, "local"); err != nil {
@@ -124,15 +126,15 @@ func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
 }
 func TestTranslationPublicationRequiresReview(t *testing.T) {
 	s := testStore(t)
-	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "public"}); e != nil {
+	if e := s.addSource(domain.Source{ID: "program", Title: "Program", Kind: "program", Visibility: "public"}); e != nil {
 		t.Fatal(e)
 	}
 	rev, e := s.put("program", "docs/readme.md", "# Original", 0)
 	if e != nil {
 		t.Fatal(e)
 	}
-	in := translationRequest{SourceID: "program", Path: "docs/readme.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}
-	if _, e = s.translation().Submit(in); e != ErrInvalid {
+	in := translation.Request{SourceID: "program", Path: "docs/readme.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}
+	if _, e = s.translation().Submit(in); e != domain.ErrInvalid {
 		t.Fatal("unapproved publication", e)
 	}
 	in.ConfirmPublication = true
@@ -150,11 +152,11 @@ func TestTranslationPublicationRequiresReview(t *testing.T) {
 }
 func TestPrivateTranslationCannotAppearAfterVisibilityChanges(t *testing.T) {
 	s := testStore(t)
-	if e := s.addSource(Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
+	if e := s.addSource(domain.Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
 		t.Fatal(e)
 	}
 	rev, _ := s.put("program", "docs/readme.md", "# Original", 0)
-	in := translationRequest{SourceID: "program", Path: "docs/readme.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Приватный перевод", ConfirmPublication: true}
+	in := translation.Request{SourceID: "program", Path: "docs/readme.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Приватный перевод", ConfirmPublication: true}
 	if _, e := s.translation().Submit(in); e != nil {
 		t.Fatal(e)
 	}
@@ -180,7 +182,7 @@ func TestStalePrivateDraftDoesNotLeakOnPublicPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.translation().SaveDraft(translationRequest{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
+	_, err = s.translation().SaveDraft(translation.Request{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,288 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/agentctx"
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestAgentContextScopesAndReportsStatus(t *testing.T) {
+	s := testStore(t)
+	for _, id := range []string{"alpha", "beta"} {
+		source(t, s, id, "private")
+		for _, name := range []string{"AGENTS.md", "infra/AGENTS.md"} {
+			if _, err := s.put(id, name, "# "+id+" "+name, 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	s.Lock()
+	src := s.DB().Sources["alpha"]
+	src.ImportPartial = true
+	src.ImportDirty = true
+	s.DB().Sources["alpha"] = src
+	s.observations.MarkObserved("alpha", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	a := s.DB().Articles["alpha/infra/AGENTS.md"]
+	a.Conflicts = []domain.ImportConflict{{}}
+	s.DB().Articles["alpha/infra/AGENTS.md"] = a
+	s.Unlock()
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner"}
+	call := func(sourceID, target string, public bool) *httptest.ResponseRecorder {
+		values := url.Values{"source_id": {sourceID}, "path": {target}}
+		r := httptest.NewRequest("GET", "/api/v1/context?"+values.Encode(), nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		targetWiki := w
+		targetWiki.Public = public
+		targetWiki.ServeHTTP(out, r)
+		return out
+	}
+	r := call("alpha", "infra/nested/guide.md", false)
+	var ctx agentctx.Result
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &ctx) != nil {
+		t.Fatal("context unavailable", r.Code)
+	}
+	if len(ctx.Instructions) != 2 || ctx.Instructions[0].Path != "AGENTS.md" || ctx.Instructions[1].Path != "infra/AGENTS.md" || len(ctx.Missing) != 1 || ctx.Missing[0] != "infra/nested/AGENTS.md" {
+		t.Fatal("incorrect ancestor context")
+	}
+	if !ctx.SourceStatus.ImportPartial || !ctx.SourceStatus.ImportDirty || ctx.SourceStatus.UnresolvedConflicts != 1 || ctx.SourceStatus.LastImportObservedAt == nil {
+		t.Fatal("incorrect source status")
+	}
+	if call("beta", "infra/guide.md", false).Code != 404 || call("alpha", "infra/guide.md", true).Code != 404 {
+		t.Fatal("context escaped scope or public boundary")
+	}
+	if call("alpha", "../guide.md", false).Code != 400 {
+		t.Fatal("invalid path accepted")
+	}
+}
+
+func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "handbook", "public")
+	for _, path := range []string{"conflicted.md", "linked.md", "clean.md"} {
+		if _, err := s.put("handbook", path, "# Fixture", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Lock()
+	a := s.DB().Articles["handbook/conflicted.md"]
+	a.Conflicts = []domain.ImportConflict{{}}
+	s.DB().Articles["handbook/conflicted.md"] = a
+	a = s.DB().Articles["handbook/linked.md"]
+	a.Conflicts = []domain.ImportConflict{{}}
+	s.DB().Articles["handbook/linked.md"] = a
+	s.DB().Outbox = map[string]domain.SyncJob{"fixture": {SourceID: "handbook", Path: "conflicted.md", State: "retry", PreparedCommit: "synthetic-prepared-commit", Bundle: map[string]string{"linked.md": "fixture"}}}
+	s.Unlock()
+	w := Wiki{Store: s, Token: "test-owner"}
+	for _, tc := range []struct {
+		path                string
+		owner, public, want bool
+	}{
+		{"conflicted.md", true, false, true},
+		{"linked.md", true, false, true},
+		{"clean.md", true, false, false},
+		{"conflicted.md", false, true, false},
+	} {
+		copy := w
+		copy.Public = tc.public
+		r := request(copy, "GET", "/api/state?page="+url.QueryEscape("handbook/"+tc.path), "", tc.owner)
+		if r.Code != 200 || strings.Contains(r.Body.String(), `"unresolved_conflict":true`) != tc.want {
+			t.Fatalf("incorrect per-page conflict visibility for %s", tc.path)
+		}
+		if strings.Contains(r.Body.String(), `"conflict_resolution_blocked_by_write":true`) != tc.want || strings.Contains(r.Body.String(), "synthetic-prepared-commit") {
+			t.Fatalf("incorrect per-page write blocker visibility for %s", tc.path)
+		}
+	}
+	key, err := s.auth().CreateAccessKey("reader", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"conflicted.md", "linked.md"} {
+		r := httptest.NewRequest("GET", "/api/state?page="+url.QueryEscape("handbook/"+path), nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		w.ServeHTTP(out, r)
+		if out.Code != 200 || !strings.Contains(out.Body.String(), `"conflict_resolution_blocked_by_write":true`) || strings.Contains(out.Body.String(), "synthetic-prepared-commit") {
+			t.Fatal("scoped reader did not receive safe write blocker status", path)
+		}
+	}
+}
+
+func TestAgentContextRefusesOversizedInstructionSet(t *testing.T) {
+	s := testStore(t)
+	source(t, s, "alpha", "private")
+	text := strings.Repeat("x", 220000)
+	parts := []string{}
+	s.Lock()
+	for i := 0; i < 7; i++ {
+		name := "AGENTS.md"
+		if i > 0 {
+			name = strings.Join(parts, "/") + "/AGENTS.md"
+		}
+		s.DB().Articles["alpha/"+name] = domain.Article{SourceID: "alpha", Path: name, Versions: []domain.Revision{{Number: 1, Text: text}}}
+		parts = append(parts, "d")
+	}
+	s.Unlock()
+	target := strings.Join(parts, "/") + "/guide.md"
+	w := Wiki{Store: s, Token: "test-owner"}
+	r := request(w, "GET", "/api/v1/context?"+url.Values{"source_id": {"alpha"}, "path": {target}}.Encode(), "", true)
+	if r.Code != 413 {
+		t.Fatal("oversized context was not rejected", r.Code)
+	}
+}
+
+func TestScopedContextReportsConnectionFailure(t *testing.T) {
+	s := testStore(t)
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Context"})
+	m := connectFixture(t, s, f, false)
+	source(t, s, "other", "private")
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Modify(func() { f.Fail = true })
+	m.Once(context.Background())
+	w := Wiki{Store: s, Token: "owner"}
+	call := func(id string) *httptest.ResponseRecorder {
+		values := url.Values{"source_id": {id}, "path": {"guide.md"}}
+		r := httptest.NewRequest("GET", "/api/v1/context?"+values.Encode(), nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		w.ServeHTTP(out, r)
+		return out
+	}
+	r := call("handbook")
+	var result agentctx.Result
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &result) != nil {
+		t.Fatal("scoped context unavailable", r.Code)
+	}
+	if result.SourceStatus.SyncState != "error" || result.SourceStatus.SyncError != "upstream_unavailable" || result.SourceStatus.SyncVerification != "unknown" || result.SourceStatus.SyncIssue != "error" || result.SourceStatus.LastImportObservedAt == nil {
+		t.Fatal("connection failure not reflected in context", result.SourceStatus)
+	}
+	request := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path=AGENTS.md", nil)
+	request.Header.Set("Authorization", "Bearer "+key)
+	proposal := httptest.NewRecorder()
+	w.ServeHTTP(proposal, request)
+	var base struct {
+		SourceStatus domain.SourceStatus `json:"source_status"`
+	}
+	if proposal.Code != 200 || json.Unmarshal(proposal.Body.Bytes(), &base) != nil || base.SourceStatus.SyncState != "error" || base.SourceStatus.SyncVerification != "unknown" || base.SourceStatus.SyncIssue != "error" {
+		t.Fatal("connection failure not reflected in proposal", proposal.Code)
+	}
+	if call("other").Code != 404 {
+		t.Fatal("connection status escaped source scope")
+	}
+}
+
+func TestContextReportsUnconfirmedWritesInScopedSnapshot(t *testing.T) {
+	s := testStore(t)
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
+	m := connectFixture(t, s, f, true)
+	source(t, s, "other", "private")
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(public bool) domain.SourceStatus {
+		r := httptest.NewRequest("GET", "/api/v1/context?source_id=handbook&path=guide.md", nil)
+		if !public {
+			r.Header.Set("Authorization", "Bearer "+key)
+		}
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "owner", Public: public}).ServeHTTP(out, r)
+		var result agentctx.Result
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &result) != nil {
+			t.Fatal("context unavailable", out.Code)
+		}
+		return result.SourceStatus
+	}
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 || status.PreparedWrites == nil || *status.PreparedWrites != 0 {
+		t.Fatal("initial queue count unavailable")
+	}
+	if _, err = s.put("handbook", "guide.md", "# Local update", 1); err != nil {
+		t.Fatal(err)
+	}
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 || status.PreparedWrites == nil || *status.PreparedWrites != 0 {
+		t.Fatal("queued write not reflected immediately")
+	}
+	if status := read(true); status.UnconfirmedWrites != nil || status.PreparedWrites != nil {
+		t.Fatal("public context exposed write queue")
+	}
+	public := request(Wiki{Store: s, Public: true}, "GET", "/api/v1/context?source_id=handbook&path=guide.md", "", false)
+	if public.Code != 200 || strings.Contains(public.Body.String(), "prepared_unconfirmed_write_jobs") {
+		t.Fatal("public response exposed prepared count", public.Code)
+	}
+	m.Once(context.Background())
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 1 || status.PreparedWrites == nil || *status.PreparedWrites != 1 {
+		t.Fatal("write counted as confirmed before the follow-up import")
+	}
+	m.Once(context.Background())
+	if status := read(false); status.UnconfirmedWrites == nil || *status.UnconfirmedWrites != 0 || status.PreparedWrites == nil || *status.PreparedWrites != 0 {
+		t.Fatal("confirmed write still counted")
+	}
+	if _, err = s.agentContext("other", "guide.md", false); err != nil {
+		t.Fatal(err)
+	}
+	local, _ := s.agentContext("other", "guide.md", false)
+	if local.SourceStatus.UnconfirmedWrites != nil || local.SourceStatus.PreparedWrites != nil {
+		t.Fatal("local source reported a GitHub outbox count")
+	}
+}
+
+func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
+	s := testStore(t)
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Instructions"})
+	connectFixture(t, s, f, false)
+	key, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Wiki{Store: s, Token: "owner"}
+	read := func(route string) domain.SourceStatus {
+		t.Helper()
+		req := httptest.NewRequest("GET", route, nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		res := httptest.NewRecorder()
+		w.ServeHTTP(res, req)
+		var payload struct {
+			SourceStatus domain.SourceStatus `json:"source_status"`
+		}
+		if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &payload) != nil {
+			t.Fatal("scoped status unavailable", res.Code)
+		}
+		return payload.SourceStatus
+	}
+	check := func(want string) {
+		t.Helper()
+		context := read("/api/v1/context?source_id=handbook&path=AGENTS.md")
+		proposal := read("/api/v1/articles/proposal-base?source_id=handbook&path=AGENTS.md")
+		newProposal := read("/api/v1/articles/new-proposal-base?source_id=handbook&path=new.md")
+		if context.SyncIssue != want || proposal.SyncIssue != want || newProposal.SyncIssue != want || s.sources(false)[0].SyncIssue != want {
+			t.Fatalf("inconsistent warning: context=%q proposal=%q want=%q", context.SyncIssue, proposal.SyncIssue, want)
+		}
+	}
+	check("")
+	s.Lock()
+	conn := s.DB().Connections["handbook"]
+	conn.Paused = true
+	s.DB().Connections["handbook"] = conn
+	s.Unlock()
+	check("paused")
+	s.Lock()
+	conn.Paused = false
+	conn.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
+	s.DB().Connections["handbook"] = conn
+	s.Unlock()
+	check("unverified")
+}
