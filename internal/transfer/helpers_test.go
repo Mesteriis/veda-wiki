@@ -160,11 +160,15 @@ func (s *fixture) asset(sourceID, assetPath string) domain.BlobRef {
 	return ref
 }
 
+// programSource adds a disconnected program source through the production
+// rule for new sources.
 func (s *fixture) programSource(id, visibility string) {
 	s.t.Helper()
-	s.mutate(func(db *domain.Database) {
-		db.Sources[id] = domain.Source{ID: id, Title: id, Kind: "program", Visibility: visibility}
-	})
+	if err := s.Store.Update(func(tx *store.Tx) error {
+		return domain.AddSource(tx.DB(), domain.Source{ID: id, Title: id, Kind: "program", Visibility: visibility})
+	}); err != nil {
+		s.t.Fatal(err)
+	}
 }
 
 // page is the reader API's view of an article, with its translation state.
