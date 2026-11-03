@@ -116,7 +116,17 @@ the path; deleted history or a concurrent write can still prevent creation.
 
 ## Development
 
+The Go backend is one module with the dispatcher in `cmd/veda` and the code in
+`internal/` (`domain`, `store`, the areas `auth`, `importer`, `transfer`,
+`translation`, `syncer`, `agentctx`, and the adapters `httpapi` and `app`).
+[Backend architecture](docs/architecture.md) lists the packages, allowed
+dependencies, collection ownership and the transaction model. `make lint`
+enforces a 500-line limit for Go and script files and runs
+`scripts/check_architecture.py`, which fails on forbidden package imports and
+on writes to a collection outside its owner.
+
 ```sh
+make lint
 make test
 .venv/bin/python scripts/smoke.py
 .venv/bin/python scripts/smoke_large.py

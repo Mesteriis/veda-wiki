@@ -1,7 +1,9 @@
 # VEDA engineering
 
 React is a reading interface. Authors use REST, MCP or repository synchronization.
-Keep article/source operations in the shared Go service; MCP is an adapter.
+Keep article/source operations in the shared Go service (`internal/` areas over
+`internal/store` and `internal/domain`, see docs/architecture.md); `internal/httpapi`
+and MCP are adapters.
 Use stable source IDs: identical article paths in different sources are distinct.
 Wiki sources will use root veda.yaml metadata; program sources use docs/ only.
 Repository visibility determines publication, never a folder name or YAML flag.
