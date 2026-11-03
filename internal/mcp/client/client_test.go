@@ -131,16 +131,20 @@ func TestDoesNotFollowRedirect(t *testing.T) {
 }
 
 func TestDoesNotUseProxy(t *testing.T) {
-	proxied := false
-	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { proxied = true }))
-	defer proxy.Close()
-	t.Setenv("HTTP_PROXY", proxy.URL)
-	t.Setenv("http_proxy", proxy.URL)
-	t.Setenv("NO_PROXY", "")
-	c, server := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) })
-	_ = server
-	if _, err := c.Do(t.Context(), "GET", "/x", nil); err != nil || proxied {
-		t.Fatalf("err=%v proxied=%v", err, proxied)
+	// Loopback targets bypass environment proxies anyway, so check the
+	// transport itself: a nil Proxy never consults HTTP_PROXY or HTTPS_PROXY.
+	for _, opts := range []Options{
+		{URL: "http://127.0.0.1:8080", KeyFile: writeKey(t, 0o600, testKey)},
+		{URL: "https://veda.example", ReaderKeyFile: writeKey(t, 0o600, testKey), AllowRemoteReaderHTTPS: true},
+	} {
+		c, err := New(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		transport, ok := c.http.Transport.(*http.Transport)
+		if !ok || transport.Proxy != nil {
+			t.Fatalf("%s: transport %T uses a proxy function", opts.URL, c.http.Transport)
+		}
 	}
 }
 

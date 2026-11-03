@@ -82,7 +82,7 @@ func New(opts Options) (*Client, error) {
 	if opts.KeyValue != "" && !validKey(opts.KeyValue) {
 		return nil, errors.New("invalid preamble key")
 	}
-	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true}
+	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, TLSClientConfig: tlsConfig()}
 	if opts.SocketPath != "" {
 		transport.DialContext = dialSocket(opts.SocketPath)
 	}

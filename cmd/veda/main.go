@@ -27,6 +27,8 @@ func main() {
 		err = commands.AccessKey(os.Args[2:], os.Stdout)
 	case "import":
 		err = commands.Import(os.Args[2:])
+	case "mcp":
+		err = commands.MCP(os.Args[2:], os.Stdin, os.Stdout)
 	default:
 		err = app.Run(context.Background(), os.Args[1:])
 	}
