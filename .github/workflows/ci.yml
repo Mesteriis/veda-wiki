@@ -41,7 +41,7 @@ jobs:
       - run: python scripts/smoke_translation_auth.py --protocol openai
       - run: python scripts/smoke_directory_restore.py
       - run: python scripts/smoke_directory_restore.py --index
-      - run: VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^(TestMultiSourceMCPAfterSQLiteRestart|TestAgentRoutesVPSRequestAcrossSources|TestReconcileThroughMCP|TestMirrorThroughMCP)$' -v ./cmd/veda ./internal/httpapi
+      - run: VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^(TestMultiSourceMCPAfterSQLiteRestart|TestAgentRoutesVPSRequestAcrossSources|TestReconcileThroughMCP|TestMirrorThroughMCP)$' -v ./internal/httpapi
       - run: VEDA_MIRROR_SCALE=realistic go test -run '^TestMirrorSyntheticScale$' -v -timeout 10m ./internal/syncer
       - name: Build Linux archives
         run: |

@@ -11,9 +11,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 // fixture is a transfer service over a fresh store, with the reads and
@@ -156,4 +158,28 @@ func (s *fixture) asset(sourceID, assetPath string) domain.BlobRef {
 		db.Sources[sourceID] = src
 	})
 	return ref
+}
+
+func (s *fixture) programSource(id, visibility string) {
+	s.t.Helper()
+	s.mutate(func(db *domain.Database) {
+		db.Sources[id] = domain.Source{ID: id, Title: id, Kind: "program", Visibility: visibility}
+	})
+}
+
+// page is the reader API's view of an article, with its translation state.
+func (s *fixture) page(key string, public bool) (domain.Page, error) {
+	return domain.ReadPage(s.db(), key, public, time.Now())
+}
+
+// article is the article API's view: the owner's revisions or, with public,
+// the published revision only.
+func (s *fixture) article(sourceID, p string, public bool) (domain.Article, error) {
+	return domain.ReadArticle(s.db(), sourceID, p, public, time.Now())
+}
+
+func (s *fixture) auth() auth.Service { return auth.Service{Store: s.Store} }
+
+func (s *fixture) translation() translation.Service {
+	return translation.Service{Store: s.Store}
 }

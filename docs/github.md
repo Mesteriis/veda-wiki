@@ -78,7 +78,7 @@ test outage recovery or credentials on that host:
 
 ```sh
 VEDA_LIVE_GITHUB_MIXED=1 VEDA_TEST_MCP_PYTHON=/path/to/python \
-  go test -count=1 -run '^TestLiveGitHubMixedSourcesReadOnly$' -v ./cmd/veda
+  go test -count=1 -run '^TestLiveGitHubMixedSourcesReadOnly$' -v ./internal/httpapi
 ```
 
 The local integration test uses two fake GitHub repositories, including one
@@ -89,7 +89,7 @@ after SQLite is reopened; the other source reports zero jobs. Run it with a
 Python environment that has the MCP SDK:
 
 ```sh
-VEDA_TEST_MCP_PYTHON=/path/to/python go test -run '^TestMultiSourceMCPAfterSQLiteRestart$' -v ./cmd/veda
+VEDA_TEST_MCP_PYTHON=/path/to/python go test -run '^TestMultiSourceMCPAfterSQLiteRestart$' -v ./internal/httpapi
 ```
 
 An opt-in browser acceptance test connects one explicitly chosen public program
@@ -260,7 +260,7 @@ so it does not test VEDA's handling of a real PAT or App installation. With `gh`
 already authenticated as Mesteriis, run:
 
 ```sh
-VEDA_LIVE_GITHUB_MOVE=1 go test -count=1 -run '^TestLiveGitHubBranchMove$' -v ./cmd/veda
+VEDA_LIVE_GITHUB_MOVE=1 go test -count=1 -run '^TestLiveGitHubBranchMove$' -v ./internal/httpapi
 ```
 
 Add `VEDA_LIVE_GITHUB_DIRECTORY=1` to include a directory `index.md` mapped
