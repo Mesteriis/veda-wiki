@@ -69,7 +69,8 @@ login, expired and invalidated sessions are removed before applying the limit.
 
 The owner creates teams, assigns their source scopes, creates users with an
 initial password, assigns teams, disables users and resets passwords in the
-separate access-administration session. The initial password must be conveyed to
+separate access-administration session. The last active administrator cannot be
+disabled there; owner-key provisioning remains the recovery path. The initial password must be conveyed to
 the intended person securely; the user can then change it. Passwords must be
 10–128 Unicode characters and at most 512 UTF-8 bytes. VEDA stores salted
 Argon2id hashes (19 MiB, two iterations, one lane), never plaintext passwords;

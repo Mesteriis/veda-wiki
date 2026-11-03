@@ -123,6 +123,16 @@ func (s *Store) setUserAdmin(id string, admin bool, expected int) error {
 	return s.commit(db)
 }
 
+// Caller holds the store lock.
+func otherActiveAdmin(db Database, id string) bool {
+	for _, u := range db.Users {
+		if u.ID != id && u.Admin && !u.Disabled && u.SetupExpires == "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) adminSessionValid(id string, version int) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -276,6 +286,9 @@ func (s *Store) saveUser(id string, teams *[]string, password *string, disabled 
 		}
 	}
 	if disabled != nil && user.Disabled != *disabled {
+		if *disabled && user.Admin && !otherActiveAdmin(s.db, id) {
+			return WikiUserView{}, ErrConflict
+		}
 		user.Disabled = *disabled
 		if exists {
 			user.AuthVersion++
