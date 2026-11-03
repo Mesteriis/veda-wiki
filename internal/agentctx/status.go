@@ -10,14 +10,9 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 )
 
-// SourceStatus is the status reported in agent context, proposals, transfer
-// plans and translation validation. It lives in domain so that transfer and
-// translation can use it without importing this package.
-type SourceStatus = domain.SourceStatus
-
 // Status reports src from db and obs only. obs may be nil. The caller has
 // authorized the source and reads db from a snapshot.
-func Status(db domain.Database, obs *importer.Observations, sourceID string, src domain.Source, now time.Time) SourceStatus {
+func Status(db domain.Database, obs *importer.Observations, sourceID string, src domain.Source, now time.Time) domain.SourceStatus {
 	var observedAt *time.Time
 	var withheld *int
 	if at, ok := obs.Observed(sourceID); ok {
