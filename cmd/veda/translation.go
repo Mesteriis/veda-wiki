@@ -124,6 +124,7 @@ func protectedMarkdown(value string) []string {
 		case *ast.CodeBlock:
 			result = append(result, "code:"+string(n.Lines().Value(source)))
 		case *ast.CodeSpan:
+			//lint:ignore SA1019 goldmark Node.Text semantics are preserved until a reviewed migration
 			result = append(result, "inline:"+string(n.Text(source)))
 		case *ast.Link:
 			result = append(result, "link:"+string(n.Destination))

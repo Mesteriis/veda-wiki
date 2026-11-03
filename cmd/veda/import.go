@@ -254,6 +254,7 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 		}
 		tracked[name] = true
 		if len(tracked) > 20000 {
+			//lint:ignore ST1005 "Git" is a proper noun; the message text is observable and must not change
 			return result, errors.New("Git index exceeds import limits")
 		}
 		for dir := path.Dir(name); dir != "." && dir != "/"; dir = path.Dir(dir) {
@@ -801,6 +802,7 @@ type boundedGitOutput struct{ bytes.Buffer }
 
 func (b *boundedGitOutput) Write(p []byte) (int, error) {
 	if b.Len()+len(p) > 4<<20 {
+		//lint:ignore ST1005 "Git" is a proper noun; the message text is observable and must not change
 		return 0, errors.New("Git output exceeds import limit")
 	}
 	return b.Buffer.Write(p)

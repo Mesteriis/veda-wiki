@@ -48,7 +48,7 @@ func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
 	s.put("from", "guide.md", "# Guide\n\n[Docs](docs/)", 0)
 	s.put("from", "docs/README.md", "# Docs", 0)
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
-	m := connectFixture(t, s, f, true)
+	_ = connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
 	if err != nil || s.db.Version != 16 || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
 		t.Fatal("directory bundle not queued", err)
@@ -57,7 +57,7 @@ func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal("directory bundle did not reopen", err)
 	}
-	m = newSyncManager(s, f.client())
+	m := newSyncManager(s, f.client())
 	m.Once(context.Background())
 	if f.writeCount() != 1 || f.contents()["docs/README.md"] != "# Docs" || s.jobs()[0].State == "complete" {
 		t.Fatal("directory bundle was not atomically sent")

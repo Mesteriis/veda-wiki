@@ -42,7 +42,6 @@ type fakeGitHub struct {
 	commits      map[string]fakeCommit
 	server       *httptest.Server
 	force        bool
-	tokens       []string
 	name         string
 	repoID       int64
 }
@@ -90,12 +89,12 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	respond := func(v any) { jsonResponse(w, 200, v) }
 	if f.fail {
-		http.Error(w, "fixture outage", 503)
+		http.Error(w, "fixture outage", http.StatusServiceUnavailable)
 		return
 	}
 	if r.URL.Path == "/user" {
 		if r.Header.Get("Authorization") != "Bearer "+fixtureAccess {
-			http.Error(w, "denied", 401)
+			http.Error(w, "denied", http.StatusUnauthorized)
 			return
 		}
 		respond(map[string]string{"login": "operator"})
@@ -103,7 +102,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/app/installations/") {
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ey") {
-			http.Error(w, "JWT missing", 401)
+			http.Error(w, "JWT missing", http.StatusUnauthorized)
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/access_tokens") {
@@ -160,7 +159,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.force = f.force || u.Force
 		c, ok := f.commits[u.After]
 		if f.reject || !ok || u.Name != "refs/heads/main" || u.Before != f.head || c.parent != u.Before || u.Force {
-			http.Error(w, "head changed", 422)
+			http.Error(w, "head changed", http.StatusUnprocessableEntity)
 			return
 		}
 		f.head = u.After
@@ -242,7 +241,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		files := map[string]string{}
 		base, ok := f.trees[in.Base]
 		if !ok {
-			http.Error(w, "base missing", 422)
+			http.Error(w, "base missing", http.StatusUnprocessableEntity)
 			return
 		}
 		for k, v := range base {
@@ -251,7 +250,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		for _, e := range in.Tree {
 			if e.SHA == nil {
 				if _, exists := files[e.Path]; !exists {
-					http.Error(w, "file missing", 422)
+					http.Error(w, "file missing", http.StatusUnprocessableEntity)
 					return
 				}
 				delete(files, e.Path)
@@ -270,7 +269,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewDecoder(r.Body).Decode(&in)
 		if len(in.Parents) != 1 {
-			http.Error(w, "parent missing", 422)
+			http.Error(w, "parent missing", http.StatusUnprocessableEntity)
 			return
 		}
 		f.counter++
@@ -291,7 +290,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.force = f.force || in.Force
 		c, ok := f.commits[in.SHA]
 		if f.reject || !ok || c.parent != f.head || in.Force {
-			http.Error(w, "head changed", 422)
+			http.Error(w, "head changed", http.StatusUnprocessableEntity)
 			return
 		}
 		f.head = in.SHA
@@ -488,7 +487,7 @@ func errorsIsConflictOrInvalid(e error) bool { return e == ErrInvalid || e == Er
 func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	s := testStore(t)
 	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original", "src/main.go": "package original"})
-	m := connectFixture(t, s, f, true)
+	_ = connectFixture(t, s, f, true)
 	if _, e := s.put("handbook", "docs/guide.md", "# Saved locally", 1); e != nil {
 		t.Fatal(e)
 	}
@@ -499,7 +498,7 @@ func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	m = newSyncManager(reopened, f.client())
+	m := newSyncManager(reopened, f.client())
 	m.Once(context.Background())
 	if f.contents()["docs/guide.md"] != "# Saved locally" || f.contents()["src/main.go"] != "package original" || f.force {
 		t.Fatal("unsafe remote write")

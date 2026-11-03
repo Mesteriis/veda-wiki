@@ -304,7 +304,7 @@ func TestCopyImageQueuesBundleWithoutDeletingSource(t *testing.T) {
 	ref := fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
-	manager := connectFixture(t, s, f, true)
+	_ = connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
@@ -316,7 +316,7 @@ func TestCopyImageQueuesBundleWithoutDeletingSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager = newSyncManager(reopened, f.client())
+	manager := newSyncManager(reopened, f.client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
 	if reopened.jobs()[0].State != "complete" || reopened.db.Articles["from/a.md"].Deleted || reopened.db.Sources["handbook"].Assets["img/icon.png"] != ref {

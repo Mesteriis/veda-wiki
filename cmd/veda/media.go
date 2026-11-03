@@ -43,7 +43,7 @@ func (w Wiki) media(rw http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	b, e := io.ReadAll(io.LimitReader(file, (4<<20)+1))
 	if e != nil || len(b) > 4<<20 || digest(b) != ref.SHA {
-		http.Error(rw, "Image unavailable", 503)
+		http.Error(rw, "Image unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	rw.Header().Set("Content-Type", ref.MIME)

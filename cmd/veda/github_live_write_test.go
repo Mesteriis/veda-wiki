@@ -157,7 +157,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 			}
 		}
 		if route != "user" && route != "graphql" && !allowedRepo {
-			http.Error(w, "route denied", 403)
+			http.Error(w, "route denied", http.StatusForbidden)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
@@ -172,7 +172,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 			}
 		}
 		if r.Method != "GET" && (r.Method != "POST" || !allowedWrite) {
-			http.Error(w, "write denied", 403)
+			http.Error(w, "write denied", http.StatusForbidden)
 			return
 		}
 		if route == "graphql" {
@@ -191,27 +191,27 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 				} `json:"variables"`
 			}
 			if r.Method != "POST" || json.Unmarshal(body, &request) != nil {
-				http.Error(w, "mutation denied", 403)
+				http.Error(w, "mutation denied", http.StatusForbidden)
 				return
 			}
 			switch request.Query {
 			case `query($owner:String!, $name:String!) { repository(owner:$owner, name:$name) { id } }`:
 				if request.Variables.Owner != "Mesteriis" || (request.Variables.Name != "veda-wiki" && !(targetRepo != repo && request.Variables.Name == "mac-tower")) {
-					http.Error(w, "repository denied", 403)
+					http.Error(w, "repository denied", http.StatusForbidden)
 					return
 				}
 			case `mutation($input:UpdateRefsInput!) { updateRefs(input:$input) { clientMutationId } }`:
 				if len(request.Variables.Input.Updates) != 1 {
-					http.Error(w, "mutation denied", 403)
+					http.Error(w, "mutation denied", http.StatusForbidden)
 					return
 				}
 				update := request.Variables.Input.Updates[0]
 				if update.Force || !((request.Variables.Input.RepositoryID == nodeIDs[0] && update.Name == "refs/heads/"+branches[0]) || (request.Variables.Input.RepositoryID == nodeIDs[1] && update.Name == "refs/heads/"+branches[1])) {
-					http.Error(w, "branch denied", 403)
+					http.Error(w, "branch denied", http.StatusForbidden)
 					return
 				}
 			default:
-				http.Error(w, "query denied", 403)
+				http.Error(w, "query denied", http.StatusForbidden)
 				return
 			}
 		}
@@ -220,7 +220,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		}
 		result, err := gh(route, r.Method, body)
 		if err != nil {
-			http.Error(w, "upstream failure", 502)
+			http.Error(w, "upstream failure", http.StatusBadGateway)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

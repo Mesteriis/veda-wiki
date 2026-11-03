@@ -236,6 +236,7 @@ func render(p Page) (template.HTML, template.HTML, error) {
 		}
 		if h, ok := n.(*ast.Heading); ok {
 			if id, exists := h.AttributeString("id"); exists {
+				//lint:ignore SA1019 goldmark Node.Text semantics (soft breaks, nested nodes) are preserved until a reviewed migration
 				fmt.Fprintf(&toc, "<a class=level%d href=\"#%s\">%s</a>", h.Level, template.HTMLEscapeString(headingID(id)), template.HTMLEscapeString(string(h.Text(source))))
 			}
 		}
@@ -411,7 +412,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
 	rw.Header().Set("Cache-Control", "no-store")
 	if r.Method != "GET" {
-		http.Error(rw, "Method not allowed", 405)
+		http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/assets/") {
@@ -422,7 +423,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
 		index, e := assets.ReadFile("ui/index.html")
 		if e != nil {
-			http.Error(rw, "Frontend unavailable", 503)
+			http.Error(rw, "Frontend unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -507,7 +508,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if name == p.Path {
 			full, e := w.Store.page(p.Path, w.Public)
 			if e != nil {
-				http.Error(rw, "Page unavailable", 503)
+				http.Error(rw, "Page unavailable", http.StatusServiceUnavailable)
 				return
 			}
 			full.HTML, v.TOC, e = render(full)

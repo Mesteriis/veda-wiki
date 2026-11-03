@@ -242,7 +242,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
-	manager := connectFixture(t, s, f, true)
+	_ = connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil || s.db.Version != 3 {
 		t.Fatal("version 3 move not created", err)
@@ -255,7 +255,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	if err != nil || reopened.db.Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
 		t.Fatal("version upgrade lost access", err)
 	}
-	manager = newSyncManager(reopened, f.client())
+	manager := newSyncManager(reopened, f.client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
 	if reopened.moves()[0].State != "complete" || len(reopened.accessScope(key, time.Now())) != 1 {
