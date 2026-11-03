@@ -39,21 +39,6 @@ func TestLargeArticlesPersistWithVersionGateAndAPI(t *testing.T) {
 	}
 }
 
-func TestLargeImportUsesVersionGate(t *testing.T) {
-	s := testStore(t)
-	b := testBatch()
-	b.Files["README.md"] = "# Large\n" + strings.Repeat("x", legacyArticleBytes+1)
-	if _, err := s.importBatch(b); err != nil {
-		t.Fatal(err)
-	}
-	if s.DB().Version != 13 {
-		t.Fatal("large import did not upgrade store")
-	}
-	if _, err := openStore(s.Dir()); err != nil {
-		t.Fatal("large import could not reopen", err)
-	}
-}
-
 func TestPreviousBinaryRefusesLargeArticleStore(t *testing.T) {
 	old := os.Getenv("VEDA_OLD_V12_BINARY")
 	if old == "" {

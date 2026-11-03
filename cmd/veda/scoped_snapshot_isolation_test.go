@@ -35,7 +35,7 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	a.ReconcileBase = &ReconcileBase{SourceID: "beta", Path: "secret.md"}
 	a.Published = &Revision{Text: "original published"}
 	s.DB().Articles["alpha/guide.md"] = a
-	s.MarkObserved("alpha", observed)
+	s.observations.MarkObserved("alpha", observed)
 	s.Unlock()
 	view, valid, err := scopedView(s, key, time.Now())
 	if err != nil || !valid {
@@ -57,7 +57,7 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	a.Translation.Text = "changed translation"
 	a.CopiedFrom.Path = "changed path"
 	a.Published.Text = "changed published"
-	s.MarkObserved("alpha", observed.Add(time.Hour))
+	s.observations.MarkObserved("alpha", observed.Add(time.Hour))
 	s.Unlock()
 	vs := view.DB().Sources["alpha"]
 	va := view.DB().Articles["alpha/guide.md"]

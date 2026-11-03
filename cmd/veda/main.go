@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"net/url"
 )
 
@@ -169,7 +170,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		count, err := w.Store.removeLocalImportedSource(w.LocalImportSource, in.Generation)
+		count, err := w.Store.importer().RemoveLocalImportedSource(w.LocalImportSource, in.Generation)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -178,12 +179,12 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if w.ReaderLocal && w.LocalImportSource != "" && r.URL.Path == "/api/v1/import" && r.Method == "POST" && r.Context().Value(localRootKey{}) == true && r.Header.Get("Origin") == "" {
-		var batch ImportBatch
-		if decodeImport(rw, r, &batch) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
+		var batch importer.Batch
+		if importer.Decode(rw, r, &batch) != nil || batch.SourceID != w.LocalImportSource || batch.Complete {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		result, err := w.Store.applyImport(batch, nil, true)
+		result, err := w.Store.importer().Apply(batch, nil, true)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -207,7 +208,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 					return
 				}
 				if valid {
-					w.Store, reader = &Store{scoped}, true
+					w.Store, reader = w.Store.scoped(scoped), true
 				}
 			}
 			if user, ok := w.Sessions.UserCookie(r); ok && !reader {
@@ -217,7 +218,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 					return
 				}
 				if valid {
-					w.Store, reader = &Store{scoped}, true
+					w.Store, reader = w.Store.scoped(scoped), true
 				}
 			}
 		}
@@ -233,7 +234,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 					http.Error(rw, "Read-only access", http.StatusForbidden)
 					return
 				}
-				w.Store, reader = &Store{scoped}, true
+				w.Store, reader = w.Store.scoped(scoped), true
 			}
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/v1/") {

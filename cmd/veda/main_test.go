@@ -27,7 +27,7 @@ func testStore(t *testing.T) *Store {
 func observedAt(s *Store, sourceID string) time.Time {
 	s.RLock()
 	defer s.RUnlock()
-	at, _ := s.Observed(sourceID)
+	at, _ := s.observations.Observed(sourceID)
 	return at
 }
 
@@ -305,5 +305,5 @@ func scopedView(s *Store, token string, now time.Time) (*Store, bool, error) {
 	if view == nil {
 		return nil, valid, err
 	}
-	return &Store{view}, valid, err
+	return s.scoped(view), valid, err
 }

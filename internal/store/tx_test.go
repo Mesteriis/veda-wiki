@@ -268,3 +268,53 @@ func TestSQLiteUpdateUnrecoverableFailureFailsClosed(t *testing.T) {
 		t.Fatal("invalid store accepted another update")
 	}
 }
+
+func TestAfterCommitRunsOnlyAfterACommit(t *testing.T) {
+	st := storetest.New(t)
+	storetest.Source(t, st, "local", "private")
+	runs := 0
+	refused := errors.New("refused")
+	if err := st.Update(func(tx *store.Tx) error {
+		tx.AfterCommit(func() { runs++ })
+		return refused
+	}); !errors.Is(err, refused) || runs != 0 {
+		t.Fatal("hook ran for a refused transaction", err, runs)
+	}
+	if err := st.Update(func(tx *store.Tx) error {
+		if tx.StoreInvalid() {
+			t.Error("healthy store reported invalid")
+		}
+		tx.DB().Articles["local/guide.md"] = revision("local", "guide.md", "# Committed")
+		tx.AfterCommit(func() { runs++ })
+		return nil
+	}); err != nil || runs != 1 {
+		t.Fatal("hook did not run once after the commit", err, runs)
+	}
+	if err := store.MigrateSQLite(st.Dir()); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(st.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := storetest.SQLite(t, st.Dir())
+	if _, err = db.Exec("DROP TABLE records"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err = st.Update(func(tx *store.Tx) error {
+		tx.DB().Articles["local/guide.md"] = revision("local", "guide.md", "# Failed")
+		tx.AfterCommit(func() { runs++ })
+		return nil
+	}); err == nil || runs != 1 {
+		t.Fatal("hook ran after a failed commit", err, runs)
+	}
+	invalid := false
+	_ = st.Update(func(tx *store.Tx) error {
+		invalid = tx.StoreInvalid()
+		return refused
+	})
+	if !invalid {
+		t.Fatal("transaction did not report the failed-closed store")
+	}
+}

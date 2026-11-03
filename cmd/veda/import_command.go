@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"io"
 	"net"
 	"net/http"
@@ -93,7 +94,7 @@ func importCommand(args []string) error {
 	if *preview && *sourceID == "" {
 		*sourceID = "preview"
 	}
-	batch, e := prepareCheckout(*checkout, *sourceID)
+	batch, e := importer.PrepareCheckout(*checkout, *sourceID)
 	if errors.Is(e, ErrNoDocs) {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "skipped", "reason": "no veda.yaml or docs/"})
 	}
@@ -106,11 +107,11 @@ func importCommand(args []string) error {
 	if *preview {
 		result := map[string]any{
 			"status": "preview", "kind": batch.Kind, "articles": len(batch.Files),
-			"assets": len(batch.Assets), "withheld": batch.Withheld, "withheld_reasons": batch.withheldReasons,
+			"assets": len(batch.Assets), "withheld": batch.Withheld, "withheld_reasons": batch.WithheldReasons(),
 			"complete": batch.Complete, "dirty": batch.Dirty,
 		}
 		if *compareURL != "" {
-			comparison, err := compareWikiPreview(batch, *compareURL)
+			comparison, err := importer.ComparePreview(batch, *compareURL)
 			if err != nil {
 				return err
 			}
@@ -142,7 +143,7 @@ func importCommand(args []string) error {
 	batch.ExpectedImport = &expected
 	batch.Create = !found && *create
 	batch.Visibility = *visibility
-	var result ImportResult
+	var result importer.Result
 	if e = client.request("POST", "/api/v1/import", batch, &result); e != nil {
 		return e
 	}

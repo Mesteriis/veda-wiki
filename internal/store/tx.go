@@ -26,16 +26,26 @@ const (
 // Tx is a pending change: a private clone of the database and the set of
 // SQLite records the commit must write.
 type Tx struct {
-	db      domain.Database
-	scope   txScope
-	article string
-	scoped  bool
+	db          domain.Database
+	scope       txScope
+	article     string
+	scoped      bool
+	invalid     bool
+	afterCommit []func()
 }
 
 // DB returns the transaction's mutable clone. Replace slices and pointers in
 // copied values instead of mutating them in place; they are shared with the
 // committed state until the transaction commits.
 func (tx *Tx) DB() *domain.Database { return &tx.db }
+
+// StoreInvalid reports whether the store had failed closed when the
+// transaction began; its commit will then fail.
+func (tx *Tx) StoreInvalid() bool { return tx.invalid }
+
+// AfterCommit registers fn to run under the write lock once the transaction
+// has committed successfully. It does not run when fn or the commit fails.
+func (tx *Tx) AfterCommit(fn func()) { tx.afterCommit = append(tx.afterCommit, fn) }
 
 // OnlyArticle declares that the transaction changes exactly one article and
 // may add or update outbox jobs and move states, but removes neither and
@@ -69,18 +79,26 @@ func (s *Store) Update(fn func(tx *Tx) error) error {
 	if s.readOnly {
 		return errReadOnly
 	}
-	tx := &Tx{db: clone(&s.db)}
+	tx := &Tx{db: clone(&s.db), invalid: s.invalid}
 	if err := fn(tx); err != nil {
 		return err
 	}
+	var err error
 	switch tx.scope {
 	case scopeArticle:
-		return s.commitArticle(tx.db, tx.article)
+		err = s.commitArticle(tx.db, tx.article)
 	case scopeConnections:
-		return s.commitTargeted(tx.db, s.commitSQLiteConnections)
+		err = s.commitTargeted(tx.db, s.commitSQLiteConnections)
 	default:
-		return s.commitTargeted(tx.db, nil)
+		err = s.commitTargeted(tx.db, nil)
 	}
+	if err != nil {
+		return err
+	}
+	for _, after := range tx.afterCommit {
+		after()
+	}
+	return nil
 }
 
 // An empty key persists the whole state. The caller holds the lock.

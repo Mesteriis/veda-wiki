@@ -67,7 +67,6 @@ var (
 	displayedRevision           = domain.DisplayedRevision
 	translationFingerprint      = domain.TranslationFingerprint
 	movedTranslation            = domain.MovedTranslation
-	assetsPresent               = domain.AssetsPresent
 	linksPresent                = domain.LinksPresent
 	retainedPendingAssets       = domain.RetainedPendingAssets
 	retainedPendingLinks        = domain.RetainedPendingLinks
@@ -77,7 +76,6 @@ var (
 	importablePath              = domain.ImportablePath
 	remoteAssetPath             = domain.RemoteAssetPath
 	imageRef                    = domain.ImageRef
-	validateMetadata            = domain.ValidateMetadata
 	migrateSQLite               = store.MigrateSQLite
 	atomicPrivateFile           = store.WritePrivateFile
 	privateDataDir              = store.PrivateDataDir

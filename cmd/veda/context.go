@@ -54,11 +54,11 @@ func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
 		status.UnconfirmedWrites = &count
 		status.PreparedWrites = &prepared
 	}
-	if observed, ok := s.Observed(sourceID); ok {
+	if observed, ok := s.observations.Observed(sourceID); ok {
 		value := observed.UTC().Format(time.RFC3339Nano)
 		status.LastImportObservedAt = &value
 	}
-	if count, ok := s.Withheld(sourceID); ok {
+	if count, ok := s.observations.Withheld(sourceID); ok {
 		status.LastImportWithheld = &count
 	}
 	for _, article := range s.DB().Articles {

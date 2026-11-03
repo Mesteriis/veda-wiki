@@ -8,7 +8,7 @@ import (
 )
 
 func BenchmarkScopedSnapshotLargeDocuments(b *testing.B) {
-	s := &Store{store.Detached("", Database{Sources: map[string]Source{"docs": {ID: "docs", Kind: "wiki", Visibility: "private"}}, Articles: map[string]Article{}})}
+	s := &Store{Store: store.Detached("", Database{Sources: map[string]Source{"docs": {ID: "docs", Kind: "wiki", Visibility: "private"}}, Articles: map[string]Article{}})}
 	text := "# Operations\n" + strings.Repeat("container vps service documentation\n", 3500)
 	for i := 0; i < 200; i++ {
 		p := fmt.Sprintf("%03d.md", i)

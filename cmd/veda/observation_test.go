@@ -24,7 +24,7 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 	}
 	old := time.Now().Add(-time.Hour).UTC()
 	s.Lock()
-	s.MarkObserved("handbook", old)
+	s.observations.MarkObserved("handbook", old)
 	s.Unlock()
 	m.Once(context.Background())
 	observed := s.sources(false)[0].LastImportObservedAt
@@ -124,7 +124,7 @@ func TestImportObservationIsTransientAndOnlyAdvancesOnSuccess(t *testing.T) {
 	}
 	old := time.Now().Add(-time.Hour).UTC()
 	s.Lock()
-	s.MarkObserved("handbook", old)
+	s.observations.MarkObserved("handbook", old)
 	s.Unlock()
 	batch.Create = false
 	gen := s.DB().Sources["handbook"].ImportGeneration

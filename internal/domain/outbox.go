@@ -171,3 +171,14 @@ func HasRootReference(value string) bool {
 	})
 	return found
 }
+
+// SupersedePendingWrites marks every unfinished queued write of path p
+// superseded, after an upstream revision was chosen over them.
+func SupersedePendingWrites(db *Database, sourceID, p string) {
+	for id, job := range db.Outbox {
+		if job.SourceID == sourceID && job.Path == p && job.State != "complete" {
+			job.State = "superseded"
+			db.Outbox[id] = job
+		}
+	}
+}

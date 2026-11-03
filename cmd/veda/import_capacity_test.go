@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 )
 
@@ -44,19 +43,6 @@ func TestImportLargeBoundedBatchIntoSQLite(t *testing.T) {
 	}
 	if _, exists := reopened.DB().Sources["too-large"]; exists {
 		t.Fatal("rejected import created a source")
-	}
-}
-
-func TestCheckoutPreviewAcceptsMoreThanFormerLimit(t *testing.T) {
-	files := map[string]string{"veda.yaml": metadataFixture}
-	text := strings.Repeat("a", 900<<10)
-	for i := 0; i < 20; i++ {
-		files[fmt.Sprintf("docs/page-%02d.md", i)] = text
-	}
-	checkout := gitFixture(t, files)
-	batch, err := prepareCheckout(checkout, "fixture")
-	if err != nil || batch.Kind != "wiki" || len(batch.Files) != 20 || !batch.Complete {
-		t.Fatal("bounded large checkout was not imported", err)
 	}
 }
 

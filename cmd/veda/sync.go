@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"log"
 	"os"
 	"path"
@@ -308,8 +309,8 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 			return GitHubConnection{}, err
 		}
 		c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		proof := &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: "private", TreeSHA: tree.SHA, Adoption: &adoptionProof{Connection: c, Account: account, Snapshot: snapshot, Context: ctx}}
-		if _, err = m.store.applyImport(batch, proof, false); err != nil {
+		proof := &importer.RemoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: "private", TreeSHA: tree.SHA, Adoption: &importer.AdoptionProof{Connection: c, Account: account, Snapshot: snapshot, Context: ctx}}
+		if _, err = m.store.importer().Apply(batch, proof, false); err != nil {
 			return GitHubConnection{}, err
 		}
 		m.Wake()
@@ -412,8 +413,8 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 	}
 	return b, nil
 }
-func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head, token string, tree github.Tree) (ImportBatch, error) {
-	batch := ImportBatch{SourceID: c.ID, Kind: "program", Files: map[string]string{}, Assets: map[string][]byte{}, Commit: head, Complete: true}
+func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head, token string, tree github.Tree) (importer.Batch, error) {
+	batch := importer.Batch{SourceID: c.ID, Kind: "program", Files: map[string]string{}, Assets: map[string][]byte{}, Commit: head, Complete: true}
 	entries := map[string]github.TreeEntry{}
 	hasDocs := false
 	for _, entry := range tree.Tree {
@@ -433,7 +434,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		if e != nil {
 			return batch, e
 		}
-		batch.Metadata, e = parseMetadata(b)
+		batch.Metadata, e = importer.ParseMetadata(b)
 		if e != nil {
 			return batch, &github.RemoteError{Code: "invalid_veda_metadata"}
 		}
@@ -478,7 +479,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		}
 		count++
 		total += len(b)
-		if count > 2000 || total > maxImportBytes {
+		if count > 2000 || total > importer.MaxBytes {
 			return batch, &github.RemoteError{Code: "repository_limit"}
 		}
 		if markdown {
@@ -566,7 +567,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		if err := m.store.observeGitHubHead(c, head, c.TreeSHA); err == nil {
 			m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
 			return
-		} else if !errors.Is(err, errImportedAssetUnavailable) {
+		} else if !errors.Is(err, importer.ErrAssetUnavailable) {
 			return
 		}
 		repairingAssets = true
@@ -605,8 +606,8 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	if c.Private {
 		visibility = "private"
 	}
-	if _, e = m.store.applyImport(batch, &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: visibility, TreeSHA: tree.SHA}, false); e != nil {
-		if errors.Is(e, errImportedAssetUnavailable) {
+	if _, e = m.store.importer().Apply(batch, &importer.RemoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: visibility, TreeSHA: tree.SHA}, false); e != nil {
+		if errors.Is(e, importer.ErrAssetUnavailable) {
 			fail(&github.RemoteError{Code: "asset_unavailable"})
 			return
 		}
@@ -614,7 +615,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		return
 	}
 	if repairingAssets {
-		if err := m.store.observeGitHubHead(c, head, tree.SHA); errors.Is(err, errImportedAssetUnavailable) {
+		if err := m.store.observeGitHubHead(c, head, tree.SHA); errors.Is(err, importer.ErrAssetUnavailable) {
 			fail(&github.RemoteError{Code: "asset_unavailable"})
 			return
 		} else if err != nil {
@@ -1045,7 +1046,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 			total += int64(len(data))
 		}
 	}
-	if count > 2000 || total > maxImportBytes {
+	if count > 2000 || total > importer.MaxBytes {
 		return nil, &github.RemoteError{Code: "repository_limit"}
 	}
 	if len(files) == 0 {

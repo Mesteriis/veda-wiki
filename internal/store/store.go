@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -28,10 +27,6 @@ type Store struct {
 	sqlite   bool
 	invalid  bool
 	readOnly bool
-	// Import observations are process-local and not persisted. Task 7 moves
-	// them to the importer.
-	observed map[string]time.Time
-	withheld map[string]int
 }
 
 var errReadOnly = errors.New("read-only store")

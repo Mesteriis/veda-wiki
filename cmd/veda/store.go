@@ -9,22 +9,48 @@ import (
 	"unicode/utf8"
 
 	"github.com/Mesteriis/veda-wiki/internal/auth"
+	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
 // Store adds the operations not yet moved into their owning packages to the
 // shared store. Each restructure task moves its area's methods out.
-type Store struct{ *store.Store }
+// observations is the process's one set of import observations; reader
+// snapshots carry a frozen copy for their sources, and a detached store has
+// none.
+type Store struct {
+	*store.Store
+	observations *importer.Observations
+}
 
 // auth returns the credential service for this store.
 func (s *Store) auth() auth.Service { return auth.Service{Store: s.Store} }
+
+// importer returns the repository import service for this store.
+func (s *Store) importer() importer.Service {
+	return importer.Service{Store: s.Store, Observations: s.observations}
+}
 
 func openStore(dir string) (*Store, error) {
 	st, err := store.Open(dir)
 	if err != nil {
 		return nil, err
 	}
-	return &Store{st}, nil
+	return &Store{Store: st, observations: &importer.Observations{}}, nil
+}
+
+// scoped wraps a reader snapshot with a frozen copy of the import
+// observations of the sources it grants. The copy is taken just after the
+// snapshot, under the observations' own lock, not the snapshot's store lock.
+func (s *Store) scoped(view *store.Store) *Store {
+	var granted []string
+	_ = view.View(func(db *Database) error {
+		for id := range db.Sources {
+			granted = append(granted, id)
+		}
+		return nil
+	})
+	return &Store{Store: view, observations: s.observations.Scoped(granted)}
 }
 
 func (s *Store) addSource(src Source) error {
@@ -133,10 +159,10 @@ func (s *Store) sources(public bool) []SourceView {
 			view := SourceView{Source: src}
 			if !public {
 				view.SyncIssue = sourceSyncIssue(*s.DB(), src, now)
-				if observed, ok := s.Observed(src.ID); ok {
+				if observed, ok := s.observations.Observed(src.ID); ok {
 					view.LastImportObservedAt = observed.UTC().Format(time.RFC3339Nano)
 				}
-				if count, ok := s.Withheld(src.ID); ok {
+				if count, ok := s.observations.Withheld(src.ID); ok {
 					view.LastImportWithheld = &count
 				}
 				view.UnresolvedConflicts = conflicts[src.ID]

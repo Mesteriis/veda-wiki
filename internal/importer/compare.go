@@ -1,4 +1,4 @@
-package main
+package importer
 
 import (
 	"encoding/json"
@@ -9,26 +9,32 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
 
-// Compare only wiki originals: program listing hashes can describe translations.
+// PreviewComparison counts checkout articles and assets against a running
+// VEDA by state: same, different, checkout_only and veda_only. Only wiki
+// originals are compared: program listing hashes can describe translations.
 // This is aggregate read-only evidence, not an import, deletion or conflict plan.
-type previewComparison struct {
+type PreviewComparison struct {
 	Articles map[string]int
 	Assets   map[string]int
 }
 
-func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison, error) {
-	if batch.Kind != "wiki" || !identifier.MatchString(batch.SourceID) {
-		return nil, ErrInvalid
+// ComparePreview reads the source at a loopback VEDA endpoint and compares the
+// batch with it.
+func ComparePreview(batch Batch, endpoint string) (*PreviewComparison, error) {
+	if batch.Kind != "wiki" || !domain.IDPattern.MatchString(batch.SourceID) {
+		return nil, domain.ErrInvalid
 	}
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Port() == "" {
-		return nil, ErrInvalid
+		return nil, domain.ErrInvalid
 	}
 	ip := net.ParseIP(u.Hostname())
 	if ip == nil || !ip.IsLoopback() {
-		return nil, ErrInvalid
+		return nil, domain.ErrInvalid
 	}
 	client := &http.Client{Timeout: 45 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	get := func(route string, result any) error {
@@ -51,23 +57,23 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison,
 		}
 		return nil
 	}
-	var sources []Source
+	var sources []domain.Source
 	if err = get("/api/v1/sources", &sources); err != nil {
 		return nil, err
 	}
-	var selected *Source
+	var selected *domain.Source
 	for _, source := range sources {
 		if source.ID == batch.SourceID && source.Kind == "wiki" {
 			if selected != nil {
-				return nil, ErrInvalid
+				return nil, domain.ErrInvalid
 			}
 			selected = &source
 		}
 	}
 	if selected == nil {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
-	var pages []Page
+	var pages []domain.Page
 	if err = get("/api/v1/articles", &pages); err != nil {
 		return nil, err
 	}
@@ -78,14 +84,14 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison,
 			continue
 		}
 		name, ok := strings.CutPrefix(page.Path, prefix)
-		if !ok || !articlePath(name, "wiki") {
-			return nil, ErrInvalid
+		if !ok || !domain.ArticlePath(name, "wiki") {
+			return nil, domain.ErrInvalid
 		}
 		if _, duplicate := remote[name]; duplicate {
-			return nil, ErrInvalid
+			return nil, domain.ErrInvalid
 		}
-		if _, err := hexKey(page.SHA); err != nil {
-			return nil, ErrInvalid
+		if _, err := domain.HexKey(page.SHA); err != nil {
+			return nil, domain.ErrInvalid
 		}
 		remote[name] = page.SHA
 	}
@@ -94,7 +100,7 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison,
 		sha, exists := remote[name]
 		if !exists {
 			result["checkout_only"]++
-		} else if sha == digest([]byte(text)) {
+		} else if sha == domain.Digest([]byte(text)) {
 			result["same"]++
 		} else {
 			result["different"]++
@@ -105,11 +111,11 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison,
 	assets := map[string]int{"same": 0, "different": 0, "checkout_only": 0, "veda_only": 0}
 	remoteAssets := make(map[string]string, len(selected.Assets))
 	for name, ref := range selected.Assets {
-		if !remoteAssetPath(name, "wiki") {
-			return nil, ErrInvalid
+		if !domain.RemoteAssetPath(name, "wiki") {
+			return nil, domain.ErrInvalid
 		}
-		if _, err := hexKey(ref.SHA); err != nil {
-			return nil, ErrInvalid
+		if _, err := domain.HexKey(ref.SHA); err != nil {
+			return nil, domain.ErrInvalid
 		}
 		remoteAssets[name] = ref.SHA
 	}
@@ -117,7 +123,7 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison,
 		sha, exists := remoteAssets[name]
 		if !exists {
 			assets["checkout_only"]++
-		} else if sha == digest(data) {
+		} else if sha == domain.Digest(data) {
 			assets["same"]++
 		} else {
 			assets["different"]++
@@ -125,5 +131,5 @@ func compareWikiPreview(batch ImportBatch, endpoint string) (*previewComparison,
 		delete(remoteAssets, name)
 	}
 	assets["veda_only"] = len(remoteAssets)
-	return &previewComparison{Articles: result, Assets: assets}, nil
+	return &PreviewComparison{Articles: result, Assets: assets}, nil
 }

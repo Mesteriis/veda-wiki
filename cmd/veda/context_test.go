@@ -26,7 +26,7 @@ func TestAgentContextScopesAndReportsStatus(t *testing.T) {
 	src.ImportPartial = true
 	src.ImportDirty = true
 	s.DB().Sources["alpha"] = src
-	s.MarkObserved("alpha", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	s.observations.MarkObserved("alpha", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	a := s.DB().Articles["alpha/infra/AGENTS.md"]
 	a.Conflicts = []ImportConflict{{}}
 	s.DB().Articles["alpha/infra/AGENTS.md"] = a
@@ -150,7 +150,7 @@ func TestPublicAgentContextUsesPublishedRevision(t *testing.T) {
 	a.Versions = append(a.Versions, Revision{Number: 2, Text: text, SHA: digest([]byte(text))})
 	a.Conflicts = []ImportConflict{{}}
 	s.DB().Articles["handbook/AGENTS.md"] = a
-	s.MarkObserved("handbook", time.Now())
+	s.observations.MarkObserved("handbook", time.Now())
 	s.Unlock()
 	ctx, err := s.agentContext("handbook", "guide.md", true)
 	if err != nil || len(ctx.Instructions) != 1 || ctx.Instructions[0].Text != "# Published instructions" || ctx.Instructions[0].Number != 0 {

@@ -3,7 +3,6 @@ package store
 import (
 	"maps"
 	"slices"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -37,8 +36,6 @@ func (s *Store) ScopedWhere(scope func(db *domain.Database) []string) (*Store, b
 func (s *Store) scopedLocked(scope []string) *Store {
 	selected := make(map[string]bool, len(scope))
 	db := domain.Database{Version: s.db.Version, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}, Connections: map[string]domain.GitHubConnection{}, Outbox: map[string]domain.SyncJob{}, Moves: map[string]domain.Move{}}
-	observed := map[string]time.Time{}
-	withheld := map[string]int{}
 	for _, id := range scope {
 		selected[id] = true
 		if source, ok := s.db.Sources[id]; ok {
@@ -51,12 +48,6 @@ func (s *Store) scopedLocked(scope []string) *Store {
 			if conn, ok := s.db.Connections[source.ConnectionID]; ok {
 				db.Connections[conn.ID] = conn
 			}
-		}
-		if t, ok := s.observed[id]; ok {
-			observed[id] = t
-		}
-		if count, ok := s.withheld[id]; ok {
-			withheld[id] = count
 		}
 	}
 	for key, article := range s.db.Articles {
@@ -122,5 +113,5 @@ func (s *Store) scopedLocked(scope []string) *Store {
 			db.Moves[id] = partial
 		}
 	}
-	return &Store{dir: s.dir, db: db, observed: observed, withheld: withheld, readOnly: true}
+	return &Store{dir: s.dir, db: db, readOnly: true}
 }

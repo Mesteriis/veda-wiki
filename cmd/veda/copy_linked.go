@@ -19,7 +19,7 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 	if dst.ConnectionID == "" && dst.ImportGeneration != "" {
 		return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 	}
-	shadow := &Store{store.Detached(s.Dir(), s.Clone())}
+	shadow := &Store{Store: store.Detached(s.Dir(), s.Clone())}
 	now := time.Now()
 	public := sourcePublic(*s.DB(), dst, now)
 	var root Revision

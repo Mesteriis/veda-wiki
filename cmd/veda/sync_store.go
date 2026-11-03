@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 )
-
-var errImportedAssetUnavailable = errors.New("imported asset unavailable")
 
 // bundleContentsLocked checks the revisions that must be sent together.
 // Caller holds the store lock. Never substitute a newer local revision.
@@ -37,21 +35,6 @@ func bundleContentsLocked(db Database, job SyncJob) (map[string]string, error) {
 		result[name] = a.Versions[len(a.Versions)-1].Text
 	}
 	return result, nil
-}
-
-type remoteProof struct {
-	ConnectionID   string
-	ConfigRevision int
-	Visibility     string
-	TreeSHA        string
-	Adoption       *adoptionProof
-}
-
-type adoptionProof struct {
-	Connection GitHubConnection
-	Account    GitHubAccount
-	Snapshot   string
-	Context    context.Context
 }
 
 // Record a changed remote head before fetching it, so the public snapshot of
@@ -85,10 +68,10 @@ func (s *Store) observeGitHubHead(expected GitHubConnection, head, tree string) 
 	}
 	for _, ref := range src.Assets {
 		if s.verifyAsset(ref) != nil {
-			return errImportedAssetUnavailable
+			return importer.ErrAssetUnavailable
 		}
 	}
-	s.markImportObserved(c.ID)
+	s.importer().MarkObserved(c.ID)
 	return nil
 }
 func (s *Store) retryConnection(id string) error {
@@ -231,71 +214,6 @@ func (s *Store) cancelBundle(id string, confirm bool) error {
 	db.Outbox[id] = job
 	reconcileMoves(&db)
 	return s.Commit(db)
-}
-func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {
-	matched := 0
-	firstPrepared := 0
-	matches := map[string]bool{}
-	for _, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && (firstPrepared == 0 || job.Revision < firstPrepared) {
-			firstPrepared = job.Revision
-		}
-	}
-	for id, job := range db.Outbox {
-		if job.SourceID != sourceID || job.Path != p {
-			continue
-		}
-		linksMatch := true
-		for name, sha := range job.Links {
-			if text, exists := files[name]; !exists || digest([]byte(text)) != sha {
-				linksMatch = false
-				break
-			}
-		}
-		for name, sha := range job.Bundle {
-			if text, exists := files[name]; !exists || digest([]byte(text)) != sha {
-				linksMatch = false
-				break
-			}
-		}
-		eligibleState := job.State != "complete" && job.State != "superseded" && (job.State != "conflict" || (job.PreparedCommit != "" && job.Revision == firstPrepared))
-		eligible := job.SourceID == sourceID && job.Path == p && job.SHA == hash && eligibleState && ((len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0) || (complete && assetsPresent(Source{Assets: assets}, job.Assets) && linksMatch))
-		matches[id] = eligible
-		if eligible && job.Revision > matched && (firstPrepared == 0 || job.Revision == firstPrepared) {
-			matched = job.Revision
-		}
-	}
-	if matched == 0 {
-		return false
-	}
-	for id, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.Revision <= matched && job.State != "complete" {
-			if job.Revision == matched {
-				job.State = "complete"
-				job.ObservedCommit = commit
-			} else {
-				job.State = "superseded"
-			}
-			job.LastError = ""
-			db.Outbox[id] = job
-		} else if firstPrepared != 0 && job.Revision > matched && job.PreparedCommit == "" && matches[id] {
-			// The same observed content also satisfies a later unprepared edit.
-			job.State, job.ObservedCommit, job.LastError = "complete", commit, ""
-			db.Outbox[id] = job
-		}
-	}
-	return true
-}
-
-// If a later local revision matches an external update, an older prepared
-// write still cannot be silently superseded or retried over that update.
-func preparedWriteDiffers(db Database, sourceID, p, hash string) bool {
-	for _, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && job.SHA != hash {
-			return true
-		}
-	}
-	return false
 }
 func randomID() (string, error) {
 	b := make([]byte, 16)

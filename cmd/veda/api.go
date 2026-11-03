@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"io"
 	"net/http"
 	"strconv"
@@ -60,7 +61,7 @@ func apiError(rw http.ResponseWriter, err error) {
 		jsonResponse(rw, http.StatusConflict, map[string]string{"error": "local_import_active"})
 		return
 	}
-	if errors.Is(err, errImportedAssetUnavailable) {
+	if errors.Is(err, importer.ErrAssetUnavailable) {
 		jsonResponse(rw, http.StatusServiceUnavailable, map[string]string{"error": "asset_unavailable"})
 		return
 	}
@@ -695,7 +696,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			rw.WriteHeader(405)
 			return
 		}
-		all := w.Store.conflicts()
+		all := w.Store.importer().Conflicts()
 		query := r.URL.Query()
 		if query.Get("source_id") != "" {
 			index, e := strconv.Atoi(query.Get("index"))
@@ -705,7 +706,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			}
 			for _, record := range all {
 				if record.SourceID == query.Get("source_id") && record.Path == query.Get("path") && record.Index == index {
-					jsonResponse(rw, 200, map[string]any{"conflicts": []ConflictRecord{record}, "total": 1, "offset": 0})
+					jsonResponse(rw, 200, map[string]any{"conflicts": []importer.ConflictRecord{record}, "total": 1, "offset": 0})
 					return
 				}
 			}
@@ -762,7 +763,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			apiError(rw, ErrInvalid)
 			return
 		}
-		if e := w.Store.resolveConflict(in.SourceID, in.Path, *in.Index, in.Expected, in.Resolution); e != nil {
+		if e := w.Store.importer().ResolveConflict(in.SourceID, in.Path, *in.Index, in.Expected, in.Resolution); e != nil {
 			apiError(rw, e)
 			return
 		}
@@ -780,12 +781,12 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			rw.WriteHeader(405)
 			return
 		}
-		var batch ImportBatch
-		if e := decodeImport(rw, r, &batch); e != nil {
+		var batch importer.Batch
+		if e := importer.Decode(rw, r, &batch); e != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		result, e := w.Store.importBatch(batch)
+		result, e := w.Store.importer().Import(batch)
 		if e != nil {
 			apiError(rw, e)
 			return
