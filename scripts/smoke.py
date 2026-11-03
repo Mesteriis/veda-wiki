@@ -418,13 +418,13 @@ async def main():
                     with os.fdopen(fd, "w") as stream:
                         stream.write(issued["key"])
                     os.chmod(required_path, 0o644)
-                    invalid = subprocess.run([sys.executable, str(ROOT / "mcp/keyed_stdio_launcher.py"),
+                    invalid = subprocess.run([str(ROOT / "veda"), "mcp-relay",
                         "--key-file", str(required_path), "--", sys.executable, "-c", "pass"],
                         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
                     assert invalid.returncode != 0 and issued["key"].encode() not in invalid.stdout + invalid.stderr
                     os.chmod(required_path, 0o600)
-                    required_params = StdioServerParameters(command=sys.executable, args=[
-                        str(ROOT / "mcp/keyed_stdio_launcher.py"), "--key-file", str(required_path), "--",
+                    required_params = StdioServerParameters(command=str(ROOT / "veda"), args=[
+                        "mcp-relay", "--key-file", str(required_path), "--",
                         str(ROOT / "veda"), "mcp", "--reader-socket", str(data / "reader.sock"),
                         "--reader-key-preamble"])
                     async with stdio_client(required_params) as (key_in, key_out):

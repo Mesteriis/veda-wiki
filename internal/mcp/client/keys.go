@@ -54,3 +54,8 @@ func readKeyFile(path string) (string, error) {
 	}
 	return string(data), nil
 }
+
+// ReadKeyFile applies the access-key file checks used by the client:
+// an owner-only regular file, not a symlink, holding exactly 64 lowercase
+// hexadecimal characters.
+func ReadKeyFile(path string) (string, error) { return readKeyFile(path) }
