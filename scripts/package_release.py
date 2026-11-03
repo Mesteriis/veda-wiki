@@ -65,8 +65,8 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="veda-build-") as tmp:
         binary = Path(tmp) / "veda"
         env = dict(os.environ, GOOS="linux", GOARCH=args.arch, CGO_ENABLED="0")
-        subprocess.run(["go", "build", "-trimpath", "-o", str(binary), "."],
-                       cwd=ROOT / "server", env=env, check=True)
+        subprocess.run(["go", "build", "-trimpath", "-o", str(binary), "./cmd/veda"],
+                       cwd=ROOT, env=env, check=True)
         archive = args.output / f"veda-{args.version}-linux-{args.arch}.tar.gz"
         package(archive, binary, args.version, args.arch)
     with archive.open("rb") as f:

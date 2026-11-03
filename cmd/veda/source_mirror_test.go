@@ -234,7 +234,7 @@ func TestMirrorThroughMCP(t *testing.T) {
 	}
 	web := httptest.NewServer(Wiki{Store: s, Token: token, Sync: m})
 	defer web.Close()
-	adapter, err := filepath.Abs("../mcp/server.py")
+	adapter, err := filepath.Abs("../../mcp/server.py")
 	if err != nil {
 		t.Fatal(err)
 	}

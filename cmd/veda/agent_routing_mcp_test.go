@@ -56,7 +56,7 @@ func TestAgentRoutesVPSRequestAcrossSources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	adapter, err := filepath.Abs("../mcp/server.py")
+	adapter, err := filepath.Abs("../../mcp/server.py")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,10 +1,10 @@
 .PHONY: build test frontend
 frontend:
 	cd web && npm ci --no-audit --no-fund && npm run build
-	rm -rf server/ui
-	cp -R web/dist server/ui
+	rm -rf cmd/veda/ui
+	cp -R web/dist cmd/veda/ui
 build: frontend
-	cd server && go build -trimpath -o ../veda .
+	go build -trimpath -o veda ./cmd/veda
 test: frontend
 	node --test web/src/*.test.js
-	cd server && go test -race ./... && go vet ./...
+	go test -race ./... && go vet ./...

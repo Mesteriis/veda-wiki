@@ -1,4 +1,4 @@
-module github.com/Mesteriis/veda-wiki/server
+module github.com/Mesteriis/veda-wiki
 
 go 1.26.0
 

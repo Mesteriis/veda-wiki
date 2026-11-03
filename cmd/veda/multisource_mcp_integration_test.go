@@ -94,7 +94,7 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if err = os.WriteFile(limitedPath, []byte(limited), 0600); err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := filepath.Abs("../mcp/server.py")
+	adapter, err := filepath.Abs("../../mcp/server.py")
 	if err != nil {
 		t.Fatal(err)
 	}

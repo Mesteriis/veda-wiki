@@ -1,6 +1,6 @@
 web/node_modules/
 web/dist/
-server/ui/
+cmd/veda/ui/
 .venv/
 __pycache__/
 .veda/

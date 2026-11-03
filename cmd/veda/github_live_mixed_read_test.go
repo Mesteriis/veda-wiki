@@ -165,7 +165,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 	if err = os.WriteFile(keyPath, []byte(key), 0600); err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := filepath.Abs("../mcp/server.py")
+	adapter, err := filepath.Abs("../../mcp/server.py")
 	if err != nil {
 		t.Fatal(err)
 	}

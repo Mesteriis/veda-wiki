@@ -14,7 +14,7 @@ func TestRealLocalMLXProjectDocumentationSections(t *testing.T) {
 	if endpoint == "" || model == "" {
 		t.Skip("local MLX acceptance not configured")
 	}
-	original, err := os.ReadFile("../docs/import.md")
+	original, err := os.ReadFile("../../docs/import.md")
 	if err != nil {
 		t.Fatal(err)
 	}
