@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,7 +22,7 @@ func (w *adoptionDeadlineWriter) SetWriteDeadline(t time.Time) error { w.deadlin
 
 func TestAdoptRequestExtendsWriteDeadline(t *testing.T) {
 	s := testStore(t)
-	m := newSyncManager(s, newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture}).client())
+	m := newSyncManager(s, githubtest.New(t, map[string]string{"veda.yaml": metadataFixture}).Client())
 	m.localImportSource = "handbook"
 	w := Wiki{Store: s, Token: "test-owner", Sync: m}
 	r := httptest.NewRequest("POST", "/api/v1/github/connections", strings.NewReader(`{"id":"handbook","repository":"org/handbook","account_id":"operator","adopt_existing":true}`))
@@ -44,10 +46,10 @@ func TestAdoptPrivateSourcePreservesLocalData(t *testing.T) {
 	if _, err := s.put("handbook", "different.md", "# Local edit", 1); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "same.md": "# Same", "different.md": "# Remote", "remote-only.md": "# Remote only", "image.png": string(b.Assets["image.png"])})
-	f.modify(func() { f.private = true })
-	m := newSyncManager(s, f.client())
-	if _, err := s.saveAccount(context.Background(), m.github, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "same.md": "# Same", "different.md": "# Remote", "remote-only.md": "# Remote only", "image.png": string(b.Assets["image.png"])})
+	f.Modify(func() { f.Private = true })
+	m := newSyncManager(s, f.Client())
+	if _, err := s.saveAccount(context.Background(), m.github, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", Write: true, AdoptExisting: true})
@@ -64,11 +66,11 @@ func TestAdoptPrivateSourcePreservesLocalData(t *testing.T) {
 	if len(same.Versions) != 1 || same.UpstreamHash == "" || len(different.Versions) != 2 || different.Versions[1].Text != "# Local edit" || len(different.Conflicts) != 1 || different.Conflicts[0].Incoming != "# Remote" || local.Deleted || local.UpstreamHash != "" || len(remote.Versions) != 1 {
 		t.Fatal("adoption did not preserve article state")
 	}
-	if len(s.jobs()) != 0 || f.writeCount() != 0 {
+	if len(s.jobs()) != 0 || f.WriteCount() != 0 {
 		t.Fatal("adoption unexpectedly queued or wrote content")
 	}
 	m.Once(context.Background())
-	if s.db.Articles["handbook/local-only.md"].Deleted || f.writeCount() != 0 {
+	if s.db.Articles["handbook/local-only.md"].Deleted || f.WriteCount() != 0 {
 		t.Fatal("sync deleted or uploaded local-only content")
 	}
 }
@@ -78,20 +80,20 @@ func TestAdoptRejectsConcurrentLocalEdit(t *testing.T) {
 	if _, err := s.importBatch(testBatch()); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	var once sync.Once
 	var editErr error
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/blobs/") {
 			once.Do(func() { _, editErr = s.put("handbook", "README.md", "# Concurrent edit", 1) })
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer proxy.Close()
-	client := &GitHubClient{base: proxy.URL, http: proxy.Client()}
+	client := github.NewForTest(proxy.URL, proxy.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", AdoptExisting: true})
@@ -113,10 +115,10 @@ func TestAdoptRejectsPublicOrMissingAsset(t *testing.T) {
 			if _, err := s.importBatch(b); err != nil {
 				t.Fatal(err)
 			}
-			f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
-			f.modify(func() { f.private = !public })
-			m := newSyncManager(s, f.client())
-			if _, err := s.saveAccount(context.Background(), m.github, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+			f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
+			f.Modify(func() { f.Private = !public })
+			m := newSyncManager(s, f.Client())
+			if _, err := s.saveAccount(context.Background(), m.github, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 				t.Fatal(err)
 			}
 			before, err := s.adoptionSnapshot("handbook")
@@ -149,10 +151,10 @@ func TestAdoptSQLiteSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Changed"})
-	f.modify(func() { f.private = true })
-	m := newSyncManager(s, f.client())
-	if _, err = s.saveAccount(context.Background(), m.github, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Changed"})
+	f.Modify(func() { f.Private = true })
+	m := newSyncManager(s, f.Client())
+	if _, err = s.saveAccount(context.Background(), m.github, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", AdoptExisting: true}); err != nil {
@@ -172,8 +174,8 @@ func TestAdoptRejectsChangedRemoteHead(t *testing.T) {
 	if _, err := s.importBatch(testBatch()); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	var mu sync.Mutex
 	heads := 0
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -181,16 +183,16 @@ func TestAdoptRejectsChangedRemoteHead(t *testing.T) {
 			mu.Lock()
 			heads++
 			if heads == 2 {
-				f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Later"})
+				f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Later"})
 			}
 			mu.Unlock()
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer proxy.Close()
-	client := &GitHubClient{base: proxy.URL, http: proxy.Client()}
+	client := github.NewForTest(proxy.URL, proxy.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := s.adoptionSnapshot("handbook")
@@ -209,10 +211,10 @@ func TestAdoptThroughOwnerAPI(t *testing.T) {
 	if _, err := s.importBatch(testBatch()); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Remote"})
-	f.modify(func() { f.private = true })
-	m := newSyncManager(s, f.client())
-	if _, err := s.saveAccount(context.Background(), m.github, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Remote"})
+	f.Modify(func() { f.Private = true })
+	m := newSyncManager(s, f.Client())
+	if _, err := s.saveAccount(context.Background(), m.github, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	w := Wiki{Store: s, Token: "test-owner", Sync: m}
@@ -242,10 +244,10 @@ func TestAdoptRejectsIncompleteOrWrongKind(t *testing.T) {
 			if _, err := s.importBatch(testBatch()); err != nil {
 				t.Fatal(err)
 			}
-			f := newFakeGitHub(t, tc.files)
-			f.modify(func() { f.private = true })
-			m := newSyncManager(s, f.client())
-			if _, err := s.saveAccount(context.Background(), m.github, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+			f := githubtest.New(t, tc.files)
+			f.Modify(func() { f.Private = true })
+			m := newSyncManager(s, f.Client())
+			if _, err := s.saveAccount(context.Background(), m.github, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 				t.Fatal(err)
 			}
 			before, err := s.adoptionSnapshot("handbook")
@@ -266,7 +268,7 @@ func TestAdoptConfiguredLocalImporterIsRejected(t *testing.T) {
 	if _, err := s.importBatch(testBatch()); err != nil {
 		t.Fatal(err)
 	}
-	m := newSyncManager(s, newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture}).client())
+	m := newSyncManager(s, githubtest.New(t, map[string]string{"veda.yaml": metadataFixture}).Client())
 	m.localImportSource = "handbook"
 	w := Wiki{Store: s, Token: "test-owner", Sync: m}
 	body := `{"id":"handbook","repository":"org/handbook","account_id":"operator","adopt_existing":true}`
@@ -281,8 +283,8 @@ func TestAdoptCancellationBeforeCommitPreservesSource(t *testing.T) {
 	if _, err := s.importBatch(testBatch()); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var mu sync.Mutex
@@ -296,12 +298,12 @@ func TestAdoptCancellationBeforeCommitPreservesSource(t *testing.T) {
 			}
 			mu.Unlock()
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer proxy.Close()
-	client := &GitHubClient{base: proxy.URL, http: proxy.Client()}
+	client := github.NewForTest(proxy.URL, proxy.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := s.adoptionSnapshot("handbook")
@@ -321,9 +323,9 @@ func TestAdoptionCommitChecksCancellation(t *testing.T) {
 	if _, err := s.importBatch(initial); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Remote"})
-	f.modify(func() { f.private = true })
-	if _, err := s.saveAccount(context.Background(), f.client(), "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Remote"})
+	f.Modify(func() { f.Private = true })
+	if _, err := s.saveAccount(context.Background(), f.Client(), "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := s.adoptionSnapshot("handbook")

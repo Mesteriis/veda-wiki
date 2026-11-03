@@ -1,13 +1,14 @@
 package main
 
 import (
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"strings"
 	"testing"
 )
 
 func TestPartialPublicImportHidesStaleSnapshotAndRecovers(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original", "docs/image.png": string(smallPNG(t))})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Original", "docs/image.png": string(smallPNG(t))})
 	m := connectFixture(t, s, f, false)
 	if _, err := s.page("handbook/docs/guide.md", true); err != nil {
 		t.Fatal("initial public article missing", err)
@@ -20,7 +21,7 @@ func TestPartialPublicImportHidesStaleSnapshotAndRecovers(t *testing.T) {
 	a.PublishedLocal = false
 	s.db.Articles["handbook/docs/guide.md"] = a
 	s.mu.Unlock()
-	f.advance(map[string]string{"docs/other.md": "# Remaining", "docs/image.png": string(smallPNG(t)), "docs/bad.png": "not an image"})
+	f.Advance(map[string]string{"docs/other.md": "# Remaining", "docs/image.png": string(smallPNG(t)), "docs/bad.png": "not an image"})
 	syncFixtureSource(t, m, "handbook")
 	if !s.db.Sources["handbook"].ImportPartial {
 		t.Fatal("fixture did not produce a partial import")
@@ -47,8 +48,8 @@ func TestPartialPublicImportHidesStaleSnapshotAndRecovers(t *testing.T) {
 	if page, err := s.page("handbook/docs/guide.md", false); err != nil || page.Text != local {
 		t.Fatal("local draft not retained", err)
 	}
-	f.advance(map[string]string{"docs/other.md": "# Remaining"})
-	m = newSyncManager(s, f.client())
+	f.Advance(map[string]string{"docs/other.md": "# Remaining"})
+	m = newSyncManager(s, f.Client())
 	syncFixtureSource(t, m, "handbook")
 	if s.db.Sources["handbook"].ImportPartial || len(s.snapshot(true).Pages) != 1 {
 		t.Fatal("complete snapshot did not restore public access")

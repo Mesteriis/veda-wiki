@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +14,7 @@ import (
 
 func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"README.md": "# Project", "src/main.go": "package main"})
+	f := githubtest.New(t, map[string]string{"README.md": "# Project", "src/main.go": "package main"})
 	var treeCalls, repoCalls atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/trees/") {
@@ -21,10 +23,10 @@ func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 		if r.URL.Path == "/repos/org/handbook" {
 			repoCalls.Add(1)
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	m := newSyncManager(s, &GitHubClient{base: gateway.URL, http: gateway.Client()})
+	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 	if _, err := m.connect(context.Background(), connectRequest{ID: "program", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
@@ -40,12 +42,12 @@ func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m = newSyncManager(reopened, &GitHubClient{base: gateway.URL, http: gateway.Client()})
+	m = newSyncManager(reopened, github.NewForTest(gateway.URL, gateway.Client()))
 	m.Once(context.Background())
 	if treeCalls.Load() != firstTree || repoCalls.Load() != firstRepo+1 {
 		t.Fatal("unchanged skip did not reuse tree or recheck visibility")
 	}
-	f.advance(map[string]string{"docs/guide.md": "# New documentation"})
+	f.Advance(map[string]string{"docs/guide.md": "# New documentation"})
 	m.Once(context.Background())
 	if treeCalls.Load() != firstTree+1 {
 		t.Fatal("changed head did not reload tree")
@@ -57,8 +59,8 @@ func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 
 func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original guide"})
-	m := newSyncManager(s, f.client())
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Original guide"})
+	m := newSyncManager(s, f.Client())
 	if _, err := m.connect(context.Background(), connectRequest{ID: "program", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	if _, err := s.page("program/docs/guide.md", true); err != nil {
 		t.Fatal("initial public document unavailable", err)
 	}
-	f.advance(map[string]string{"docs": "not a directory"})
+	f.Advance(map[string]string{"docs": "not a directory"})
 	m.Once(context.Background())
 	if c := s.connections()[0]; c.State != "error" || c.Verification != "unknown" || c.LastError != "invalid_docs_directory" {
 		t.Fatal("invalid docs entry was accepted or misclassified", c.State, c.Verification, c.LastError)
@@ -88,11 +90,11 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	if _, err := reopened.page("program/docs/guide.md", false); err != nil {
 		t.Fatal("document lost after restart", err)
 	}
-	f.advance(map[string]string{"docs/guide.md": "# Original guide"})
+	f.Advance(map[string]string{"docs/guide.md": "# Original guide"})
 	if err := reopened.retryConnection("program"); err != nil {
 		t.Fatal(err)
 	}
-	m = newSyncManager(reopened, f.client())
+	m = newSyncManager(reopened, f.Client())
 	m.Once(context.Background())
 	if _, err := reopened.page("program/docs/guide.md", true); err != nil {
 		t.Fatal("valid documentation did not recover", err)
@@ -102,13 +104,13 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 func TestProgramDocsSymlinkAndSubmoduleAreRejected(t *testing.T) {
 	s := testStore(t)
 	m := newSyncManager(s, nil)
-	for _, entry := range []gitTreeEntry{
+	for _, entry := range []github.TreeEntry{
 		{Path: "docs", Type: "blob", Mode: "120000"},
 		{Path: "docs", Type: "commit", Mode: "160000"},
 		{Path: "docs", Type: "tree", Mode: "160000"},
 	} {
-		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "program"}, strings.Repeat("a", 40), "", gitTree{Tree: []gitTreeEntry{entry}})
-		if errorCode(err) != "invalid_docs_directory" {
+		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "program"}, strings.Repeat("a", 40), "", github.Tree{Tree: []github.TreeEntry{entry}})
+		if github.ErrorCode(err) != "invalid_docs_directory" {
 			t.Fatalf("invalid docs entry accepted: %s %s: %v", entry.Type, entry.Mode, err)
 		}
 	}
@@ -116,7 +118,7 @@ func TestProgramDocsSymlinkAndSubmoduleAreRejected(t *testing.T) {
 
 func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	var block atomic.Bool
 	arrived, release := make(chan struct{}), make(chan struct{})
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,10 +127,10 @@ func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 			close(arrived)
 			<-release
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	m := newSyncManager(s, &GitHubClient{base: gateway.URL, http: gateway.Client()})
+	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 	if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +138,7 @@ func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 	if _, err := s.page("source/README.md", true); err != nil {
 		t.Fatal("initial public article unavailable", err)
 	}
-	f.advance(map[string]string{"README.md": "# No manifest"})
+	f.Advance(map[string]string{"README.md": "# No manifest"})
 	block.Store(true)
 	done := make(chan struct{})
 	go func() { defer close(done); m.Once(context.Background()) }()
@@ -166,8 +168,8 @@ func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 
 func TestReconfigurationRequiresFreshImportedHead(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
-	m := newSyncManager(s, f.client())
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	m := newSyncManager(s, f.Client())
 	if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 		t.Fatal(err)
 	}
@@ -202,8 +204,8 @@ func TestChangedRepositoryTypeClosesPublicSnapshotAndRecovers(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := testStore(t)
-			f := newFakeGitHub(t, tc.original)
-			m := newSyncManager(s, f.client())
+			f := githubtest.New(t, tc.original)
+			m := newSyncManager(s, f.Client())
 			if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 				t.Fatal(err)
 			}
@@ -211,7 +213,7 @@ func TestChangedRepositoryTypeClosesPublicSnapshotAndRecovers(t *testing.T) {
 			if _, err := s.page("source/"+tc.oldPath, true); err != nil {
 				t.Fatal("initial public article unavailable", err)
 			}
-			f.advance(tc.changed)
+			f.Advance(tc.changed)
 			m.Once(context.Background())
 			if c := s.connections()[0]; c.State != "error" || c.LastError != "repository_type_changed" || c.Verification != "unknown" {
 				t.Fatal("type change not reported safely", c.State, c.LastError, c.Verification)
@@ -229,11 +231,11 @@ func TestChangedRepositoryTypeClosesPublicSnapshotAndRecovers(t *testing.T) {
 			if _, err := reopened.page("source/"+tc.oldPath, true); err == nil {
 				t.Fatal("old snapshot became public after restart")
 			}
-			f.advance(tc.original)
+			f.Advance(tc.original)
 			if err := reopened.retryConnection("source"); err != nil {
 				t.Fatal(err)
 			}
-			newSyncManager(reopened, f.client()).Once(context.Background())
+			newSyncManager(reopened, f.Client()).Once(context.Background())
 			if _, err := reopened.page("source/"+tc.oldPath, true); err != nil {
 				t.Fatal("restored repository did not recover", err)
 			}
@@ -259,8 +261,8 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				s := testStore(t)
 				original := map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original wiki"}
-				f := newFakeGitHub(t, original)
-				m := newSyncManager(s, f.client())
+				f := githubtest.New(t, original)
+				m := newSyncManager(s, f.Client())
 				if _, err := m.connect(context.Background(), connectRequest{ID: "source", Repository: "org/handbook"}); err != nil {
 					t.Fatal(err)
 				}
@@ -274,10 +276,10 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					m = newSyncManager(s, f.client())
+					m = newSyncManager(s, f.Client())
 				}
 				before := s.db.Sources["source"].ImportGeneration
-				f.advance(tc.files)
+				f.Advance(tc.files)
 				m.Once(context.Background())
 				c := s.connections()[0]
 				if c.State != "error" || c.Verification != "unknown" || c.LastError != tc.code {
@@ -297,11 +299,11 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 				if _, err := s.page("source/README.md", false); err != nil {
 					t.Fatal("local snapshot lost after restart", err)
 				}
-				f.advance(original)
+				f.Advance(original)
 				if err := s.retryConnection("source"); err != nil {
 					t.Fatal(err)
 				}
-				newSyncManager(s, f.client()).Once(context.Background())
+				newSyncManager(s, f.Client()).Once(context.Background())
 				if _, err := s.page("source/README.md", true); err != nil {
 					t.Fatal("corrected metadata did not recover", err)
 				}
@@ -312,14 +314,14 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 
 func TestWikiMetadataMustBeRegularFile(t *testing.T) {
 	m := newSyncManager(testStore(t), nil)
-	for _, entry := range []gitTreeEntry{
+	for _, entry := range []github.TreeEntry{
 		{Path: "veda.yaml", Type: "blob", Mode: "120000"},
 		{Path: "veda.yaml", Type: "tree", Mode: "040000"},
 		{Path: "veda.yaml", Type: "commit", Mode: "160000"},
 		{Path: "veda.yaml", Type: "blob", Mode: "100644", Size: 16385},
 	} {
-		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "source"}, strings.Repeat("a", 40), "", gitTree{Tree: []gitTreeEntry{entry}})
-		if errorCode(err) != "invalid_veda_metadata" {
+		_, err := m.remoteBatch(context.Background(), GitHubConnection{ID: "source"}, strings.Repeat("a", 40), "", github.Tree{Tree: []github.TreeEntry{entry}})
+		if github.ErrorCode(err) != "invalid_veda_metadata" {
 			t.Fatal("invalid manifest accepted", entry.Mode, err)
 		}
 	}

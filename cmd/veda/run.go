@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"flag"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"log"
 	"net"
 	"net/http"
@@ -156,7 +157,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var workers sync.WaitGroup
-	manager := newSyncManager(store, newGitHubClient())
+	manager := newSyncManager(store, github.New())
 	manager.localImportSource = *localImportSource
 	if *translationURL != "" {
 		worker, err := newTranslationWorkerProtocol(store, *translationURL, *translationModel, *translationProtocol)

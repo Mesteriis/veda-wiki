@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/render"
 	"os"
 	"os/exec"
@@ -133,7 +134,7 @@ func TestMoveWithLinkToConnectedDestination(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "guide.md", "# Shared", 0)
 	s.put("from", "a.md", "[Guide](guide.md)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Shared"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Shared"})
 	manager := connectFixture(t, s, f, true)
 	m, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil || m.State != "waiting_destination" || len(s.jobs()[0].Links) != 1 {
@@ -144,15 +145,15 @@ func TestMoveWithLinkToConnectedDestination(t *testing.T) {
 		t.Fatal("source deleted before observation")
 	}
 	manager.Once(context.Background())
-	if s.moves()[0].State != "complete" || f.contents()["guide.md"] != "# Shared" {
+	if s.moves()[0].State != "complete" || f.Contents()["guide.md"] != "# Shared" {
 		t.Fatal("linked move incomplete", s.moves())
 	}
 }
 
 func TestChangedRemoteLinkPreventsSourceDeletion(t *testing.T) {
 	s, manager, original, destination := connectedMoveFixtures(t)
-	original.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "[Guide](guide.md)", "guide.md": "# Shared"})
-	destination.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination", "guide.md": "# Shared"})
+	original.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "[Guide](guide.md)", "guide.md": "# Shared"})
+	destination.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination", "guide.md": "# Shared"})
 	syncFixtureSource(t, manager, "one")
 	syncFixtureSource(t, manager, "two")
 	_, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 2, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true})
@@ -164,9 +165,9 @@ func TestChangedRemoteLinkPreventsSourceDeletion(t *testing.T) {
 	if s.moves()[0].State != "waiting_source_delete" {
 		t.Fatal("target not observed", s.moves())
 	}
-	destination.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination", "moved.md": "[Guide](guide.md)", "guide.md": "# Changed"})
+	destination.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination", "moved.md": "[Guide](guide.md)", "guide.md": "# Changed"})
 	syncFixtureSource(t, manager, "one")
-	if original.writeCount() != 0 || original.contents()["README.md"] == "" {
+	if original.WriteCount() != 0 || original.Contents()["README.md"] == "" {
 		t.Fatal("source deleted after target link changed")
 	}
 }
@@ -180,15 +181,15 @@ func TestChangedRemoteLinkBeforeUploadKeepsSource(t *testing.T) {
 	if _, err := s.put("from", "a.md", "[Guide](guide.md)", 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Shared"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Shared"})
 	manager := connectFixture(t, s, f, true)
 	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Changed"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "guide.md": "# Changed"})
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || f.contents()["b.md"] != "" || f.contents()["guide.md"] != "# Changed" {
+	if s.db.Articles["from/a.md"].Deleted || f.Contents()["b.md"] != "" || f.Contents()["guide.md"] != "# Changed" {
 		t.Fatal("transfer changed data after the linked article changed")
 	}
 }

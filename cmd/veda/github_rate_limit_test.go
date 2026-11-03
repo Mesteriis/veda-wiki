@@ -2,42 +2,21 @@ package main
 
 import (
 	"context"
-	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func TestGitHubRateLimitResponseAndDeadline(t *testing.T) {
-	reset := time.Now().Add(20 * time.Minute).Truncate(time.Second)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Retry-After", "120")
-		w.Header().Set("X-RateLimit-Remaining", "0")
-		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset.Unix(), 10))
-		w.WriteHeader(http.StatusTooManyRequests)
-	}))
-	defer srv.Close()
-	g := &GitHubClient{base: srv.URL, http: srv.Client()}
-	err := g.call(context.Background(), "GET", "/fixture", "", nil, nil)
-	var remote *remoteError
-	if !errors.As(err, &remote) || remote.Code != "rate_limited" || remote.RetryAt.Before(reset) {
-		t.Fatalf("429 not preserved with reset deadline: %v", err)
-	}
-	now := time.Now()
-	if got := githubRetryAt(http.Header{}, now); got.Sub(now) != time.Minute {
-		t.Fatalf("missing headers should wait a minute: %v", got.Sub(now))
-	}
-}
-
 func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 	s := testStore(t)
-	one := newFakeGitHub(t, map[string]string{"docs/a.md": "# A"})
-	two := newFakeGitHub(t, map[string]string{"docs/b.md": "# B"})
-	two.modify(func() { two.name = "org/second"; two.repoID = 42 })
+	one := githubtest.New(t, map[string]string{"docs/a.md": "# A"})
+	two := githubtest.New(t, map[string]string{"docs/b.md": "# B"})
+	two.Modify(func() { two.Name = "org/second"; two.RepoID = 42 })
 	var limited atomic.Bool
 	var secondCalls atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +24,7 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 			if limited.Load() {
 				secondCalls.Add(1)
 			}
-			two.serve(w, r)
+			two.Serve(w, r)
 			return
 		}
 		if limited.Load() {
@@ -53,10 +32,10 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
-		one.serve(w, r)
+		one.Serve(w, r)
 	}))
 	defer gateway.Close()
-	m := newSyncManager(s, &GitHubClient{base: gateway.URL, http: gateway.Client()})
+	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 	for _, in := range []connectRequest{{ID: "one", Repository: "org/handbook"}, {ID: "two", Repository: "org/second"}} {
 		if _, err := m.connect(context.Background(), in); err != nil {
 			t.Fatal(err)
@@ -102,7 +81,7 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 
 func TestRateLimitRetryDeadlineSurvivesRestart(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
 	connectFixture(t, s, f, false)
 	due := time.Now().Add(20 * time.Minute)
 	if err := s.connectionStatusFor(s.connections()[0], "error", "unknown", "rate_limited", nil, due); err != nil {
@@ -124,7 +103,7 @@ func TestRateLimitRetryDeadlineSurvivesRestart(t *testing.T) {
 
 func TestConfigureKeepsRateLimitForSameAccount(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
 	m := connectFixture(t, s, f, false)
 	due := time.Now().Add(20 * time.Minute)
 	if err := s.connectionStatusFor(s.connections()[0], "error", "unknown", "rate_limited", nil, due); err != nil {

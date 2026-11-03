@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/sha1"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"log"
 	"os"
 	"path"
@@ -20,13 +18,13 @@ import (
 
 type SyncManager struct {
 	store             *Store
-	github            *GitHubClient
+	github            *github.Client
 	localImportSource string
 	mu                sync.Mutex
 	wake              chan struct{}
 }
 
-func newSyncManager(s *Store, g *GitHubClient) *SyncManager {
+func newSyncManager(s *Store, g *github.Client) *SyncManager {
 	return &SyncManager{store: s, github: g, wake: make(chan struct{}, 1)}
 }
 func (m *SyncManager) Wake() {
@@ -139,7 +137,7 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 			return c, ErrConflict
 		}
 	}
-	var info *repositoryInfo
+	var info *github.RepositoryInfo
 	if write || accountID != c.AccountID {
 		secret, account, e := m.store.secret(accountID)
 		if e != nil {
@@ -151,11 +149,11 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 		if secret != nil && secret.Kind == "app" && !strings.EqualFold(account.Login, strings.Split(c.Repository, "/")[0]) {
 			return c, ErrInvalid
 		}
-		token, e := m.github.token(ctx, secret, c.Repository, write)
+		token, e := m.github.Token(ctx, secret, c.Repository, write)
 		if e != nil {
 			return c, e
 		}
-		repository, e := m.github.repository(ctx, c.Repository, token)
+		repository, e := m.github.Repository(ctx, c.Repository, token)
 		if e != nil {
 			return c, e
 		}
@@ -241,7 +239,7 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 			return GitHubConnection{}, err
 		}
 	}
-	repo, e := repositoryName(in.Repository)
+	repo, e := github.RepositoryName(in.Repository)
 	if e != nil {
 		return GitHubConnection{}, e
 	}
@@ -255,11 +253,11 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 	if in.Write && secret == nil {
 		return GitHubConnection{}, ErrInvalid
 	}
-	token, e := m.github.token(ctx, secret, repo, in.Write)
+	token, e := m.github.Token(ctx, secret, repo, in.Write)
 	if e != nil {
 		return GitHubConnection{}, e
 	}
-	info, e := m.github.repository(ctx, repo, token)
+	info, e := m.github.Repository(ctx, repo, token)
 	if e != nil {
 		return GitHubConnection{}, e
 	}
@@ -267,10 +265,10 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 	if branch == "" {
 		branch = info.DefaultBranch
 	}
-	if !validBranch(branch) || info.Archived && in.Write {
+	if !github.ValidBranch(branch) || info.Archived && in.Write {
 		return GitHubConnection{}, ErrInvalid
 	}
-	head, e := m.github.head(ctx, repo, branch, token)
+	head, e := m.github.Head(ctx, repo, branch, token)
 	if e != nil {
 		return GitHubConnection{}, e
 	}
@@ -279,7 +277,7 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 		if !c.Private {
 			return GitHubConnection{}, ErrConflict
 		}
-		tree, err := m.github.tree(ctx, c.Repository, head, token)
+		tree, err := m.github.Tree(ctx, c.Repository, head, token)
 		if err != nil {
 			return GitHubConnection{}, err
 		}
@@ -292,14 +290,14 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 		}
 		// Verify the remote identity, visibility and head again immediately
 		// before the atomic attachment; a later sync still re-verifies them.
-		latest, err := m.github.repository(ctx, c.Repository, token)
+		latest, err := m.github.Repository(ctx, c.Repository, token)
 		if err != nil {
 			return GitHubConnection{}, err
 		}
 		if latest.ID != c.RepositoryID || !*latest.Private || latest.Archived && c.Write {
 			return GitHubConnection{}, ErrConflict
 		}
-		currentHead, err := m.github.head(ctx, c.Repository, c.Branch, token)
+		currentHead, err := m.github.Head(ctx, c.Repository, c.Branch, token)
 		if err != nil {
 			return GitHubConnection{}, err
 		}
@@ -338,20 +336,7 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 	m.Wake()
 	return c, nil
 }
-func gitBlobDigest(data []byte, length int) string {
-	prefix := []byte(fmt.Sprintf("blob %d\x00", len(data)))
-	if length == 40 {
-		h := sha1.New()
-		h.Write(prefix)
-		h.Write(data)
-		return hex.EncodeToString(h.Sum(nil))
-	}
-	h := sha256.New()
-	h.Write(prefix)
-	h.Write(data)
-	return hex.EncodeToString(h.Sum(nil))
-}
-func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry gitTreeEntry, token string) ([]byte, error) {
+func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry github.TreeEntry, token string) ([]byte, error) {
 	if !commitID.MatchString(entry.SHA) {
 		return nil, ErrInvalid
 	}
@@ -359,7 +344,7 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 	filename := filepath.Join(dir, entry.SHA)
 	if info, e := os.Lstat(filename); e == nil && info.Mode().IsRegular() && info.Size() <= 4<<20 {
 		b, e := os.ReadFile(filename)
-		if e == nil && gitBlobDigest(b, len(entry.SHA)) == entry.SHA {
+		if e == nil && github.BlobDigest(b, len(entry.SHA)) == entry.SHA {
 			return b, nil
 		}
 	}
@@ -389,7 +374,7 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 				continue
 			}
 			candidate := []byte(text)
-			if gitBlobDigest(candidate, len(entry.SHA)) == entry.SHA {
+			if github.BlobDigest(candidate, len(entry.SHA)) == entry.SHA {
 				local = candidate
 				matched = true
 				break
@@ -398,7 +383,7 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 		if !matched {
 			for _, ref := range images {
 				image, err := m.store.readAsset(ref)
-				if err == nil && int64(len(image)) == entry.Size && gitBlobDigest(image, len(entry.SHA)) == entry.SHA {
+				if err == nil && int64(len(image)) == entry.Size && github.BlobDigest(image, len(entry.SHA)) == entry.SHA {
 					local = image
 					matched = true
 					break
@@ -415,12 +400,12 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 			return local, nil
 		}
 	}
-	b, e := m.github.blob(ctx, c.Repository, entry.SHA, token)
+	b, e := m.github.Blob(ctx, c.Repository, entry.SHA, token)
 	if e != nil {
 		return nil, e
 	}
-	if gitBlobDigest(b, len(entry.SHA)) != entry.SHA {
-		return nil, &remoteError{Code: "blob_digest_mismatch"}
+	if github.BlobDigest(b, len(entry.SHA)) != entry.SHA {
+		return nil, &github.RemoteError{Code: "blob_digest_mismatch"}
 	}
 	if e = atomicPrivateFile(dir, entry.SHA, b); e != nil {
 		return nil, e
@@ -438,9 +423,9 @@ func importablePath(p, kind string) bool {
 	}
 	return true
 }
-func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head, token string, tree gitTree) (ImportBatch, error) {
+func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head, token string, tree github.Tree) (ImportBatch, error) {
 	batch := ImportBatch{SourceID: c.ID, Kind: "program", Files: map[string]string{}, Assets: map[string][]byte{}, Commit: head, Complete: true}
-	entries := map[string]gitTreeEntry{}
+	entries := map[string]github.TreeEntry{}
 	hasDocs := false
 	for _, entry := range tree.Tree {
 		if _, exists := entries[entry.Path]; exists {
@@ -453,7 +438,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 	}
 	if config, ok := entries["veda.yaml"]; ok {
 		if config.Type != "blob" || (config.Mode != "100644" && config.Mode != "100755") || config.Size > 16384 {
-			return batch, &remoteError{Code: "invalid_veda_metadata"}
+			return batch, &github.RemoteError{Code: "invalid_veda_metadata"}
 		}
 		b, e := m.cachedBlob(ctx, c, config, token)
 		if e != nil {
@@ -461,13 +446,13 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		}
 		batch.Metadata, e = parseMetadata(b)
 		if e != nil {
-			return batch, &remoteError{Code: "invalid_veda_metadata"}
+			return batch, &github.RemoteError{Code: "invalid_veda_metadata"}
 		}
 		batch.Kind = "wiki"
 	} else if entry, exists := entries["docs"]; exists && (entry.Type != "tree" || entry.Mode != "040000") {
 		// A file, symlink or submodule named docs is not an absent directory.
 		// Treating it as one would delete previously imported documentation.
-		return batch, &remoteError{Code: "invalid_docs_directory"}
+		return batch, &github.RemoteError{Code: "invalid_docs_directory"}
 	} else if !hasDocs {
 		m.store.mu.RLock()
 		existing, found := m.store.db.Sources[c.ID]
@@ -505,7 +490,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		count++
 		total += len(b)
 		if count > 2000 || total > maxImportBytes {
-			return batch, &remoteError{Code: "repository_limit"}
+			return batch, &github.RemoteError{Code: "repository_limit"}
 		}
 		if markdown {
 			if !utf8.Valid(b) || secretContent.Match(b) {
@@ -525,7 +510,7 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 	}
 	if batch.Metadata != nil && batch.Metadata.Image != "" {
 		if _, ok := batch.Assets[batch.Metadata.Image]; !ok {
-			return batch, &remoteError{Code: "veda_image_unavailable"}
+			return batch, &github.RemoteError{Code: "veda_image_unavailable"}
 		}
 	}
 	m.store.mu.RLock()
@@ -543,19 +528,19 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 }
 func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	fail := func(e error) {
-		m.store.connectionStatusFor(c, "error", "unknown", errorCode(e), nil, remoteRetryAt(e))
+		m.store.connectionStatusFor(c, "error", "unknown", github.ErrorCode(e), nil, github.RetryAt(e))
 	}
 	secret, _, e := m.store.secret(c.AccountID)
 	if e != nil {
 		fail(e)
 		return
 	}
-	token, e := m.github.token(ctx, secret, c.Repository, c.Write)
+	token, e := m.github.Token(ctx, secret, c.Repository, c.Write)
 	if e != nil {
 		fail(e)
 		return
 	}
-	info, e := m.github.repository(ctx, c.Repository, token)
+	info, e := m.github.Repository(ctx, c.Repository, token)
 	if e != nil {
 		fail(e)
 		return
@@ -569,7 +554,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	if e = m.store.connectionStatusFor(c, "syncing", "verified", "", &info, time.Time{}); e != nil {
 		return
 	}
-	head, e := m.github.head(ctx, c.Repository, c.Branch, token)
+	head, e := m.github.Head(ctx, c.Repository, c.Branch, token)
 	if e != nil {
 		fail(e)
 		return
@@ -597,7 +582,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		}
 		repairingAssets = true
 	}
-	tree, e := m.github.tree(ctx, c.Repository, head, token)
+	tree, e := m.github.Tree(ctx, c.Repository, head, token)
 	if e != nil {
 		fail(e)
 		return
@@ -613,7 +598,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		} else {
 			// A previously imported wiki no longer has its identifying
 			// manifest. Its old snapshot cannot be confirmed as current.
-			fail(&remoteError{Code: "repository_type_changed"})
+			fail(&github.RemoteError{Code: "repository_type_changed"})
 		}
 		return
 	}
@@ -624,7 +609,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	if exists && source.Kind != batch.Kind {
 		// Reclassifying a source would invalidate stored article paths and
 		// translations. Keep its local history and require explicit recovery.
-		fail(&remoteError{Code: "repository_type_changed"})
+		fail(&github.RemoteError{Code: "repository_type_changed"})
 		return
 	}
 	visibility := "public"
@@ -633,7 +618,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	}
 	if _, e = m.store.applyImport(batch, &remoteProof{ConnectionID: c.ID, ConfigRevision: c.ConfigRevision, Visibility: visibility, TreeSHA: tree.SHA}, false); e != nil {
 		if errors.Is(e, errImportedAssetUnavailable) {
-			fail(&remoteError{Code: "asset_unavailable"})
+			fail(&github.RemoteError{Code: "asset_unavailable"})
 			return
 		}
 		fail(e)
@@ -641,7 +626,7 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	}
 	if repairingAssets {
 		if err := m.store.observeGitHubHead(c, head, tree.SHA); errors.Is(err, errImportedAssetUnavailable) {
-			fail(&remoteError{Code: "asset_unavailable"})
+			fail(&github.RemoteError{Code: "asset_unavailable"})
 			return
 		} else if err != nil {
 			return
@@ -654,20 +639,20 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 	m.syncWrites(ctx, c, head, tree.SHA, token, info)
 }
 
-func (m *SyncManager) syncWrites(ctx context.Context, c GitHubConnection, head, treeSHA, token string, info repositoryInfo) {
+func (m *SyncManager) syncWrites(ctx context.Context, c GitHubConnection, head, treeSHA, token string, info github.RepositoryInfo) {
 	attempted, moveErr := m.deletePendingMove(ctx, c, head, token)
 	if attempted {
 		if moveErr != nil {
-			m.store.connectionStatusFor(c, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
+			m.store.connectionStatusFor(c, "error", "verified", github.ErrorCode(moveErr), &info, github.RetryAt(moveErr))
 		}
 		return
 	}
 	if err := m.pushPending(ctx, c, head, treeSHA, token); err != nil {
-		m.store.connectionStatusFor(c, "error", "verified", errorCode(err), &info, remoteRetryAt(err))
+		m.store.connectionStatusFor(c, "error", "verified", github.ErrorCode(err), &info, github.RetryAt(err))
 		return
 	}
 	if moveErr != nil {
-		m.store.connectionStatusFor(c, "error", "verified", errorCode(moveErr), &info, remoteRetryAt(moveErr))
+		m.store.connectionStatusFor(c, "error", "verified", github.ErrorCode(moveErr), &info, github.RetryAt(moveErr))
 		return
 	}
 	state, code := m.store.sourceSyncState(c.ID)
@@ -719,26 +704,26 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 		if err != nil {
 			return true, err
 		}
-		destinationToken, err := m.github.token(ctx, secret, destination.Repository, false)
+		destinationToken, err := m.github.Token(ctx, secret, destination.Repository, false)
 		if err != nil {
 			return true, err
 		}
-		info, err := m.github.repository(ctx, destination.Repository, destinationToken)
+		info, err := m.github.Repository(ctx, destination.Repository, destinationToken)
 		if err != nil {
 			return true, err
 		}
 		if info.ID != destination.RepositoryID || *info.Private != destination.Private {
 			return true, ErrConflict
 		}
-		destinationHead, err := m.github.head(ctx, destination.Repository, destination.Branch, destinationToken)
+		destinationHead, err := m.github.Head(ctx, destination.Repository, destination.Branch, destinationToken)
 		if err != nil {
 			return true, err
 		}
-		destinationTree, err := m.github.tree(ctx, destination.Repository, destinationHead, destinationToken)
+		destinationTree, err := m.github.Tree(ctx, destination.Repository, destinationHead, destinationToken)
 		if err != nil {
 			return true, err
 		}
-		if _, err = verifiedTreeFile(destinationTree, candidate.DestinationPath, target.Versions[0].Text); err != nil {
+		if _, err = github.VerifiedTreeFile(destinationTree, candidate.DestinationPath, target.Versions[0].Text); err != nil {
 			return true, err
 		}
 		for name, ref := range candidate.Assets {
@@ -746,7 +731,7 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 			if err != nil {
 				return true, err
 			}
-			if _, err = verifiedTreeFile(destinationTree, name, string(data)); err != nil {
+			if _, err = github.VerifiedTreeFile(destinationTree, name, string(data)); err != nil {
 				return true, err
 			}
 		}
@@ -755,12 +740,12 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 			return true, err
 		}
 		for name, text := range linked {
-			if _, err = verifiedTreeFile(destinationTree, name, text); err != nil {
+			if _, err = github.VerifiedTreeFile(destinationTree, name, text); err != nil {
 				return true, err
 			}
 		}
 	}
-	tree, err := m.github.tree(ctx, c.Repository, head, token)
+	tree, err := m.github.Tree(ctx, c.Repository, head, token)
 	if err != nil {
 		return true, err
 	}
@@ -802,8 +787,8 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 			prepared = true
 			return nil
 		}
-		_, err := m.github.remove(ctx, c.Repository, c.Branch, head, tree, move.SourcePath, original.Versions[move.SourceRevision-1].Text, token, prepare)
-		var remote *remoteError
+		_, err := m.github.Remove(ctx, c.Repository, c.Branch, head, tree, move.SourcePath, original.Versions[move.SourceRevision-1].Text, token, prepare)
+		var remote *github.RemoteError
 		// A definitive rejection of the first ref update cannot have changed the
 		// branch. Do not clear an earlier uncertain attempt on a later rejection.
 		if prepared && previousState == "waiting_source_delete" && errors.As(err, &remote) && (remote.Status == 409 || remote.Status == 422) {
@@ -889,7 +874,7 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 			return m.store.prepareJob(job.ID, commit, c)
 		}
 		if job.Visibility != "public" {
-			info, e := m.github.repository(ctx, c.Repository, token)
+			info, e := m.github.Repository(ctx, c.Repository, token)
 			if e != nil {
 				return e
 			}
@@ -897,13 +882,13 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 				if err := m.store.setJobFor(c, job, "blocked", "publication_confirmation_required", ""); err != nil {
 					return err
 				}
-				return &remoteError{Code: "publication_confirmation_required"}
+				return &github.RemoteError{Code: "publication_confirmation_required"}
 			}
 		}
 		var e error
 		directoryIndex := a.CopiedFrom != nil && a.CopiedFrom.DirectoryIndex
 		if len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0 && !directoryIndex {
-			_, e = m.github.push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
+			_, e = m.github.Push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
 		} else {
 			var files map[string][]byte
 			files, e = m.pendingBundle(ctx, c, head, treeSHA, token, job, a)
@@ -914,11 +899,11 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 				continue
 			}
 			if e == nil {
-				_, e = m.github.pushFiles(ctx, c.Repository, c.Branch, head, treeSHA, files, token, prepared)
+				_, e = m.github.PushFiles(ctx, c.Repository, c.Branch, head, treeSHA, files, token, prepared)
 			}
 		}
 		if e != nil {
-			if err := m.store.setJobFor(c, job, "retry", errorCode(e), ""); err != nil {
+			if err := m.store.setJobFor(c, job, "retry", github.ErrorCode(e), ""); err != nil {
 				return err
 			}
 			return e
@@ -953,7 +938,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 	if !ok || source.ImportPartial {
 		return nil, ErrConflict
 	}
-	tree, err := m.github.tree(ctx, c.Repository, head, token)
+	tree, err := m.github.Tree(ctx, c.Repository, head, token)
 	if err != nil {
 		return nil, err
 	}
@@ -965,11 +950,11 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 		return nil, err
 	}
 	for name, text := range linked {
-		if _, err = verifiedTreeFile(tree, name, text); err != nil {
+		if _, err = github.VerifiedTreeFile(tree, name, text); err != nil {
 			return nil, err
 		}
 	}
-	entries := map[string]gitTreeEntry{}
+	entries := map[string]github.TreeEntry{}
 	count := 0
 	total := int64(0)
 	for _, entry := range tree.Tree {
@@ -1049,7 +1034,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 			if entry.Type != "blob" || (entry.Mode != "100644" && entry.Mode != "100755") || !commitID.MatchString(entry.SHA) {
 				return nil, ErrConflict
 			}
-			if gitBlobDigest(data, len(entry.SHA)) == entry.SHA {
+			if github.BlobDigest(data, len(entry.SHA)) == entry.SHA {
 				delete(files, name)
 				continue
 			}
@@ -1058,7 +1043,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 			}
 			matchesBase := false
 			for _, rev := range article.Versions {
-				if rev.SHA == article.UpstreamHash && gitBlobDigest([]byte(rev.Text), len(entry.SHA)) == entry.SHA {
+				if rev.SHA == article.UpstreamHash && github.BlobDigest([]byte(rev.Text), len(entry.SHA)) == entry.SHA {
 					matchesBase = true
 					break
 				}
@@ -1072,7 +1057,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 		}
 	}
 	if count > 2000 || total > maxImportBytes {
-		return nil, &remoteError{Code: "repository_limit"}
+		return nil, &github.RemoteError{Code: "repository_limit"}
 	}
 	if len(files) == 0 {
 		return nil, ErrConflict

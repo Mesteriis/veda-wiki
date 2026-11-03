@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,7 +69,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 	}))
 	defer proxy.Close()
 	s := testStore(t)
-	m := newSyncManager(s, &GitHubClient{base: proxy.URL, http: proxy.Client()})
+	m := newSyncManager(s, github.NewForTest(proxy.URL, proxy.Client()))
 	for _, request := range []connectRequest{
 		{ID: "wiki", Repository: repos[0], Branch: "feature/veda-live-source-20261101-221944"},
 		{ID: "program", Repository: repos[1]},
@@ -130,7 +131,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m = newSyncManager(s, &GitHubClient{base: proxy.URL, http: proxy.Client()})
+	m = newSyncManager(s, github.NewForTest(proxy.URL, proxy.Client()))
 	m.Once(ctx)
 	if len(s.sources(true)) != 2 {
 		t.Fatal("reopened sources failed fresh verification")

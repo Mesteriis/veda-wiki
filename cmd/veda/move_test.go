@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,13 +12,13 @@ import (
 	"testing"
 )
 
-func connectedMoveFixtures(t *testing.T) (*Store, *SyncManager, *fakeGitHub, *fakeGitHub) {
+func connectedMoveFixtures(t *testing.T) (*Store, *SyncManager, *githubtest.Fake, *githubtest.Fake) {
 	t.Helper()
 	s := testStore(t)
-	one := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
-	two := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination"})
-	one.modify(func() { one.private = true })
-	two.modify(func() { two.name = "org/second"; two.repoID = 42; two.private = true })
+	one := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	two := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination"})
+	one.Modify(func() { one.Private = true })
+	two.Modify(func() { two.Name = "org/second"; two.RepoID = 42; two.Private = true })
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		second := strings.HasPrefix(r.URL.Path, "/repos/org/second")
 		if r.URL.Path == "/graphql" {
@@ -29,15 +31,15 @@ func connectedMoveFixtures(t *testing.T) (*Store, *SyncManager, *fakeGitHub, *fa
 			second = bytes.Contains(body, []byte(`"name":"second"`)) || bytes.Contains(body, []byte(`fixture-node-org/second`))
 		}
 		if second {
-			two.serve(w, r)
+			two.Serve(w, r)
 		} else {
-			one.serve(w, r)
+			one.Serve(w, r)
 		}
 	}))
 	t.Cleanup(gateway.Close)
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range []struct{ id, repo string }{{"one", "org/handbook"}, {"two", "org/second"}} {
@@ -68,11 +70,11 @@ func TestMoveBetweenConnectedRepositoriesWaitsForObservation(t *testing.T) {
 	}
 	syncFixtureSource(t, manager, "two")
 	syncFixtureSource(t, manager, "one")
-	if original.contents()["README.md"] != "# Source" || original.writeCount() != 0 || s.moves()[0].State != "waiting_destination" {
+	if original.Contents()["README.md"] != "# Source" || original.WriteCount() != 0 || s.moves()[0].State != "waiting_destination" {
 		t.Fatal("source deleted before destination observation")
 	}
 	syncFixtureSource(t, manager, "two")
-	if s.moves()[0].State != "waiting_source_delete" || destination.contents()["moved.md"] != "# Source" {
+	if s.moves()[0].State != "waiting_source_delete" || destination.Contents()["moved.md"] != "# Source" {
 		t.Fatal("destination not confirmed", s.moves())
 	}
 	syncFixtureSource(t, manager, "one")
@@ -80,13 +82,13 @@ func TestMoveBetweenConnectedRepositoriesWaitsForObservation(t *testing.T) {
 		t.Fatal("delete not prepared", s.moves())
 	}
 	syncFixtureSource(t, manager, "one")
-	if s.moves()[0].State != "complete" || original.writeCount() != 1 || destination.writeCount() != 1 {
+	if s.moves()[0].State != "complete" || original.WriteCount() != 1 || destination.WriteCount() != 1 {
 		t.Fatal("move not completed", s.moves())
 	}
-	if _, exists := original.contents()["README.md"]; exists {
+	if _, exists := original.Contents()["README.md"]; exists {
 		t.Fatal("original still exists")
 	}
-	if destination.contents()["moved.md"] != "# Source" {
+	if destination.Contents()["moved.md"] != "# Source" {
 		t.Fatal("destination lost")
 	}
 }
@@ -104,12 +106,12 @@ func TestMoveDoesNotDeleteSourceWhenDestinationUnavailableOrChanged(t *testing.T
 			t.Fatal(s.moves())
 		}
 		if outage {
-			destination.modify(func() { destination.fail = true })
+			destination.Modify(func() { destination.Fail = true })
 		} else {
-			destination.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination", "moved.md": "# External change"})
+			destination.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Destination", "moved.md": "# External change"})
 		}
 		syncFixtureSource(t, manager, "one")
-		if original.writeCount() != 0 || original.contents()["README.md"] != "# Source" {
+		if original.WriteCount() != 0 || original.Contents()["README.md"] != "# Source" {
 			t.Fatal("source deleted without checking destination")
 		}
 	}
@@ -134,14 +136,14 @@ func TestMoveRejectsAliasedRepositoryAndSamePhysicalPath(t *testing.T) {
 	if err != ErrConflict {
 		t.Fatalf("aliased path accepted: %v", err)
 	}
-	if original.contents()["README.md"] != "# Source" || original.writeCount() != 0 {
+	if original.Contents()["README.md"] != "# Source" || original.WriteCount() != 0 {
 		t.Fatal("original changed")
 	}
 }
 
 func TestUnavailableDestinationDoesNotBlockOtherSourceMoves(t *testing.T) {
 	s, manager, original, destination := connectedMoveFixtures(t)
-	original.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source", "other.md": "# Other"})
+	original.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source", "other.md": "# Other"})
 	syncFixtureSource(t, manager, "one")
 	source(t, s, "local", "private")
 	first, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true})
@@ -154,7 +156,7 @@ func TestUnavailableDestinationDoesNotBlockOtherSourceMoves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	destination.modify(func() { destination.fail = true })
+	destination.Modify(func() { destination.Fail = true })
 	syncFixtureSource(t, manager, "one")
 	s.mu.RLock()
 	firstState, secondState := s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
@@ -162,7 +164,7 @@ func TestUnavailableDestinationDoesNotBlockOtherSourceMoves(t *testing.T) {
 	if firstState != "waiting_source_delete" || secondState != "deleting_source" {
 		t.Fatalf("unexpected move states: %s %s", firstState, secondState)
 	}
-	files := original.contents()
+	files := original.Contents()
 	if files["README.md"] != "# Source" {
 		t.Fatal("unavailable destination lost source")
 	}
@@ -182,9 +184,9 @@ func TestUnavailableMoveDestinationDoesNotBlockUnrelatedWrites(t *testing.T) {
 	if _, err := s.put("one", "other.md", "# Independent", 0); err != nil {
 		t.Fatal(err)
 	}
-	destination.modify(func() { destination.fail = true })
+	destination.Modify(func() { destination.Fail = true })
 	syncFixtureSource(t, manager, "one")
-	files := original.contents()
+	files := original.Contents()
 	if files["README.md"] != "# Source" || files["other.md"] != "# Independent" {
 		t.Fatal("move outage blocked unrelated write or deleted source")
 	}
@@ -196,7 +198,7 @@ func TestUnavailableMoveDestinationDoesNotBlockUnrelatedWrites(t *testing.T) {
 func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# First", "other.md": "# Second"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# First", "other.md": "# Second"})
 	manager := connectFixture(t, s, f, true)
 	first, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "first.md", ConfirmMove: true})
 	if err != nil {
@@ -206,12 +208,12 @@ func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	manager.Once(context.Background())
 	s.mu.RLock()
 	firstState, secondState := s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
 	s.mu.RUnlock()
-	if firstState != "deleting_source" || secondState != "waiting_source_delete" || f.writeCount() != 1 {
+	if firstState != "deleting_source" || secondState != "waiting_source_delete" || f.WriteCount() != 1 {
 		t.Fatal("uncertain attempt did not stop same-head writes")
 	}
 	if err := s.retryConnection("handbook"); err != nil {
@@ -222,7 +224,7 @@ func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
 	s.mu.RLock()
 	firstState, secondState = s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
 	s.mu.RUnlock()
-	if firstState != "complete" || secondState != "complete" || f.writeCount() != 2 {
+	if firstState != "complete" || secondState != "complete" || f.WriteCount() != 2 {
 		t.Fatalf("moves did not recover: %s %s", firstState, secondState)
 	}
 }
@@ -259,20 +261,20 @@ func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
 func TestConnectedSourceMoveWaitsForRemoteDeletion(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	manager := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil || move.State != "waiting_source_delete" {
 		t.Fatalf("move: %#v %v", move, err)
 	}
-	if _, err := s.article("handbook", "README.md", false); err != nil || f.contents()["README.md"] != "# Source" {
+	if _, err := s.article("handbook", "README.md", false); err != nil || f.Contents()["README.md"] != "# Source" {
 		t.Fatal("source was deleted before remote deletion", err)
 	}
 	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 3 || reopened.moves()[0].SourceRepositoryID != f.repoID {
+	if err != nil || reopened.db.Version != 3 || reopened.moves()[0].SourceRepositoryID != f.RepoID {
 		t.Fatal("move state was not durable", err)
 	}
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Edited externally"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Edited externally"})
 	manager.Once(context.Background())
 	if s.moves()[0].State != "source_changed" {
 		t.Fatal("upstream edit did not block deletion", s.moves())
@@ -285,7 +287,7 @@ func TestConnectedSourceMoveWaitsForRemoteDeletion(t *testing.T) {
 func TestConnectedSourceMoveCancellationKeepsCopies(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil {
@@ -300,7 +302,7 @@ func TestConnectedSourceMoveCancellationKeepsCopies(t *testing.T) {
 	if _, err := s.article("local", "copy.md", false); err != nil {
 		t.Fatal(err)
 	}
-	if f.contents()["README.md"] != "# Source" {
+	if f.Contents()["README.md"] != "# Source" {
 		t.Fatal("remote source deleted")
 	}
 }
@@ -309,7 +311,7 @@ func TestConnectedSourceMoveRejectsReadOnlyOrUnsyncedSource(t *testing.T) {
 	for _, write := range []bool{false, true} {
 		s := testStore(t)
 		source(t, s, "local", "private")
-		f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+		f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 		connectFixture(t, s, f, write)
 		if write {
 			if _, err := s.put("handbook", "README.md", "# Local edit", 1); err != nil {
@@ -333,13 +335,13 @@ func TestConnectedSourceMoveRejectsReadOnlyOrUnsyncedSource(t *testing.T) {
 func TestConnectedSourceMoveRecoversLostDeleteResponse(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source", "other.md": "# Retain"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source", "other.md": "# Retain"})
 	manager := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	manager.Once(context.Background())
 	if s.moves()[0].State != "deleting_source" || s.moves()[0].PreparedDeletion == "" {
 		t.Fatal("prepared delete not recorded", s.moves())
@@ -360,7 +362,7 @@ func TestConnectedSourceMoveRecoversLostDeleteResponse(t *testing.T) {
 	if err := reopened.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
-	manager = newSyncManager(reopened, f.client())
+	manager = newSyncManager(reopened, f.Client())
 	manager.Once(context.Background())
 	if reopened.moves()[0].State != "complete" {
 		t.Fatal("deletion not observed", reopened.moves())
@@ -371,8 +373,8 @@ func TestConnectedSourceMoveRecoversLostDeleteResponse(t *testing.T) {
 	if got, err := reopened.article("local", "copy.md", false); err != nil || got.Versions[0].Text != "# Source" {
 		t.Fatal("destination lost", err)
 	}
-	files := f.contents()
-	if _, exists := files["README.md"]; exists || files["other.md"] != "# Retain" || f.writeCount() != 1 {
+	files := f.Contents()
+	if _, exists := files["README.md"]; exists || files["other.md"] != "# Retain" || f.WriteCount() != 1 {
 		t.Fatal("unexpected remote changes")
 	}
 }
@@ -380,13 +382,13 @@ func TestConnectedSourceMoveRecoversLostDeleteResponse(t *testing.T) {
 func TestConnectedSourceMoveCanCancelAfterDefinitiveRejection(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	manager := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.reject = true })
+	f.Modify(func() { f.Reject = true })
 	manager.Once(context.Background())
 	if got := s.moves()[0]; got.State != "waiting_source_delete" || got.PreparedDeletion != "" {
 		t.Fatal("definitive rejection left source locked", got)
@@ -394,7 +396,7 @@ func TestConnectedSourceMoveCanCancelAfterDefinitiveRejection(t *testing.T) {
 	if err := s.cancelMove(move.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if f.contents()["README.md"] != "# Source" || f.writeCount() != 0 {
+	if f.Contents()["README.md"] != "# Source" || f.WriteCount() != 0 {
 		t.Fatal("source changed after rejected update")
 	}
 }
@@ -402,7 +404,7 @@ func TestConnectedSourceMoveCanCancelAfterDefinitiveRejection(t *testing.T) {
 func TestConnectedSourceMoveUncertainAttemptRemainsLockedAfterRejection(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	manager := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil {
@@ -418,7 +420,7 @@ func TestConnectedSourceMoveUncertainAttemptRemainsLockedAfterRejection(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.reject = true })
+	f.Modify(func() { f.Reject = true })
 	manager.Once(context.Background())
 	if s.moves()[0].State != "deleting_source" {
 		t.Fatal("uncertain prior request was unlocked", s.moves())
@@ -431,19 +433,19 @@ func TestMoveWaitsForObservedRemoteDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Local", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	m := connectFixture(t, s, f, true)
 	req := moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
 	move, e := s.moveArticle(req)
 	if e != nil || move.State != "waiting_destination" {
 		t.Fatal(move, e)
 	}
-	f.modify(func() { f.fail = true })
+	f.Modify(func() { f.Fail = true })
 	m.Once(context.Background())
 	if _, e = s.article("local", "a.md", false); e != nil {
 		t.Fatal("source lost during outage", e)
 	}
-	f.modify(func() { f.fail = false })
+	f.Modify(func() { f.Fail = false })
 	if e = s.retryConnection("handbook"); e != nil {
 		t.Fatal(e)
 	}
@@ -455,9 +457,9 @@ func TestMoveWaitsForObservedRemoteDestination(t *testing.T) {
 	if e != nil {
 		t.Fatal("restart pending move", e)
 	}
-	m = newSyncManager(s, f.client())
+	m = newSyncManager(s, f.Client())
 	m.Once(context.Background())
-	if _, e = s.article("local", "a.md", false); e != ErrNotFound || s.moves()[0].State != "complete" || f.contents()["moved.md"] != "# Local" {
+	if _, e = s.article("local", "a.md", false); e != ErrNotFound || s.moves()[0].State != "complete" || f.Contents()["moved.md"] != "# Local" {
 		t.Fatal("move did not finish after observation", e, s.moves())
 	}
 	reopened, e := openStore(s.dir)
@@ -470,7 +472,7 @@ func TestMoveConcurrentEditsKeepSource(t *testing.T) {
 		s := testStore(t)
 		source(t, s, "local", "private")
 		s.put("local", "a.md", "# Local", 0)
-		f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+		f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 		m := connectFixture(t, s, f, true)
 		req := moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
 		if _, e := s.moveArticle(req); e != nil {
@@ -525,14 +527,14 @@ func TestMoveReadOnlyDestinationRetainsSource(t *testing.T) {
 	if _, e := s.put("local", "a.md", "# Source", 0); e != nil {
 		t.Fatal(e)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	manager := connectFixture(t, s, f, false)
 	req := moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
 	if _, e := s.moveArticle(req); e != nil {
 		t.Fatal(e)
 	}
 	manager.Once(context.Background())
-	if _, e := s.article("local", "a.md", false); e != nil || s.moves()[0].State != "waiting_destination" || f.writeCount() != 0 {
+	if _, e := s.article("local", "a.md", false); e != nil || s.moves()[0].State != "waiting_destination" || f.WriteCount() != 0 {
 		t.Fatal("read-only destination removed source", e)
 	}
 }
@@ -556,7 +558,7 @@ func TestMoveRejectsTranslationsAndDestinationIdentityChange(t *testing.T) {
 	}
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Local", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	connectFixture(t, s, f, true)
 	req = moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
 	if _, e = s.moveArticle(req); e != nil {
@@ -583,15 +585,15 @@ func TestMoveRecoversLostRemoteResponseBeforeRemovingSource(t *testing.T) {
 	if _, e := s.put("local", "a.md", "# Source", 0); e != nil {
 		t.Fatal(e)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	manager := connectFixture(t, s, f, true)
 	req := moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
 	if _, e := s.moveArticle(req); e != nil {
 		t.Fatal(e)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	manager.Once(context.Background())
-	if f.writeCount() != 1 {
+	if f.WriteCount() != 1 {
 		t.Fatal("remote fixture did not apply commit")
 	}
 	if _, e := s.article("local", "a.md", false); e != nil {
@@ -604,9 +606,9 @@ func TestMoveRecoversLostRemoteResponseBeforeRemovingSource(t *testing.T) {
 	if e = reopened.retryConnection("handbook"); e != nil {
 		t.Fatal(e)
 	}
-	manager = newSyncManager(reopened, f.client())
+	manager = newSyncManager(reopened, f.Client())
 	manager.Once(context.Background())
-	if _, e = reopened.article("local", "a.md", false); e != ErrNotFound || reopened.moves()[0].State != "complete" || f.writeCount() != 1 {
+	if _, e = reopened.article("local", "a.md", false); e != ErrNotFound || reopened.moves()[0].State != "complete" || f.WriteCount() != 1 {
 		t.Fatal("lost response recovery failed", e, reopened.moves())
 	}
 }
@@ -615,7 +617,7 @@ func TestCancelWaitingMoveRetainsBothCopies(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Source", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	manager := connectFixture(t, s, f, true)
 	req := moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
 	m, e := s.moveArticle(req)
@@ -630,7 +632,7 @@ func TestCancelWaitingMoveRetainsBothCopies(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if _, e = s.article("local", "a.md", false); e != nil || s.moves()[0].State != "cancelled" || f.contents()["moved.md"] != "# Source" {
+	if _, e = s.article("local", "a.md", false); e != nil || s.moves()[0].State != "cancelled" || f.Contents()["moved.md"] != "# Source" {
 		t.Fatal("cancel did not retain copies", e, s.moves())
 	}
 	reopened, e := openStore(s.dir)
@@ -648,7 +650,7 @@ func TestMoveKeepsSourceWhenTranslationIsAddedWhileWaiting(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	manager := connectFixture(t, s, f, true)
 	req := moveRequest{SourceID: "program", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
 	if _, e = s.moveArticle(req); e != nil {

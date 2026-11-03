@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,9 +64,9 @@ func TestGitHubRemovePreparesBeforeNonForceUpdate(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			client := &GitHubClient{base: srv.URL, http: srv.Client()}
-			source := gitTree{SHA: tree, Tree: []gitTreeEntry{{Path: "docs/a.md", Mode: "100644", Type: "blob", SHA: gitBlobDigest([]byte("# Source"), 40)}}}
-			got, err := client.remove(context.Background(), "org/repo", "main", base, source, "docs/a.md", "# Source", "", func(sha string) error {
+			client := github.NewForTest(srv.URL, srv.Client())
+			source := github.Tree{SHA: tree, Tree: []github.TreeEntry{{Path: "docs/a.md", Mode: "100644", Type: "blob", SHA: github.BlobDigest([]byte("# Source"), 40)}}}
+			got, err := client.Remove(context.Background(), "org/repo", "main", base, source, "docs/a.md", "# Source", "", func(sha string) error {
 				if sha != commit {
 					t.Error("wrong prepared commit")
 				}
@@ -86,111 +88,111 @@ func TestGitHubRemovePreparesBeforeNonForceUpdate(t *testing.T) {
 }
 
 func TestGitHubRemoveRejectsUnverifiedSource(t *testing.T) {
-	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Source"})
-	client := f.client()
-	head, err := client.head(context.Background(), f.name, "main", "")
+	f := githubtest.New(t, map[string]string{"docs/a.md": "# Source"})
+	client := f.Client()
+	head, err := client.Head(context.Background(), f.Name, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := client.tree(context.Background(), f.name, head, "")
+	tree, err := client.Tree(context.Background(), f.Name, head, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	prepared := false
-	_, err = client.remove(context.Background(), f.name, "main", head, tree, "docs/a.md", "# Changed", "", func(string) error { prepared = true; return nil })
-	if err != ErrConflict || prepared || f.writeCount() != 0 {
+	_, err = client.Remove(context.Background(), f.Name, "main", head, tree, "docs/a.md", "# Changed", "", func(string) error { prepared = true; return nil })
+	if err != ErrConflict || prepared || f.WriteCount() != 0 {
 		t.Fatalf("changed source accepted: %v", err)
 	}
 	tree.Truncated = true
-	_, err = client.remove(context.Background(), f.name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error { prepared = true; return nil })
-	if err != ErrInvalid || prepared || f.writeCount() != 0 {
+	_, err = client.Remove(context.Background(), f.Name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error { prepared = true; return nil })
+	if err != ErrInvalid || prepared || f.WriteCount() != 0 {
 		t.Fatalf("truncated tree accepted: %v", err)
 	}
 }
 
 func TestGitHubRemoveRejectsConcurrentBranchUpdate(t *testing.T) {
-	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Source"})
-	client := f.client()
-	head, err := client.head(context.Background(), f.name, "main", "")
+	f := githubtest.New(t, map[string]string{"docs/a.md": "# Source"})
+	client := f.Client()
+	head, err := client.Head(context.Background(), f.Name, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := client.tree(context.Background(), f.name, head, "")
+	tree, err := client.Tree(context.Background(), f.Name, head, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.remove(context.Background(), f.name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error {
-		f.advance(map[string]string{"docs/a.md": "# Remote edit"})
+	_, err = client.Remove(context.Background(), f.Name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error {
+		f.Advance(map[string]string{"docs/a.md": "# Remote edit"})
 		return nil
 	})
-	if err == nil || f.contents()["docs/a.md"] != "# Remote edit" || f.writeCount() != 0 {
+	if err == nil || f.Contents()["docs/a.md"] != "# Remote edit" || f.WriteCount() != 0 {
 		t.Fatalf("concurrent edit overwritten: %v", err)
 	}
 }
 
 func TestGitHubRemoveRejectsBranchRewind(t *testing.T) {
-	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Old", "docs/other.md": "# Old other"})
-	ancestor := f.head
-	f.advance(map[string]string{"docs/a.md": "# Source", "docs/other.md": "# New other"})
-	client := f.client()
-	head, err := client.head(context.Background(), f.name, "main", "")
+	f := githubtest.New(t, map[string]string{"docs/a.md": "# Old", "docs/other.md": "# Old other"})
+	ancestor := f.Head
+	f.Advance(map[string]string{"docs/a.md": "# Source", "docs/other.md": "# New other"})
+	client := f.Client()
+	head, err := client.Head(context.Background(), f.Name, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := client.tree(context.Background(), f.name, head, "")
+	tree, err := client.Tree(context.Background(), f.Name, head, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.remove(context.Background(), f.name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error {
-		f.mu.Lock()
-		f.head = ancestor
-		f.mu.Unlock()
+	_, err = client.Remove(context.Background(), f.Name, "main", head, tree, "docs/a.md", "# Source", "", func(string) error {
+		f.Mu.Lock()
+		f.Head = ancestor
+		f.Mu.Unlock()
 		return nil
 	})
-	if err == nil || f.writeCount() != 0 || f.contents()["docs/other.md"] != "# Old other" {
+	if err == nil || f.WriteCount() != 0 || f.Contents()["docs/other.md"] != "# Old other" {
 		t.Fatalf("rewound branch was modified: %v", err)
 	}
 }
 
 func TestGitHubPushRejectsBranchRewind(t *testing.T) {
-	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Old"})
-	ancestor := f.head
-	f.advance(map[string]string{"docs/a.md": "# New"})
-	client := f.client()
-	head, err := client.head(context.Background(), f.name, "main", "")
+	f := githubtest.New(t, map[string]string{"docs/a.md": "# Old"})
+	ancestor := f.Head
+	f.Advance(map[string]string{"docs/a.md": "# New"})
+	client := f.Client()
+	head, err := client.Head(context.Background(), f.Name, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := client.tree(context.Background(), f.name, head, "")
+	tree, err := client.Tree(context.Background(), f.Name, head, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.push(context.Background(), f.name, "main", head, tree.SHA, "docs/a.md", "# Local", "", func(string) error {
-		f.mu.Lock()
-		f.head = ancestor
-		f.mu.Unlock()
+	_, err = client.Push(context.Background(), f.Name, "main", head, tree.SHA, "docs/a.md", "# Local", "", func(string) error {
+		f.Mu.Lock()
+		f.Head = ancestor
+		f.Mu.Unlock()
 		return nil
 	})
-	if err == nil || f.writeCount() != 0 || f.contents()["docs/a.md"] != "# Old" {
+	if err == nil || f.WriteCount() != 0 || f.Contents()["docs/a.md"] != "# Old" {
 		t.Fatalf("rewound branch was modified: %v", err)
 	}
 }
 
 func TestGitHubRemovePreservesOtherFiles(t *testing.T) {
-	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Source", "docs/other.md": "# Other"})
-	client := f.client()
-	head, err := client.head(context.Background(), f.name, "main", "")
+	f := githubtest.New(t, map[string]string{"docs/a.md": "# Source", "docs/other.md": "# Other"})
+	client := f.Client()
+	head, err := client.Head(context.Background(), f.Name, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := client.tree(context.Background(), f.name, head, "")
+	tree, err := client.Tree(context.Background(), f.Name, head, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var prepared string
-	commit, err := client.remove(context.Background(), f.name, "main", head, tree, "docs/a.md", "# Source", "", func(value string) error { prepared = value; return nil })
-	files := f.contents()
-	if err != nil || commit != prepared || f.writeCount() != 1 || len(files) != 1 || files["docs/other.md"] != "# Other" {
+	commit, err := client.Remove(context.Background(), f.Name, "main", head, tree, "docs/a.md", "# Source", "", func(value string) error { prepared = value; return nil })
+	files := f.Contents()
+	if err != nil || commit != prepared || f.WriteCount() != 1 || len(files) != 1 || files["docs/other.md"] != "# Other" {
 		t.Fatalf("deletion failed to preserve other files: %v", err)
 	}
 }

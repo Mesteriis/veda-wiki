@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"io"
 	"os"
 	"time"
@@ -52,7 +53,7 @@ func githubCommand(args []string) error {
 		defer file.Close()
 		decoder := json.NewDecoder(io.LimitReader(file, 32769))
 		decoder.DisallowUnknownFields()
-		var secret GitHubSecret
+		var secret github.Secret
 		if e = decoder.Decode(&secret); e != nil {
 			return ErrInvalid
 		}
@@ -62,7 +63,7 @@ func githubCommand(args []string) error {
 		}
 		body := struct {
 			ID string `json:"id"`
-			GitHubSecret
+			github.Secret
 		}{*id, secret}
 		if e = client.request("POST", "/api/v1/github/accounts", body, &result); e != nil {
 			return e

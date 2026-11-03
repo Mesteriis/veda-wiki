@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,13 +17,13 @@ import (
 	"time"
 )
 
-func mirrorFixture(t *testing.T) (*Store, *SyncManager, *fakeGitHub) {
+func mirrorFixture(t *testing.T) (*Store, *SyncManager, *githubtest.Fake) {
 	t.Helper()
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Same", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	return s, m, f
 }
@@ -47,7 +48,7 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["a.md"] != "# Changed" || s.jobs()[0].State != "complete" {
+	if f.Contents()["a.md"] != "# Changed" || s.jobs()[0].State != "complete" {
 		t.Fatal("update not confirmed")
 	}
 	paused := false
@@ -59,7 +60,7 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if len(s.jobs()) != 1 || f.contents()["a.md"] != "# Changed" || s.mirrors()[0].State != "paused" {
+	if len(s.jobs()) != 1 || f.Contents()["a.md"] != "# Changed" || s.mirrors()[0].State != "paused" {
 		t.Fatal("paused mirror continued")
 	}
 	r, err := openStore(s.dir)
@@ -75,15 +76,15 @@ func TestMirrorKeepsConflictsAndDoesNotPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	remote := f.contents()
+	remote := f.Contents()
 	remote["a.md"] = "# Remote change"
-	f.advance(remote)
+	f.Advance(remote)
 	m.Once(context.Background())
 	if _, err := s.put("local", "a.md", "# Local change", 1); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if s.mirrors()[0].State != "blocked" || s.mirrors()[0].Blocked != 1 || f.contents()["a.md"] != "# Remote change" || len(s.jobs()) != 0 {
+	if s.mirrors()[0].State != "blocked" || s.mirrors()[0].Blocked != 1 || f.Contents()["a.md"] != "# Remote change" || len(s.jobs()) != 0 {
 		t.Fatal("divergence overwritten")
 	}
 	view := s.mirrors()
@@ -94,9 +95,9 @@ func TestMirrorKeepsConflictsAndDoesNotPublish(t *testing.T) {
 	if s.mirrors()[0].BlockedPaths[0] != "a.md" {
 		t.Fatal("mirror status exposed mutable state")
 	}
-	f.modify(func() { f.private = false })
+	f.Modify(func() { f.Private = false })
 	m.Once(context.Background())
-	if s.mirrors()[0].State != "error" || f.writeCount() != 0 {
+	if s.mirrors()[0].State != "error" || f.WriteCount() != 0 {
 		t.Fatal("public destination accepted")
 	}
 }
@@ -153,7 +154,7 @@ func TestMirrorSQLiteSurvivesReopen(t *testing.T) {
 	if err != nil || len(s.mirrors()) != 1 || !s.mirrors()[0].Enabled {
 		t.Fatal("mirror lost on reopen", err)
 	}
-	m := newSyncManager(s, f.client())
+	m := newSyncManager(s, f.Client())
 	m.Once(context.Background())
 	if _, err = s.put("local", "a.md", "# Edited after reopen", 1); err != nil {
 		t.Fatal(err)
@@ -185,7 +186,7 @@ func TestMirrorPauseRetainsQueuedWrite(t *testing.T) {
 	s.put("local", "a.md", "# After pause", 2)
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["a.md"] != "# Queued" || len(s.jobs()) != 1 || s.jobs()[0].State != "complete" {
+	if f.Contents()["a.md"] != "# Queued" || len(s.jobs()) != 1 || s.jobs()[0].State != "complete" {
 		t.Fatal("pause discarded queued write or created another")
 	}
 }
@@ -197,8 +198,8 @@ func TestMirrorMultipleBatchesEventuallyConverge(t *testing.T) {
 		name := fmt.Sprintf("p%02d.md", i)
 		s.put("local", name, "# "+name, 0)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	yes := true
 	revision := 0
@@ -211,8 +212,8 @@ func TestMirrorMultipleBatchesEventuallyConverge(t *testing.T) {
 			break
 		}
 	}
-	if s.mirrors()[0].State != "ready" || len(f.contents()) != 23 {
-		t.Fatal("multiple batches did not converge", s.mirrors()[0].State, len(f.contents()))
+	if s.mirrors()[0].State != "ready" || len(f.Contents()) != 23 {
+		t.Fatal("multiple batches did not converge", s.mirrors()[0].State, len(f.Contents()))
 	}
 	for _, job := range s.jobs() {
 		if job.State != "complete" {
@@ -359,8 +360,8 @@ func TestMirrorSQLiteManyMatchingArticles(t *testing.T) {
 		s.put("local", name, text, 0)
 		remote[name] = text
 	}
-	f := newFakeGitHub(t, remote)
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, remote)
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)
@@ -374,7 +375,7 @@ func TestMirrorSQLiteManyMatchingArticles(t *testing.T) {
 	if _, err = s.configureMirror(context.Background(), mirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &yes, ExpectedRevision: &revision}); err != nil {
 		t.Fatal(err)
 	}
-	m := newSyncManager(s, f.client())
+	m := newSyncManager(s, f.Client())
 	for i := 0; i < 6; i++ {
 		m.Once(context.Background())
 		if s.mirrors()[0].State == "ready" {
@@ -431,7 +432,7 @@ func TestMirrorWorkerRunsOnIntervalAndStops(t *testing.T) {
 	if _, err := s.put("local", "a.md", "# Periodic", 1); err != nil {
 		t.Fatal(err)
 	}
-	await(func() bool { return f.contents()["a.md"] == "# Periodic" && s.mirrors()[0].State == "ready" })
+	await(func() bool { return f.Contents()["a.md"] == "# Periodic" && s.mirrors()[0].State == "ready" })
 }
 
 func TestMirrorCancelledWhileWaitingDoesNotChangeConfiguration(t *testing.T) {
@@ -464,8 +465,8 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	yes := true
 	revision := 0
@@ -564,18 +565,18 @@ func TestMirrorQueuedPrivateWriteNeverPublishesAfterVisibilityChange(t *testing.
 	if len(s.jobs()) != 1 || s.jobs()[0].Visibility != "private" {
 		t.Fatal("private job missing")
 	}
-	f.modify(func() { f.private = false })
+	f.Modify(func() { f.Private = false })
 	m.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["a.md"] != "# Same" || s.mirrors()[0].State != "error" {
+	if f.WriteCount() != 0 || f.Contents()["a.md"] != "# Same" || s.mirrors()[0].State != "error" {
 		t.Fatal("private mirror write reached public repository")
 	}
 }
 
 func TestMirrorConnectedSourcesAndCycleGuard(t *testing.T) {
 	s, m, first, second := connectedMoveFixtures(t)
-	files := second.contents()
+	files := second.Contents()
 	files["README.md"] = "# Source"
-	second.advance(files)
+	second.Advance(files)
 	m.Once(context.Background())
 	enabled, revision := true, 0
 	in := mirrorRequest{SourceID: "one", DestinationID: "two", Enabled: &enabled, ExpectedRevision: &revision}
@@ -583,19 +584,19 @@ func TestMirrorConnectedSourcesAndCycleGuard(t *testing.T) {
 		t.Fatal("connected source rejected", err)
 	}
 	m.Once(context.Background())
-	files = first.contents()
+	files = first.Contents()
 	files["README.md"] = "# Changed upstream"
-	first.advance(files)
+	first.Advance(files)
 	for i := 0; i < 4; i++ {
 		m.Once(context.Background())
 	}
-	if second.contents()["README.md"] != "# Changed upstream" {
+	if second.Contents()["README.md"] != "# Changed upstream" {
 		t.Fatal("connected source change not confirmed")
 	}
 	if _, err := s.configureMirror(context.Background(), mirrorRequest{SourceID: "two", DestinationID: "one", Enabled: &enabled, ExpectedRevision: &revision}); !errors.Is(err, ErrConflict) {
 		t.Fatal("cycle accepted", err)
 	}
-	first.modify(func() { first.private = false })
+	first.Modify(func() { first.Private = false })
 	m.Once(context.Background())
 	if s.mirrors()[0].State != "error" {
 		t.Fatal("source visibility change not rejected")
@@ -646,10 +647,10 @@ func TestMirrorCycleIncludesLongerChains(t *testing.T) {
 
 func TestConnectedReconcileBlocksUnobservedLinkedArticle(t *testing.T) {
 	s, m, first, _ := connectedMoveFixtures(t)
-	files := first.contents()
+	files := first.Contents()
 	files["new.md"] = "[Linked](linked.md)"
 	files["linked.md"] = "# Linked"
-	first.advance(files)
+	first.Advance(files)
 	m.Once(context.Background())
 	s.mu.Lock()
 	linked := s.db.Articles["one/linked.md"]
@@ -667,9 +668,9 @@ func TestConnectedReconcileBlocksUnobservedLinkedArticle(t *testing.T) {
 
 func TestConnectedMirrorSQLiteQueueAndDivergence(t *testing.T) {
 	s, m, first, second := connectedMoveFixtures(t)
-	files := second.contents()
+	files := second.Contents()
 	files["README.md"] = "# Source"
-	second.advance(files)
+	second.Advance(files)
 	m.Once(context.Background())
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)
@@ -685,9 +686,9 @@ func TestConnectedMirrorSQLiteQueueAndDivergence(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	files = first.contents()
+	files = first.Contents()
 	files["README.md"] = "# First update"
-	first.advance(files)
+	first.Advance(files)
 	m.Once(context.Background())
 	if len(s.jobs()) != 1 || s.jobs()[0].State != "pending" {
 		t.Fatal("mirror update not queued")
@@ -700,17 +701,17 @@ func TestConnectedMirrorSQLiteQueueAndDivergence(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		m.Once(context.Background())
 	}
-	if second.contents()["README.md"] != "# First update" || s.jobs()[0].State != "complete" {
+	if second.Contents()["README.md"] != "# First update" || s.jobs()[0].State != "complete" {
 		t.Fatal("queued update did not survive reopen")
 	}
-	one := first.contents()
+	one := first.Contents()
 	one["README.md"] = "# First independent"
-	two := second.contents()
+	two := second.Contents()
 	two["README.md"] = "# Second independent"
-	first.advance(one)
-	second.advance(two)
+	first.Advance(one)
+	second.Advance(two)
 	m.Once(context.Background())
-	if s.mirrors()[0].State != "blocked" || first.contents()["README.md"] != "# First independent" || second.contents()["README.md"] != "# Second independent" || len(s.jobs()) != 1 {
+	if s.mirrors()[0].State != "blocked" || first.Contents()["README.md"] != "# First independent" || second.Contents()["README.md"] != "# Second independent" || len(s.jobs()) != 1 {
 		t.Fatal("independent changes were not preserved")
 	}
 }

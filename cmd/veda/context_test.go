@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -141,7 +142,7 @@ func TestAgentContextRefusesOversizedInstructionSet(t *testing.T) {
 
 func TestPublicAgentContextUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Published instructions"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Published instructions"})
 	connectFixture(t, s, f, false)
 	s.mu.Lock()
 	a := s.db.Articles["handbook/AGENTS.md"]
@@ -162,14 +163,14 @@ func TestPublicAgentContextUsesPublishedRevision(t *testing.T) {
 
 func TestScopedContextReportsConnectionFailure(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Context"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Context"})
 	m := connectFixture(t, s, f, false)
 	source(t, s, "other", "private")
 	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.fail = true })
+	f.Modify(func() { f.Fail = true })
 	m.Once(context.Background())
 	w := Wiki{Store: s, Token: "owner"}
 	call := func(id string) *httptest.ResponseRecorder {
@@ -205,7 +206,7 @@ func TestScopedContextReportsConnectionFailure(t *testing.T) {
 
 func TestContextReportsUnconfirmedWritesInScopedSnapshot(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	source(t, s, "other", "private")
 	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
@@ -260,7 +261,7 @@ func TestContextReportsUnconfirmedWritesInScopedSnapshot(t *testing.T) {
 
 func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Instructions"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Instructions"})
 	connectFixture(t, s, f, false)
 	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {

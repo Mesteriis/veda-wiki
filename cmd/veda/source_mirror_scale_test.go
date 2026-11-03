@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -77,19 +79,19 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, remote)
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, remote)
+	f.Modify(func() { f.Private = true })
 	var requests atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/blobs/") {
 			requests.Add(1)
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", Write: true}); err != nil {
@@ -127,7 +129,7 @@ func TestMirrorSyntheticScale(t *testing.T) {
 			break
 		}
 	}
-	if s.mirrors()[0].State != "blocked" || s.mirrors()[0].Blocked != 2 || len(s.jobs()) != 10 || f.writeCount() != 10 {
+	if s.mirrors()[0].State != "blocked" || s.mirrors()[0].Blocked != 2 || len(s.jobs()) != 10 || f.WriteCount() != 10 {
 		t.Fatal("scale reconciliation did not converge", s.mirrors()[0].State, passes)
 	}
 	s, err = openStore(s.dir)
@@ -140,7 +142,7 @@ func TestMirrorSyntheticScale(t *testing.T) {
 			baselines++
 		}
 	}
-	if baselines != 534 || len(s.db.Sources["handbook"].Assets) != 147 || len(f.contents()) != 1+611+147 {
+	if baselines != 534 || len(s.db.Sources["handbook"].Assets) != 147 || len(f.Contents()) != 1+611+147 {
 		t.Fatal("scale state mismatch", baselines)
 	}
 	if requests.Load() != 78 {
@@ -148,7 +150,7 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	}
 	for _, i := range []int{524, 525} {
 		name := fmt.Sprintf("pages/page-%03d.md", i)
-		if f.contents()[name] != fmt.Sprintf("# Independently changed %d", i) || s.db.Articles["local/"+name].Deleted {
+		if f.Contents()[name] != fmt.Sprintf("# Independently changed %d", i) || s.db.Articles["local/"+name].Deleted {
 			t.Fatal("divergent article was changed")
 		}
 	}

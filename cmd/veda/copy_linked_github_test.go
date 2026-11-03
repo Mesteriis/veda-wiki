@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,7 @@ func TestCopyLinkedGraphToGitHubOneCommit(t *testing.T) {
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "[B](b.md) ![icon](img/icon.png)", 0)
 	s.put("from", "b.md", "[A](a.md)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true})
 	if err != nil {
@@ -30,7 +31,7 @@ func TestCopyLinkedGraphToGitHubOneCommit(t *testing.T) {
 		t.Fatal("cannot reopen bundle", err)
 	}
 	m.Once(context.Background())
-	if f.writeCount() != 1 || f.contents()["a.md"] == "" || f.contents()["b.md"] == "" || f.contents()["img/icon.png"] == "" {
+	if f.WriteCount() != 1 || f.Contents()["a.md"] == "" || f.Contents()["b.md"] == "" || f.Contents()["img/icon.png"] == "" {
 		t.Fatal("bundle not committed together")
 	}
 	if s.jobs()[0].State == "complete" {
@@ -47,7 +48,7 @@ func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "guide.md", "# Guide\n\n[Docs](docs/)", 0)
 	s.put("from", "docs/README.md", "# Docs", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	_ = connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
 	if err != nil || s.db.Version != 16 || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
@@ -57,9 +58,9 @@ func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal("directory bundle did not reopen", err)
 	}
-	m := newSyncManager(s, f.client())
+	m := newSyncManager(s, f.Client())
 	m.Once(context.Background())
-	if f.writeCount() != 1 || f.contents()["docs/README.md"] != "# Docs" || s.jobs()[0].State == "complete" {
+	if f.WriteCount() != 1 || f.Contents()["docs/README.md"] != "# Docs" || s.jobs()[0].State == "complete" {
 		t.Fatal("directory bundle was not atomically sent")
 	}
 	m.Once(context.Background())
@@ -73,15 +74,15 @@ func TestIndexDirectoryBundleRejectsNewRemoteIndex(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "guide.md", "[Docs](docs/)", 0)
 	s.put("from", "docs/index.md", "# Original index", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
 	if err != nil || s.db.Version != 17 {
 		t.Fatal("index bundle not queued", err)
 	}
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
 	m.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["docs/README.md"] != "" || s.jobs()[0].State == "complete" {
+	if f.WriteCount() != 0 || f.Contents()["docs/README.md"] != "" || s.jobs()[0].State == "complete" {
 		t.Fatal("new remote index was shadowed")
 	}
 }
@@ -91,13 +92,13 @@ func TestIndexDirectoryBundleSentAndConfirmed(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "guide.md", "[Docs](docs/)", 0)
 	s.put("from", "docs/index.md", "# Original index", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if f.writeCount() != 1 || f.contents()["docs/README.md"] != "# Original index" {
+	if f.WriteCount() != 1 || f.Contents()["docs/README.md"] != "# Original index" {
 		t.Fatal("mapped index not sent")
 	}
 	m.Once(context.Background())
@@ -111,7 +112,7 @@ func TestIndexDirectoryMoveWaitsForDestinationConfirmation(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "guide.md", "[Docs](docs/)", 0)
 	s.put("from", "docs/index.md", "# Original index", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmMove: true, ConfirmPublication: true})
 	if err != nil || move.State != "waiting_destination" {
@@ -131,15 +132,15 @@ func TestIndexDirectoryRootCannotShadowNewRemoteIndex(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")
 	s.put("from", "docs/index.md", "# Root\n\n[Self](./)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "docs/index.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "docs/README.md", IncludeLinked: true, ConfirmPublication: true})
 	if err != nil || len(s.jobs()[0].Bundle) != 0 {
 		t.Fatal("root fixture invalid", err)
 	}
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
 	m.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["docs/README.md"] != "" {
+	if f.WriteCount() != 0 || f.Contents()["docs/README.md"] != "" {
 		t.Fatal("root copy shadowed new remote index")
 	}
 }
@@ -211,7 +212,7 @@ func TestLinkedBundleRequiresCompleteObservation(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "a.md", "[B](b.md)", 0)
 	s.put("from", "b.md", "# B", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
@@ -237,7 +238,7 @@ func TestOldBinaryRejectsLinkedBundleStore(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "a.md", "[B](b.md)", 0)
 	s.put("from", "b.md", "# B", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
@@ -265,7 +266,7 @@ func TestLinkedBundleCancellationAndLocks(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "a.md", "[B](b.md)", 0)
 	s.put("from", "b.md", "# B", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true})
 	if err != nil {
@@ -291,15 +292,15 @@ func TestLinkedBundleRecoversLostResponse(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "a.md", "[B](b.md)", 0)
 	s.put("from", "b.md", "# B", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
-	if f.writeCount() != 1 || s.jobs()[0].PreparedCommit == "" {
+	if f.WriteCount() != 1 || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("missing prepared commit")
 	}
 	if err = s.cancelBundle(s.jobs()[0].ID, true); err != ErrConflict {
@@ -312,8 +313,8 @@ func TestLinkedBundleRecoversLostResponse(t *testing.T) {
 	if err = reopened.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
-	newSyncManager(reopened, f.client()).Once(context.Background())
-	if f.writeCount() != 1 || reopened.jobs()[0].State != "complete" {
+	newSyncManager(reopened, f.Client()).Once(context.Background())
+	if f.WriteCount() != 1 || reopened.jobs()[0].State != "complete" {
 		t.Fatal("bundle was not recovered", reopened.jobs())
 	}
 }
@@ -323,14 +324,14 @@ func TestLinkedBundleDoesNotOverwriteConcurrentRemoteArticle(t *testing.T) {
 	source(t, s, "from", "private")
 	s.put("from", "a.md", "[B](b.md)", 0)
 	s.put("from", "b.md", "# B", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "b.md": "# Concurrent"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "b.md": "# Concurrent"})
 	m.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["b.md"] != "# Concurrent" || f.contents()["a.md"] != "" || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 0 || f.Contents()["b.md"] != "# Concurrent" || f.Contents()["a.md"] != "" || s.db.Articles["from/a.md"].Deleted {
 		t.Fatal("concurrent remote article was overwritten")
 	}
 }
@@ -346,7 +347,7 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 	if _, err := s.put("from", "chapter/a.md", text, 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	in := copyRequest{SourceID: "from", SourcePath: "chapter/a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "other/b.md", IncludeLinked: true}
 	if _, err := s.copyArticle(in); err != ErrInvalid {
@@ -363,7 +364,7 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 		t.Fatal("root dependency store did not reopen", err)
 	}
 	manager.Once(context.Background())
-	if f.writeCount() != 1 || f.contents()["other/b.md"] != text || f.contents()["guide.md"] != "# Guide" || f.contents()["img/icon.png"] == "" {
+	if f.WriteCount() != 1 || f.Contents()["other/b.md"] != text || f.Contents()["guide.md"] != "# Guide" || f.Contents()["img/icon.png"] == "" {
 		t.Fatal("root dependencies were not committed together")
 	}
 	manager.Once(context.Background())
@@ -383,7 +384,7 @@ func TestOldBinaryRejectsRootDependencyStore(t *testing.T) {
 	if _, err := s.put("from", "a.md", "![Icon](/img/icon.png)", 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmPublication: true})
 	if err != nil || s.db.Version != 12 {

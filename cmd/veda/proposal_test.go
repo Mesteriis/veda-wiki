@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -11,12 +12,12 @@ import (
 
 func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# First", "b.md": "# Second", "linked.md": "# Linked", "dependency.md": "# Dependency"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# First", "b.md": "# Second", "linked.md": "# Linked", "dependency.md": "# Dependency"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "a.md", "# Local", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
 	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {

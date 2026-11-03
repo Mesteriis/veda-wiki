@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"io"
 	"net/http"
 	"strconv"
@@ -63,7 +64,7 @@ func apiError(rw http.ResponseWriter, err error) {
 		jsonResponse(rw, http.StatusServiceUnavailable, map[string]string{"error": "asset_unavailable"})
 		return
 	}
-	var upstream *remoteError
+	var upstream *github.RemoteError
 	if errors.As(err, &upstream) {
 		code := 502
 		if upstream.Code == "repository_unavailable" {

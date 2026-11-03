@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -335,19 +336,19 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 	if len(scope) != 1 || scope[0] != "from" {
 		t.Fatal("restored team scope incorrect")
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
+	f.Modify(func() { f.Private = true })
 	if err = s.pauseConnection("handbook", false); err != nil {
 		t.Fatal(err)
 	}
-	manager := newSyncManager(s, f.client())
+	manager := newSyncManager(s, f.Client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
 	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.db.Articles["from/a.md"].Deleted {
 		t.Fatal("restored queue did not complete")
 	}
 	ref := s.db.Sources["handbook"].Assets["img/icon.png"]
-	if ref.SHA == "" || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA || f.contents()["related.md"] != "# Related fixture" {
+	if ref.SHA == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["related.md"] != "# Related fixture" {
 		t.Fatal("restored bundle incomplete")
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"net"
 	"net/http"
 	"strconv"
@@ -105,13 +106,13 @@ func (w Wiki) githubAPI(rw http.ResponseWriter, r *http.Request, owner bool) {
 		}
 		var in struct {
 			ID string `json:"id"`
-			GitHubSecret
+			github.Secret
 		}
 		if e := decodeBody(rw, r, &in); e != nil {
 			apiError(rw, ErrInvalid)
 			return
 		}
-		a, e := w.Store.saveAccount(r.Context(), w.Sync.github, in.ID, in.GitHubSecret)
+		a, e := w.Store.saveAccount(r.Context(), w.Sync.github, in.ID, in.Secret)
 		if e != nil {
 			apiError(rw, e)
 			return

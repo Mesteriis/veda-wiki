@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/search"
 	"net/http/httptest"
 	"net/url"
@@ -44,7 +45,7 @@ func TestSearchUsesOneRevisionDuringConcurrentUpdates(t *testing.T) {
 
 func TestPublicSearchUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published guide\npublic keyword"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published guide\npublic keyword"})
 	connectFixture(t, s, f, false)
 	s.mu.Lock()
 	a := s.db.Articles["handbook/guide.md"]
@@ -65,7 +66,7 @@ func TestPublicSearchUsesPublishedRevision(t *testing.T) {
 
 func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Deployment guide\n\nInstall the service."})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Deployment guide\n\nInstall the service."})
 	connectFixture(t, s, f, false)
 	a, err := s.article("handbook", "docs/guide.md", false)
 	if err != nil {

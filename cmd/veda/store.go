@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"io"
 	"os"
 	"path"
@@ -143,7 +144,7 @@ func (s *Store) validate() (*Store, error) {
 		return nil, err
 	}
 	for id, a := range s.db.Accounts {
-		if !identifier.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !githubPart.MatchString(a.Login) || len(a.SecretRef) != 32 {
+		if !identifier.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !github.ValidName(a.Login) || len(a.SecretRef) != 32 {
 			return nil, errors.New("invalid stored GitHub account")
 		}
 		if _, e := hex.DecodeString(a.SecretRef); e != nil {
@@ -151,8 +152,8 @@ func (s *Store) validate() (*Store, error) {
 		}
 	}
 	for id, c := range s.db.Connections {
-		repo, e := repositoryName(c.Repository)
-		if e != nil || repo != c.Repository || !identifier.MatchString(id) || id != c.ID || c.RepositoryID < 1 || !validBranch(c.Branch) || c.ConfigRevision < 1 {
+		repo, e := github.RepositoryName(c.Repository)
+		if e != nil || repo != c.Repository || !identifier.MatchString(id) || id != c.ID || c.RepositoryID < 1 || !github.ValidBranch(c.Branch) || c.ConfigRevision < 1 {
 			return nil, errors.New("invalid stored GitHub connection")
 		}
 		if c.AccountID != "" {
@@ -292,14 +293,14 @@ func (s *Store) validate() (*Store, error) {
 			if m.SourceRepositoryID != 0 || m.SourceBranch != "" {
 				return nil, errors.New("invalid move source identity")
 			}
-		} else if s.db.Version < 3 || !identifier.MatchString(m.SourceConnectionID) || m.SourceRepositoryID < 1 || !validBranch(m.SourceBranch) {
+		} else if s.db.Version < 3 || !identifier.MatchString(m.SourceConnectionID) || m.SourceRepositoryID < 1 || !github.ValidBranch(m.SourceBranch) {
 			return nil, errors.New("invalid move source identity")
 		}
 		if m.DestinationConnectionID == "" {
 			if m.DestinationRepositoryID != 0 || m.DestinationBranch != "" {
 				return nil, errors.New("invalid move destination identity")
 			}
-		} else if !identifier.MatchString(m.DestinationConnectionID) || m.DestinationRepositoryID < 1 || !validBranch(m.DestinationBranch) {
+		} else if !identifier.MatchString(m.DestinationConnectionID) || m.DestinationRepositoryID < 1 || !github.ValidBranch(m.DestinationBranch) {
 			return nil, errors.New("invalid move destination identity")
 		}
 		switch m.State {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -104,7 +105,7 @@ func TestReaderTranslationValidationIsScopedAndNonMutating(t *testing.T) {
 
 func TestTranslationValidationReportsPausedSource(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Guide\n\nRun `install`."})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Guide\n\nRun `install`."})
 	connectFixture(t, s, f, false)
 	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
 	if err != nil {

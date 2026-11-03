@@ -37,6 +37,7 @@ type (
 var (
 	ErrInvalid  = domain.ErrInvalid
 	ErrConflict = domain.ErrConflict
+	ErrNoDocs   = domain.ErrNoDocs
 	ErrNotFound = domain.ErrNotFound
 
 	identifier    = domain.IDPattern

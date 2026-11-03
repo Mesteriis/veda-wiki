@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -228,9 +230,9 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	}))
 	defer proxy.Close()
 	store := testStore(t)
-	client := &GitHubClient{base: proxy.URL, http: proxy.Client()}
+	client := github.NewForTest(proxy.URL, proxy.Client())
 	manager := newSyncManager(store, client)
-	if _, err := store.saveAccount(ctx, client, "fixture", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := store.saveAccount(ctx, client, "fixture", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatalf("account: %v", err)
 	}
 	for i, b := range branches {
@@ -286,11 +288,11 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		}
 		ref := api("repos/"+repo+"/git/ref/heads/"+branches[0], nil)
 		head := ref["object"].(map[string]any)["sha"].(string)
-		remoteTree, err := client.tree(ctx, repo, head, fixtureAccess)
+		remoteTree, err := client.Tree(ctx, repo, head, githubtest.Access)
 		if err != nil {
 			t.Fatal("recovered tree unavailable", err)
 		}
-		if _, err := verifiedTreeFile(remoteTree, draftPath, draftText); err != nil {
+		if _, err := github.VerifiedTreeFile(remoteTree, draftPath, draftText); err != nil {
 			t.Fatal("remote fixture does not match local write")
 		}
 	}
@@ -304,11 +306,11 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	}
 	ref := api("repos/"+repo+"/git/ref/heads/"+branches[0], nil)
 	head := ref["object"].(map[string]any)["sha"].(string)
-	beforeTree, err := client.tree(ctx, repo, head, fixtureAccess)
+	beforeTree, err := client.Tree(ctx, repo, head, githubtest.Access)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := verifiedTreeFile(beforeTree, "guide.md", content); err != nil {
+	if _, err := github.VerifiedTreeFile(beforeTree, "guide.md", content); err != nil {
 		t.Fatal("source changed before destination observation")
 	}
 	syncFixtureSource(t, manager, "target")
@@ -326,7 +328,7 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 	for i, b := range branches {
 		ref := api("repos/"+repos[i]+"/git/ref/heads/"+b, nil)
 		head := ref["object"].(map[string]any)["sha"].(string)
-		remoteTree, err := client.tree(ctx, repos[i], head, fixtureAccess)
+		remoteTree, err := client.Tree(ctx, repos[i], head, githubtest.Access)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -354,24 +356,24 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 					t.Fatal("target fixture modified existing content")
 				}
 			}
-			if _, err := verifiedTreeFile(remoteTree, destinationPath, content); err != nil {
+			if _, err := github.VerifiedTreeFile(remoteTree, destinationPath, content); err != nil {
 				t.Fatal("destination contents do not match the fixture")
 			}
 			imagePath := path.Join(path.Dir(destinationPath), "img/icon.png")
-			if _, err := verifiedTreeFile(remoteTree, imagePath, string(image)); err != nil {
+			if _, err := github.VerifiedTreeFile(remoteTree, imagePath, string(image)); err != nil {
 				t.Fatal("destination image does not match fixture")
 			}
 			duplicatePath := path.Join(path.Dir(destinationPath), "img/duplicate.png")
-			if _, err := verifiedTreeFile(remoteTree, duplicatePath, string(image)); err != nil {
+			if _, err := github.VerifiedTreeFile(remoteTree, duplicatePath, string(image)); err != nil {
 				t.Fatal("duplicate image does not match fixture")
 			}
 			relatedPath := path.Join(path.Dir(destinationPath), "related.md")
-			if _, err := verifiedTreeFile(remoteTree, relatedPath, related); err != nil {
+			if _, err := github.VerifiedTreeFile(remoteTree, relatedPath, related); err != nil {
 				t.Fatal("linked fixture differs")
 			}
 			if directoryFixture {
 				indexPath := path.Join(path.Dir(destinationPath), "docs/README.md")
-				if _, err := verifiedTreeFile(remoteTree, indexPath, index); err != nil {
+				if _, err := github.VerifiedTreeFile(remoteTree, indexPath, index); err != nil {
 					t.Fatal("mapped directory fixture differs")
 				}
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,8 +30,8 @@ func TestExportV7RestoreFixture(t *testing.T) {
 	if _, err = s.put("from", "a.md", "# Synthetic fixture\n\n![icon](img/icon.png)", 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	m, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true})
 	if err != nil || m.State != "waiting_destination" || s.db.Version != 7 {
@@ -74,19 +75,19 @@ func TestResumeV7RestoreFixture(t *testing.T) {
 	if err != nil || s.db.Version != 7 || !s.db.Connections["handbook"].Paused {
 		t.Fatal("invalid restored fixture", err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
+	f.Modify(func() { f.Private = true })
 	if err = s.pauseConnection("handbook", false); err != nil {
 		t.Fatal(err)
 	}
-	m := newSyncManager(s, f.client())
+	m := newSyncManager(s, f.Client())
 	m.Once(context.Background())
 	m.Once(context.Background())
 	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.db.Articles["from/a.md"].Deleted {
 		t.Fatal("restored queue did not complete")
 	}
 	ref := s.db.Sources["handbook"].Assets["img/icon.png"]
-	if ref.SHA == "" || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA || f.contents()["b.md"] == "" {
+	if ref.SHA == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["b.md"] == "" {
 		t.Fatal("restored image or article missing")
 	}
 }

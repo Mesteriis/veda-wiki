@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/render"
 	"image"
 	"image/png"
@@ -599,14 +600,14 @@ func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
 
 func TestPrivateImagesAreNotRetainedOnGitHubPublication(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original\n\n![image](image.png)", "docs/image.png": string(smallPNG(t))})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Original\n\n![image](image.png)", "docs/image.png": string(smallPNG(t))})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
 	if _, err := s.put("handbook", "docs/guide.md", "# Local edit\n\n![image](image.png)", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.private = false })
-	f.advance(map[string]string{"src/main.go": "package main"})
+	f.Modify(func() { f.Private = false })
+	f.Advance(map[string]string{"src/main.go": "package main"})
 	m.Once(context.Background())
 	if _, ok := s.db.Sources["handbook"].Assets["docs/image.png"]; ok {
 		t.Fatal("private image survived publication")

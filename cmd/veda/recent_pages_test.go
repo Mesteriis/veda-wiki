@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"testing"
 )
 
@@ -48,7 +49,7 @@ func TestRecentCardsUseVisibleRevisionTimes(t *testing.T) {
 
 func TestPublicRecentTimeUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published"})
 	connectFixture(t, s, f, false)
 	s.mu.Lock()
 	a := s.db.Articles["handbook/guide.md"]

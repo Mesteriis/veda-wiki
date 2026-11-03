@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -20,20 +21,20 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "same.md": "# Same", "different.md": "# Remote", "remote-only.md": "# Remote only"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "same.md": "# Same", "different.md": "# Remote", "remote-only.md": "# Remote only"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	in := reconcileRequest{SourceID: "local", DestinationID: "handbook", Limit: 50}
 	r, err := s.reconcileSources(context.Background(), in)
 	if err != nil || r.Baselines != 1 || r.Created != 1 || r.Updated != 0 || len(r.Blocked) != 1 || r.Blocked[0] != "different.md" {
 		t.Fatalf("unexpected initial result %+v %v", r, err)
 	}
-	if s.db.Version != 18 || s.db.Articles["handbook/remote-only.md"].Deleted || f.writeCount() != 0 {
+	if s.db.Version != 18 || s.db.Articles["handbook/remote-only.md"].Deleted || f.WriteCount() != 0 {
 		t.Fatal("unsafe initial reconciliation")
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["new.md"] != "# New" {
+	if f.Contents()["new.md"] != "# New" {
 		t.Fatal("new article not synchronized")
 	}
 	if _, err = s.put("local", "same.md", "# Local updated", 1); err != nil {
@@ -45,12 +46,12 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["same.md"] != "# Local updated" {
+	if f.Contents()["same.md"] != "# Local updated" {
 		t.Fatal("source update not confirmed")
 	}
-	contents := f.contents()
+	contents := f.Contents()
 	contents["same.md"] = "# Independent remote"
-	f.advance(contents)
+	f.Advance(contents)
 	m.Once(context.Background())
 	if _, err = s.put("local", "same.md", "# Independent local", 2); err != nil {
 		t.Fatal(err)
@@ -77,13 +78,13 @@ func TestReconcileRequiresPrivateWritableVerifiedDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# A", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture})
 	m := connectFixture(t, s, f, false)
 	in := reconcileRequest{SourceID: "local", DestinationID: "handbook"}
 	if _, err := s.reconcileSources(context.Background(), in); !errors.Is(err, ErrConflict) {
 		t.Fatal("public destination accepted", err)
 	}
-	f.modify(func() { f.private = true })
+	f.Modify(func() { f.Private = true })
 	_ = m
 	w := Wiki{Store: s, Token: "test-owner", Sync: m}
 	body := `{"source_id":"local","destination_id":"handbook"}`
@@ -100,8 +101,8 @@ func TestReconcileLinkedGraphAndPrivateBaseline(t *testing.T) {
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "[B](b.md)", 0)
 	s.put("local", "b.md", "[A](a.md)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	r, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook", Limit: 10})
 	if err != nil || r.Created != 2 {
@@ -109,7 +110,7 @@ func TestReconcileLinkedGraphAndPrivateBaseline(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["a.md"] != "[B](b.md)" || f.contents()["b.md"] != "[A](a.md)" {
+	if f.Contents()["a.md"] != "[B](b.md)" || f.Contents()["b.md"] != "[A](a.md)" {
 		t.Fatal("linked graph not confirmed")
 	}
 	w := Wiki{Store: s, Token: "test-owner", ReaderToken: "test-reader"}
@@ -131,8 +132,8 @@ func TestReconcileBoundedAndResumable(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same a.md", "b.md": "# Same b.md", "c.md": "# Same c.md"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same a.md", "b.md": "# Same b.md", "c.md": "# Same c.md"})
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	in := reconcileRequest{SourceID: "local", DestinationID: "handbook", Limit: 1}
 	for i := 0; i < 3; i++ {
@@ -156,8 +157,8 @@ func TestReconcileSQLiteSurvivesReopen(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Same", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)
@@ -181,8 +182,8 @@ func TestReconcileSkipsSecretLikeAndMissingDependencies(t *testing.T) {
 	source(t, s, "local", "private")
 	s.put("local", "secret.md", "password=fixture-only-secret", 0)
 	s.put("local", "broken.md", "[Missing](missing.md)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture})
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	r, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook"})
 	if err != nil || len(r.Blocked) != 2 || len(s.jobs()) != 0 || len(s.db.Articles) != 2 {
@@ -198,8 +199,8 @@ func TestOldBinaryRejectsReconciliationStore(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Same", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	if _, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook"}); err != nil {
 		t.Fatal(err)
@@ -230,8 +231,8 @@ func TestReconcileThroughMCP(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Same", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	token := strings.Repeat("a", 64)
 	key := filepath.Join(t.TempDir(), "owner.key")
@@ -278,8 +279,8 @@ func TestReconcileEqualArticleQueuesMissingImageAndBlocksDifferentImage(t *testi
 			if different {
 				files["img/icon.png"] = string(append(smallPNG(t), 1))
 			}
-			f := newFakeGitHub(t, files)
-			f.modify(func() { f.private = true })
+			f := githubtest.New(t, files)
+			f.Modify(func() { f.Private = true })
 			m := connectFixture(t, s, f, true)
 			r, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook"})
 			if err != nil {
@@ -296,7 +297,7 @@ func TestReconcileEqualArticleQueuesMissingImageAndBlocksDifferentImage(t *testi
 			}
 			m.Once(context.Background())
 			m.Once(context.Background())
-			if digest([]byte(f.contents()["img/icon.png"])) != ref.SHA || s.jobs()[0].State != "complete" {
+			if digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || s.jobs()[0].State != "complete" {
 				t.Fatal("missing image not confirmed")
 			}
 		})
@@ -330,8 +331,8 @@ func TestOldBinaryRejectsReconciliationSQLite(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Same", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)
@@ -366,8 +367,8 @@ func TestConcurrentReconcileDoesNotDuplicateWrites(t *testing.T) {
 	source(t, s, "local", "private")
 	s.put("local", "same.md", "# Same", 0)
 	s.put("local", "new.md", "# New", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "same.md": "# Same"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "same.md": "# Same"})
+	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	type outcome struct {
 		result reconcileResult

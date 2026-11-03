@@ -10,6 +10,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,9 +27,9 @@ func TestGitHubAppStoredCredentialSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secret := GitHubSecret{Kind: "app", AppID: 7, InstallationID: 9, PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	secret := github.Secret{Kind: "app", AppID: 7, InstallationID: 9, PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))}
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	var mu sync.Mutex
 	var permissions []string
 	invalidJWT := false
@@ -67,16 +69,16 @@ func TestGitHubAppStoredCredentialSync(t *testing.T) {
 				mu.Lock()
 				permissions = append(permissions, body.Permissions["contents"])
 				mu.Unlock()
-				jsonResponse(w, 200, map[string]string{"token": fixtureAccess, "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
+				jsonResponse(w, 200, map[string]string{"token": githubtest.Access, "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 				return
 			}
 			jsonResponse(w, 200, map[string]any{"app_id": 7, "account": map[string]string{"login": "org"}, "suspended_at": nil})
 			return
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	store := testStore(t)
 	ctx := context.Background()
 	if _, err = store.saveAccount(ctx, client, "app", secret); err != nil {
@@ -90,7 +92,7 @@ func TestGitHubAppStoredCredentialSync(t *testing.T) {
 	if err != nil {
 		t.Fatal("cannot load stored fixture account", err)
 	}
-	if _, err = client.token(ctx, stored, "org/handbook", false); err != nil {
+	if _, err = client.Token(ctx, stored, "org/handbook", false); err != nil {
 		t.Fatal("read-only installation token failed", err)
 	}
 	manager := newSyncManager(store, client)
@@ -108,7 +110,7 @@ func TestGitHubAppStoredCredentialSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(ctx)
-	if got := f.contents()["guide.md"]; got != "# Local update" {
+	if got := f.Contents()["guide.md"]; got != "# Local update" {
 		t.Fatal("write-back failed")
 	}
 	mu.Lock()

@@ -11,307 +11,23 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
 
-const fixtureAccess = "fixture-only-token-not-a-real-credential"
-
-type fakeCommit struct{ tree, parent string }
-type fakeGitHub struct {
-	mu           sync.Mutex
-	private      bool
-	denied       bool
-	fail         bool
-	reject       bool
-	loseResponse bool
-	afterCommit  func()
-	head         string
-	counter      int
-	writes       int
-	blobWrites   int
-	blobs        map[string][]byte
-	trees        map[string]map[string]string
-	commits      map[string]fakeCommit
-	server       *httptest.Server
-	force        bool
-	name         string
-	repoID       int64
-}
-
-func fakeSHA(s string) string { return gitBlobDigest([]byte(s), 40) }
-func newFakeGitHub(t *testing.T, files map[string]string) *fakeGitHub {
+func connectFixture(t *testing.T, s *Store, f *githubtest.Fake, write bool) *SyncManager {
 	t.Helper()
-	f := &fakeGitHub{name: "org/handbook", repoID: 41, blobs: map[string][]byte{}, trees: map[string]map[string]string{}, commits: map[string]fakeCommit{}}
-	f.advance(files)
-	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
-	t.Cleanup(f.server.Close)
-	return f
-}
-func (f *fakeGitHub) advance(files map[string]string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	refs := map[string]string{}
-	for p, text := range files {
-		b := []byte(text)
-		sha := gitBlobDigest(b, 40)
-		f.blobs[sha] = b
-		refs[p] = sha
-	}
-	f.counter++
-	tree := fakeSHA(fmt.Sprint("tree", f.counter))
-	f.trees[tree] = refs
-	commit := fakeSHA(fmt.Sprint("commit", f.counter))
-	f.commits[commit] = fakeCommit{tree: tree, parent: f.head}
-	f.head = commit
-}
-func (f *fakeGitHub) contents() map[string]string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := map[string]string{}
-	for p, sha := range f.trees[f.commits[f.head].tree] {
-		out[p] = string(f.blobs[sha])
-	}
-	return out
-}
-func (f *fakeGitHub) client() *GitHubClient {
-	return &GitHubClient{base: f.server.URL, http: f.server.Client()}
-}
-func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	respond := func(v any) { jsonResponse(w, 200, v) }
-	if f.fail {
-		http.Error(w, "fixture outage", http.StatusServiceUnavailable)
-		return
-	}
-	if r.URL.Path == "/user" {
-		if r.Header.Get("Authorization") != "Bearer "+fixtureAccess {
-			http.Error(w, "denied", http.StatusUnauthorized)
-			return
-		}
-		respond(map[string]string{"login": "operator"})
-		return
-	}
-	if strings.HasPrefix(r.URL.Path, "/app/installations/") {
-		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ey") {
-			http.Error(w, "JWT missing", http.StatusUnauthorized)
-			return
-		}
-		if strings.HasSuffix(r.URL.Path, "/access_tokens") {
-			var input struct {
-				Repositories []string          `json:"repositories"`
-				Permissions  map[string]string `json:"permissions"`
-			}
-			json.NewDecoder(r.Body).Decode(&input)
-			if len(input.Repositories) != 1 || input.Repositories[0] != "handbook" {
-				http.Error(w, "unscoped token", 400)
-				return
-			}
-			respond(map[string]any{"token": fixtureAccess, "expires_at": "2099-01-01T00:00:00Z"})
-			return
-		}
-		respond(map[string]any{"app_id": 7, "account": map[string]string{"login": "org"}, "suspended_at": nil})
-		return
-	}
-	if f.denied || f.private && r.Header.Get("Authorization") != "Bearer "+fixtureAccess {
-		http.Error(w, "denied", 404)
-		return
-	}
-	route := strings.TrimPrefix(r.URL.Path, "/repos/"+f.name)
-	switch {
-	case r.URL.Path == "/graphql" && r.Method == "POST":
-		var request struct {
-			Query     string `json:"query"`
-			Variables struct {
-				Input struct {
-					RepositoryID string `json:"repositoryId"`
-					Updates      []struct {
-						Name   string `json:"name"`
-						Before string `json:"beforeOid"`
-						After  string `json:"afterOid"`
-						Force  bool   `json:"force"`
-					} `json:"refUpdates"`
-				} `json:"input"`
-			} `json:"variables"`
-		}
-		if json.NewDecoder(r.Body).Decode(&request) != nil {
-			http.Error(w, "invalid request", 400)
-			return
-		}
-		if strings.HasPrefix(request.Query, "query") {
-			respond(map[string]any{"data": map[string]any{"repository": map[string]string{"id": "fixture-node-" + f.name}}})
-			return
-		}
-		updates := request.Variables.Input.Updates
-		if request.Variables.Input.RepositoryID != "fixture-node-"+f.name || len(updates) != 1 {
-			http.Error(w, "invalid mutation", 400)
-			return
-		}
-		u := updates[0]
-		f.force = f.force || u.Force
-		c, ok := f.commits[u.After]
-		if f.reject || !ok || u.Name != "refs/heads/main" || u.Before != f.head || c.parent != u.Before || u.Force {
-			http.Error(w, "head changed", http.StatusUnprocessableEntity)
-			return
-		}
-		f.head = u.After
-		f.writes++
-		if f.loseResponse {
-			f.loseResponse = false
-			conn, _, _ := w.(http.Hijacker).Hijack()
-			conn.Close()
-			return
-		}
-		respond(map[string]any{"data": map[string]any{"updateRefs": map[string]any{"clientMutationId": nil}}})
-	case r.URL.Path == "/repos/"+f.name:
-		respond(map[string]any{"id": f.repoID, "full_name": f.name, "private": f.private, "visibility": map[bool]string{false: "public", true: "private"}[f.private], "default_branch": "main", "permissions": map[string]bool{"push": true}})
-	case route == "/git/ref/heads/main":
-		respond(map[string]any{"object": map[string]string{"sha": f.head, "type": "commit"}})
-	case strings.HasPrefix(route, "/git/commits/"):
-		sha := strings.TrimPrefix(route, "/git/commits/")
-		c, ok := f.commits[sha]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		respond(map[string]any{"sha": sha, "tree": map[string]string{"sha": c.tree}})
-	case strings.HasPrefix(route, "/git/trees/"):
-		sha := strings.TrimPrefix(route, "/git/trees/")
-		files, ok := f.trees[sha]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		entries := []gitTreeEntry{}
-		dirs := map[string]bool{}
-		for p, blob := range files {
-			entries = append(entries, gitTreeEntry{Path: p, Mode: "100644", Type: "blob", SHA: blob, Size: int64(len(f.blobs[blob]))})
-			for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {
-				dirs[dir] = true
-			}
-		}
-		for dir := range dirs {
-			entries = append(entries, gitTreeEntry{Path: dir, Mode: "040000", Type: "tree", SHA: fakeSHA(dir)})
-		}
-		respond(gitTree{SHA: sha, Tree: entries})
-	case strings.HasPrefix(route, "/git/blobs/"):
-		sha := strings.TrimPrefix(route, "/git/blobs/")
-		b, ok := f.blobs[sha]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		respond(map[string]any{"sha": sha, "encoding": "base64", "content": base64.StdEncoding.EncodeToString(b), "size": len(b)})
-	case route == "/git/blobs" && r.Method == "POST":
-		f.blobWrites++
-		var in struct {
-			Content  string `json:"content"`
-			Encoding string `json:"encoding"`
-		}
-		json.NewDecoder(r.Body).Decode(&in)
-		b := []byte(in.Content)
-		if in.Encoding == "base64" {
-			var err error
-			b, err = base64.StdEncoding.DecodeString(in.Content)
-			if err != nil {
-				http.Error(w, "bad encoding", 400)
-				return
-			}
-		}
-		sha := gitBlobDigest(b, 40)
-		f.blobs[sha] = b
-		respond(map[string]string{"sha": sha})
-	case route == "/git/trees" && r.Method == "POST":
-		var in struct {
-			Base string `json:"base_tree"`
-			Tree []struct {
-				Path string  `json:"path"`
-				SHA  *string `json:"sha"`
-			} `json:"tree"`
-		}
-		json.NewDecoder(r.Body).Decode(&in)
-		files := map[string]string{}
-		base, ok := f.trees[in.Base]
-		if !ok {
-			http.Error(w, "base missing", http.StatusUnprocessableEntity)
-			return
-		}
-		for k, v := range base {
-			files[k] = v
-		}
-		for _, e := range in.Tree {
-			if e.SHA == nil {
-				if _, exists := files[e.Path]; !exists {
-					http.Error(w, "file missing", http.StatusUnprocessableEntity)
-					return
-				}
-				delete(files, e.Path)
-			} else {
-				files[e.Path] = *e.SHA
-			}
-		}
-		f.counter++
-		sha := fakeSHA(fmt.Sprint("new-tree", f.counter))
-		f.trees[sha] = files
-		respond(map[string]string{"sha": sha})
-	case route == "/git/commits" && r.Method == "POST":
-		var in struct {
-			Tree    string   `json:"tree"`
-			Parents []string `json:"parents"`
-		}
-		json.NewDecoder(r.Body).Decode(&in)
-		if len(in.Parents) != 1 {
-			http.Error(w, "parent missing", http.StatusUnprocessableEntity)
-			return
-		}
-		f.counter++
-		sha := fakeSHA(fmt.Sprint("new-commit", f.counter))
-		f.commits[sha] = fakeCommit{tree: in.Tree, parent: in.Parents[0]}
-		if f.afterCommit != nil {
-			hook := f.afterCommit
-			f.afterCommit = nil
-			hook()
-		}
-		respond(map[string]string{"sha": sha})
-	case route == "/git/refs/heads/main" && r.Method == "PATCH":
-		var in struct {
-			SHA   string `json:"sha"`
-			Force bool   `json:"force"`
-		}
-		json.NewDecoder(r.Body).Decode(&in)
-		f.force = f.force || in.Force
-		c, ok := f.commits[in.SHA]
-		if f.reject || !ok || c.parent != f.head || in.Force {
-			http.Error(w, "head changed", http.StatusUnprocessableEntity)
-			return
-		}
-		f.head = in.SHA
-		f.writes++
-		if f.loseResponse {
-			f.loseResponse = false
-			conn, _, _ := w.(http.Hijacker).Hijack()
-			conn.Close()
-			return
-		}
-		respond(map[string]string{"sha": in.SHA})
-	default:
-		http.NotFound(w, r)
-	}
-}
-func connectFixture(t *testing.T, s *Store, f *fakeGitHub, write bool) *SyncManager {
-	t.Helper()
-	m := newSyncManager(s, f.client())
+	m := newSyncManager(s, f.Client())
 	account := ""
-	if write || f.private {
-		if _, e := s.saveAccount(context.Background(), m.github, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); e != nil {
+	if write || f.Private {
+		if _, e := s.saveAccount(context.Background(), m.github, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); e != nil {
 			t.Fatal(e)
 		}
 		account = "operator"
@@ -325,8 +41,8 @@ func connectFixture(t *testing.T, s *Store, f *fakeGitHub, write bool) *SyncMana
 
 func TestBackgroundSyncImportsChangedGitHubHead(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
 	initialVerification := s.connections()[0].VerifiedAt
 	ctx, cancel := context.WithCancel(context.Background())
@@ -345,9 +61,9 @@ func TestBackgroundSyncImportsChangedGitHubHead(t *testing.T) {
 			t.Fatal("initial background check did not complete")
 		}
 	}
-	remote := f.contents()
+	remote := f.Contents()
 	remote["guide.md"] = "# Updated upstream"
-	f.advance(remote)
+	f.Advance(remote)
 	for {
 		page, err := s.page("handbook/guide.md", false)
 		if err == nil && page.Text == "# Updated upstream" {
@@ -366,7 +82,7 @@ func TestBackgroundSyncImportsChangedGitHubHead(t *testing.T) {
 
 func TestStaleSyncCannotReverifyAfterPauseResume(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
 	m := connectFixture(t, s, f, false)
 	old := s.connections()[0]
 	if err := s.pauseConnection(old.ID, true); err != nil {
@@ -387,13 +103,13 @@ func TestStaleSyncCannotReverifyAfterPauseResume(t *testing.T) {
 	if _, err := s.page("handbook/guide.md", true); err != ErrNotFound {
 		t.Fatal("stale result republished source", err)
 	}
-	f.modify(func() { f.fail = true })
+	f.Modify(func() { f.Fail = true })
 	m.syncSource(context.Background(), old)
 	after = s.connections()[0]
 	if after.Verification != "unknown" || after.State != "pending" || after.LastError != current.LastError {
 		t.Fatal("stale failure changed current status")
 	}
-	f.modify(func() { f.fail = false })
+	f.Modify(func() { f.Fail = false })
 	m.Once(context.Background())
 	if _, err := s.page("handbook/guide.md", true); err != nil {
 		t.Fatal("fresh verification did not restore visibility", err)
@@ -402,7 +118,7 @@ func TestStaleSyncCannotReverifyAfterPauseResume(t *testing.T) {
 
 func TestStaleSyncCannotChangeOutboxAfterReconfiguration(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
 	m := connectFixture(t, s, f, false)
 	if _, err := s.put("handbook", "new.md", "# New", 0); err != nil {
 		t.Fatal(err)
@@ -432,7 +148,7 @@ func TestStaleSyncCannotChangeOutboxAfterReconfiguration(t *testing.T) {
 
 func TestStaleOutboxObservationCannotUndoPublicationApproval(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
 	connectFixture(t, s, f, false)
 	if _, err := s.put("handbook", "new.md", "# New", 0); err != nil {
 		t.Fatal(err)
@@ -468,7 +184,7 @@ func TestStaleOutboxObservationCannotUndoPublicationApproval(t *testing.T) {
 }
 func TestGitHubPublicPullAndTrackedProgramScope(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Documentation", "README.md": "not imported", "src/main.go": "package original"})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Documentation", "README.md": "not imported", "src/main.go": "package original"})
 	connectFixture(t, s, f, false)
 	if p, e := s.page("handbook/docs/guide.md", true); e != nil || p.Text != "# Documentation" {
 		t.Fatal(p, e)
@@ -486,7 +202,7 @@ func TestGitHubPublicPullAndTrackedProgramScope(t *testing.T) {
 func errorsIsConflictOrInvalid(e error) bool { return e == ErrInvalid || e == ErrConflict }
 func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original", "src/main.go": "package original"})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Original", "src/main.go": "package original"})
 	_ = connectFixture(t, s, f, true)
 	if _, e := s.put("handbook", "docs/guide.md", "# Saved locally", 1); e != nil {
 		t.Fatal(e)
@@ -498,9 +214,9 @@ func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	m := newSyncManager(reopened, f.client())
+	m := newSyncManager(reopened, f.Client())
 	m.Once(context.Background())
-	if f.contents()["docs/guide.md"] != "# Saved locally" || f.contents()["src/main.go"] != "package original" || f.force {
+	if f.Contents()["docs/guide.md"] != "# Saved locally" || f.Contents()["src/main.go"] != "package original" || f.Force {
 		t.Fatal("unsafe remote write")
 	}
 	job := reopened.jobs()[0]
@@ -514,7 +230,7 @@ func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	if reopened.jobs()[0].ObservedCommit != "" || reopened.db.Outbox[job.ID].ObservedCommit != "" {
 		t.Fatal("unconfirmed observation after restart", e)
 	}
-	m = newSyncManager(reopened, f.client())
+	m = newSyncManager(reopened, f.Client())
 	m.Once(context.Background())
 	if reopened.jobs()[0].State != "complete" || reopened.jobs()[0].ObservedCommit == "" {
 		t.Fatal(reopened.jobs())
@@ -522,12 +238,12 @@ func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 }
 func TestGitHubLostResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	s.put("handbook", "README.md", "# Durable", 1)
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
-	if f.writeCount() != 1 || s.jobs()[0].PreparedCommit == "" {
+	if f.WriteCount() != 1 || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("prepared write not durable")
 	}
 	reopened, e := openStore(s.dir)
@@ -535,8 +251,8 @@ func TestGitHubLostResponseRecoversWithoutDuplicatePush(t *testing.T) {
 		t.Fatal(e)
 	}
 	reopened.retryConnection("handbook")
-	newSyncManager(reopened, f.client()).Once(context.Background())
-	if f.writeCount() != 1 || reopened.jobs()[0].State != "complete" {
+	newSyncManager(reopened, f.Client()).Once(context.Background())
+	if f.WriteCount() != 1 || reopened.jobs()[0].State != "complete" {
 		t.Fatal("ambiguous push duplicated or lost", reopened.jobs())
 	}
 }
@@ -561,7 +277,7 @@ func TestLaterEditRetainsUncertainWriteUntilObserved(t *testing.T) {
 func testLaterEditRetainsUncertainWrite(t *testing.T, sqlite bool) {
 	t.Helper()
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	if sqlite {
 		if err := migrateSQLite(s.dir); err != nil {
@@ -572,14 +288,14 @@ func testLaterEditRetainsUncertainWrite(t *testing.T, sqlite bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m = newSyncManager(s, f.client())
+		m = newSyncManager(s, f.Client())
 	}
 	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
-	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].State != "retry" || jobs[0].PreparedCommit == "" || f.writeCount() != 1 {
+	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].State != "retry" || jobs[0].PreparedCommit == "" || f.WriteCount() != 1 {
 		t.Fatal("fixture did not create an uncertain write", jobs)
 	}
 	if _, err := s.put("handbook", "README.md", "# Second edit", 2); err != nil {
@@ -596,26 +312,26 @@ func testLaterEditRetainsUncertainWrite(t *testing.T, sqlite bool) {
 	if err := reopened.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
-	m = newSyncManager(reopened, f.client())
+	m = newSyncManager(reopened, f.Client())
 	m.Once(context.Background())
 	m.Once(context.Background())
 	jobs = reopened.jobs()
-	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 2 {
-		t.Fatal("writes were not independently confirmed", jobs, f.writeCount())
+	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.WriteCount() != 2 {
+		t.Fatal("writes were not independently confirmed", jobs, f.WriteCount())
 	}
-	if got := f.contents()["README.md"]; got != "# Second edit" {
+	if got := f.Contents()["README.md"]; got != "# Second edit" {
 		t.Fatal("latest edit not written")
 	}
 }
 
 func TestLaterEditCannotOvertakeDeferredPreparedWrite(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original", "other.md": "# Other"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original", "other.md": "# Other"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.reject = true })
+	f.Modify(func() { f.Reject = true })
 	m.Once(context.Background())
 	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].PreparedCommit == "" || jobs[0].State != "retry" {
 		t.Fatal("fixture write not deferred", jobs)
@@ -626,17 +342,17 @@ func TestLaterEditCannotOvertakeDeferredPreparedWrite(t *testing.T) {
 	if _, err := s.put("handbook", "other.md", "# Other edit", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.reject = false })
+	f.Modify(func() { f.Reject = false })
 	// Force a long retry delay so only an incorrect later-job dispatch can write.
 	s.mu.Lock()
 	first := s.db.Outbox["handbook/README.md@2"]
 	first.NextAttempt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
 	s.db.Outbox[first.ID] = first
 	s.mu.Unlock()
-	if err := m.pushPending(context.Background(), s.connections()[0], f.head, f.commits[f.head].tree, fixtureAccess); err != nil {
+	if err := m.pushPending(context.Background(), s.connections()[0], f.Head, f.Commits[f.Head].Tree, githubtest.Access); err != nil {
 		t.Fatal(err)
 	}
-	if f.writeCount() != 1 || f.contents()["README.md"] != "# Original" || f.contents()["other.md"] != "# Other edit" {
+	if f.WriteCount() != 1 || f.Contents()["README.md"] != "# Original" || f.Contents()["other.md"] != "# Other edit" {
 		t.Fatal("later revision overtook prepared write or unrelated article stalled")
 	}
 }
@@ -650,7 +366,7 @@ func TestConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T) {
 func testConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T, sqlite bool) {
 	t.Helper()
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	if sqlite {
 		if err := migrateSQLite(s.dir); err != nil {
@@ -661,14 +377,14 @@ func testConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T, sqlite bool
 		if err != nil {
 			t.Fatal(err)
 		}
-		m = newSyncManager(s, f.client())
+		m = newSyncManager(s, f.Client())
 	}
 	if _, err := s.put("handbook", "README.md", "# Local", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.reject = true })
+	f.Modify(func() { f.Reject = true })
 	m.Once(context.Background())
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Different upstream"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Different upstream"})
 	if err := s.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
@@ -689,11 +405,11 @@ func testConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T, sqlite bool
 	if len(reopened.conflicts()) != 1 || reopened.jobs()[0].PreparedCommit == "" || reopened.jobs()[0].State == "superseded" {
 		t.Fatal("uncertain write or conflict lost after restart")
 	}
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Local"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Local"})
 	if err := reopened.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
-	newSyncManager(reopened, f.client()).Once(context.Background())
+	newSyncManager(reopened, f.Client()).Once(context.Background())
 	if len(reopened.conflicts()) != 0 || reopened.jobs()[0].State != "complete" {
 		t.Fatal("confirmed prepared content did not reconcile", reopened.jobs())
 	}
@@ -701,18 +417,18 @@ func testConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T, sqlite bool
 
 func TestExternalMatchForLaterEditDoesNotDiscardOlderUncertainWrite(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "README.md", "# First edit", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.reject = true })
+	f.Modify(func() { f.Reject = true })
 	m.Once(context.Background())
 	if _, err := s.put("handbook", "README.md", "# Second edit", 2); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.reject = false })
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Second edit"})
+	f.Modify(func() { f.Reject = false })
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Second edit"})
 	if err := s.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +437,7 @@ func TestExternalMatchForLaterEditDoesNotDiscardOlderUncertainWrite(t *testing.T
 	if len(jobs) != 2 || jobs[0].PreparedCommit == "" || jobs[0].State == "superseded" || jobs[0].State == "complete" || jobs[1].State == "complete" {
 		t.Fatal("later external content hid uncertain write", jobs)
 	}
-	if len(s.conflicts()) != 1 || f.writeCount() != 0 || f.contents()["README.md"] != "# Second edit" {
+	if len(s.conflicts()) != 1 || f.WriteCount() != 0 || f.Contents()["README.md"] != "# Second edit" {
 		t.Fatal("uncertain write did not preserve external content")
 	}
 	reopened, err := openStore(s.dir)
@@ -735,12 +451,12 @@ func TestExternalMatchForLaterEditDoesNotDiscardOlderUncertainWrite(t *testing.T
 
 func TestIdenticalLaterEditIsSatisfiedWithoutDuplicatePush(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "README.md", "# Same edit", 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
 	if _, err := s.put("handbook", "README.md", "# Same edit", 2); err != nil {
 		t.Fatal(err)
@@ -750,8 +466,8 @@ func TestIdenticalLaterEditIsSatisfiedWithoutDuplicatePush(t *testing.T) {
 	}
 	m.Once(context.Background())
 	jobs := s.jobs()
-	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.writeCount() != 1 {
-		t.Fatal("identical revision caused duplicate push or lost confirmation", jobs, f.writeCount())
+	if len(jobs) != 2 || jobs[0].State != "complete" || jobs[1].State != "complete" || f.WriteCount() != 1 {
+		t.Fatal("identical revision caused duplicate push or lost confirmation", jobs, f.WriteCount())
 	}
 }
 
@@ -770,14 +486,14 @@ func TestIdenticalLaterEditRequiresItsOwnDependencies(t *testing.T) {
 }
 func TestGitHubPrivateVisibilityAndUnpublishedEdits(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
 	s.put("handbook", "README.md", "# Private pending canary", 1)
 	if len(s.snapshot(true).Pages) != 0 {
 		t.Fatal("private source disclosed")
 	}
-	f.modify(func() { f.private = false })
+	f.Modify(func() { f.Private = false })
 	s.retryConnection("handbook")
 	m.Once(context.Background())
 	p, e := s.page("handbook/README.md", true)
@@ -788,7 +504,7 @@ func TestGitHubPrivateVisibilityAndUnpublishedEdits(t *testing.T) {
 	if owner.Text != "# Private pending canary" {
 		t.Fatal("local edit lost")
 	}
-	f.modify(func() { f.private = true })
+	f.Modify(func() { f.Private = true })
 	s.retryConnection("handbook")
 	m.Once(context.Background())
 	if len(s.snapshot(true).Pages) != 0 {
@@ -797,15 +513,15 @@ func TestGitHubPrivateVisibilityAndUnpublishedEdits(t *testing.T) {
 }
 func TestGitHubRevocationOutageAndConflictPreserveLocal(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	s.put("handbook", "README.md", "# Local", 1)
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Remote"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Remote"})
 	m.Once(context.Background())
-	if len(s.conflicts()) != 1 || f.writeCount() != 0 {
+	if len(s.conflicts()) != 1 || f.WriteCount() != 0 {
 		t.Fatal("upstream conflict overwritten")
 	}
-	f.modify(func() { f.denied = true })
+	f.Modify(func() { f.Denied = true })
 	s.retryConnection("handbook")
 	m.Once(context.Background())
 	if len(s.snapshot(true).Pages) != 0 {
@@ -817,17 +533,17 @@ func TestGitHubRevocationOutageAndConflictPreserveLocal(t *testing.T) {
 }
 func TestGitHubCredentialsRedactedAndAppTokensScoped(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# A"})
-	account, e := s.saveAccount(context.Background(), f.client(), "operator", GitHubSecret{Kind: "token", Token: fixtureAccess})
+	f := githubtest.New(t, map[string]string{"docs/a.md": "# A"})
+	account, e := s.saveAccount(context.Background(), f.Client(), "operator", github.Secret{Kind: "token", Token: githubtest.Access})
 	if e != nil || account.SecretRef != "" {
 		t.Fatal(account, e)
 	}
 	state, e := os.ReadFile(path.Join(s.dir, "state.json"))
-	if e != nil || strings.Contains(string(state), fixtureAccess) {
+	if e != nil || strings.Contains(string(state), githubtest.Access) {
 		t.Fatal("credential stored in article transaction")
 	}
 	metadata, _ := json.Marshal(s.accounts())
-	if strings.Contains(string(metadata), fixtureAccess) || strings.Contains(string(metadata), "secret_ref") {
+	if strings.Contains(string(metadata), githubtest.Access) || strings.Contains(string(metadata), "secret_ref") {
 		t.Fatal("credential response leaked")
 	}
 	key, e := rsa.GenerateKey(rand.Reader, 2048)
@@ -835,14 +551,14 @@ func TestGitHubCredentialsRedactedAndAppTokensScoped(t *testing.T) {
 		t.Fatal(e)
 	}
 	encoded := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	secret := GitHubSecret{Kind: "app", AppID: 7, InstallationID: 9, PrivateKey: string(encoded)}
-	if login, e := f.client().verifyAccount(context.Background(), secret); e != nil || login != "org" {
+	secret := github.Secret{Kind: "app", AppID: 7, InstallationID: 9, PrivateKey: string(encoded)}
+	if login, e := f.Client().VerifyAccount(context.Background(), secret); e != nil || login != "org" {
 		t.Fatal(login, e)
 	}
-	if _, e = f.client().token(context.Background(), &secret, "org/handbook", true); e != nil {
+	if _, e = f.Client().Token(context.Background(), &secret, "org/handbook", true); e != nil {
 		t.Fatal(e)
 	}
-	jwt, e := appJWT(secret)
+	jwt, e := github.AppJWT(secret)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -862,42 +578,42 @@ func TestGitHubCredentialsRedactedAndAppTokensScoped(t *testing.T) {
 
 func TestGitHubCompareAndSwapNeverForcesUpdates(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	s.put("handbook", "README.md", "# Local", 1)
-	f.modify(func() { f.reject = true })
+	f.Modify(func() { f.Reject = true })
 	m.Once(context.Background())
-	if f.writeCount() != 0 || s.jobs()[0].State != "retry" || s.jobs()[0].PreparedCommit == "" {
+	if f.WriteCount() != 0 || s.jobs()[0].State != "retry" || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("CAS refusal lost work", s.jobs())
 	}
 	p, _ := s.page("handbook/README.md", false)
 	if p.Text != "# Local" {
 		t.Fatal("local write lost")
 	}
-	f.modify(func() { f.reject = false })
+	f.Modify(func() { f.Reject = false })
 	s.retryConnection("handbook")
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.writeCount() != 1 || s.jobs()[0].State != "complete" {
+	if f.WriteCount() != 1 || s.jobs()[0].State != "complete" {
 		t.Fatal(s.jobs())
 	}
 }
 func TestGitHubMultipleRepositoriesStayIndependent(t *testing.T) {
 	s := testStore(t)
-	one := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Public one"})
-	two := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Private two"})
-	two.modify(func() { two.name = "org/second"; two.repoID = 42; two.private = true })
+	one := githubtest.New(t, map[string]string{"docs/guide.md": "# Public one"})
+	two := githubtest.New(t, map[string]string{"docs/guide.md": "# Private two"})
+	two.Modify(func() { two.Name = "org/second"; two.RepoID = 42; two.Private = true })
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
-			two.serve(w, r)
+			two.Serve(w, r)
 		} else {
-			one.serve(w, r)
+			one.Serve(w, r)
 		}
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	m := newSyncManager(s, client)
-	s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess})
+	s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access})
 	if _, e := m.connect(context.Background(), connectRequest{ID: "one", Repository: "org/handbook"}); e != nil {
 		t.Fatal(e)
 	}
@@ -921,7 +637,7 @@ func TestGitHubMultipleRepositoriesStayIndependent(t *testing.T) {
 }
 func TestGitHubPauseAndExpiredProofFailClosed(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Public"})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Public"})
 	m := connectFixture(t, s, f, false)
 	if e := s.pauseConnection("handbook", true); e != nil {
 		t.Fatal(e)
@@ -949,10 +665,10 @@ func TestGitHubPauseAndExpiredProofFailClosed(t *testing.T) {
 }
 func TestGitHubManagementAPIProtectsCredentials(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Public"})
-	m := newSyncManager(s, f.client())
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Public"})
+	m := newSyncManager(s, f.Client())
 	w := Wiki{Store: s, Token: "test-owner", Sync: m}
-	body := `{"id":"operator","kind":"token","token":"` + fixtureAccess + `"}`
+	body := `{"id":"operator","kind":"token","token":"` + githubtest.Access + `"}`
 	if r := request(w, "POST", "/api/v1/github/accounts", body, true); r.Code != 403 {
 		t.Fatal("LAN HTTP credentials accepted")
 	}
@@ -961,7 +677,7 @@ func TestGitHubManagementAPIProtectsCredentials(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer test-owner")
 	response := httptest.NewRecorder()
 	w.ServeHTTP(response, r)
-	if response.Code != 201 || strings.Contains(response.Body.String(), fixtureAccess) || strings.Contains(response.Body.String(), "secret_ref") {
+	if response.Code != 201 || strings.Contains(response.Body.String(), githubtest.Access) || strings.Contains(response.Body.String(), "secret_ref") {
 		t.Fatal(response.Code, response.Body)
 	}
 	for _, route := range []string{"/api/v1/github/accounts", "/api/v1/github/connections", "/api/v1/github/outbox"} {
@@ -984,14 +700,14 @@ func TestGitHubManagementAPIProtectsCredentials(t *testing.T) {
 
 func TestGitHubEnableWritesPreservesQueuedLocalArticles(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Original"})
 	m := connectFixture(t, s, f, false)
 	s.put("handbook", "docs/guide.md", "# Local", 1)
 	m.Once(context.Background())
-	if s.jobs()[0].State != "blocked" || f.writeCount() != 0 {
+	if s.jobs()[0].State != "blocked" || f.WriteCount() != 0 {
 		t.Fatal("read-only connection wrote remotely")
 	}
-	if _, e := s.saveAccount(context.Background(), m.github, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); e != nil {
+	if _, e := s.saveAccount(context.Background(), m.github, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); e != nil {
 		t.Fatal(e)
 	}
 	account, write, expected := "operator", true, 1
@@ -1004,21 +720,21 @@ func TestGitHubEnableWritesPreservesQueuedLocalArticles(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.writeCount() != 1 || s.jobs()[0].State != "complete" {
+	if f.WriteCount() != 1 || s.jobs()[0].State != "complete" {
 		t.Fatal(s.jobs())
 	}
 }
 
 func TestGitHubPrivateQueuedWritesRequirePublicationConsent(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	s.put("handbook", "README.md", "# Private unsent canary", 1)
-	f.modify(func() { f.private = false })
+	f.Modify(func() { f.Private = false })
 	m.Once(context.Background())
 	jobs := s.jobs()
-	if f.writeCount() != 0 || len(jobs) != 1 || jobs[0].LastError != "publication_confirmation_required" {
+	if f.WriteCount() != 0 || len(jobs) != 1 || jobs[0].LastError != "publication_confirmation_required" {
 		t.Fatal("private work auto-published", jobs)
 	}
 	public, e := s.article("handbook", "README.md", true)
@@ -1044,17 +760,14 @@ func TestGitHubPrivateQueuedWritesRequirePublicationConsent(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.writeCount() != 1 || s.jobs()[0].State != "complete" {
+	if f.WriteCount() != 1 || s.jobs()[0].State != "complete" {
 		t.Fatal(s.jobs())
 	}
 }
 
-func (f *fakeGitHub) modify(fn func()) { f.mu.Lock(); defer f.mu.Unlock(); fn() }
-func (f *fakeGitHub) writeCount() int  { f.mu.Lock(); defer f.mu.Unlock(); return f.writes }
-
 func TestGitHubExpiredPublicProofDoesNotApproveQueuedWrite(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
 	m := connectFixture(t, s, f, true)
 	s.mu.Lock()
 	c := s.db.Connections["handbook"]
@@ -1066,7 +779,7 @@ func TestGitHubExpiredPublicProofDoesNotApproveQueuedWrite(t *testing.T) {
 	}
 	m.Once(context.Background())
 	jobs := s.jobs()
-	if f.writeCount() != 0 || len(jobs) != 1 || jobs[0].LastError != "publication_confirmation_required" {
+	if f.WriteCount() != 0 || len(jobs) != 1 || jobs[0].LastError != "publication_confirmation_required" {
 		t.Fatal("expired proof allowed publication", jobs)
 	}
 }
@@ -1075,14 +788,14 @@ func TestGitHubExpiredPublicProofDoesNotApproveQueuedWrite(t *testing.T) {
 // visibility check must not extend the previous snapshot's proof either.
 func TestPublicSnapshotStaysReadableDuringSync(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
 	connectFixture(t, s, f, false)
 	if _, e := s.page("handbook/README.md", true); e != nil {
 		t.Fatal("initial public article unavailable", e)
 	}
 	c := s.connections()[0]
 	public := false
-	info := repositoryInfo{ID: c.RepositoryID, Private: &public}
+	info := github.RepositoryInfo{ID: c.RepositoryID, Private: &public}
 	if e := s.connectionStatusFor(c, "syncing", "verified", "", &info, time.Time{}); e != nil {
 		t.Fatal(e)
 	}

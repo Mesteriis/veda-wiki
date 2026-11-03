@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -91,7 +92,7 @@ func TestCopyQueuesAndSynchronizesDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "private", "private")
 	s.put("private", "a.md", "# Private fixture", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	m := connectFixture(t, s, f, true)
 	req := copyRequest{SourceID: "private", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "copied.md", ConfirmPublication: true}
 	if _, e := s.copyArticle(req); e != nil {
@@ -103,7 +104,7 @@ func TestCopyQueuesAndSynchronizesDestination(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["copied.md"] != "# Private fixture" || s.jobs()[0].State != "complete" {
+	if f.Contents()["copied.md"] != "# Private fixture" || s.jobs()[0].State != "complete" {
 		t.Fatal("copy did not synchronize", s.jobs())
 	}
 	if _, e := s.article("private", "a.md", false); e != nil {
@@ -122,7 +123,7 @@ func TestCopyToUnverifiedPublicDestinationRequiresLaterApproval(t *testing.T) {
 	if _, e := s.put("private", "a.md", "# unpublished fixture", 0); e != nil {
 		t.Fatal(e)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	m := connectFixture(t, s, f, true)
 	s.mu.Lock()
 	c := s.db.Connections["handbook"]
@@ -137,7 +138,7 @@ func TestCopyToUnverifiedPublicDestinationRequiresLaterApproval(t *testing.T) {
 		t.Fatal("unverified copy marked public")
 	}
 	m.Once(context.Background())
-	if f.writeCount() != 0 || s.jobs()[0].LastError != "publication_confirmation_required" {
+	if f.WriteCount() != 0 || s.jobs()[0].LastError != "publication_confirmation_required" {
 		t.Fatal("unverified copy auto-published", s.jobs())
 	}
 }

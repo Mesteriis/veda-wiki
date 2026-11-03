@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github"
 	"io"
 	"os"
 	"path/filepath"
@@ -335,11 +336,11 @@ func atomicPrivateFile(dir, name string, b []byte) error {
 	defer d.Close()
 	return d.Sync()
 }
-func (s *Store) saveAccount(ctx context.Context, g *GitHubClient, id string, secret GitHubSecret) (GitHubAccount, error) {
+func (s *Store) saveAccount(ctx context.Context, g *github.Client, id string, secret github.Secret) (GitHubAccount, error) {
 	if !identifier.MatchString(id) {
 		return GitHubAccount{}, ErrInvalid
 	}
-	login, e := g.verifyAccount(ctx, secret)
+	login, e := g.VerifyAccount(ctx, secret)
 	if e != nil {
 		return GitHubAccount{}, e
 	}
@@ -379,7 +380,7 @@ func (s *Store) accounts() []GitHubAccount {
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
-func (s *Store) secret(accountID string) (*GitHubSecret, GitHubAccount, error) {
+func (s *Store) secret(accountID string) (*github.Secret, GitHubAccount, error) {
 	if accountID == "" {
 		return nil, GitHubAccount{}, nil
 	}
@@ -387,23 +388,23 @@ func (s *Store) secret(accountID string) (*GitHubSecret, GitHubAccount, error) {
 	a, ok := s.db.Accounts[accountID]
 	s.mu.RUnlock()
 	if !ok || len(a.SecretRef) != 32 || strings.ContainsAny(a.SecretRef, "/\\.") {
-		return nil, a, &remoteError{Code: "credentials_missing"}
+		return nil, a, &github.RemoteError{Code: "credentials_missing"}
 	}
 	filename := filepath.Join(s.dir, "credentials", a.SecretRef+".json")
 	info, e := os.Lstat(filename)
 	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
-		return nil, a, &remoteError{Code: "credentials_missing"}
+		return nil, a, &github.RemoteError{Code: "credentials_missing"}
 	}
 	f, e := os.Open(filename)
 	if e != nil {
-		return nil, a, &remoteError{Code: "credentials_missing"}
+		return nil, a, &github.RemoteError{Code: "credentials_missing"}
 	}
 	defer f.Close()
 	b, e := io.ReadAll(io.LimitReader(f, 32769))
 	if e != nil || len(b) > 32768 {
 		return nil, a, ErrInvalid
 	}
-	var secret GitHubSecret
+	var secret github.Secret
 	if json.Unmarshal(b, &secret) != nil || secret.Kind != a.Kind {
 		return nil, a, ErrInvalid
 	}
@@ -463,7 +464,7 @@ func (s *Store) recordSkippedRepository(observed GitHubConnection, head, tree st
 	return s.commit(db)
 }
 
-func (s *Store) connectionStatusFor(observed GitHubConnection, state, verification, code string, info *repositoryInfo, retryAt time.Time) error {
+func (s *Store) connectionStatusFor(observed GitHubConnection, state, verification, code string, info *github.RepositoryInfo, retryAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := observed.ID

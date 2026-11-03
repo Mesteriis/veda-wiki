@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestPreparedRemoteDeletionLocksLinkedDestination(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "to", "private")
 	source(t, s, "other", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
 	connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "README.md", ConfirmMove: true, IncludeLinked: true})
 	if err != nil {
@@ -66,7 +67,7 @@ func TestPreparedRemoteDeletionLocksLinkedDestination(t *testing.T) {
 func TestRemoteMoveLinkedGraphKeepsSourceIfDestinationChanges(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "to", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
 	manager := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "README.md", ConfirmMove: true, IncludeLinked: true})
 	if err != nil || move.State != "waiting_source_delete" {
@@ -76,7 +77,7 @@ func TestRemoteMoveLinkedGraphKeepsSourceIfDestinationChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.contents()["README.md"] == "" || s.db.Articles["handbook/README.md"].Deleted {
+	if f.Contents()["README.md"] == "" || s.db.Articles["handbook/README.md"].Deleted {
 		t.Fatal("source removed after dependency changed")
 	}
 }
@@ -84,7 +85,7 @@ func TestRemoteMoveLinkedGraphKeepsSourceIfDestinationChanges(t *testing.T) {
 func TestRemoteMoveLinkedGraphDeletesOnlyRequestedArticle(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "to", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "[B](b.md)", "b.md": "# B"})
 	manager := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "README.md", ConfirmMove: true, IncludeLinked: true})
 	if err != nil || move.State != "waiting_source_delete" {
@@ -92,7 +93,7 @@ func TestRemoteMoveLinkedGraphDeletesOnlyRequestedArticle(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.moves()[0].State != "complete" || f.contents()["README.md"] != "" || f.contents()["b.md"] != "# B" || s.db.Articles["to/b.md"].Deleted {
+	if s.moves()[0].State != "complete" || f.Contents()["README.md"] != "" || f.Contents()["b.md"] != "# B" || s.db.Articles["to/b.md"].Deleted {
 		t.Fatal("unexpected remote deletion", s.moves())
 	}
 }

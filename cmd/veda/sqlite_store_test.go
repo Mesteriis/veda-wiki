@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -72,7 +74,7 @@ func TestSQLiteMigrationAndRestart(t *testing.T) {
 
 func TestSQLiteMigrationRestoresPendingSync(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "README.md", "# Local update", 1); err != nil {
 		t.Fatal(err)
@@ -84,10 +86,10 @@ func TestSQLiteMigrationRestoresPendingSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := newSyncManager(s, f.client())
+	m := newSyncManager(s, f.Client())
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.writeCount() != 1 || len(s.jobs()) != 1 || s.jobs()[0].State != "complete" {
+	if f.WriteCount() != 1 || len(s.jobs()) != 1 || s.jobs()[0].State != "complete" {
 		t.Fatal("pending sync not resumed", s.jobs())
 	}
 	reopened, err := openStore(s.dir)
@@ -201,7 +203,7 @@ func TestSQLiteCommitFailureFailsClosed(t *testing.T) {
 
 func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
 	connectFixture(t, s, f, true)
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)
@@ -276,7 +278,7 @@ func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
 func TestSQLiteArticleUpdatePersistsMoveReconciliation(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil || move.State != "waiting_source_delete" {
@@ -311,7 +313,7 @@ func TestSQLiteArticleUpdatePersistsOtherArticleWhenMoveCompletes(t *testing.T) 
 	if _, err := s.put("local", "other.md", "# Other", 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil || move.State != "waiting_destination" {
@@ -380,7 +382,7 @@ func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
 
 func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)
@@ -399,9 +401,9 @@ func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	if a, err := before.article("handbook", "README.md", false); err != nil || a.Versions[len(a.Versions)-1].Text != "# Local update" {
 		t.Fatal("local revision missing", err)
 	}
-	f.modify(func() { f.loseResponse = true })
-	newSyncManager(s, f.client()).Once(context.Background())
-	if f.writeCount() != 1 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
+	f.Modify(func() { f.LoseResponse = true })
+	newSyncManager(s, f.Client()).Once(context.Background())
+	if f.WriteCount() != 1 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("uncertain push not recorded")
 	}
 	restored, err := openStore(s.dir)
@@ -411,8 +413,8 @@ func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	if err = restored.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
-	newSyncManager(restored, f.client()).Once(context.Background())
-	if f.writeCount() != 1 || restored.jobs()[0].State != "complete" || f.contents()["README.md"] != "# Local update" {
+	newSyncManager(restored, f.Client()).Once(context.Background())
+	if f.WriteCount() != 1 || restored.jobs()[0].State != "complete" || f.Contents()["README.md"] != "# Local update" {
 		t.Fatal("recovery duplicated or lost update")
 	}
 	final, err := openStore(s.dir)
@@ -423,20 +425,20 @@ func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
 
 func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 	s := testStore(t)
-	first := newFakeGitHub(t, map[string]string{"docs/guide.md": "# First original"})
-	second := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Second original"})
-	second.modify(func() { second.name = "org/second"; second.repoID = 42; second.private = true })
+	first := githubtest.New(t, map[string]string{"docs/guide.md": "# First original"})
+	second := githubtest.New(t, map[string]string{"docs/guide.md": "# Second original"})
+	second.Modify(func() { second.Name = "org/second"; second.RepoID = 42; second.Private = true })
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
-			second.serve(w, r)
+			second.Serve(w, r)
 		} else {
-			first.serve(w, r)
+			first.Serve(w, r)
 		}
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
@@ -455,9 +457,9 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 	if _, err = s.put("one", "docs/guide.md", "# First updated", 1); err != nil {
 		t.Fatal(err)
 	}
-	first.modify(func() { first.loseResponse = true })
+	first.Modify(func() { first.LoseResponse = true })
 	newSyncManager(s, client).Once(context.Background())
-	if first.writeCount() != 1 || second.writeCount() != 0 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
+	if first.WriteCount() != 1 || second.WriteCount() != 0 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("first write did not enter recoverable state")
 	}
 	reopened, err := openStore(s.dir)
@@ -468,10 +470,10 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	newSyncManager(reopened, client).Once(context.Background())
-	if first.writeCount() != 1 || second.writeCount() != 0 || reopened.jobs()[0].State != "complete" {
+	if first.WriteCount() != 1 || second.WriteCount() != 0 || reopened.jobs()[0].State != "complete" {
 		t.Fatal("unexpected duplicate or second repository write")
 	}
-	if first.contents()["docs/guide.md"] != "# First updated" || second.contents()["docs/guide.md"] != "# Second original" {
+	if first.Contents()["docs/guide.md"] != "# First updated" || second.Contents()["docs/guide.md"] != "# Second original" {
 		t.Fatal("repository contents crossed")
 	}
 	a, err := reopened.article("two", "docs/guide.md", false)
@@ -484,7 +486,7 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 // persist only connection records, not reserialize every article's history.
 func TestSQLiteConnectionStatusWritesOnlyConnections(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, false)
 	if err := migrateSQLite(s.dir); err != nil {
 		t.Fatal(err)

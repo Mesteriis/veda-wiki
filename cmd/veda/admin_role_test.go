@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -60,7 +61,7 @@ func TestAdministratorSessionRequiresRoleAndIsRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "owner", Sync: newSyncManager(s, newFakeGitHub(t, map[string]string{}).client()), AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}}
+	w := Wiki{Store: s, Token: "owner", Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client()), AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}}
 	call := func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1234"
@@ -308,7 +309,7 @@ func TestNamedAdministratorReaderSessionGrantsAdminWithoutSecondLogin(t *testing
 	if _, err = s.saveUser("reader", &groups, &password, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader-key", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, newFakeGitHub(t, map[string]string{}).client())}
+	w := Wiki{Store: s, Token: "owner", ReaderToken: "reader-key", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client())}
 	call := func(method, path, body, origin string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1"
@@ -373,7 +374,7 @@ func TestReaderLogoutRevokesIndependentAdminCookies(t *testing.T) {
 	if err = s.setUserAdmin("admin", true, u.Revision); err != nil {
 		t.Fatal(err)
 	}
-	w := Wiki{Store: s, Token: "owner", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, newFakeGitHub(t, map[string]string{}).client())}
+	w := Wiki{Store: s, Token: "owner", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, AccessSessions: &readerSessions{}, Sync: newSyncManager(s, githubtest.New(t, map[string]string{}).Client())}
 	call := func(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:1"

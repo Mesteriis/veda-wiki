@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -68,7 +69,7 @@ func TestExcerptScopedUnicodeAndRevision(t *testing.T) {
 
 func TestExcerptPublicUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published"})
 	connectFixture(t, s, f, false)
 	s.mu.Lock()
 	a := s.db.Articles["handbook/guide.md"]

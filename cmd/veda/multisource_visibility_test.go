@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,20 +12,20 @@ import (
 
 func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testing.T) {
 	s := testStore(t)
-	first := newFakeGitHub(t, map[string]string{"docs/guide.md": "# First public canary"})
-	second := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Second public canary"})
-	second.modify(func() { second.name = "org/second"; second.repoID = 42 })
+	first := githubtest.New(t, map[string]string{"docs/guide.md": "# First public canary"})
+	second := githubtest.New(t, map[string]string{"docs/guide.md": "# Second public canary"})
+	second.Modify(func() { second.Name = "org/second"; second.RepoID = 42 })
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
-			second.serve(w, r)
+			second.Serve(w, r)
 		} else {
-			first.serve(w, r)
+			first.Serve(w, r)
 		}
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	manager := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
@@ -44,7 +46,7 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 		t.Fatal(err)
 	}
 	manager = newSyncManager(s, client)
-	first.modify(func() { first.private = true })
+	first.Modify(func() { first.Private = true })
 	if err = s.retryConnection("one"); err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +67,7 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 			t.Fatal("private source leaked publicly", route, out.Code)
 		}
 	}
-	second.modify(func() { second.fail = true })
+	second.Modify(func() { second.Fail = true })
 	if err = s.retryConnection("two"); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +85,7 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 	if len(restored.snapshot(true).Pages) != 0 {
 		t.Fatal("visibility failure lost on reopen")
 	}
-	second.modify(func() { second.fail = false })
+	second.Modify(func() { second.Fail = false })
 	if err = restored.retryConnection("two"); err != nil {
 		t.Fatal(err)
 	}
@@ -98,18 +100,18 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 
 func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 	s := testStore(t)
-	first := newFakeGitHub(t, map[string]string{"docs/guide.md": "# First source"})
-	second := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Second source"})
-	second.modify(func() { second.name = "org/second"; second.repoID = 42 })
+	first := githubtest.New(t, map[string]string{"docs/guide.md": "# First source"})
+	second := githubtest.New(t, map[string]string{"docs/guide.md": "# Second source"})
+	second.Modify(func() { second.Name = "org/second"; second.RepoID = 42 })
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
-			second.serve(w, r)
+			second.Serve(w, r)
 		} else {
-			first.serve(w, r)
+			first.Serve(w, r)
 		}
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	manager := newSyncManager(s, client)
 	for _, repo := range []struct{ id, name string }{{"one", "org/handbook"}, {"two", "org/second"}} {
 		if _, err := manager.connect(context.Background(), connectRequest{ID: repo.id, Repository: repo.name}); err != nil {
@@ -126,7 +128,7 @@ func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	otherGeneration := s.db.Sources["two"].ImportGeneration
-	first.advance(map[string]string{"docs": "not a directory"})
+	first.Advance(map[string]string{"docs": "not a directory"})
 	newSyncManager(s, client).Once(context.Background())
 	if _, err := s.page("one/docs/guide.md", true); err != ErrNotFound {
 		t.Fatal("invalid source remained public", err)
@@ -154,7 +156,7 @@ func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 	if _, err := s.page("two/docs/guide.md", true); err != nil {
 		t.Fatal("other source unavailable after restart", err)
 	}
-	first.advance(map[string]string{"docs/guide.md": "# First source"})
+	first.Advance(map[string]string{"docs/guide.md": "# First source"})
 	if err := s.retryConnection("one"); err != nil {
 		t.Fatal(err)
 	}

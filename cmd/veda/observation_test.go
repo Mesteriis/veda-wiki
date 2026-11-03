@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -11,7 +12,7 @@ import (
 
 func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
 	m := connectFixture(t, s, f, false)
 	ctx, err := s.agentContext("handbook", "guide.md", false)
 	if err != nil || ctx.SourceStatus.LastImportObservedAt == nil {
@@ -31,7 +32,7 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 	if err != nil || !stamp.After(old) {
 		t.Fatal("unchanged verified head not observed", err)
 	}
-	f.modify(func() { f.fail = true })
+	f.Modify(func() { f.Fail = true })
 	syncFixtureSource(t, m, "handbook")
 	if s.sources(false)[0].LastImportObservedAt != observed {
 		t.Fatal("failed GitHub check advanced observation")
@@ -54,7 +55,7 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 
 func TestReaderWarningsReportOnlyVisibleGitHubFailures(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Local copy"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Local copy"})
 	m := connectFixture(t, s, f, false)
 	source(t, s, "other", "private")
 	key, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
@@ -80,7 +81,7 @@ func TestReaderWarningsReportOnlyVisibleGitHubFailures(t *testing.T) {
 	if got := read(key, false); len(got) != 0 {
 		t.Fatal("healthy source warned", got)
 	}
-	f.modify(func() { f.fail = true })
+	f.Modify(func() { f.Fail = true })
 	m.Once(context.Background())
 	if got := read(key, false); len(got) != 1 || got[0].ID != "handbook" || got[0].SyncIssue != "error" || got[0].LastImportObservedAt == "" {
 		t.Fatal("scoped error missing", got)
@@ -91,7 +92,7 @@ func TestReaderWarningsReportOnlyVisibleGitHubFailures(t *testing.T) {
 	if page, err := s.page("handbook/guide.md", false); err != nil || page.Text != "# Local copy" {
 		t.Fatal("outage removed local copy", err)
 	}
-	f.modify(func() { f.fail = false })
+	f.Modify(func() { f.Fail = false })
 	if err = s.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}

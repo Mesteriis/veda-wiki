@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,10 +13,10 @@ import (
 func TestGitHubUnchangedHeadRepairsCorruptAsset(t *testing.T) {
 	s := testStore(t)
 	image := smallPNG(t)
-	f := newFakeGitHub(t, map[string]string{
+	f := githubtest.New(t, map[string]string{
 		"veda.yaml": metadataFixture, "guide.md": "# Guide\n\n![image](image.png)", "image.png": string(image),
 	})
-	f.modify(func() { f.private = true })
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
 	ref := s.db.Sources["handbook"].Assets["image.png"]
 	if ref.SHA == "" {
@@ -25,7 +27,7 @@ func TestGitHubUnchangedHeadRepairsCorruptAsset(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Remove the independent Git object cache to exercise the upstream blob path.
-	gitSHA := gitBlobDigest(image, 40)
+	gitSHA := github.BlobDigest(image, 40)
 	if err := os.Remove(filepath.Join(s.dir, "git-objects", "41", gitSHA)); err != nil {
 		t.Fatal(err)
 	}
@@ -46,19 +48,19 @@ func TestGitHubUnchangedHeadRepairsCorruptAsset(t *testing.T) {
 func TestGitHubAssetRepairFailureDoesNotObserveHead(t *testing.T) {
 	s := testStore(t)
 	image := smallPNG(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "image.png": string(image)})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "image.png": string(image)})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
 	before := s.observed["handbook"]
 	ref := s.db.Sources["handbook"].Assets["image.png"]
 	if err := os.Remove(filepath.Join(s.dir, "blobs", ref.SHA)); err != nil {
 		t.Fatal(err)
 	}
-	gitSHA := gitBlobDigest(image, 40)
+	gitSHA := github.BlobDigest(image, 40)
 	if err := os.Remove(filepath.Join(s.dir, "git-objects", "41", gitSHA)); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { delete(f.blobs, gitSHA) })
+	f.Modify(func() { delete(f.Blobs, gitSHA) })
 	m.Once(context.Background())
 	if !s.observed["handbook"].Equal(before) {
 		t.Fatal("failed repair advanced observation")
@@ -71,11 +73,11 @@ func TestGitHubAssetRepairFailureDoesNotObserveHead(t *testing.T) {
 func TestGitHubPartialSnapshotReportsUnrecoverableRetainedAsset(t *testing.T) {
 	s := testStore(t)
 	image := smallPNG(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "image.png": string(image)})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "image.png": string(image)})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
 	ref := s.db.Sources["handbook"].Assets["image.png"]
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "bad.md": string([]byte{0xff})})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "bad.md": string([]byte{0xff})})
 	syncFixtureSource(t, m, "handbook")
 	if source := s.db.Sources["handbook"]; !source.ImportPartial || source.Assets["image.png"] != ref {
 		t.Fatal("fixture did not retain partial asset")

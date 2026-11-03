@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"testing"
 )
 
@@ -23,7 +24,7 @@ func TestHiddenPartialSourceRequiresPublicationApprovalForTransfer(t *testing.T)
 					t.Fatal(err)
 				}
 			} else {
-				f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "a.md": text, "b.md": "# Other"})
+				f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": text, "b.md": "# Other"})
 				connectFixture(t, s, f, true)
 				s.mu.Lock()
 				src := s.db.Sources["handbook"]

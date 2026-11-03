@@ -362,8 +362,6 @@ func prepareCheckout(directory, sourceID string) (ImportBatch, error) {
 	return result, nil
 }
 
-var ErrNoDocs = errors.New("no veda.yaml or docs directory; source skipped")
-
 func imageRef(b []byte) (BlobRef, error) {
 	if len(b) == 0 || len(b) > 4<<20 {
 		return BlobRef{}, ErrInvalid

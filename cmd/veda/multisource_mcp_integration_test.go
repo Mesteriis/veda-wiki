@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,20 +22,20 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 		t.Skip("set VEDA_TEST_MCP_PYTHON to a Python with the MCP SDK")
 	}
 	s := testStore(t)
-	one := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Shared public\nPublic fixture"})
-	two := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Shared private\nPrivate fixture"})
-	two.modify(func() { two.name = "org/second"; two.repoID = 42; two.private = true })
+	one := githubtest.New(t, map[string]string{"docs/guide.md": "# Shared public\nPublic fixture"})
+	two := githubtest.New(t, map[string]string{"docs/guide.md": "# Shared private\nPrivate fixture"})
+	two.Modify(func() { two.Name = "org/second"; two.RepoID = 42; two.Private = true })
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/repos/org/second") {
-			two.serve(w, r)
+			two.Serve(w, r)
 		} else {
-			one.serve(w, r)
+			one.Serve(w, r)
 		}
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	manager := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := manager.connect(context.Background(), connectRequest{ID: "one", Repository: "org/handbook"}); err != nil {
@@ -66,12 +68,12 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if _, err := s.put("two", "docs/guide.md", "# Shared private\nLocal pending fixture", 1); err != nil {
 		t.Fatal(err)
 	}
-	two.modify(func() { two.loseResponse = true })
+	two.Modify(func() { two.LoseResponse = true })
 	manager.Once(context.Background())
 	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].PreparedCommit == "" {
 		t.Fatal("fixture did not create an unconfirmed prepared write")
 	}
-	two.advance(map[string]string{"docs/guide.md": "# Shared private\nDifferent upstream fixture"})
+	two.Advance(map[string]string{"docs/guide.md": "# Shared private\nDifferent upstream fixture"})
 	if err := s.retryConnection("two"); err != nil {
 		t.Fatal(err)
 	}

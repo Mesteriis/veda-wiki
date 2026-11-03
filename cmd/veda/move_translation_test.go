@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -132,7 +133,7 @@ func TestTranslatedMoveKeepsSourceWhenTranslationChanges(t *testing.T) {
 	if _, err := s.submitTranslation(req); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Fixture"})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Fixture"})
 	manager := connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "docs/moved.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil {
@@ -155,7 +156,7 @@ func TestTranslatedMoveKeepsSourceWhenDestinationTranslationChanges(t *testing.T
 	if _, err := s.submitTranslation(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"docs/guide.md": "# Fixture"})
+	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Fixture"})
 	connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "docs/moved.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil {
@@ -172,7 +173,7 @@ func TestTranslatedMoveKeepsSourceWhenDestinationTranslationChanges(t *testing.T
 
 func TestConnectedSourceMoveRetainsTranslation(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"docs/a.md": "# Original"})
+	f := githubtest.New(t, map[string]string{"docs/a.md": "# Original"})
 	manager := connectFixture(t, s, f, true)
 	article, err := s.article("handbook", "docs/a.md", false)
 	if err != nil {
@@ -196,7 +197,7 @@ func TestConnectedSourceMoveRetainsTranslation(t *testing.T) {
 	if err != nil || !page.Translated || page.Text != "# Перевод" {
 		t.Fatal("translated copy missing", err)
 	}
-	if _, exists := f.contents()["docs/a.md"]; exists {
+	if _, exists := f.Contents()["docs/a.md"]; exists {
 		t.Fatal("source remained remotely")
 	}
 }

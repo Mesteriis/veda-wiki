@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"testing"
 )
 
@@ -12,8 +13,8 @@ func TestCopyUpdatesExistingDestinationWithRevisionGuards(t *testing.T) {
 	if _, err := s.put("local", "guide.md", "# New", 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Old"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Old"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	req := copyRequest{SourceID: "local", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md"}
 	if _, err := s.copyArticle(req); !errors.Is(err, ErrConflict) {
@@ -39,7 +40,7 @@ func TestCopyUpdatesExistingDestinationWithRevisionGuards(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["guide.md"] != "# New" || s.jobs()[0].State != "complete" {
+	if f.Contents()["guide.md"] != "# New" || s.jobs()[0].State != "complete" {
 		t.Fatal("copy update was not confirmed")
 	}
 	reopened, err := openStore(s.dir)
@@ -87,8 +88,8 @@ func TestCopyUpdateQueuesImageWithExistingDestination(t *testing.T) {
 	if _, err := s.put("local", "guide.md", text, 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Old"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Old"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	expected := 1
 	req := copyRequest{SourceID: "local", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", ExpectedDestinationRevision: &expected}
@@ -101,7 +102,7 @@ func TestCopyUpdateQueuesImageWithExistingDestination(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["guide.md"] != text || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA || s.jobs()[0].State != "complete" {
+	if f.Contents()["guide.md"] != text || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || s.jobs()[0].State != "complete" {
 		t.Fatal("update and image were not confirmed")
 	}
 }
@@ -113,8 +114,8 @@ func TestCopyUpdatePreservesPendingImage(t *testing.T) {
 	if _, err := s.put("local", "guide.md", "# First\n![icon](img/icon.png)", 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Root"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Root"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	req := copyRequest{SourceID: "local", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md"}
 	if _, err := s.copyArticle(req); err != nil {
@@ -141,7 +142,7 @@ func TestCopyUpdatePreservesPendingImage(t *testing.T) {
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if f.contents()["guide.md"] != "# Second\n![icon](img/icon.png)" || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA {
+	if f.Contents()["guide.md"] != "# Second\n![icon](img/icon.png)" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("latest pending bundle not synchronized")
 	}
 }

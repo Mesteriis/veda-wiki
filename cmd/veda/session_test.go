@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"crypto/tls"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -87,8 +88,8 @@ func TestReaderSessionBoundaries(t *testing.T) {
 
 func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	store := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
-	w := Wiki{Store: store, Token: "owner", ReaderToken: "reader", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, Sync: newSyncManager(store, f.client())}
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Fixture"})
+	w := Wiki{Store: store, Token: "owner", ReaderToken: "reader", Sessions: &readerSessions{}, AdminSessions: &readerSessions{}, Sync: newSyncManager(store, f.Client())}
 	request := func(method, path, body, origin string, cookie *http.Cookie, public bool, remote string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 		r.Host, r.RemoteAddr = "localhost:8080", remote
@@ -150,11 +151,11 @@ func TestAdminGitHubSessionBoundaries(t *testing.T) {
 	if request("GET", "/api/admin/github/outbox", "", "", cookie, false, "127.0.0.1:1").Code != 404 {
 		t.Fatal("admin endpoint escaped allowlist")
 	}
-	body := `{"id":"fixture","kind":"token","token":"` + fixtureAccess + `"}`
+	body := `{"id":"fixture","kind":"token","token":"` + githubtest.Access + `"}`
 	if r = request("POST", "/api/admin/github/accounts", body, "http://localhost:8080", cookie, false, "127.0.0.1:1"); r.Code != 201 {
 		t.Fatal("account registration", r.Code)
 	}
-	if r = request("GET", "/api/admin/github/accounts", "", "", cookie, false, "127.0.0.1:1"); r.Code != 200 || strings.Contains(r.Body.String(), fixtureAccess) {
+	if r = request("GET", "/api/admin/github/accounts", "", "", cookie, false, "127.0.0.1:1"); r.Code != 200 || strings.Contains(r.Body.String(), githubtest.Access) {
 		t.Fatal("account listing exposed a credential")
 	}
 	if r = request("POST", "/api/admin/github/connections", `{"id":"wiki","repository":"org/handbook","account_id":"fixture","write":true}`, "http://localhost:8080", cookie, false, "127.0.0.1:1"); r.Code != 202 {

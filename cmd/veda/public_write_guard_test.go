@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"strings"
 	"testing"
@@ -47,7 +48,7 @@ func TestPublicWriteRejectsCredentialLikeTextWithoutChangingHistory(t *testing.T
 
 func TestLegacyCredentialLikePublicJobIsBlockedAndCorrectable(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "guide.md", "# Safe", 1); err != nil {
 		t.Fatal(err)
@@ -72,7 +73,7 @@ func TestLegacyCredentialLikePublicJobIsBlockedAndCorrectable(t *testing.T) {
 	}
 	m.Once(context.Background())
 	jobs := s.jobs()
-	if len(jobs) != 1 || jobs[0].State != "blocked" || jobs[0].LastError != "credential_like_content" || f.writeCount() != 0 {
+	if len(jobs) != 1 || jobs[0].State != "blocked" || jobs[0].LastError != "credential_like_content" || f.WriteCount() != 0 {
 		t.Fatal("unsafe job not blocked", jobs)
 	}
 	if _, err = s.put("handbook", "guide.md", "# Corrected", 2); err != nil {
@@ -85,7 +86,7 @@ func TestLegacyCredentialLikePublicJobIsBlockedAndCorrectable(t *testing.T) {
 		}
 	}
 	syncFixtureSource(t, m, "handbook")
-	if f.writeCount() != 1 || f.contents()["guide.md"] != "# Corrected" {
+	if f.WriteCount() != 1 || f.Contents()["guide.md"] != "# Corrected" {
 		t.Fatal("corrected revision did not synchronize")
 	}
 }
@@ -108,7 +109,7 @@ func TestLegacyBundleBlocksCredentialLikeLinkedArticle(t *testing.T) {
 	if _, err := s.put("from", "b.md", "# Safe", 0); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
@@ -139,21 +140,21 @@ func TestLegacyBundleBlocksCredentialLikeLinkedArticle(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].State != "blocked" || jobs[0].LastError != "credential_like_content" || f.writeCount() != 0 {
+	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].State != "blocked" || jobs[0].LastError != "credential_like_content" || f.WriteCount() != 0 {
 		t.Fatal("unsafe linked bundle was not blocked", jobs)
 	}
 }
 
 func TestPrivateGitHubWriteKeepsCredentialLikeTextLocal(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "guide.md", credentialFixture, 1); err != nil {
 		t.Fatal("private write rejected", err)
 	}
 	m.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["guide.md"] != "# Initial" {
+	if f.WriteCount() != 0 || f.Contents()["guide.md"] != "# Initial" {
 		t.Fatal("private credential-like text reached repository")
 	}
 	if article, err := s.article("handbook", "guide.md", false); err != nil || article.Versions[1].Text != credentialFixture {
@@ -166,15 +167,15 @@ func TestPrivateGitHubWriteKeepsCredentialLikeTextLocal(t *testing.T) {
 
 func TestPrivateCredentialLikeWriteStaysPrivateAfterRepositoryPublication(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Initial"})
+	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, true)
 	if _, err := s.put("handbook", "guide.md", credentialFixture, 1); err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.private = false })
+	f.Modify(func() { f.Private = false })
 	m.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["guide.md"] != "# Initial" {
+	if f.WriteCount() != 0 || f.Contents()["guide.md"] != "# Initial" {
 		t.Fatal("private credential-like text reached public repository")
 	}
 	if jobs := s.jobs(); len(jobs) != 1 || jobs[0].State != "blocked" || jobs[0].LastError != "credential_like_content" {

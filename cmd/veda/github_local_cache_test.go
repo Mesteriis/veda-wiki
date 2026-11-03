@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -58,23 +60,23 @@ func TestPrivateAdoptionReusesOnlyVerifiedLocalBlobs(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			f := newFakeGitHub(t, map[string]string{name: string(remote)})
+			f := githubtest.New(t, map[string]string{name: string(remote)})
 			var requests atomic.Int32
 			gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.Contains(r.URL.Path, "/git/blobs/") {
 					requests.Add(1)
 				}
-				f.serve(w, r)
+				f.Serve(w, r)
 			}))
 			defer gateway.Close()
-			m := newSyncManager(s, &GitHubClient{base: gateway.URL, http: gateway.Client()})
-			entry := gitTreeEntry{Path: name, SHA: gitBlobDigest(remote, 40), Size: int64(len(remote))}
-			result, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, fixtureAccess)
+			m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
+			entry := github.TreeEntry{Path: name, SHA: github.BlobDigest(remote, 40), Size: int64(len(remote))}
+			result, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, githubtest.Access)
 			if err != nil || !bytes.Equal(result, remote) || requests.Load() != tc.wantRequests {
 				t.Fatal("incorrect verified blob reuse", err, requests.Load())
 			}
 			// Both locally reused and fetched objects must be reusable after attachment.
-			result, err = m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, fixtureAccess)
+			result, err = m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: !tc.public}, entry, githubtest.Access)
 			if err != nil || !bytes.Equal(result, remote) || requests.Load() != tc.wantRequests {
 				t.Fatal("cache replay failed", err, requests.Load())
 			}
@@ -97,19 +99,19 @@ func TestAdoptionReusesUnchangedArticlesAcrossRepository(t *testing.T) {
 	if _, err := s.importBatch(batch); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, remote)
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, remote)
+	f.Modify(func() { f.Private = true })
 	var requests atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/blobs/") {
 			requests.Add(1)
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", AdoptExisting: true}); err != nil {
@@ -141,19 +143,19 @@ func TestPrivateRepositoryImportReusesSeparateLocalSource(t *testing.T) {
 	if _, err := s.importBatch(batch); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, remote)
-	f.modify(func() { f.private = true })
+	f := githubtest.New(t, remote)
+	f.Modify(func() { f.Private = true })
 	var requests atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/blobs/") {
 			requests.Add(1)
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	client := &GitHubClient{base: gateway.URL, http: gateway.Client()}
+	client := github.NewForTest(gateway.URL, gateway.Client())
 	m := newSyncManager(s, client)
-	if _, err := s.saveAccount(context.Background(), client, "operator", GitHubSecret{Kind: "token", Token: fixtureAccess}); err != nil {
+	if _, err := s.saveAccount(context.Background(), client, "operator", github.Secret{Kind: "token", Token: githubtest.Access}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator"}); err != nil {
@@ -176,19 +178,19 @@ func TestPrivateCacheDoesNotReuseDifferentPath(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{"guide.md": "# Same"})
+	f := githubtest.New(t, map[string]string{"guide.md": "# Same"})
 	var requests atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/blobs/") {
 			requests.Add(1)
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	m := newSyncManager(s, &GitHubClient{base: gateway.URL, http: gateway.Client()})
+	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 	body := []byte("# Same")
-	entry := gitTreeEntry{Path: "guide.md", SHA: gitBlobDigest(body, 40), Size: int64(len(body))}
-	_, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, fixtureAccess)
+	entry := github.TreeEntry{Path: "guide.md", SHA: github.BlobDigest(body, 40), Size: int64(len(body))}
+	_, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "handbook", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, githubtest.Access)
 	if err != nil || requests.Load() != 1 {
 		t.Fatal("different path reused", err, requests.Load())
 	}
@@ -201,19 +203,19 @@ func TestPrivateLocalCacheSupportsSHA256Objects(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	f := newFakeGitHub(t, map[string]string{})
+	f := githubtest.New(t, map[string]string{})
 	var requests atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/git/blobs/") {
 			requests.Add(1)
 		}
-		f.serve(w, r)
+		f.Serve(w, r)
 	}))
 	defer gateway.Close()
-	m := newSyncManager(s, &GitHubClient{base: gateway.URL, http: gateway.Client()})
+	m := newSyncManager(s, github.NewForTest(gateway.URL, gateway.Client()))
 	body := []byte("# Initial")
-	entry := gitTreeEntry{Path: "README.md", SHA: gitBlobDigest(body, 64), Size: int64(len(body))}
-	got, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "remote", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, fixtureAccess)
+	entry := github.TreeEntry{Path: "README.md", SHA: github.BlobDigest(body, 64), Size: int64(len(body))}
+	got, err := m.cachedBlob(context.Background(), GitHubConnection{ID: "remote", Repository: "org/handbook", RepositoryID: 41, Private: true}, entry, githubtest.Access)
 	if err != nil || !bytes.Equal(got, body) || requests.Load() != 0 {
 		t.Fatal("SHA-256 local object not reused", err)
 	}

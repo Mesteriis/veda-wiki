@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -158,7 +160,7 @@ func TestCopyImageRejectsCollisionAndPreservesSource(t *testing.T) {
 
 func TestMoveImageWaitsForVerifiedBlobBeforeRemoteDeletion(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "![icon](img/icon.png)", "img/icon.png": string(smallPNG(t))})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "![icon](img/icon.png)", "img/icon.png": string(smallPNG(t))})
 	manager := connectFixture(t, s, f, true)
 	source(t, s, "to", "private")
 	m, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "nested/moved.md", ConfirmMove: true})
@@ -170,21 +172,21 @@ func TestMoveImageWaitsForVerifiedBlobBeforeRemoteDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["guide.md"] == "" {
+	if f.WriteCount() != 0 || f.Contents()["guide.md"] == "" {
 		t.Fatal("source deleted despite corrupt image")
 	}
 	if err = s.verifyAsset(ref); err != nil {
 		t.Fatal("source image was not repaired", err)
 	}
 	syncFixtureSource(t, manager, "handbook")
-	if f.writeCount() != 1 {
+	if f.WriteCount() != 1 {
 		t.Fatal("move did not resume after a fresh verification")
 	}
 }
 
 func TestMoveImageFromConnectedSourceToLocal(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "![icon](img/icon.png)", "img/icon.png": string(smallPNG(t))})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "![icon](img/icon.png)", "img/icon.png": string(smallPNG(t))})
 	manager := connectFixture(t, s, f, true)
 	source(t, s, "to", "private")
 	m, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "nested/moved.md", ConfirmMove: true})
@@ -193,10 +195,10 @@ func TestMoveImageFromConnectedSourceToLocal(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.moves()[0].State != "complete" || f.writeCount() != 1 {
+	if s.moves()[0].State != "complete" || f.WriteCount() != 1 {
 		t.Fatal("remote move did not complete", s.moves())
 	}
-	if _, exists := f.contents()["guide.md"]; exists {
+	if _, exists := f.Contents()["guide.md"]; exists {
 		t.Fatal("remote source still exists")
 	}
 	if s.db.Sources["to"].Assets["nested/img/icon.png"] != m.Assets["nested/img/icon.png"] {
@@ -206,7 +208,7 @@ func TestMoveImageFromConnectedSourceToLocal(t *testing.T) {
 
 func TestMoveImageDetectsChangedDestinationBeforeDeletion(t *testing.T) {
 	s := testStore(t)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "![icon](img/icon.png)", "img/icon.png": string(smallPNG(t))})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "![icon](img/icon.png)", "img/icon.png": string(smallPNG(t))})
 	manager := connectFixture(t, s, f, true)
 	source(t, s, "to", "private")
 	_, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "nested/moved.md", ConfirmMove: true})
@@ -225,7 +227,7 @@ func TestMoveImageDetectsChangedDestinationBeforeDeletion(t *testing.T) {
 	}
 	s.mu.Unlock()
 	manager.Once(context.Background())
-	if s.moves()[0].State != "destination_changed" || f.writeCount() != 0 || f.contents()["guide.md"] == "" {
+	if s.moves()[0].State != "destination_changed" || f.WriteCount() != 0 || f.Contents()["guide.md"] == "" {
 		t.Fatal("source removed after target image changed")
 	}
 }
@@ -272,7 +274,7 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 	source(t, s, "from", "private")
 	ref := fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	m, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil || m.State != "waiting_destination" || s.db.Version != 7 {
@@ -282,7 +284,7 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 		t.Fatal("pending image exposed", r.Code)
 	}
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || f.writeCount() != 1 || f.contents()["b.md"] == "" || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA {
+	if s.db.Articles["from/a.md"].Deleted || f.WriteCount() != 1 || f.Contents()["b.md"] == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("bundle was not committed atomically")
 	}
 	manager.Once(context.Background())
@@ -303,7 +305,7 @@ func TestCopyImageQueuesBundleWithoutDeletingSource(t *testing.T) {
 	source(t, s, "from", "private")
 	ref := fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	_ = connectFixture(t, s, f, true)
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true})
 	if err != nil {
@@ -316,7 +318,7 @@ func TestCopyImageQueuesBundleWithoutDeletingSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := newSyncManager(reopened, f.client())
+	manager := newSyncManager(reopened, f.Client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
 	if reopened.jobs()[0].State != "complete" || reopened.db.Articles["from/a.md"].Deleted || reopened.db.Sources["handbook"].Assets["img/icon.png"] != ref {
@@ -339,17 +341,17 @@ func TestConnectedBundleUploadsIdenticalImageOnlyOnce(t *testing.T) {
 	}
 	s.mu.Unlock()
 	s.put("from", "a.md", "![one](img/one.png)\n![two](img/two.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	f.mu.Lock()
-	blobWrites := f.blobWrites
-	f.mu.Unlock()
-	if blobWrites != 2 || f.contents()["img/one.png"] != f.contents()["img/two.png"] || s.jobs()[0].State != "complete" {
+	f.Mu.Lock()
+	blobWrites := f.BlobWrites
+	f.Mu.Unlock()
+	if blobWrites != 2 || f.Contents()["img/one.png"] != f.Contents()["img/two.png"] || s.jobs()[0].State != "complete" {
 		t.Fatal("identical image uploaded more than once or missing", blobWrites)
 	}
 }
@@ -363,7 +365,7 @@ func TestOldBinaryRejectsQueuedImageStore(t *testing.T) {
 	source(t, s, "from", "private")
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
@@ -391,22 +393,22 @@ func TestConnectedImageMoveRecoversLostResponse(t *testing.T) {
 	source(t, s, "from", "private")
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.modify(func() { f.loseResponse = true })
+	f.Modify(func() { f.LoseResponse = true })
 	manager.Once(context.Background())
-	if f.writeCount() != 1 || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 1 || s.db.Articles["from/a.md"].Deleted {
 		t.Fatal("lost response removed source")
 	}
 	if err = s.retryConnection("handbook"); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.writeCount() != 1 || s.moves()[0].State != "complete" {
+	if f.WriteCount() != 1 || s.moves()[0].State != "complete" {
 		t.Fatal("lost response not recovered", s.moves())
 	}
 }
@@ -416,20 +418,20 @@ func TestMoveWaitsWhenRemoteArticleExistsButImageIsMissing(t *testing.T) {
 	source(t, s, "from", "private")
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "b.md": "![icon](img/icon.png)"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "b.md": "![icon](img/icon.png)"})
 	manager.Once(context.Background())
 	if s.db.Articles["from/a.md"].Deleted || s.moves()[0].State != "waiting_destination" {
 		t.Fatal("source deleted before image was observed")
 	}
 	manager.Once(context.Background())
-	if s.moves()[0].State != "complete" || f.contents()["img/icon.png"] == "" {
+	if s.moves()[0].State != "complete" || f.Contents()["img/icon.png"] == "" {
 		t.Fatal("missing image did not recover", s.moves())
 	}
 }
@@ -439,15 +441,15 @@ func TestConnectedImageMoveRejectsRemoteCollision(t *testing.T) {
 	source(t, s, "from", "private")
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "img/icon.png": "unrelated remote content"})
+	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "img/icon.png": "unrelated remote content"})
 	manager.Once(context.Background())
-	if f.writeCount() != 0 || f.contents()["img/icon.png"] != "unrelated remote content" || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 0 || f.Contents()["img/icon.png"] != "unrelated remote content" || s.db.Articles["from/a.md"].Deleted {
 		t.Fatal("remote image overwritten")
 	}
 }
@@ -457,7 +459,7 @@ func TestEditedPendingCopyKeepsReferencedAssets(t *testing.T) {
 	source(t, s, "from", "private")
 	ref := fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
 	if err != nil {
@@ -472,7 +474,7 @@ func TestEditedPendingCopyKeepsReferencedAssets(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA {
+	if s.db.Articles["from/a.md"].Deleted || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("edit lost the image or original")
 	}
 }
@@ -482,13 +484,13 @@ func TestEditedPreparedBundleUpdatesFromObservedBase(t *testing.T) {
 	source(t, s, "from", "private")
 	ref := fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.writeCount() != 1 || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 1 || s.db.Articles["from/a.md"].Deleted {
 		t.Fatal("initial bundle not pending")
 	}
 	if _, err := s.put("handbook", "b.md", "# Updated\n![icon](img/icon.png)", 1); err != nil {
@@ -496,7 +498,7 @@ func TestEditedPreparedBundleUpdatesFromObservedBase(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || f.contents()["b.md"] != "# Updated\n![icon](img/icon.png)" || digest([]byte(f.contents()["img/icon.png"])) != ref.SHA {
+	if s.db.Articles["from/a.md"].Deleted || f.Contents()["b.md"] != "# Updated\n![icon](img/icon.png)" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("prepared bundle edit did not synchronize safely")
 	}
 }
@@ -506,14 +508,14 @@ func TestConcurrentEditCannotReviveSupersededBundle(t *testing.T) {
 	source(t, s, "from", "private")
 	ref := fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
 	hookErr := make(chan error, 1)
-	f.modify(func() {
-		f.afterCommit = func() { _, err := s.put("handbook", "b.md", "# New\n![icon](img/icon.png)", 1); hookErr <- err }
+	f.Modify(func() {
+		f.AfterCommit = func() { _, err := s.put("handbook", "b.md", "# New\n![icon](img/icon.png)", 1); hookErr <- err }
 	})
 	manager.Once(context.Background())
 	select {
@@ -524,7 +526,7 @@ func TestConcurrentEditCannotReviveSupersededBundle(t *testing.T) {
 	default:
 		t.Fatal("commit hook was not called")
 	}
-	if f.writeCount() != 0 || s.db.Outbox["handbook/b.md@1"].State != "superseded" || s.db.Outbox["handbook/b.md@2"].Assets["img/icon.png"] != ref {
+	if f.WriteCount() != 0 || s.db.Outbox["handbook/b.md@1"].State != "superseded" || s.db.Outbox["handbook/b.md@2"].Assets["img/icon.png"] != ref {
 		t.Fatal("superseded bundle was revived")
 	}
 }
@@ -534,7 +536,7 @@ func TestEditedPendingCopyDoesNotPublishPrivateAssets(t *testing.T) {
 	source(t, s, "from", "private")
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	s.mu.Lock()
 	c := s.db.Connections["handbook"]
@@ -559,7 +561,7 @@ func TestEditedPendingCopyDoesNotPublishPrivateAssets(t *testing.T) {
 		t.Fatal("unapproved asset became public")
 	}
 	manager.Once(context.Background())
-	if f.writeCount() != 0 {
+	if f.WriteCount() != 0 {
 		t.Fatal("unapproved asset pushed to public repository")
 	}
 }
@@ -569,7 +571,7 @@ func TestEditedPendingCopyDoesNotSendRemovedImages(t *testing.T) {
 	source(t, s, "from", "private")
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
@@ -582,7 +584,7 @@ func TestEditedPendingCopyDoesNotSendRemovedImages(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if _, exists := f.contents()["img/icon.png"]; exists {
+	if _, exists := f.Contents()["img/icon.png"]; exists {
 		t.Fatal("removed image was published")
 	}
 }
@@ -592,7 +594,7 @@ func TestImageMoveDoesNotPublishToPartialTarget(t *testing.T) {
 	source(t, s, "from", "private")
 	fixtureAsset(t, s, "from", "img/icon.png")
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "broken.png": "not an image"})
+	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "broken.png": "not an image"})
 	manager := connectFixture(t, s, f, true)
 	if !s.db.Sources["handbook"].ImportPartial {
 		t.Fatal("fixture must be partial")
@@ -602,7 +604,7 @@ func TestImageMoveDoesNotPublishToPartialTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.writeCount() != 0 || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 0 || s.db.Articles["from/a.md"].Deleted {
 		t.Fatal("partial target received write or lost source")
 	}
 }
@@ -616,19 +618,19 @@ func TestImageBundleHonorsRepositoryFileLimit(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		files[fmt.Sprintf("docs/%d.md", i)] = "# Existing"
 	}
-	f := newFakeGitHub(t, files)
-	manager := newSyncManager(s, f.client())
-	head, err := manager.github.head(context.Background(), f.name, "main", "")
+	f := githubtest.New(t, files)
+	manager := newSyncManager(s, f.Client())
+	head, err := manager.github.Head(context.Background(), f.Name, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := manager.github.tree(context.Background(), f.name, head, "")
+	tree, err := manager.github.Tree(context.Background(), f.Name, head, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = manager.pendingBundle(context.Background(), GitHubConnection{ID: "handbook", Repository: f.name, Branch: "main"}, head, tree.SHA, "", SyncJob{Path: "new.md", Revision: 1, Assets: map[string]BlobRef{"img/icon.png": ref}}, Article{Versions: []Revision{{Text: "![icon](img/icon.png)"}}})
-	var remote *remoteError
-	if !errors.As(err, &remote) || remote.Code != "repository_limit" || f.writeCount() != 0 {
+	_, err = manager.pendingBundle(context.Background(), GitHubConnection{ID: "handbook", Repository: f.Name, Branch: "main"}, head, tree.SHA, "", SyncJob{Path: "new.md", Revision: 1, Assets: map[string]BlobRef{"img/icon.png": ref}}, Article{Versions: []Revision{{Text: "![icon](img/icon.png)"}}})
+	var remote *github.RemoteError
+	if !errors.As(err, &remote) || remote.Code != "repository_limit" || f.WriteCount() != 0 {
 		t.Fatal("repository limit not enforced", err)
 	}
 }
@@ -636,7 +638,7 @@ func TestImageBundleHonorsRepositoryFileLimit(t *testing.T) {
 func TestImageMoveBetweenConnectedRepositories(t *testing.T) {
 	s, manager, original, destination := connectedMoveFixtures(t)
 	image := smallPNG(t)
-	original.advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source\n\n![icon](img/icon.png)", "img/icon.png": string(image)})
+	original.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source\n\n![icon](img/icon.png)", "img/icon.png": string(image)})
 	syncFixtureSource(t, manager, "one")
 	move, err := s.moveArticle(moveRequest{SourceID: "one", SourcePath: "README.md", ExpectedRevision: 2, DestinationID: "two", DestinationPath: "moved.md", ConfirmMove: true})
 	if err != nil || move.State != "waiting_destination" {
@@ -644,10 +646,10 @@ func TestImageMoveBetweenConnectedRepositories(t *testing.T) {
 	}
 	syncFixtureSource(t, manager, "two")
 	syncFixtureSource(t, manager, "one")
-	if original.contents()["README.md"] == "" || s.moves()[0].State != "waiting_destination" {
+	if original.Contents()["README.md"] == "" || s.moves()[0].State != "waiting_destination" {
 		t.Fatal("source removed before destination observation")
 	}
-	if destination.writeCount() != 1 || destination.contents()["img/icon.png"] != string(image) {
+	if destination.WriteCount() != 1 || destination.Contents()["img/icon.png"] != string(image) {
 		t.Fatal("image not committed with article")
 	}
 	syncFixtureSource(t, manager, "two")
@@ -656,7 +658,7 @@ func TestImageMoveBetweenConnectedRepositories(t *testing.T) {
 	}
 	syncFixtureSource(t, manager, "one")
 	syncFixtureSource(t, manager, "one")
-	if s.moves()[0].State != "complete" || original.contents()["README.md"] != "" || destination.contents()["img/icon.png"] != string(image) {
+	if s.moves()[0].State != "complete" || original.Contents()["README.md"] != "" || destination.Contents()["img/icon.png"] != string(image) {
 		t.Fatal("connected image move incomplete", s.moves())
 	}
 }
