@@ -1,3 +1,5 @@
+// Package search implements full-text search over article pages and the
+// ranking of its results.
 package search
 
 import (
@@ -118,7 +120,9 @@ func revisionsWithScratch(query, articlePath, sourceTitle, original, displayed s
 }
 
 var stopWords = map[string]bool{
-	"как": true, "где": true, "мне": true, "мой": true, "моем": true, "моём": true, "создай": true, "создать": true, "сделай": true, "пожалуйста": true, "помоги": true, "для": true, "это": true, "на": true, "по": true, "из": true, "от": true, "за": true, "до": true, "во": true, "со": true,
+	"как": true, "где": true, "мне": true, "мой": true, "моем": true, "моём": true, "создай": true, "создать": true,
+	"сделай": true, "пожалуйста": true, "помоги": true, "для": true, "это": true, "на": true, "по": true, "из": true,
+	"от": true, "за": true, "до": true, "во": true, "со": true,
 	"the": true, "and": true, "for": true, "how": true, "create": true, "please": true, "with": true, "my": true, "on": true, "to": true,
 }
 

@@ -1,3 +1,6 @@
+// Package github is the GitHub REST client used by synchronization: token
+// exchange for GitHub App and personal credentials, repository and tree
+// reads, and the write operations behind publication.
 package github
 
 import (
@@ -31,7 +34,11 @@ type Client struct {
 // New returns a client for api.github.com with bounded timeouts and no
 // redirects or proxies.
 func New() *Client {
-	return &Client{base: "https://api.github.com", http: &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Client{base: "https://api.github.com", http: &http.Client{
+		Timeout:       30 * time.Second,
+		Transport:     &http.Transport{Proxy: nil},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}}
 }
 
 // NewForTest returns a client for a local test server.
@@ -151,6 +158,9 @@ func AppJWT(secret Secret) (string, error) {
 	}
 	return input + "." + base64.RawURLEncoding.EncodeToString(signature), nil
 }
+
+// VerifyAccount checks the credential against GitHub and returns the account
+// login it belongs to.
 func (g *Client) VerifyAccount(ctx context.Context, secret Secret) (string, error) {
 	switch secret.Kind {
 	case "token":
@@ -166,7 +176,7 @@ func (g *Client) VerifyAccount(ctx context.Context, secret Secret) (string, erro
 		if e := g.call(ctx, "GET", "/user", secret.Token, nil, &user); e != nil {
 			return "", e
 		}
-		if !ValidName(user.Login) {
+		if !domain.ValidGitHubName(user.Login) {
 			return "", domain.ErrInvalid
 		}
 		return user.Login, nil
@@ -188,13 +198,17 @@ func (g *Client) VerifyAccount(ctx context.Context, secret Secret) (string, erro
 		if e = g.call(ctx, "GET", fmt.Sprintf("/app/installations/%d", secret.InstallationID), jwt, nil, &installation); e != nil {
 			return "", e
 		}
-		if installation.AppID != secret.AppID || !ValidName(installation.Account.Login) || installation.SuspendedAt != nil {
+		if installation.AppID != secret.AppID || !domain.ValidGitHubName(installation.Account.Login) || installation.SuspendedAt != nil {
 			return "", domain.ErrInvalid
 		}
 		return installation.Account.Login, nil
 	}
 	return "", domain.ErrInvalid
 }
+
+// Token returns the bearer token for repo: the personal token itself, or a
+// short-lived installation token for a GitHub App credential. A nil secret
+// means anonymous read access.
 func (g *Client) Token(ctx context.Context, secret *Secret, repo string, write bool) (string, error) {
 	if secret == nil {
 		return "", nil
@@ -225,14 +239,17 @@ func (g *Client) Token(ctx context.Context, secret *Secret, repo string, write b
 	}
 	return token.Token, nil
 }
+
+// Repository reads the repository metadata: default branch, visibility and
+// archive state.
 func (g *Client) Repository(ctx context.Context, repo, token string) (RepositoryInfo, error) {
 	var result RepositoryInfo
 	e := g.call(ctx, "GET", "/repos/"+repo, token, nil, &result)
 	if e != nil {
 		return result, e
 	}
-	canonical, e := RepositoryName(result.FullName)
-	if e != nil || !strings.EqualFold(canonical, repo) || result.ID < 1 || result.Private == nil || !ValidBranch(result.DefaultBranch) {
+	canonical, e := domain.RepositoryName(result.FullName)
+	if e != nil || !strings.EqualFold(canonical, repo) || result.ID < 1 || result.Private == nil || !domain.ValidBranch(result.DefaultBranch) {
 		return result, &RemoteError{Code: "invalid_upstream_response"}
 	}
 	if result.Visibility != "public" && result.Visibility != "private" && result.Visibility != "internal" {
@@ -242,6 +259,8 @@ func (g *Client) Repository(ctx context.Context, repo, token string) (Repository
 	result.Private = &private
 	return result, nil
 }
+
+// Head returns the commit ID at the tip of branch.
 func (g *Client) Head(ctx context.Context, repo, branch, token string) (string, error) {
 	var ref struct {
 		Object struct {
@@ -258,6 +277,8 @@ func (g *Client) Head(ctx context.Context, repo, branch, token string) (string, 
 	}
 	return ref.Object.SHA, nil
 }
+
+// Tree returns the recursive file tree of the commit head.
 func (g *Client) Tree(ctx context.Context, repo, head, token string) (Tree, error) {
 	var commit Commit
 	if e := g.call(ctx, "GET", "/repos/"+repo+"/git/commits/"+head, token, nil, &commit); e != nil {
@@ -276,6 +297,8 @@ func (g *Client) Tree(ctx context.Context, repo, head, token string) (Tree, erro
 	}
 	return tree, nil
 }
+
+// Blob downloads the blob sha, bounded in size, and decodes its content.
 func (g *Client) Blob(ctx context.Context, repo, sha, token string) ([]byte, error) {
 	if !domain.ValidCommitID(sha) {
 		return nil, domain.ErrInvalid

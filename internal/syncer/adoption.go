@@ -13,6 +13,8 @@ import (
 // adopting transaction.
 func (m *Manager) adoptionSnapshot(id string) (string, error) {
 	var snapshot string
+	// Exclusive only reads here; it keeps the write-lock span the old code held
+	// so no commit interleaves with the snapshot.
 	err := m.store.Exclusive(func(ex *store.Exclusive) error {
 		if ex.Invalid() {
 			return domain.ErrConflict

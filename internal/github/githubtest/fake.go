@@ -56,6 +56,8 @@ func New(t *testing.T, files map[string]string) *Fake {
 	t.Cleanup(f.Server.Close)
 	return f
 }
+
+// Advance records a new commit whose tree holds exactly files.
 func (f *Fake) Advance(files map[string]string) {
 	f.Mu.Lock()
 	defer f.Mu.Unlock()
@@ -73,6 +75,8 @@ func (f *Fake) Advance(files map[string]string) {
 	f.Commits[commit] = Commit{Tree: tree, Parent: f.Head}
 	f.Head = commit
 }
+
+// Contents returns the files at the current head.
 func (f *Fake) Contents() map[string]string {
 	f.Mu.Lock()
 	defer f.Mu.Unlock()
@@ -82,9 +86,13 @@ func (f *Fake) Contents() map[string]string {
 	}
 	return out
 }
+
+// Client returns a GitHub client that talks to this fake server.
 func (f *Fake) Client() *github.Client {
 	return github.NewForTest(f.Server.URL, f.Server.Client())
 }
+
+// Serve answers the GitHub API requests the client makes.
 func (f *Fake) Serve(w http.ResponseWriter, r *http.Request) {
 	f.Mu.Lock()
 	defer f.Mu.Unlock()
@@ -176,7 +184,14 @@ func (f *Fake) Serve(w http.ResponseWriter, r *http.Request) {
 		}
 		respond(map[string]any{"data": map[string]any{"updateRefs": map[string]any{"clientMutationId": nil}}})
 	case r.URL.Path == "/repos/"+f.Name:
-		respond(map[string]any{"id": f.RepoID, "full_name": f.Name, "private": f.Private, "visibility": map[bool]string{false: "public", true: "private"}[f.Private], "default_branch": "main", "permissions": map[string]bool{"push": true}})
+		respond(map[string]any{
+			"id":             f.RepoID,
+			"full_name":      f.Name,
+			"private":        f.Private,
+			"visibility":     map[bool]string{false: "public", true: "private"}[f.Private],
+			"default_branch": "main",
+			"permissions":    map[string]bool{"push": true},
+		})
 	case route == "/git/ref/heads/main":
 		respond(map[string]any{"object": map[string]string{"sha": f.Head, "type": "commit"}})
 	case strings.HasPrefix(route, "/git/commits/"):
@@ -311,5 +326,8 @@ func (f *Fake) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Modify runs fn while holding the fake's lock.
 func (f *Fake) Modify(fn func()) { f.Mu.Lock(); defer f.Mu.Unlock(); fn() }
-func (f *Fake) WriteCount() int  { f.Mu.Lock(); defer f.Mu.Unlock(); return f.Writes }
+
+// WriteCount returns the number of write requests served.
+func (f *Fake) WriteCount() int { f.Mu.Lock(); defer f.Mu.Unlock(); return f.Writes }

@@ -276,6 +276,7 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 // Git commands have bounded output even for adversarial repository indexes.
 type boundedGitOutput struct{ bytes.Buffer }
 
+// Write implements io.Writer and fails once the output would pass the limit.
 func (b *boundedGitOutput) Write(p []byte) (int, error) {
 	if b.Len()+len(p) > 4<<20 {
 		//lint:ignore ST1005 "Git" is a proper noun; the message text is observable and must not change

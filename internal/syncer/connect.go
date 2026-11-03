@@ -165,7 +165,7 @@ func (m *Manager) Connect(ctx context.Context, in ConnectRequest) (domain.GitHub
 			return domain.GitHubConnection{}, err
 		}
 	}
-	repo, e := github.RepositoryName(in.Repository)
+	repo, e := domain.RepositoryName(in.Repository)
 	if e != nil {
 		return domain.GitHubConnection{}, e
 	}
@@ -191,14 +191,26 @@ func (m *Manager) Connect(ctx context.Context, in ConnectRequest) (domain.GitHub
 	if branch == "" {
 		branch = info.DefaultBranch
 	}
-	if !github.ValidBranch(branch) || info.Archived && in.Write {
+	if !domain.ValidBranch(branch) || info.Archived && in.Write {
 		return domain.GitHubConnection{}, domain.ErrInvalid
 	}
 	head, e := m.github.Head(ctx, repo, branch, token)
 	if e != nil {
 		return domain.GitHubConnection{}, e
 	}
-	c := domain.GitHubConnection{ID: in.ID, Repository: info.FullName, RepositoryID: info.ID, Branch: branch, AccountID: in.AccountID, Write: in.Write, Private: *info.Private, Verification: "verified", VerifiedAt: time.Now().UTC().Format(time.RFC3339Nano), State: "pending", ConfigRevision: 1}
+	c := domain.GitHubConnection{
+		ID:             in.ID,
+		Repository:     info.FullName,
+		RepositoryID:   info.ID,
+		Branch:         branch,
+		AccountID:      in.AccountID,
+		Write:          in.Write,
+		Private:        *info.Private,
+		Verification:   "verified",
+		VerifiedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		State:          "pending",
+		ConfigRevision: 1,
+	}
 	if in.AdoptExisting {
 		return m.adopt(ctx, c, account, snapshot, head, token)
 	}

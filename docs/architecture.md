@@ -11,7 +11,7 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | --- | --- |
 | `cmd/veda` | Entry point: picks the subcommand and calls `internal/app`. |
 | `internal/app` | Assembly: server flags, listeners, the reader socket, workers, bounded shutdown and the writer lock. |
-| `internal/app/commands` | The non-server subcommands (`superuser`, `accesskey`, `migrate`, `import`, GitHub administration). |
+| `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `import`, `github`. |
 | `internal/httpapi` | REST handlers, browser sessions, role checks and the embedded reading interface. Adapter only: it parses input, checks the role, calls an area and serializes the result. |
 | `internal/auth` | Access keys, named users and teams, password hashing and the login limiter, browser sessions. |
 | `internal/importer` | `veda.yaml` metadata, bounded local checkout observations, batch decoding, asset storage, import conflicts and the process-local observations. |

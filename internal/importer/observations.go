@@ -7,7 +7,8 @@ import (
 
 // Observations hold, per source, when an import last succeeded and how many
 // files it withheld. They are process-local and lost on restart. The zero
-// value is ready to use; a nil *Observations has no observations.
+// value is ready to use; a nil *Observations has no observations, and
+// recording into it does nothing.
 //
 // Writers record an observation under the store write lock, after the commit
 // that it describes, so its order matches the commit order. Readers that hold
@@ -45,6 +46,9 @@ func (o *Observations) Withheld(sourceID string) (int, bool) {
 
 // MarkObserved records a successful observation of sourceID at at.
 func (o *Observations) MarkObserved(sourceID string, at time.Time) {
+	if o == nil {
+		return
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.observed == nil {
@@ -55,6 +59,9 @@ func (o *Observations) MarkObserved(sourceID string, at time.Time) {
 
 // MarkWithheld records the withheld count of a successful import.
 func (o *Observations) MarkWithheld(sourceID string, count int) {
+	if o == nil {
+		return
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.withheld == nil {
@@ -65,6 +72,9 @@ func (o *Observations) MarkWithheld(sourceID string, count int) {
 
 // Forget drops the observations of a removed source.
 func (o *Observations) Forget(sourceID string) {
+	if o == nil {
+		return
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	delete(o.observed, sourceID)

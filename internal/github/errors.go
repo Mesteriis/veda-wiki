@@ -14,6 +14,7 @@ type RemoteError struct {
 	RetryAt time.Time
 }
 
+// Error returns the stable error code.
 func (e *RemoteError) Error() string { return e.Code }
 
 // RetryAt returns the rate-limit deadline carried by err, if any.

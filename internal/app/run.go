@@ -1,3 +1,6 @@
+// Package app wires the VEDA server: it opens the store, builds the services,
+// starts the owner and public listeners and the background loops, and shuts
+// them down on signal. Subcommands live in app/commands.
 package app
 
 import (
@@ -58,7 +61,10 @@ func Run(ctx context.Context, args []string) (err error) {
 	if *translationTokenFile != "" && (*translationURL == "" || !filepath.IsAbs(*translationTokenFile) || filepath.Clean(*translationTokenFile) != *translationTokenFile) {
 		return errors.New("invalid local translation credential configuration")
 	}
-	if (*translationURL == "") != (*translationModel == "") || (*translationProtocol != "ollama" && *translationProtocol != "mlx" && *translationProtocol != "openai") || *translationInterval < 5*time.Second || *translationInterval > time.Hour {
+	if (*translationURL == "") != (*translationModel == "") ||
+		(*translationProtocol != "ollama" && *translationProtocol != "mlx" && *translationProtocol != "openai") ||
+		*translationInterval < 5*time.Second ||
+		*translationInterval > time.Hour {
 		return errors.New("invalid local translation configuration")
 	}
 	if *localImportSource != "" && (*readerSocket == "" || !domain.ValidID(*localImportSource)) {

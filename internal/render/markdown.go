@@ -1,3 +1,5 @@
+// Package render turns article Markdown into sanitized HTML with a table of
+// contents, and builds the link graph between articles.
 package render
 
 import (
@@ -24,6 +26,8 @@ func headingID(id any) string {
 
 type unicodeIDs struct{ used map[string]bool }
 
+// Generate implements parser.IDs: a heading ID that keeps Unicode letters and
+// is unique within the document.
 func (ids *unicodeIDs) Generate(value []byte, _ ast.NodeKind) []byte {
 	var out strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(string(value))) {
@@ -44,6 +48,8 @@ func (ids *unicodeIDs) Generate(value []byte, _ ast.NodeKind) []byte {
 	ids.used[id] = true
 	return []byte(id)
 }
+
+// Put implements parser.IDs by reserving value.
 func (ids *unicodeIDs) Put(value []byte) { ids.used[string(value)] = true }
 
 // SourceTarget resolves repository paths independently of the source ID so a document
@@ -57,6 +63,8 @@ func SourceTarget(pagePath, destination string) (string, string, bool) {
 	return parts[0], target, valid
 }
 
+// Page renders the article Markdown to sanitized HTML and a table of
+// contents.
 func Page(p domain.Page) (template.HTML, template.HTML, error) {
 	source := []byte(p.Text)
 	doc := domain.Markdown.Parser().Parse(text.NewReader(source), parser.WithContext(parser.NewContext(parser.WithIDs(&unicodeIDs{used: map[string]bool{}}))))

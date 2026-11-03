@@ -34,7 +34,7 @@ func BlobDigest(data []byte, length int) string {
 // alone also accepts a branch rewound to an ancestor of the prepared commit.
 func (g *Client) UpdateBranch(ctx context.Context, repo, branch, before, after, token string) error {
 	parts := strings.Split(repo, "/")
-	if len(parts) != 2 || !ValidBranch(branch) || !domain.ValidCommitID(before) || !domain.ValidCommitID(after) {
+	if len(parts) != 2 || !domain.ValidBranch(branch) || !domain.ValidCommitID(before) || !domain.ValidCommitID(after) {
 		return domain.ErrInvalid
 	}
 	var lookup struct {
@@ -72,9 +72,16 @@ func (g *Client) UpdateBranch(ctx context.Context, repo, branch, before, after, 
 	}
 	return nil
 }
+
+// Push commits one file at path p on top of base and moves branch to the new
+// commit, returning its ID. prepare may veto the write before it is sent.
 func (g *Client) Push(ctx context.Context, repo, branch, base, treeSHA, p, content, token string, prepare func(string) error) (string, error) {
 	return g.PushFiles(ctx, repo, branch, base, treeSHA, map[string][]byte{p: []byte(content)}, token, prepare)
 }
+
+// PushFiles commits all files on top of base in one commit and moves branch
+// to it, returning the new commit ID. prepare may veto the write before it is
+// sent.
 func (g *Client) PushFiles(ctx context.Context, repo, branch, base, treeSHA string, files map[string][]byte, token string, prepare func(string) error) (string, error) {
 	paths := make([]string, 0, len(files))
 	for name := range files {
@@ -154,6 +161,8 @@ func VerifiedTreeFile(source Tree, p, expected string) (string, error) {
 	return mode, nil
 }
 
+// Remove commits the deletion of the file p on top of base, provided its blob
+// still matches expected, and returns the new commit ID.
 func (g *Client) Remove(ctx context.Context, repo, branch, base string, source Tree, p, expected, token string, prepare func(string) error) (string, error) {
 	if !domain.ValidCommitID(base) {
 		return "", domain.ErrInvalid
