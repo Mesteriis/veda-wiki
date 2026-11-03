@@ -6,7 +6,8 @@ frontend:
 build: frontend
 	go build -trimpath -o veda ./cmd/veda
 lint:
-	python3 scripts/check_file_size.py --max 500 --include 'scripts/**/*.py'
+	python3 scripts/check_file_size.py --max 500 --include 'scripts/**/*.py' --include '**/*.go'
+	python3 scripts/check_architecture.py
 	go run honnef.co/go/tools/cmd/staticcheck@2026.2.2 ./...
 test: frontend lint
 	node --test web/src/*.test.js

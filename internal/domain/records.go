@@ -1,9 +1,9 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
-	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -49,12 +49,26 @@ func ImageRef(b []byte) (BlobRef, error) {
 	if len(b) == 0 || len(b) > 4<<20 {
 		return BlobRef{}, ErrInvalid
 	}
-	mime := http.DetectContentType(b)
-	switch mime {
-	case "image/png", "image/jpeg", "image/webp", "image/gif":
+	if mime := sniffImage(b); mime != "" {
 		return BlobRef{SHA: Digest(b), MIME: mime}, nil
 	}
 	return BlobRef{}, ErrInvalid
+}
+
+// sniffImage reports the image type by magic bytes, with the same signatures
+// as net/http.DetectContentType, which domain must not import.
+func sniffImage(b []byte) string {
+	switch {
+	case bytes.HasPrefix(b, []byte("\x89PNG\x0D\x0A\x1A\x0A")):
+		return "image/png"
+	case bytes.HasPrefix(b, []byte("\xFF\xD8\xFF")):
+		return "image/jpeg"
+	case bytes.HasPrefix(b, []byte("GIF87a")), bytes.HasPrefix(b, []byte("GIF89a")):
+		return "image/gif"
+	case len(b) >= 14 && bytes.HasPrefix(b, []byte("RIFF")) && bytes.Equal(b[8:14], []byte("WEBPVP")):
+		return "image/webp"
+	}
+	return ""
 }
 
 // ValidateMetadata checks wiki metadata read from veda.yaml or a stored source.
