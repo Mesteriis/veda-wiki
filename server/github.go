@@ -57,6 +57,9 @@ type GitHubConnection struct {
 	Paused         bool   `json:"paused"`
 	ConfigRevision int    `json:"config_revision"`
 	TreeSHA        string `json:"tree_sha,omitempty"`
+	// PendingHead is a remote head observed but not yet imported. Until a pull
+	// imports it, the earlier public snapshot may be stale and stays hidden.
+	PendingHead string `json:"pending_head,omitempty"`
 }
 type repositoryInfo struct {
 	ID            int64  `json:"id"`

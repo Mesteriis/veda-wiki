@@ -97,11 +97,32 @@ func sourcePublicReadable(db Database, src Source, now time.Time) bool {
 		c := db.Connections[src.ConnectionID]
 		// A visibility check alone does not establish which head was imported.
 		// Configuration changes clear the recorded head until a fresh pull.
-		if c.State == "syncing" || !commitID.MatchString(c.LastPull) || c.LastPull != src.ImportCommit || !commitID.MatchString(c.TreeSHA) {
+		// A sync of an unchanged head keeps serving the snapshot under its
+		// previous proof; connectionStatusFor does not refresh it at sync start.
+		// A newer observed head withholds the snapshot until it is imported.
+		if (c.PendingHead != "" && c.PendingHead != c.LastPull) || !commitID.MatchString(c.LastPull) || c.LastPull != src.ImportCommit || !commitID.MatchString(c.TreeSHA) {
 			return false
 		}
 	}
 	return sourcePublic(db, src, now) && !src.ImportPartial
+}
+
+// Record a changed remote head before fetching it, so the public snapshot of
+// the previous head is withheld until that head is imported.
+func (s *Store) observeChangedHead(expected GitHubConnection, head string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.db.Connections[expected.ID]
+	if s.invalid || !ok || c.Paused || c.ConfigRevision != expected.ConfigRevision || !commitID.MatchString(head) {
+		return ErrConflict
+	}
+	if c.PendingHead == head {
+		return nil
+	}
+	c.PendingHead = head
+	db := s.clone()
+	db.Connections[c.ID] = c
+	return s.commit(db)
 }
 
 // An unchanged, freshly verified GitHub head confirms the already imported
@@ -552,8 +573,12 @@ func (s *Store) connectionStatusFor(observed GitHubConnection, state, verificati
 		if c.RepositoryID != info.ID {
 			return ErrConflict
 		}
+		// A newly private repository is hidden at once. Visibility proof for
+		// the served snapshot is renewed only after the pull completes.
 		c.Private = *info.Private
-		c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		if state != "syncing" {
+			c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		}
 	}
 	if code != "" {
 		c.Attempts++

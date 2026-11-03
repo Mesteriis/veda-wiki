@@ -120,7 +120,8 @@ func TestPublicSnapshotHiddenWhileChangedHeadIsBeingChecked(t *testing.T) {
 	var block atomic.Bool
 	arrived, release := make(chan struct{}), make(chan struct{})
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if block.Load() && strings.Contains(r.URL.Path, "/git/ref/heads/") {
+		// Block after the changed head is known, while its tree is fetched.
+		if block.Load() && strings.Contains(r.URL.Path, "/git/trees/") {
 			close(arrived)
 			<-release
 		}

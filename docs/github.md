@@ -177,8 +177,13 @@ visibility is not being verified; a network request already in flight may finish
 The server rejects sync status and visibility observations made using an older
 connection configuration, including after pause and resume. A fresh verification
 is required before public content reappears. While synchronization checks the
-remote head and imports its snapshot, public content is temporarily unavailable;
-private readers retain their local copy. If an imported repository changes type,
+remote head, public readers keep the previously imported snapshot only within
+its existing ten-minute visibility proof; the check at the start of a sync does
+not extend that proof, and a repository that has become private is hidden
+immediately. Once a sync observes a different remote head, the previous public
+snapshot is withheld until that head is imported; private readers retain their
+local copy. The proof is renewed after the pull completes. If an imported
+repository changes type,
 or a wiki loses `veda.yaml` and has no `docs/`, synchronization reports
 `repository_type_changed` and keeps its local history. Restore the original
 repository structure and retry to resume. Automatic source type conversion is

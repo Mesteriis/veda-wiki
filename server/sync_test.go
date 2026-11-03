@@ -1038,8 +1038,10 @@ func TestGitHubPrivateQueuedWritesRequirePublicationConsent(t *testing.T) {
 	if e = s.publishJob(jobs[0].ID, 2, true); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.page("handbook/README.md", true); e == nil || s.connections()[0].State != "syncing" {
-		t.Fatal("publication approval exposed a snapshot during sync")
+	// Approval publishes the reviewed revision exactly as it does between syncs;
+	// a sync in progress neither hides it nor resets the connection state.
+	if page, e := s.page("handbook/README.md", true); e != nil || page.Text != "# Private unsent canary" || s.connections()[0].State != "syncing" {
+		t.Fatal("approved publication not served consistently during sync", page.Text, e)
 	}
 	m.Once(context.Background())
 	m.Once(context.Background())
@@ -1067,5 +1069,39 @@ func TestGitHubExpiredPublicProofDoesNotApproveQueuedWrite(t *testing.T) {
 	jobs := s.jobs()
 	if f.writeCount() != 0 || len(jobs) != 1 || jobs[0].LastError != "publication_confirmation_required" {
 		t.Fatal("expired proof allowed publication", jobs)
+	}
+}
+
+// A sync in progress must not hide verified public content, but its fresh
+// visibility check must not extend the previous snapshot's proof either.
+func TestPublicSnapshotStaysReadableDuringSync(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
+	connectFixture(t, s, f, false)
+	if _, e := s.page("handbook/README.md", true); e != nil {
+		t.Fatal("initial public article unavailable", e)
+	}
+	c := s.connections()[0]
+	public := false
+	info := repositoryInfo{ID: c.RepositoryID, Private: &public}
+	if e := s.connectionStatusFor(c, "syncing", "verified", "", &info, time.Time{}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.page("handbook/README.md", true); e != nil {
+		t.Fatal("public article hidden while syncing", e)
+	}
+	if s.connections()[0].VerifiedAt != c.VerifiedAt {
+		t.Fatal("sync start extended the previous snapshot's visibility proof")
+	}
+	private := true
+	info.Private = &private
+	if e := s.connectionStatusFor(c, "syncing", "verified", "", &info, time.Time{}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.page("handbook/README.md", true); e == nil {
+		t.Fatal("repository turned private but stayed public during sync")
+	}
+	if _, e := s.page("handbook/README.md", false); e != nil {
+		t.Fatal("private local copy lost", e)
 	}
 }

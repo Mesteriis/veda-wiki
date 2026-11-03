@@ -574,6 +574,11 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 		fail(e)
 		return
 	}
+	if head != c.LastPull {
+		if e = m.store.observeChangedHead(c, head); e != nil {
+			return
+		}
+	}
 	m.store.mu.RLock()
 	source, exists := m.store.db.Sources[c.ID]
 	m.store.mu.RUnlock()
