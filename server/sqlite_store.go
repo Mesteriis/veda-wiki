@@ -207,6 +207,43 @@ func (s *Store) commitSQLiteArticle(state Database, key string) error {
 	return tx.Commit()
 }
 
+// commitSQLiteConnections writes the metadata and every connection record. The
+// caller changes connections only and never removes one.
+func (s *Store) commitSQLiteConnections(state Database) error {
+	db, err := sqliteDB(s.dir)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	save, err := tx.Prepare(`INSERT INTO records(category,id,data) VALUES(?,?,?) ON CONFLICT(category,id) DO UPDATE SET data=excluded.data WHERE records.data<>excluded.data`)
+	if err != nil {
+		return err
+	}
+	defer save.Close()
+	put := func(category, id string, value any) error {
+		data, e := json.Marshal(value)
+		if e != nil {
+			return e
+		}
+		_, e = save.Exec(category, id, data)
+		return e
+	}
+	if err = put("meta", "state", sqliteMeta{state.Version, state.Updated}); err != nil {
+		return err
+	}
+	for id, c := range state.Connections {
+		if err = put("connection", id, c); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) loadSQLite(marker []byte) error {
 	var m sqliteMarker
 	decoder := json.NewDecoder(bytes.NewReader(marker))

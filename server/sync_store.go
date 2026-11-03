@@ -122,7 +122,7 @@ func (s *Store) observeChangedHead(expected GitHubConnection, head string) error
 	c.PendingHead = head
 	db := s.clone()
 	db.Connections[c.ID] = c
-	return s.commit(db)
+	return s.commitConnections(db)
 }
 
 // An unchanged, freshly verified GitHub head confirms the already imported
@@ -614,12 +614,13 @@ func (s *Store) connectionStatusFor(observed GitHubConnection, state, verificati
 		}
 	}
 	if info != nil && *info.Private {
-		if src, found := db.Sources[id]; found {
+		if src, found := db.Sources[id]; found && src.Visibility != "private" {
 			src.Visibility = "private"
 			db.Sources[id] = src
+			return s.commit(db)
 		}
 	}
-	return s.commit(db)
+	return s.commitConnections(db)
 }
 func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, code, prepared string) error {
 	s.mu.Lock()

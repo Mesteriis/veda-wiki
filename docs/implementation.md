@@ -77,9 +77,14 @@ measured approximately 42 ms and 31.7 MB allocated per single-article update
 before the targeted write path, and approximately 2.3 ms and 0.9–1.2 MB afterwards
 on an Apple M5 Max
 (`cd server && go test -run '^$' -bench '^BenchmarkSQLiteSingleArticleUpdateLargeCorpus$' -benchmem -benchtime=3x`).
-This is not a production workload or a storage limit. The specialized path is
-only for `put`; any future change to the categories it mutates must update that
-transaction and its recovery tests. Shallow snapshots alone are not sufficient
+This is not a production workload or a storage limit. The specialized article
+path is only for `put`; any future change to the categories it mutates must
+update that transaction and its recovery tests. A second targeted path writes
+only connection records for GitHub sync status and observed heads, which change
+twice per connection and cycle; a status change that also makes a source private
+uses the full transaction. Each article record still contains its whole
+revision history, so updating a long-lived article rewrites that history;
+splitting revisions into separate records needs a store-format migration. Shallow snapshots alone are not sufficient
 evidence that nested values cannot change in place.
 
 For compact search, one request-local buffer is reused while ranking visible
