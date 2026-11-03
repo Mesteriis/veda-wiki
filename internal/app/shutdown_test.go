@@ -149,6 +149,7 @@ func TestDrainTimeoutKeepsWriterLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = lock.Close()
 		t.Fatal(err)
 	}
 	defer func() { abandonedWriterLock = nil }()

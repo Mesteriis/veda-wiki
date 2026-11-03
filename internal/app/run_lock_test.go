@@ -17,7 +17,13 @@ func runWithServe(t *testing.T, fake func() error) (dataDir string, runErr error
 		workers.Wait()
 		return err
 	}
-	t.Cleanup(func() { serve = previous; abandonedWriterLock = nil })
+	t.Cleanup(func() {
+		serve = previous
+		if abandonedWriterLock != nil {
+			_ = abandonedWriterLock.Close()
+		}
+		abandonedWriterLock = nil
+	})
 	dataDir = filepath.Join(t.TempDir(), "data")
 	if err := os.Mkdir(dataDir, 0700); err != nil {
 		t.Fatal(err)

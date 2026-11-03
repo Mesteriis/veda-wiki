@@ -110,6 +110,13 @@ class ImportTests(unittest.TestCase):
     def test_area_may_not_import_adapter(self):
         self.assertEqual(len(check_imports([pkg('auth', [internal('httpapi')])], '/repo')), 1)
 
+    def test_flags_unknown_internal_package(self):
+        found = check_imports([pkg('util', ['strings'])], '/repo')
+        self.assertEqual(len(found), 1)
+        self.assertIn('internal/util: unknown internal package', found[0])
+        sub = {'ImportPath': internal('store/storetest'), 'Dir': '/repo/internal/store/storetest', 'Imports': []}
+        self.assertEqual(check_imports([sub], '/repo'), [])
+
     def test_main_exit_code_for_imports(self):
         with tempfile.TemporaryDirectory() as tmp:
             code, out = run_main(tmp, [pkg('domain', ['os'])])

@@ -23,7 +23,8 @@ DOMAIN_FORBIDDEN_IMPORTS = {'os', 'net', 'net/http', 'database/sql', 'os/exec'}
 AREAS = {'auth', 'importer', 'transfer', 'translation', 'syncer', 'agentctx'}
 # Adapter and assembly packages: may import anything.
 ASSEMBLY = {'httpapi', 'app'}
-# Leaf packages: may not import areas.
+# Leaf packages: may not import areas. Subpackages (store/storetest,
+# github/githubtest, app/commands) are classified with their parent.
 LEAVES = {'domain', 'render', 'search', 'github', 'store', 'webui'}
 
 # Area -> area imports that are allowed, with the reason.
@@ -91,6 +92,9 @@ def check_imports(packages, root):
         if own is None:
             continue
         where = package_dir(pkg, root)
+        if own not in AREAS | ASSEMBLY | LEAVES:
+            violations.append(f'{where}: unknown internal package, add it to AREAS/LEAVES/ASSEMBLY')
+            continue
         for imp in pkg.get('Imports') or []:
             if own == 'domain' and imp in DOMAIN_FORBIDDEN_IMPORTS:
                 violations.append(f'{where}: domain must not import {imp}')

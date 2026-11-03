@@ -123,7 +123,7 @@ The Go backend is one module with the dispatcher in `cmd/veda` and the code in
 dependencies, collection ownership and the transaction model. `make lint`
 enforces a 500-line limit for Go and script files and runs
 `scripts/check_architecture.py`, which fails on forbidden package imports and
-on writes to a collection outside its owner.
+on writes to a checked collection outside its owner.
 
 ```sh
 make lint

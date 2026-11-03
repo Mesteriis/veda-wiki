@@ -53,12 +53,12 @@ Logic that two areas need belongs in `domain` as a pure function.
 
 ## Collection ownership
 
-Every collection of `Database` has one owner that may write it. Everyone else
-reads it through `store.View` or the owner's API.
+The collections below have one owner that may write them. Everyone else reads
+them through `store.View` or the owner's API. These are the collections the
+guard checks.
 
 | Collection | Owner |
 | --- | --- |
-| `Sources`, `Articles` | `domain` (article and source rules) |
 | `Outbox`, `Connections`, `Accounts`, `SourceMirrors` | `syncer` |
 | `Moves` | `transfer` |
 | `AccessKeys`, `Users`, `Teams` | `auth` |
@@ -67,6 +67,11 @@ reads it through `store.View` or the owner's API.
 pure rules and the commit machinery live there. Cross-cutting rules needed
 when an article is written (queue a push, reconcile moves, check visibility)
 are `domain` functions that the writing operation calls.
+
+`Sources` and `Articles` are shared content, not owned by one package. The
+article and source operations in `importer`, `transfer` and `translation` (and
+`httpapi` through `domain` rules) write them directly and use `domain`
+functions for the invariants they share. They are not ownership-checked.
 
 ## Transaction model
 
@@ -108,7 +113,10 @@ prints `path: reason` and exits 1 when:
 - `internal/domain` imports `os`, `net`, `net/http`, `database/sql` or `os/exec`;
 - an area imports another area outside the table above, a leaf imports an area,
   or an area imports `httpapi` or `app`;
-- a non-test Go file assigns to or deletes from a collection outside its owner,
+- an `internal/<pkg>` is in none of the area, leaf or adapter sets, so it would
+  otherwise escape the checks (subpackages such as `store/storetest` and
+  `github/githubtest` count with their parent);
+- a non-test Go file assigns to or deletes from a checked collection outside its owner,
   `internal/domain` and `internal/store` (test files and `internal/store/storetest`
   are not checked).
 
