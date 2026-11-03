@@ -479,3 +479,37 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 		t.Fatal("second local article changed", err)
 	}
 }
+
+// Sync status changes run twice per connection and cycle. On SQLite they must
+// persist only connection records, not reserialize every article's history.
+func TestSQLiteConnectionStatusWritesOnlyConnections(t *testing.T) {
+	s := testStore(t)
+	f := newFakeGitHub(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
+	connectFixture(t, s, f, false)
+	if err := migrateSQLite(s.dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An uncommitted in-memory change reveals whether article rows are rewritten.
+	a := s.db.Articles["handbook/README.md"]
+	a.Versions = append([]Revision(nil), a.Versions...)
+	a.Versions[0].Text = "# Not committed"
+	a.Versions[0].SHA = digest([]byte(a.Versions[0].Text))
+	s.db.Articles["handbook/README.md"] = a
+	if err = s.connectionStatusFor(s.connections()[0], "syncing", "verified", "", nil, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openStore(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.connections()[0].State != "syncing" {
+		t.Fatal("connection status was not persisted")
+	}
+	if text := reopened.db.Articles["handbook/README.md"].Versions[0].Text; text != "# Original" {
+		t.Fatal("status update rewrote article records", text)
+	}
+}

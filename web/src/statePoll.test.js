@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchState } from './statePoll.js';
+import { fetchState, shouldPoll } from './statePoll.js';
 
 test('conditional polling retains state only for a previously observed tag', async () => {
   let options;
@@ -16,4 +16,10 @@ test('new state and missing pages are handled explicitly', async () => {
   assert.deepEqual(await fetchState(ok, '/api/state', null, ''), { data: value, etag: '"next"' });
   const missing = async () => ({ status: 404, ok: false });
   await assert.rejects(fetchState(missing, '/api/state', null, '"old"'), error => error.status === 404);
+});
+
+test('hidden tabs stop polling only after a state is loaded', () => {
+  assert.equal(shouldPoll('visible', '"tag"'), true);
+  assert.equal(shouldPoll('hidden', ''), true);
+  assert.equal(shouldPoll('hidden', '"tag"'), false);
 });

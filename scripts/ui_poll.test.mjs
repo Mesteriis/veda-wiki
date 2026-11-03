@@ -21,3 +21,15 @@ test('other errors propagate and a permanently unavailable context times out', a
   }, 'condition', 3, async () => {}), /page condition timed out/);
   assert.equal(calls, 3);
 });
+
+test('a page exception while the next document loads is retried, then reported', async () => {
+  let calls = 0;
+  await pollCondition(async () => {
+    if (++calls === 1) throw Object.assign(Error('page evaluation failed'), { pageException: 'TypeError: document.body is null' });
+    return true;
+  }, 'condition', 3, async () => {});
+  assert.equal(calls, 2);
+  await assert.rejects(pollCondition(async () => {
+    throw Object.assign(Error('page evaluation failed'), { pageException: 'ReferenceError: missing is not defined' });
+  }, 'condition', 2, async () => {}), /page condition timed out: ReferenceError: missing is not defined/);
+});

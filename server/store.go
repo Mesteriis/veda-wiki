@@ -448,6 +448,21 @@ func (s *Store) commit(db Database) error {
 // articleKey is used only by put: that operation changes one article and may
 // update moves and outbox jobs. Other mutations must use a full transaction.
 func (s *Store) commitWithArticle(db Database, articleKey string) error {
+	var targeted func(Database) error
+	if articleKey != "" {
+		targeted = func(db Database) error { return s.commitSQLiteArticle(db, articleKey) }
+	}
+	return s.commitTargeted(db, targeted)
+}
+
+// commitConnections is for mutations that change only GitHub connection
+// records, such as sync status. It must not be used for any other category.
+func (s *Store) commitConnections(db Database) error {
+	return s.commitTargeted(db, s.commitSQLiteConnections)
+}
+
+// A nil targeted writer persists the whole SQLite state.
+func (s *Store) commitTargeted(db Database, targeted func(Database) error) error {
 	if s.invalid {
 		return errors.New("store unavailable")
 	}
@@ -471,8 +486,8 @@ func (s *Store) commitWithArticle(db Database, articleKey string) error {
 	db.Updated = time.Now().UTC().Format(time.RFC3339Nano)
 	if s.sqlite {
 		var err error
-		if articleKey != "" {
-			err = s.commitSQLiteArticle(db, articleKey)
+		if targeted != nil {
+			err = targeted(db)
 		} else {
 			err = s.commitSQLite(db)
 		}

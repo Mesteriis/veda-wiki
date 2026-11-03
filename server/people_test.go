@@ -351,3 +351,28 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 		t.Fatal("restored bundle incomplete")
 	}
 }
+
+// The browser access-management path cannot remove the last active
+// administrator. Owner provisioning (setUserAdmin) remains the recovery path.
+func TestLastActiveAdministratorCannotBeDisabled(t *testing.T) {
+	s := testStore(t)
+	password := "синтетический пароль администратора"
+	if err := s.createSuperuser("first-admin", password); err != nil {
+		t.Fatal(err)
+	}
+	disabled := true
+	if _, err := s.saveUser("first-admin", nil, nil, &disabled, intPointer(1)); err != ErrConflict {
+		t.Fatal("last active administrator disabled", err)
+	}
+	if err := s.createSuperuser("second-admin", password); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.saveUser("first-admin", nil, nil, &disabled, intPointer(1)); err != nil {
+		t.Fatal("administrator with an active peer could not be disabled", err)
+	}
+	if _, err := s.saveUser("second-admin", nil, nil, &disabled, intPointer(1)); err != ErrConflict {
+		t.Fatal("remaining administrator disabled", err)
+	}
+}
+
+func intPointer(v int) *int { return &v }
