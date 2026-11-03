@@ -61,9 +61,11 @@ func (m *Manager) Wake() {
 }
 
 // Woken reports whether a wake-up is pending that Run has not taken yet, and
-// takes it. It is a test seam: handler tests in other packages use it to
-// prove that a request woke the manager. Production code must not call it,
-// because it would consume a wake-up meant for Run.
+// takes it.
+//
+// Test seam: httpapi handler tests use it to prove that a request woke the
+// manager. Production code must not call it, because it would consume a
+// wake-up meant for Run.
 func (m *Manager) Woken() bool {
 	select {
 	case <-m.wake:
@@ -139,8 +141,9 @@ func (m *Manager) Once(ctx context.Context) {
 
 // SyncSource runs one synchronization step of connection c at once, as Once
 // does for each due connection. The step's status and import checks reject a
-// connection that was paused or reconfigured since c was read. It is a test
-// seam for handler tests in other packages; production synchronizes through
+// connection that was paused or reconfigured since c was read.
+//
+// Test seam: httpapi handler tests call it; production synchronizes through
 // Run and Once.
 func (m *Manager) SyncSource(ctx context.Context, c domain.GitHubConnection) {
 	m.mu.Lock()

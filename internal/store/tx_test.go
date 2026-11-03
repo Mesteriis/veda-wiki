@@ -160,10 +160,7 @@ func TestScopedStoreRejectsUpdate(t *testing.T) {
 		db.Articles["a/guide.md"] = revision("a", "guide.md", "# A")
 		db.Articles["b/guide.md"] = revision("b", "guide.md", "# B")
 	})
-	scoped, err := st.Scoped([]string{"a"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	scoped := st.Scoped([]string{"a"})
 	db := storetest.Read(t, scoped)
 	if _, ok := db.Sources["a"]; !ok || len(db.Sources) != 1 {
 		t.Fatal("scoped store sources", db.Sources)
@@ -171,7 +168,7 @@ func TestScopedStoreRejectsUpdate(t *testing.T) {
 	if _, ok := db.Articles["b/guide.md"]; ok || len(db.Articles) != 1 {
 		t.Fatal("scoped store exposed another source's article")
 	}
-	if err = scoped.Update(func(tx *store.Tx) error {
+	if err := scoped.Update(func(tx *store.Tx) error {
 		tx.DB().Articles["a/new.md"] = revision("a", "new.md", "# New")
 		return nil
 	}); err == nil {

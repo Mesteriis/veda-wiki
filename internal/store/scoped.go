@@ -9,10 +9,13 @@ import (
 
 // Scoped returns an immutable snapshot containing only the given sources, for
 // a reader restricted to them. Update and commits on the snapshot fail.
-func (s *Store) Scoped(sources []string) (*Store, error) {
+//
+// Test seam: tests in other packages build snapshots with it. Production code
+// uses ScopedWhere, which decides the scope and takes the snapshot atomically.
+func (s *Store) Scoped(sources []string) *Store {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.scopedLocked(sources), nil
+	return s.scopedLocked(sources)
 }
 
 // ScopedWhere evaluates scope and builds the snapshot of the sources it
@@ -35,7 +38,14 @@ func (s *Store) ScopedWhere(scope func(db *domain.Database) []string) (*Store, b
 // keeping authorization and snapshot atomic.
 func (s *Store) scopedLocked(scope []string) *Store {
 	selected := make(map[string]bool, len(scope))
-	db := domain.Database{Version: s.db.Version, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}, Connections: map[string]domain.GitHubConnection{}, Outbox: map[string]domain.SyncJob{}, Moves: map[string]domain.Move{}}
+	db := domain.Database{
+		Version:     s.db.Version,
+		Sources:     map[string]domain.Source{},
+		Articles:    map[string]domain.Article{},
+		Connections: map[string]domain.GitHubConnection{},
+		Outbox:      map[string]domain.SyncJob{},
+		Moves:       map[string]domain.Move{},
+	}
 	for _, id := range scope {
 		selected[id] = true
 		if source, ok := s.db.Sources[id]; ok {
@@ -89,7 +99,14 @@ func (s *Store) scopedLocked(scope []string) *Store {
 					paths[p] = true
 				}
 			}
-			db.Outbox[id] = domain.SyncJob{SourceID: job.SourceID, Path: job.Path, State: job.State, ScopePrepared: job.PreparedCommit != "" || job.ScopePrepared, ScopeBundle: len(job.Bundle) != 0 || job.ScopeBundle, ScopeBundlePaths: paths}
+			db.Outbox[id] = domain.SyncJob{
+				SourceID:         job.SourceID,
+				Path:             job.Path,
+				State:            job.State,
+				ScopePrepared:    job.PreparedCommit != "" || job.ScopePrepared,
+				ScopeBundle:      len(job.Bundle) != 0 || job.ScopeBundle,
+				ScopeBundlePaths: paths,
+			}
 		}
 	}
 	// Preserve only the path locks visible within the authorized sources; the

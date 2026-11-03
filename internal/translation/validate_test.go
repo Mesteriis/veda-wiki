@@ -15,10 +15,7 @@ func TestValidateOnlyReadsTheStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := s.Store.Scoped([]string{"program"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	snapshot := s.Store.Scoped([]string{"program"})
 	readOnly := Service{Store: snapshot}
 	called := false
 	readOnly.Status = func(_ domain.Database, sourceID string, _ domain.Source) domain.SourceStatus {

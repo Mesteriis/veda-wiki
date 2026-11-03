@@ -248,8 +248,10 @@ func (s *Sessions) Issue(l Login) (string, error) {
 }
 
 // Count returns the number of live-or-unpruned sessions and how many of them
-// are scoped to an access key. It is a test seam for handler tests in other
-// packages; production code does not call it.
+// are scoped to an access key.
+//
+// Test seam: used by tests in this package and by handler tests in httpapi;
+// production code does not call it.
 func (s *Sessions) Count() (active, scoped int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
