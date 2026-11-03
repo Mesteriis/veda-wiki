@@ -5,8 +5,11 @@ The output is the golden file internal/mcp/testdata/tools.json. Listing tools
 sends no REST request, so the adapter is pointed at an unused loopback URL
 with a synthetic key file; no VEDA service or real key is involved.
 
-By default the Python adapter mcp/server.py is dumped. Pass --veda BINARY to
-dump `BINARY mcp` instead and compare the two outputs.
+Pass --veda BINARY to dump `BINARY mcp` and compare it with the golden file.
+The golden file itself was produced from the former Python adapter
+(mcp/server.py as of commit 4c595a2); to reproduce it, extract that file with
+`git show 4c595a2:mcp/server.py > SERVER.py` (it needs the mcp SDK) and pass
+--adapter SERVER.py.
 """
 import argparse
 import asyncio
@@ -18,18 +21,17 @@ import tempfile
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-ROOT = Path(__file__).resolve().parents[1]
 UNUSED_URL = 'http://127.0.0.1:9'
 
 
-def command(veda, args):
+def command(veda, adapter, args):
     if veda:
         return veda, ['mcp', *args]
-    return sys.executable, [str(ROOT / 'mcp' / 'server.py'), *args]
+    return sys.executable, [adapter, *args]
 
 
-async def dump(veda, args):
-    program, argv = command(veda, ['--url', UNUSED_URL, *args])
+async def dump(veda, adapter, args):
+    program, argv = command(veda, adapter, ['--url', UNUSED_URL, *args])
     with open(os.devnull, 'w') as errlog:
         async with stdio_client(StdioServerParameters(command=program, args=argv), errlog=errlog) as (read, write):
             async with ClientSession(read, write) as session:
@@ -40,25 +42,34 @@ async def dump(veda, args):
     return server, listed
 
 
-async def run(veda):
+async def run(veda, adapter):
     with tempfile.TemporaryDirectory(prefix='veda-dump-') as tmp:
         key = Path(tmp) / 'synthetic.key'
         fd = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as stream:
             stream.write('0' * 64)
-        owner_server, owner = await dump(veda, ['--key-file', str(key)])
-        reader_server, reader = await dump(veda, ['--reader-key-file', str(key)])
+        owner_server, owner = await dump(veda, adapter, ['--key-file', str(key)])
+        reader_server, reader = await dump(veda, adapter, ['--reader-key-file', str(key)])
     if owner_server != reader_server:
         raise RuntimeError('server identity differs between modes')
     return {'server': owner_server, 'owner': owner, 'reader': reader}
 
 
+def by_name(dumped):
+    return {**dumped, 'owner': sorted(dumped['owner'], key=lambda t: t['name']),
+            'reader': sorted(dumped['reader'], key=lambda t: t['name'])}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--veda', help='dump `VEDA mcp` instead of the Python adapter')
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--veda', help='dump `VEDA mcp`')
+    source.add_argument('--adapter', help='dump this extracted Python adapter file (historic)')
+    parser.add_argument('--sort', action='store_true', help='sort tools by name (the Go server lists them sorted, the old adapter in definition order)')
     parser.add_argument('--output', help='write here instead of standard output')
     args = parser.parse_args()
-    text = json.dumps(asyncio.run(run(args.veda)), ensure_ascii=False, indent=2) + '\n'
+    dumped = asyncio.run(run(args.veda, args.adapter))
+    text = json.dumps(by_name(dumped) if args.sort else dumped, ensure_ascii=False, indent=2) + '\n'
     if args.output:
         Path(args.output).write_text(text, encoding='utf-8')
     else:

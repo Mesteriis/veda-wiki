@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, Request, build_opener
@@ -20,7 +19,7 @@ WIKI_BRANCH = 'feature/veda-live-source-20261101-221944'
 
 
 async def inspect_mcp(data):
-    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / 'mcp/server.py'),
+    params = StdioServerParameters(command=str(ROOT / 'veda'), args=['mcp',
                                    '--reader-socket', str(data / 'reader.sock')])
     async with stdio_client(params) as (reader, writer):
         async with ClientSession(reader, writer) as session:

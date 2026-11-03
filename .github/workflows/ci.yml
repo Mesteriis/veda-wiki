@@ -29,10 +29,7 @@ jobs:
       - run: python scripts/smoke_dual_listener.py
       - run: node --test scripts/ui_poll.test.mjs
       - run: VEDA_TEST_CHROME="$(command -v google-chrome)" python scripts/smoke_ui.py
-      - run: python -m pip install -r mcp/requirements.txt
-      - run: python -m unittest discover -s scripts -p test_mcp_timeout.py -v
-      - run: python -m unittest discover -s scripts -p test_mcp_https.py -v
-      - run: python -m unittest discover -s scripts -p test_mcp_errors.py -v
+      - run: python -m pip install -r scripts/requirements-checks.txt
       - run: python -m unittest discover -s scripts -p test_check_agent_readers.py -v
       - run: python -m unittest discover -s scripts -p test_check_file_size.py -v
       - run: python -m unittest discover -s scripts -p test_check_architecture.py -v
@@ -44,12 +41,13 @@ jobs:
       - run: python scripts/smoke_directory_restore.py --index
       - run: VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^(TestMultiSourceMCPAfterSQLiteRestart|TestAgentRoutesVPSRequestAcrossSources|TestReconcileThroughMCP|TestMirrorThroughMCP)$' -v ./internal/httpapi
       - run: VEDA_MIRROR_SCALE=realistic go test -run '^TestMirrorSyntheticScale$' -v -timeout 10m ./internal/syncer
-      - name: Build Linux archives
+      - name: Build release archives
         run: |
-          python scripts/package_release.py --version ci --arch amd64 --output "$RUNNER_TEMP/veda-artifacts"
-          python scripts/package_release.py --version ci --arch arm64 --output "$RUNNER_TEMP/veda-artifacts"
+          for target in linux-amd64 linux-arm64 darwin-arm64; do
+            python scripts/package_release.py --version ci --target "$target" --output "$RUNNER_TEMP/veda-artifacts"
+          done
           cd "$RUNNER_TEMP/veda-artifacts"
-          sha256sum veda-ci-linux-amd64.tar.gz veda-ci-linux-arm64.tar.gz > SHA256SUMS
+          sha256sum veda-ci-linux-amd64.tar.gz veda-ci-linux-arm64.tar.gz veda-ci-darwin-arm64.tar.gz > SHA256SUMS
       - name: Install archive on fresh systemd runner
         run: scripts/smoke_fresh_systemd.sh
       - uses: actions/upload-artifact@v4

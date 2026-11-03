@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -22,8 +21,8 @@ def repository(value):
 
 
 async def inspect_mcp(data, expected):
-    params = StdioServerParameters(command=sys.executable, args=[
-        str(ROOT / 'mcp/server.py'), '--reader-socket', str(data / 'reader.sock')])
+    params = StdioServerParameters(command=str(ROOT / 'veda'), args=[
+        'mcp', '--reader-socket', str(data / 'reader.sock')])
     async with stdio_client(params) as (reader, writer):
         async with ClientSession(reader, writer) as session:
             await session.initialize()
