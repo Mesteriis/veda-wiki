@@ -353,12 +353,16 @@ func (s *Store) importBatch(batch ImportBatch) (ImportResult, error) {
 // A failed metadata commit may leave an unreferenced blob, but never a partial
 // file at a referenced digest. The caller holds the store lock.
 func (s *Store) storeImportAssets(refs map[string]BlobRef, assets map[string][]byte) error {
+	blobs := make(map[string][]byte, len(refs))
+	for name := range refs {
+		blobs[name] = assets[name]
+	}
+	stored, err := s.WriteBlobs(blobs)
+	if err != nil {
+		return err
+	}
 	for name, ref := range refs {
-		stored, err := s.WriteBlob(assets[name])
-		if err != nil {
-			return err
-		}
-		if stored != ref {
+		if stored[name] != ref {
 			return ErrInvalid
 		}
 	}

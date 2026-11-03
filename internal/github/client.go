@@ -166,7 +166,7 @@ func (g *Client) VerifyAccount(ctx context.Context, secret Secret) (string, erro
 		if e := g.call(ctx, "GET", "/user", secret.Token, nil, &user); e != nil {
 			return "", e
 		}
-		if !namePart.MatchString(user.Login) {
+		if !ValidName(user.Login) {
 			return "", domain.ErrInvalid
 		}
 		return user.Login, nil
@@ -188,7 +188,7 @@ func (g *Client) VerifyAccount(ctx context.Context, secret Secret) (string, erro
 		if e = g.call(ctx, "GET", fmt.Sprintf("/app/installations/%d", secret.InstallationID), jwt, nil, &installation); e != nil {
 			return "", e
 		}
-		if installation.AppID != secret.AppID || !namePart.MatchString(installation.Account.Login) || installation.SuspendedAt != nil {
+		if installation.AppID != secret.AppID || !ValidName(installation.Account.Login) || installation.SuspendedAt != nil {
 			return "", domain.ErrInvalid
 		}
 		return installation.Account.Login, nil

@@ -58,6 +58,11 @@ func (tx *Tx) narrow(scope txScope, article string) {
 // Update runs fn under the write lock with a clone of the database. When fn
 // returns nil the clone is committed within the declared scope; otherwise
 // neither memory nor disk changes and fn's error is returned.
+//
+// A failed commit returns its error. On SQLite the store then reloads the
+// committed records, or fails closed (Invalid) if that is impossible. On JSON,
+// if only the directory fsync after the atomic rename fails, memory has
+// already advanced to the new state and the error is still returned.
 func (s *Store) Update(fn func(tx *Tx) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

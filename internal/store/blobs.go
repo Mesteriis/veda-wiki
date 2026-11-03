@@ -51,24 +51,29 @@ func (s *Store) VerifyBlob(ref domain.BlobRef) error {
 	return nil
 }
 
-// WriteBlob stores an image durably and returns its reference. An existing
-// valid blob with the same digest is kept. A blob may remain unreferenced if
-// a later commit fails, but a referenced digest never holds a partial file.
-func (s *Store) WriteBlob(data []byte) (domain.BlobRef, error) {
+// syncDir makes renames in dir durable. Tests replace it to count syncs.
+var syncDir = func(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+// writeBlob writes, fsyncs and renames one image into directory unless a
+// valid blob with the same digest exists. It does not sync the directory.
+func (s *Store) writeBlob(directory string, data []byte) (domain.BlobRef, bool, error) {
 	ref, err := domain.ImageRef(data)
 	if err != nil {
-		return domain.BlobRef{}, err
+		return domain.BlobRef{}, false, err
 	}
 	if s.VerifyBlob(ref) == nil {
-		return ref, nil
-	}
-	directory := path.Join(s.dir, "blobs")
-	if err = os.MkdirAll(directory, 0700); err != nil {
-		return domain.BlobRef{}, err
+		return ref, false, nil
 	}
 	f, err := os.CreateTemp(directory, ".blob-")
 	if err != nil {
-		return domain.BlobRef{}, err
+		return domain.BlobRef{}, false, err
 	}
 	_, err = f.Write(data)
 	if err == nil {
@@ -82,12 +87,44 @@ func (s *Store) WriteBlob(data []byte) (domain.BlobRef, error) {
 	}
 	os.Remove(f.Name())
 	if err != nil {
-		return domain.BlobRef{}, err
+		return domain.BlobRef{}, false, err
 	}
-	dir, err := os.Open(directory)
+	return ref, true, nil
+}
+
+// WriteBlobs stores images durably and returns their references by the same
+// keys. Existing valid blobs are kept; the blobs directory is synced once,
+// only if something was written. A blob may remain unreferenced if a later
+// commit fails, but a referenced digest never holds a partial file.
+func (s *Store) WriteBlobs(blobs map[string][]byte) (map[string]domain.BlobRef, error) {
+	refs := make(map[string]domain.BlobRef, len(blobs))
+	if len(blobs) == 0 {
+		return refs, nil
+	}
+	directory := path.Join(s.dir, "blobs")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return nil, err
+	}
+	changed := false
+	for name, data := range blobs {
+		ref, wrote, err := s.writeBlob(directory, data)
+		if err != nil {
+			return nil, err
+		}
+		refs[name] = ref
+		changed = changed || wrote
+	}
+	if !changed {
+		return refs, nil
+	}
+	return refs, syncDir(directory)
+}
+
+// WriteBlob stores one image durably; see WriteBlobs.
+func (s *Store) WriteBlob(data []byte) (domain.BlobRef, error) {
+	refs, err := s.WriteBlobs(map[string][]byte{"": data})
 	if err != nil {
 		return domain.BlobRef{}, err
 	}
-	defer dir.Close()
-	return ref, dir.Sync()
+	return refs[""], nil
 }

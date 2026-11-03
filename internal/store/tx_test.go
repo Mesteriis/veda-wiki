@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -190,4 +191,80 @@ func TestScopedStoreRejectsUpdate(t *testing.T) {
 
 func revision(sourceID, p, text string) domain.Article {
 	return domain.Article{SourceID: sourceID, Path: p, Versions: []domain.Revision{{Number: 1, Text: text, SHA: domain.Digest([]byte(text))}}}
+}
+
+func TestSQLiteUpdateCommitFailureMatchesDisk(t *testing.T) {
+	st := storetest.New(t)
+	storetest.Source(t, st, "local", "private")
+	storetest.Mutate(t, st, func(db *domain.Database) {
+		db.Articles["local/guide.md"] = revision("local", "guide.md", "# Original")
+	})
+	if err := store.MigrateSQLite(st.Dir()); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(st.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := storetest.SQLite(t, st.Dir())
+	if _, err = db.Exec(`CREATE TRIGGER reject_article BEFORE UPDATE ON records WHEN NEW.category='article' BEGIN SELECT RAISE(ABORT, 'fixture'); END`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err = st.Update(func(tx *store.Tx) error {
+		tx.DB().Articles["local/guide.md"] = revision("local", "guide.md", "# Changed")
+		tx.OnlyArticle("local/guide.md")
+		return nil
+	}); err == nil {
+		t.Fatal("failed commit accepted")
+	}
+	if st.Invalid() {
+		t.Fatal("recoverable commit failure marked the store invalid")
+	}
+	reopened, err := store.Open(st.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, disk := storetest.Read(t, st), storetest.Read(t, reopened)
+	if live.Articles["local/guide.md"].Versions[0].Text != "# Original" || disk.Articles["local/guide.md"].Versions[0].Text != "# Original" {
+		t.Fatal("failed commit changed the article")
+	}
+	liveJSON, _ := json.Marshal(live)
+	diskJSON, _ := json.Marshal(disk)
+	if string(liveJSON) != string(diskJSON) {
+		t.Fatal("memory differs from the directory after a failed commit")
+	}
+}
+
+func TestSQLiteUpdateUnrecoverableFailureFailsClosed(t *testing.T) {
+	st := storetest.New(t)
+	storetest.Source(t, st, "local", "private")
+	if err := store.MigrateSQLite(st.Dir()); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(st.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := storetest.SQLite(t, st.Dir())
+	if _, err = db.Exec("DROP TABLE records"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	change := func(tx *store.Tx) error {
+		tx.DB().Articles["local/guide.md"] = revision("local", "guide.md", "# Changed")
+		return nil
+	}
+	if err = st.Update(change); err == nil {
+		t.Fatal("failed commit accepted")
+	}
+	if !st.Invalid() {
+		t.Fatal("unrecoverable commit failure left the store available")
+	}
+	if _, ok := storetest.Read(t, st).Articles["local/guide.md"]; ok {
+		t.Fatal("failed commit changed memory")
+	}
+	if err = st.Update(change); err == nil {
+		t.Fatal("invalid store accepted another update")
+	}
 }

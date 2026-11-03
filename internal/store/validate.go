@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
-	"github.com/Mesteriis/veda-wiki/internal/github"
 )
 
 // Validate checks a whole database before it is opened or committed. It fills
@@ -78,7 +77,7 @@ func Validate(db *domain.Database) error {
 		return err
 	}
 	for id, a := range db.Accounts {
-		if !domain.IDPattern.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !github.ValidName(a.Login) || len(a.SecretRef) != 32 {
+		if !domain.IDPattern.MatchString(id) || a.ID != id || (a.Kind != "token" && a.Kind != "app") || !domain.ValidGitHubName(a.Login) || len(a.SecretRef) != 32 {
 			return errors.New("invalid stored GitHub account")
 		}
 		if _, e := hex.DecodeString(a.SecretRef); e != nil {
@@ -86,8 +85,8 @@ func Validate(db *domain.Database) error {
 		}
 	}
 	for id, c := range db.Connections {
-		repo, e := github.RepositoryName(c.Repository)
-		if e != nil || repo != c.Repository || !domain.IDPattern.MatchString(id) || id != c.ID || c.RepositoryID < 1 || !github.ValidBranch(c.Branch) || c.ConfigRevision < 1 {
+		repo, e := domain.RepositoryName(c.Repository)
+		if e != nil || repo != c.Repository || !domain.IDPattern.MatchString(id) || id != c.ID || c.RepositoryID < 1 || !domain.ValidBranch(c.Branch) || c.ConfigRevision < 1 {
 			return errors.New("invalid stored GitHub connection")
 		}
 		if c.AccountID != "" {
@@ -227,14 +226,14 @@ func Validate(db *domain.Database) error {
 			if m.SourceRepositoryID != 0 || m.SourceBranch != "" {
 				return errors.New("invalid move source identity")
 			}
-		} else if db.Version < 3 || !domain.IDPattern.MatchString(m.SourceConnectionID) || m.SourceRepositoryID < 1 || !github.ValidBranch(m.SourceBranch) {
+		} else if db.Version < 3 || !domain.IDPattern.MatchString(m.SourceConnectionID) || m.SourceRepositoryID < 1 || !domain.ValidBranch(m.SourceBranch) {
 			return errors.New("invalid move source identity")
 		}
 		if m.DestinationConnectionID == "" {
 			if m.DestinationRepositoryID != 0 || m.DestinationBranch != "" {
 				return errors.New("invalid move destination identity")
 			}
-		} else if !domain.IDPattern.MatchString(m.DestinationConnectionID) || m.DestinationRepositoryID < 1 || !github.ValidBranch(m.DestinationBranch) {
+		} else if !domain.IDPattern.MatchString(m.DestinationConnectionID) || m.DestinationRepositoryID < 1 || !domain.ValidBranch(m.DestinationBranch) {
 			return errors.New("invalid move destination identity")
 		}
 		switch m.State {

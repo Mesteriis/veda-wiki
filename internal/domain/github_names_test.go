@@ -1,10 +1,6 @@
-package github
+package domain
 
-import (
-	"testing"
-
-	"github.com/Mesteriis/veda-wiki/internal/domain"
-)
+import "testing"
 
 func TestRepositoryNameAcceptsCommonLinksWithoutRelaxingBoundary(t *testing.T) {
 	for _, input := range []string{"owner/repo", "owner/repo/", " https://github.com/owner/repo/ ", "https://github.com/owner/repo.git/", "https://github.com/owner/repo.git"} {
@@ -13,7 +9,7 @@ func TestRepositoryNameAcceptsCommonLinksWithoutRelaxingBoundary(t *testing.T) {
 		}
 	}
 	for _, input := range []string{"https://github.com.evil.invalid/owner/repo/", "https://user@github.com/owner/repo/", "https://github.com/owner/repo/?token=bad", "https://github.com/owner/repo/#fragment", "http://github.com/owner/repo/", "https://github.com/owner/repo/tree/main/", "owner/repo//"} {
-		if _, err := RepositoryName(input); err != domain.ErrInvalid {
+		if _, err := RepositoryName(input); err != ErrInvalid {
 			t.Fatalf("unsafe or ambiguous link accepted: %q", input)
 		}
 	}
