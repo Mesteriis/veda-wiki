@@ -17,9 +17,12 @@ func TestReadOnlyCredentialBoundaries(t *testing.T) {
 	if _, err := s.put("private", "guide.md", "# Secret version 2", 1); err != nil {
 		t.Fatal(err)
 	}
-	a := s.DB().Articles["private/guide.md"]
-	a.Published = &a.Versions[0]
-	s.DB().Articles["private/guide.md"] = a
+	s.mutate(t, func(db *domain.Database) {
+		a := db.Articles["private/guide.md"]
+		published := a.Versions[0]
+		a.Published = &published
+		db.Articles["private/guide.md"] = a
+	})
 	w := Wiki{Store: s, Token: "owner", ReaderToken: "read-only"}
 	call := func(method, url, token, body string, public bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, url, strings.NewReader(body))

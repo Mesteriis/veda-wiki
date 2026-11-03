@@ -33,7 +33,7 @@ func TestCopyUpdatesExistingDestinationWithRevisionGuards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := s.DB().Articles["handbook/guide.md"]
+	a := s.state(t).Articles["handbook/guide.md"]
 	if rev.Number != 2 || len(a.Versions) != 2 || a.Versions[0].Text != "# Old" || a.CopiedFrom == nil || a.CopiedFrom.SourceID != "local" || a.UpstreamHash != domain.Digest([]byte("# Old")) {
 		t.Fatal("history or provenance not preserved")
 	}
@@ -49,7 +49,7 @@ func TestCopyUpdatesExistingDestinationWithRevisionGuards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reopened.DB().Articles["handbook/guide.md"].Versions) != 2 || reopened.DB().Articles["local/guide.md"].Deleted {
+	if len(reopened.state(t).Articles["handbook/guide.md"].Versions) != 2 || reopened.state(t).Articles["local/guide.md"].Deleted {
 		t.Fatal("state did not survive restart")
 	}
 }
@@ -158,7 +158,7 @@ func TestCopyUpdateReconcilesWaitingMove(t *testing.T) {
 	if _, err = s.copyArticle(transfer.CopyRequest{SourceID: "local", SourcePath: "new.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "moved.md", ExpectedDestinationRevision: &expected}); err != nil {
 		t.Fatal(err)
 	}
-	if s.DB().Moves[move.ID].State != "destination_changed" || s.DB().Articles["one/README.md"].Deleted {
+	if s.state(t).Moves[move.ID].State != "destination_changed" || s.state(t).Articles["one/README.md"].Deleted {
 		t.Fatal("move was not reconciled safely")
 	}
 }

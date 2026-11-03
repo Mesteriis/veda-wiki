@@ -76,3 +76,11 @@ func SQLite(t testing.TB, dir string) *sql.DB {
 	db.SetMaxOpenConns(1)
 	return db
 }
+
+// Corrupt runs fn on the committed in-memory state under the write lock and
+// persists nothing. It exists only for tests that change live records in place
+// to prove that readers copy them or to race readers against a writer; every
+// other test uses Mutate.
+func Corrupt(st *store.Store, fn func(db *domain.Database)) {
+	_ = st.Exclusive(func(ex *store.Exclusive) error { fn(ex.DB()); return nil })
+}

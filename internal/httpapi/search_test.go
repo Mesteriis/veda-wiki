@@ -25,15 +25,15 @@ func TestSearchUsesOneRevisionDuringConcurrentUpdates(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 1000; i++ {
-			s.Lock()
-			a := s.DB().Articles["src/guide.md"]
-			if i%2 == 0 {
-				a.Versions[0].Text = "# beta\n\nbeta"
-			} else {
-				a.Versions[0].Text = "# alpha\n\nalpha"
-			}
-			s.DB().Articles["src/guide.md"] = a
-			s.Unlock()
+			s.mutate(t, func(db *domain.Database) {
+				a := db.Articles["src/guide.md"]
+				if i%2 == 0 {
+					a.Versions[0].Text = "# beta\n\nbeta"
+				} else {
+					a.Versions[0].Text = "# alpha\n\nalpha"
+				}
+				db.Articles["src/guide.md"] = a
+			})
 		}
 	}()
 	for i := 0; i < 1000; i++ {
@@ -49,12 +49,12 @@ func TestPublicSearchUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published guide\npublic keyword"})
 	connectFixture(t, s, f, false)
-	s.Lock()
-	a := s.DB().Articles["handbook/guide.md"]
-	text := "# Confidential local\nprivate keyword"
-	a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: text, SHA: domain.Digest([]byte(text))})
-	s.DB().Articles["handbook/guide.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a := db.Articles["handbook/guide.md"]
+		text := "# Confidential local\nprivate keyword"
+		a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: text, SHA: domain.Digest([]byte(text))})
+		db.Articles["handbook/guide.md"] = a
+	})
 	if hits := s.findArticles("confidential", "", true); len(hits) != 0 {
 		t.Fatal("public search leaked local revision")
 	}
@@ -99,11 +99,11 @@ func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
 	if hits := s.findArticles("Deployment Установите", "", true); len(hits) != 0 {
 		t.Fatal("search combined words from different texts")
 	}
-	s.Lock()
-	a = s.DB().Articles["handbook/docs/guide.md"]
-	a.Translation.PublicApproved = false
-	s.DB().Articles["handbook/docs/guide.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a = db.Articles["handbook/docs/guide.md"]
+		a.Translation.PublicApproved = false
+		db.Articles["handbook/docs/guide.md"] = a
+	})
 	if hits := s.findArticles("Руководство", "", true); len(hits) != 0 {
 		t.Fatal("public search exposed unapproved translation")
 	}
@@ -120,12 +120,12 @@ func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
 	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.View.Pages) != 0 {
 		t.Fatal("browser search exposed unapproved translation")
 	}
-	s.Lock()
-	a = s.DB().Articles["handbook/docs/guide.md"]
-	local := "# Hidden local draft\n\nSecret term."
-	a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: local, SHA: domain.Digest([]byte(local))})
-	s.DB().Articles["handbook/docs/guide.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a = db.Articles["handbook/docs/guide.md"]
+		local := "# Hidden local draft\n\nSecret term."
+		a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: local, SHA: domain.Digest([]byte(local))})
+		db.Articles["handbook/docs/guide.md"] = a
+	})
 	if hits := s.findArticles("Hidden", "", true); len(hits) != 0 {
 		t.Fatal("public search exposed unpublished original")
 	}

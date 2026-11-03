@@ -43,9 +43,9 @@ func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 		}
 	}
 	// A linked bundle blocks resolution even before a ref update is prepared.
-	s.Lock()
-	s.DB().Outbox["fixture-bundle"] = domain.SyncJob{SourceID: "handbook", Path: "b.md", State: "pending", Bundle: map[string]string{"linked.md": strings.Repeat("a", 64)}, Links: map[string]string{"dependency.md": strings.Repeat("b", 64)}}
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		db.Outbox["fixture-bundle"] = domain.SyncJob{SourceID: "handbook", Path: "b.md", State: "pending", Bundle: map[string]string{"linked.md": strings.Repeat("a", 64)}, Links: map[string]string{"dependency.md": strings.Repeat("b", 64)}}
+	})
 	for _, path := range []string{"b.md", "linked.md", "dependency.md"} {
 		r := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path="+path, nil)
 		r.Header.Set("Authorization", "Bearer "+key)
@@ -69,9 +69,9 @@ func TestScopedBundleLocksLinkedTranslationValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Lock()
-	s.DB().Outbox = map[string]domain.SyncJob{"bundle": {SourceID: "program", Path: "docs/root.md", State: "pending", Bundle: map[string]string{"docs/linked.md": rev.SHA}}}
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		db.Outbox = map[string]domain.SyncJob{"bundle": {SourceID: "program", Path: "docs/root.md", State: "pending", Bundle: map[string]string{"docs/linked.md": rev.SHA}}}
+	})
 	view, valid, err := scopedView(s, key, time.Now())
 	if err != nil || !valid {
 		t.Fatal("scoped snapshot unavailable", err)
@@ -224,11 +224,11 @@ func TestNewProposalBaseChecksScopeAndVisiblePath(t *testing.T) {
 	if call("source_id=alpha&path=..%2Fbad.md", key, false).Code != 400 {
 		t.Fatal("invalid path accepted")
 	}
-	s.Lock()
-	a := s.DB().Articles["alpha/exists.md"]
-	a.Deleted = true
-	s.DB().Articles["alpha/exists.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a := db.Articles["alpha/exists.md"]
+		a.Deleted = true
+		db.Articles["alpha/exists.md"] = a
+	})
 	if call("source_id=alpha&path=exists.md", key, false).Code != 200 {
 		t.Fatal("deleted history disclosed")
 	}

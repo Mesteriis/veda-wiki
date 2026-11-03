@@ -36,7 +36,7 @@ func TestImportLargeBoundedBatchIntoSQLite(t *testing.T) {
 		t.Fatal("bounded large import failed", out.Code)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || len(reopened.DB().Sources["handbook"].Assets) != 8 || reopened.DB().Articles["handbook/README.md"].Versions[0].Text != "# Initial" {
+	if err != nil || len(reopened.state(t).Sources["handbook"].Assets) != 8 || reopened.state(t).Articles["handbook/README.md"].Versions[0].Text != "# Initial" {
 		t.Fatal("large import did not survive SQLite reopen", err)
 	}
 	batch.SourceID = "too-large"
@@ -44,7 +44,7 @@ func TestImportLargeBoundedBatchIntoSQLite(t *testing.T) {
 	if _, err := reopened.importBatch(batch); err != domain.ErrInvalid {
 		t.Fatal("import above aggregate limit was accepted", err)
 	}
-	if _, exists := reopened.DB().Sources["too-large"]; exists {
+	if _, exists := reopened.state(t).Sources["too-large"]; exists {
 		t.Fatal("rejected import created a source")
 	}
 }

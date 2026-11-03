@@ -24,8 +24,8 @@ func TestLargeArticlesPersistWithVersionGateAndAPI(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer test-owner")
 	out := httptest.NewRecorder()
 	w.ServeHTTP(out, req)
-	if out.Code != 201 || s.DB().Version != 13 {
-		t.Fatal("large article not written with version gate", out.Code, s.DB().Version)
+	if out.Code != 201 || s.state(t).Version != 13 {
+		t.Fatal("large article not written with version gate", out.Code, s.state(t).Version)
 	}
 	reopened, err := openStore(s.Dir())
 	if err != nil {

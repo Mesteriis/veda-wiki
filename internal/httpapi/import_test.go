@@ -27,7 +27,8 @@ func testBatch() importer.Batch {
 }
 func applyAgain(s *Store, b importer.Batch) importer.Batch {
 	b.Create = false
-	g := s.DB().Sources[b.SourceID].ImportGeneration
+	var g string
+	_ = s.View(func(db *domain.Database) error { g = db.Sources[b.SourceID].ImportGeneration; return nil })
 	b.ExpectedImport = &g
 	return b
 }
@@ -51,7 +52,7 @@ func TestUnchangedImportRepairsMissingOrCorruptAssets(t *testing.T) {
 				t.Fatal(err)
 			}
 			b = applyAgain(s, b)
-			ref := s.DB().Sources[b.SourceID].Assets["images/test.png"]
+			ref := s.state(t).Sources[b.SourceID].Assets["images/test.png"]
 			filename := filepath.Join(s.Dir(), "blobs", ref.SHA)
 			if err = os.Remove(filename); err != nil {
 				t.Fatal(err)
@@ -111,13 +112,13 @@ func TestPrivateImportPreservesImagesNeededByLocalEdits(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.DB().Sources["handbook"].Assets["images/keep.png"]; !ok {
+	if _, ok := s.state(t).Sources["handbook"].Assets["images/keep.png"]; !ok {
 		t.Fatal("local edit lost its image")
 	}
-	if _, ok := s.DB().Sources["handbook"].Assets["images/remove.png"]; ok {
+	if _, ok := s.state(t).Sources["handbook"].Assets["images/remove.png"]; ok {
 		t.Fatal("unreferenced upstream image retained")
 	}
-	if len(s.conflicts()) != 1 || !s.DB().Articles["handbook/clean.md"].Deleted {
+	if len(s.conflicts()) != 1 || !s.state(t).Articles["handbook/clean.md"].Deleted {
 		t.Fatal("deletion handling changed")
 	}
 	r := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/media/handbook/images/keep.png", "", true)
@@ -148,8 +149,8 @@ func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
 				b.Files["README.md"] = "# Changed"
 			}
 			before := observedAt(s, b.SourceID)
-			generation := s.DB().Sources[b.SourceID].ImportGeneration
-			ref := s.DB().Sources[b.SourceID].Assets["images/retained.png"]
+			generation := s.state(t).Sources[b.SourceID].ImportGeneration
+			ref := s.state(t).Sources[b.SourceID].Assets["images/retained.png"]
 			filename := filepath.Join(s.Dir(), "blobs", ref.SHA)
 			if err := os.Remove(filename); err != nil {
 				t.Fatal(err)
@@ -166,7 +167,7 @@ func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
 			if response.Code != 503 || json.Unmarshal(response.Body.Bytes(), &body) != nil || body["error"] != "asset_unavailable" {
 				t.Fatal("import did not report the asset error", response.Code, response.Body.String())
 			}
-			if !observedAt(s, b.SourceID).Equal(before) || s.DB().Sources[b.SourceID].ImportGeneration != generation {
+			if !observedAt(s, b.SourceID).Equal(before) || s.state(t).Sources[b.SourceID].ImportGeneration != generation {
 				t.Fatal("failed import advanced the source")
 			}
 			if err := os.WriteFile(filename, image, 0600); err != nil {
@@ -190,7 +191,7 @@ func TestPrivateImagesAreNotRetainedOnGitHubPublication(t *testing.T) {
 	f.Modify(func() { f.Private = false })
 	f.Advance(map[string]string{"src/main.go": "package main"})
 	m.Once(context.Background())
-	if _, ok := s.DB().Sources["handbook"].Assets["docs/image.png"]; ok {
+	if _, ok := s.state(t).Sources["handbook"].Assets["docs/image.png"]; ok {
 		t.Fatal("private image survived publication")
 	}
 	if got := request(Wiki{Store: s, Public: true}, "GET", "/media/handbook/docs/image.png", "", false); got.Code != 404 {
@@ -218,7 +219,7 @@ func TestImportMediaPrivacyIntegrityAndMarkdownLinks(t *testing.T) {
 	if e != nil || !strings.Contains(string(body), "/media/handbook/assets%2Fcover.png") {
 		t.Fatal(body, e)
 	}
-	ref := s.DB().Sources["handbook"].Assets["assets/cover.png"]
+	ref := s.state(t).Sources["handbook"].Assets["assets/cover.png"]
 	os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), []byte("corrupt"), 0600)
 	if r := request(w, "GET", "/media/handbook/assets/cover.png", "", true); r.Code != 503 {
 		t.Fatal("corrupt asset served", r.Code)

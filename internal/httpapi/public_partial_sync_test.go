@@ -15,16 +15,16 @@ func TestPartialPublicImportHidesStaleSnapshotAndRecovers(t *testing.T) {
 		t.Fatal("initial public article missing", err)
 	}
 	// Preserve a local unapproved revision so a remote deletion creates a conflict.
-	s.Lock()
-	a := s.DB().Articles["handbook/docs/guide.md"]
 	local := "# Private local draft"
-	a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: local, SHA: domain.Digest([]byte(local))})
-	a.PublishedLocal = false
-	s.DB().Articles["handbook/docs/guide.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a := db.Articles["handbook/docs/guide.md"]
+		a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: local, SHA: domain.Digest([]byte(local))})
+		a.PublishedLocal = false
+		db.Articles["handbook/docs/guide.md"] = a
+	})
 	f.Advance(map[string]string{"docs/other.md": "# Remaining", "docs/image.png": string(smallPNG(t)), "docs/bad.png": "not an image"})
 	syncFixtureSource(t, m, "handbook")
-	if !s.DB().Sources["handbook"].ImportPartial {
+	if !s.state(t).Sources["handbook"].ImportPartial {
 		t.Fatal("fixture did not produce a partial import")
 	}
 	s, err := openStore(s.Dir())
@@ -52,13 +52,13 @@ func TestPartialPublicImportHidesStaleSnapshotAndRecovers(t *testing.T) {
 	f.Advance(map[string]string{"docs/other.md": "# Remaining"})
 	m = newSyncManager(s, f.Client())
 	syncFixtureSource(t, m, "handbook")
-	if s.DB().Sources["handbook"].ImportPartial || len(s.snapshot(true).Pages) != 1 {
+	if s.state(t).Sources["handbook"].ImportPartial || len(s.snapshot(true).Pages) != 1 {
 		t.Fatal("complete snapshot did not restore public access")
 	}
 	if _, err = s.page("handbook/docs/guide.md", true); err != domain.ErrNotFound {
 		t.Fatal("deleted upstream article remained public", err)
 	}
-	if page, err := s.page("handbook/docs/guide.md", false); err != nil || page.Text != local || len(s.DB().Articles["handbook/docs/guide.md"].Conflicts) == 0 {
+	if page, err := s.page("handbook/docs/guide.md", false); err != nil || page.Text != local || len(s.state(t).Articles["handbook/docs/guide.md"].Conflicts) == 0 {
 		t.Fatal("deleted upstream article lost local draft or conflict", err)
 	}
 }
@@ -82,7 +82,7 @@ func TestPartialLocalPublicImportHidesStaleSnapshotAndRecovers(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if !s.DB().Sources["handbook"].ImportPartial {
+	if !s.state(t).Sources["handbook"].ImportPartial {
 		t.Fatal("fixture must be partial")
 	}
 	s, err := openStore(s.Dir())
@@ -125,7 +125,7 @@ func TestPartialLocalPublicImportHidesStaleSnapshotAndRecovers(t *testing.T) {
 	if _, err = s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if s.DB().Sources["handbook"].ImportPartial {
+	if s.state(t).Sources["handbook"].ImportPartial {
 		t.Fatal("complete import remained partial")
 	}
 	if _, err = s.page("handbook/docs/old.md", true); err != domain.ErrNotFound {

@@ -22,11 +22,11 @@ func TestBlockedTranslationQueueIsScopedAndWorkerContinues(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s.Lock()
-	a := s.DB().Articles["alpha/docs/setup.md"]
-	a.Conflicts = []domain.ImportConflict{{}}
-	s.DB().Articles["alpha/docs/setup.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a := db.Articles["alpha/docs/setup.md"]
+		a.Conflicts = []domain.ImportConflict{{}}
+		db.Articles["alpha/docs/setup.md"] = a
+	})
 	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)

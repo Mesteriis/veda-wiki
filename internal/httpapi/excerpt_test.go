@@ -73,12 +73,12 @@ func TestExcerptPublicUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published"})
 	connectFixture(t, s, f, false)
-	s.Lock()
-	a := s.DB().Articles["handbook/guide.md"]
-	text := "# Private draft"
-	a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: text, SHA: domain.Digest([]byte(text))})
-	s.DB().Articles["handbook/guide.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a := db.Articles["handbook/guide.md"]
+		text := "# Private draft"
+		a.Versions = append(a.Versions, domain.Revision{Number: 2, Text: text, SHA: domain.Digest([]byte(text))})
+		db.Articles["handbook/guide.md"] = a
+	})
 	out := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/v1/articles/excerpt?source_id=handbook&path=guide.md", nil)
 	(Wiki{Store: s, Public: true}).ServeHTTP(out, req)

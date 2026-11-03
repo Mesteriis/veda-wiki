@@ -71,18 +71,13 @@ func TestScopedReaderCannotCrossSourceBoundaries(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), image, 0600); err != nil {
 		t.Fatal(err)
 	}
-	s.Lock()
-	db := s.Clone()
-	for _, id := range []string{"alpha", "beta"} {
-		src := db.Sources[id]
-		src.Assets = map[string]domain.BlobRef{"image.png": ref}
-		db.Sources[id] = src
-	}
-	err = s.Commit(db)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		for _, id := range []string{"alpha", "beta"} {
+			src := db.Sources[id]
+			src.Assets = map[string]domain.BlobRef{"image.png": ref}
+			db.Sources[id] = src
+		}
+	})
 	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +177,7 @@ func TestGitHubSourceMovePreservesVersion4AndAccessKeys(t *testing.T) {
 		t.Fatal("move did not start", err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
+	if err != nil || reopened.state(t).Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
 		t.Fatal("move downgraded or lost scoped access", err)
 	}
 }
@@ -193,7 +188,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	_ = connectFixture(t, s, f, true)
 	_, err := s.moveArticle(transfer.MoveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
-	if err != nil || s.DB().Version != 3 {
+	if err != nil || s.state(t).Version != 3 {
 		t.Fatal("version 3 move not created", err)
 	}
 	key, err := s.auth().CreateAccessKey("agent", []string{"local"}, time.Now().Add(time.Hour))
@@ -201,7 +196,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
+	if err != nil || reopened.state(t).Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
 		t.Fatal("version upgrade lost access", err)
 	}
 	manager := newSyncManager(reopened, f.Client())

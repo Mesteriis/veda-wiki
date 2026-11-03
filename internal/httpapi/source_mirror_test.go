@@ -101,7 +101,7 @@ asyncio.run(main())`
 		t.Fatalf("synthetic MCP failed: %v %s", err, out)
 	}
 	m.Once(context.Background())
-	if s.mirrors()[0].State != "ready" || s.DB().Articles["handbook/a.md"].ReconcileBase == nil {
+	if s.mirrors()[0].State != "ready" || s.state(t).Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("MCP-configured mirror did not run")
 	}
 }
@@ -162,7 +162,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Woken()
-	current := s.DB().Sources["local"].ImportGeneration
+	current := s.state(t).Sources["local"].ImportGeneration
 	b.Create = false
 	b.Complete = false
 	b.ExpectedImport = &current
@@ -181,7 +181,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 	if !m.Woken() {
 		t.Fatal("mirror not awakened")
 	}
-	current = s.DB().Sources["local"].ImportGeneration
+	current = s.state(t).Sources["local"].ImportGeneration
 	b.ExpectedImport = &current
 	encoded, _ = json.Marshal(b)
 	r = httptest.NewRequest("POST", "/api/v1/import", bytes.NewReader(encoded))
@@ -194,7 +194,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 	if m.Woken() {
 		t.Fatal("unchanged import awakened mirror")
 	}
-	current = s.DB().Sources["local"].ImportGeneration
+	current = s.state(t).Sources["local"].ImportGeneration
 	b.ExpectedImport = &current
 	b.Assets = map[string][]byte{"image.png": smallPNG(t)}
 	encoded, _ = json.Marshal(b)
@@ -213,7 +213,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 	if _, err = s.configureMirror(context.Background(), syncer.MirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &no, ExpectedRevision: &revision}); err != nil {
 		t.Fatal(err)
 	}
-	current = s.DB().Sources["local"].ImportGeneration
+	current = s.state(t).Sources["local"].ImportGeneration
 	b.ExpectedImport = &current
 	b.Files["README.md"] = "# Changed while paused"
 	encoded, _ = json.Marshal(b)

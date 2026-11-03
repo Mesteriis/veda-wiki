@@ -52,7 +52,7 @@ func TestAdoptThroughOwnerAPI(t *testing.T) {
 	if r := request(w, "POST", "/api/v1/github/connections", body, true); r.Code != 202 {
 		t.Fatal("owner adoption failed", r.Code)
 	}
-	if s.DB().Sources["handbook"].ConnectionID != "handbook" || len(s.DB().Articles["handbook/README.md"].Conflicts) != 1 {
+	if s.state(t).Sources["handbook"].ConnectionID != "handbook" || len(s.state(t).Articles["handbook/README.md"].Conflicts) != 1 {
 		t.Fatal("owner API did not preserve conflict")
 	}
 }

@@ -35,18 +35,13 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), image, 0600); err != nil {
 		t.Fatal(err)
 	}
-	s.Lock()
-	initial := s.Clone()
-	for _, id := range []string{"alpha", "beta"} {
-		src := initial.Sources[id]
-		src.Assets = map[string]domain.BlobRef{"image.png": ref}
-		initial.Sources[id] = src
-	}
-	err = s.Commit(initial)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(initial *domain.Database) {
+		for _, id := range []string{"alpha", "beta"} {
+			src := initial.Sources[id]
+			src.Assets = map[string]domain.BlobRef{"image.png": ref}
+			initial.Sources[id] = src
+		}
+	})
 	key, err := s.auth().CreateAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -103,29 +98,19 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if call("GET", "/api/v1/github/accounts", "", "", cookie, false).Code != 404 {
 		t.Fatal("reader session gained admin access")
 	}
-	s.Lock()
-	db := s.Clone()
-	k := db.AccessKeys["person"]
-	k.Expires = time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)
-	db.AccessKeys["person"] = k
-	err = s.Commit(db)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		k := db.AccessKeys["person"]
+		k.Expires = time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)
+		db.AccessKeys["person"] = k
+	})
 	if call("GET", "/api/state?page=alpha%2Fguide.md", "", "", cookie, false).Code != 404 {
 		t.Fatal("expired key still reads private data")
 	}
-	s.Lock()
-	db = s.Clone()
-	k = db.AccessKeys["person"]
-	k.Expires = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
-	db.AccessKeys["person"] = k
-	err = s.Commit(db)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		k := db.AccessKeys["person"]
+		k.Expires = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
+		db.AccessKeys["person"] = k
+	})
 	if call("GET", "/api/state?page=alpha%2Fguide.md", "", "", cookie, false).Code != 200 {
 		t.Fatal("valid scope not restored in fixture")
 	}

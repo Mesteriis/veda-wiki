@@ -25,9 +25,7 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 		t.Fatal("public context exposed observation metadata", err)
 	}
 	old := time.Now().Add(-time.Hour).UTC()
-	s.Lock()
 	s.observations.MarkObserved("handbook", old)
-	s.Unlock()
 	m.Once(context.Background())
 	observed := s.sources(false)[0].LastImportObservedAt
 	stamp, err := time.Parse(time.RFC3339Nano, observed)
@@ -117,11 +115,9 @@ func TestImportObservationIsTransientAndOnlyAdvancesOnSuccess(t *testing.T) {
 		t.Fatal("public observation metadata exposed")
 	}
 	old := time.Now().Add(-time.Hour).UTC()
-	s.Lock()
 	s.observations.MarkObserved("handbook", old)
-	s.Unlock()
 	batch.Create = false
-	gen := s.DB().Sources["handbook"].ImportGeneration
+	gen := s.state(t).Sources["handbook"].ImportGeneration
 	batch.ExpectedImport = &gen
 	if _, e := s.importBatch(batch); e != nil {
 		t.Fatal(e)
@@ -183,18 +179,13 @@ func TestStateShowsWarningsOnlyForVisiblePrivateSources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s.Lock()
-	db := s.Clone()
-	for _, id := range []string{"alpha", "beta", "open"} {
-		src := db.Sources[id]
-		src.ImportPartial = true
-		db.Sources[id] = src
-	}
-	err := s.Commit(db)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		for _, id := range []string{"alpha", "beta", "open"} {
+			src := db.Sources[id]
+			src.ImportPartial = true
+			db.Sources[id] = src
+		}
+	})
 	key, err := s.auth().CreateAccessKey("reader", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)

@@ -23,16 +23,16 @@ func TestAgentContextScopesAndReportsStatus(t *testing.T) {
 			}
 		}
 	}
-	s.Lock()
-	src := s.DB().Sources["alpha"]
-	src.ImportPartial = true
-	src.ImportDirty = true
-	s.DB().Sources["alpha"] = src
-	s.observations.MarkObserved("alpha", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
-	a := s.DB().Articles["alpha/infra/AGENTS.md"]
-	a.Conflicts = []domain.ImportConflict{{}}
-	s.DB().Articles["alpha/infra/AGENTS.md"] = a
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		src := db.Sources["alpha"]
+		src.ImportPartial = true
+		src.ImportDirty = true
+		db.Sources["alpha"] = src
+		s.observations.MarkObserved("alpha", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+		a := db.Articles["alpha/infra/AGENTS.md"]
+		a.Conflicts = []domain.ImportConflict{{}}
+		db.Articles["alpha/infra/AGENTS.md"] = a
+	})
 	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -75,15 +75,15 @@ func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s.Lock()
-	a := s.DB().Articles["handbook/conflicted.md"]
-	a.Conflicts = []domain.ImportConflict{{}}
-	s.DB().Articles["handbook/conflicted.md"] = a
-	a = s.DB().Articles["handbook/linked.md"]
-	a.Conflicts = []domain.ImportConflict{{}}
-	s.DB().Articles["handbook/linked.md"] = a
-	s.DB().Outbox = map[string]domain.SyncJob{"fixture": {SourceID: "handbook", Path: "conflicted.md", State: "retry", PreparedCommit: "synthetic-prepared-commit", Bundle: map[string]string{"linked.md": "fixture"}}}
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		a := db.Articles["handbook/conflicted.md"]
+		a.Conflicts = []domain.ImportConflict{{}}
+		db.Articles["handbook/conflicted.md"] = a
+		a = db.Articles["handbook/linked.md"]
+		a.Conflicts = []domain.ImportConflict{{}}
+		db.Articles["handbook/linked.md"] = a
+		db.Outbox = map[string]domain.SyncJob{"fixture": {SourceID: "handbook", Path: "conflicted.md", State: "retry", PreparedCommit: "synthetic-prepared-commit", Bundle: map[string]string{"linked.md": "fixture"}}}
+	})
 	w := Wiki{Store: s, Token: "test-owner"}
 	for _, tc := range []struct {
 		path                string
@@ -124,16 +124,16 @@ func TestAgentContextRefusesOversizedInstructionSet(t *testing.T) {
 	source(t, s, "alpha", "private")
 	text := strings.Repeat("x", 220000)
 	parts := []string{}
-	s.Lock()
-	for i := 0; i < 7; i++ {
-		name := "AGENTS.md"
-		if i > 0 {
-			name = strings.Join(parts, "/") + "/AGENTS.md"
+	s.mutate(t, func(db *domain.Database) {
+		for i := 0; i < 7; i++ {
+			name := "AGENTS.md"
+			if i > 0 {
+				name = strings.Join(parts, "/") + "/AGENTS.md"
+			}
+			db.Articles["alpha/"+name] = domain.Article{SourceID: "alpha", Path: name, Versions: []domain.Revision{{Number: 1, Text: text}}}
+			parts = append(parts, "d")
 		}
-		s.DB().Articles["alpha/"+name] = domain.Article{SourceID: "alpha", Path: name, Versions: []domain.Revision{{Number: 1, Text: text}}}
-		parts = append(parts, "d")
-	}
-	s.Unlock()
+	})
 	target := strings.Join(parts, "/") + "/guide.md"
 	w := Wiki{Store: s, Token: "test-owner"}
 	r := request(w, "GET", "/api/v1/context?"+url.Values{"source_id": {"alpha"}, "path": {target}}.Encode(), "", true)
@@ -273,16 +273,17 @@ func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
 		}
 	}
 	check("")
-	s.Lock()
-	conn := s.DB().Connections["handbook"]
-	conn.Paused = true
-	s.DB().Connections["handbook"] = conn
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		conn := db.Connections["handbook"]
+		conn.Paused = true
+		db.Connections["handbook"] = conn
+	})
 	check("paused")
-	s.Lock()
-	conn.Paused = false
-	conn.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
-	s.DB().Connections["handbook"] = conn
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		conn := db.Connections["handbook"]
+		conn.Paused = false
+		conn.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
+		db.Connections["handbook"] = conn
+	})
 	check("unverified")
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/store"
+	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
 )
@@ -67,6 +68,12 @@ func testStore(t *testing.T) *Store {
 	}
 	return s
 }
+
+// state returns a copy of the committed state (storetest.Read).
+func (s *Store) state(t testing.TB) domain.Database { return storetest.Read(t, s.Store) }
+
+// mutate commits fn's change to the whole state (storetest.Mutate).
+func (s *Store) mutate(t testing.TB, fn func(db *domain.Database)) { storetest.Mutate(t, s.Store, fn) }
 
 // observedAt reads a source's last import observation time.
 func observedAt(s *Store, sourceID string) time.Time {

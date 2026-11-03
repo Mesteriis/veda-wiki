@@ -275,7 +275,7 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 		t.Skip("restored fixture not provided")
 	}
 	s, err := openStore(dir)
-	if err != nil || s.DB().Version != 15 {
+	if err != nil || s.state(t).Version != 15 {
 		t.Fatal("invalid restored user store", err)
 	}
 	version, ok := s.auth().AuthenticateUser("person", "synthetic fixture password")
@@ -294,10 +294,10 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 	manager := newSyncManager(s, f.Client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted {
+	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.state(t).Articles["from/a.md"].Deleted {
 		t.Fatal("restored queue did not complete")
 	}
-	ref := s.DB().Sources["handbook"].Assets["img/icon.png"]
+	ref := s.state(t).Sources["handbook"].Assets["img/icon.png"]
 	if ref.SHA == "" || domain.Digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["related.md"] != "# Related fixture" {
 		t.Fatal("restored bundle incomplete")
 	}

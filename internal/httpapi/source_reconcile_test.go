@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"net/http/httptest"
 	"os"
@@ -61,7 +62,7 @@ func TestReconcileLinkedGraphAndPrivateBaseline(t *testing.T) {
 		t.Fatal("baseline leaked to public")
 	}
 	scoped, ok, err := s.ScopedWhere(func(*domain.Database) []string { return []string{"handbook"} })
-	if err != nil || !ok || scoped.DB().Articles["handbook/a.md"].ReconcileBase != nil {
+	if err != nil || !ok || storetest.Read(t, scoped).Articles["handbook/a.md"].ReconcileBase != nil {
 		t.Fatal("baseline leaked to scoped reader", err)
 	}
 }
@@ -105,7 +106,7 @@ asyncio.run(main())`
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic MCP failed: %v %s", err, out)
 	}
-	if s.DB().Version != 18 || s.DB().Articles["handbook/a.md"].ReconcileBase == nil {
+	if s.state(t).Version != 18 || s.state(t).Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("MCP did not persist baseline")
 	}
 }

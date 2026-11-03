@@ -103,11 +103,11 @@ func TestCopyToUnverifiedPublicDestinationRequiresLaterApproval(t *testing.T) {
 	}
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	m := connectFixture(t, s, f, true)
-	s.Lock()
-	c := s.DB().Connections["handbook"]
-	c.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
-	s.DB().Connections[c.ID] = c
-	s.Unlock()
+	s.mutate(t, func(db *domain.Database) {
+		c := db.Connections["handbook"]
+		c.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
+		db.Connections[c.ID] = c
+	})
 	req := transfer.CopyRequest{SourceID: "private", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "copy.md"}
 	if _, e := s.copyArticle(req); e != nil {
 		t.Fatal(e)

@@ -27,7 +27,7 @@ func TestRemoveLocalSourceGuardAndSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	generation := s.DB().Sources["handbook"].ImportGeneration
+	generation := s.state(t).Sources["handbook"].ImportGeneration
 	w := Wiki{Store: s, ReaderLocal: true, LocalImportSource: "handbook"}
 	body, _ := json.Marshal(map[string]any{"expected_generation": generation, "confirm": true})
 	call := func(root bool, origin string, body string) int {
@@ -54,14 +54,9 @@ func TestRemoveLocalSourceGuardAndSQLite(t *testing.T) {
 	if _, err = s.removeLocalImportedSource("handbook", generation); err != domain.ErrConflict {
 		t.Fatal("dependent team ignored", err)
 	}
-	s.Lock()
-	db := s.Clone()
-	delete(db.Teams, "fixture-team")
-	err = s.Commit(db)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		delete(db.Teams, "fixture-team")
+	})
 	if call(true, "", string(body)) != 200 {
 		t.Fatal("authorized deletion failed")
 	}
@@ -69,13 +64,13 @@ func TestRemoveLocalSourceGuardAndSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.DB().Sources["handbook"]; ok {
+	if _, ok := s.state(t).Sources["handbook"]; ok {
 		t.Fatal("source remains")
 	}
-	if _, ok := s.DB().Articles["handbook/README.md"]; ok {
+	if _, ok := s.state(t).Articles["handbook/README.md"]; ok {
 		t.Fatal("article remains")
 	}
-	if _, ok := s.DB().Articles["other/keep.md"]; !ok {
+	if _, ok := s.state(t).Articles["other/keep.md"]; !ok {
 		t.Fatal("other article removed")
 	}
 }

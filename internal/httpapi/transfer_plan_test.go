@@ -76,7 +76,7 @@ func TestTransferPlanScopedReadersNeedBothSources(t *testing.T) {
 		return out
 	}
 	plan := map[string]any{"source_id": "from", "source_path": "a.md", "expected_revision": 1, "destination_id": "to", "destination_path": "a.md"}
-	before, _ := json.Marshal(*s.DB())
+	before, _ := json.Marshal(s.state(t))
 	if got := call("/api/v1/articles/transfer-plan", key, plan); got.Code != 200 || strings.Contains(got.Body.String(), "# A") {
 		t.Fatal("scoped plan failed or returned article text", got.Code)
 	}
@@ -92,7 +92,7 @@ func TestTransferPlanScopedReadersNeedBothSources(t *testing.T) {
 	if got := call("/api/v1/articles/copy", key, plan); got.Code != 403 {
 		t.Fatal("scoped reader copied article", got.Code)
 	}
-	after, _ := json.Marshal(*s.DB())
+	after, _ := json.Marshal(s.state(t))
 	if string(before) != string(after) {
 		t.Fatal("read-only plan changed state")
 	}
@@ -139,22 +139,17 @@ func TestTransferPlanIncludesBothAuthorizedSourceStatuses(t *testing.T) {
 	if _, err := s.put("from", "other.md", "# Other", 0); err != nil {
 		t.Fatal(err)
 	}
-	s.Lock()
-	db := s.Clone()
-	from := db.Sources["from"]
-	from.ImportDirty = true
-	db.Sources["from"] = from
-	to := db.Sources["to"]
-	to.ImportPartial = true
-	db.Sources["to"] = to
-	a := db.Articles["from/other.md"]
-	a.Conflicts = []domain.ImportConflict{{}}
-	db.Articles["from/other.md"] = a
-	err := s.Commit(db)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		from := db.Sources["from"]
+		from.ImportDirty = true
+		db.Sources["from"] = from
+		to := db.Sources["to"]
+		to.ImportPartial = true
+		db.Sources["to"] = to
+		a := db.Articles["from/other.md"]
+		a.Conflicts = []domain.ImportConflict{{}}
+		db.Articles["from/other.md"] = a
+	})
 	key, err := s.auth().CreateAccessKey("plan-status", []string{"from", "to"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)

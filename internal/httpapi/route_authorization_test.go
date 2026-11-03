@@ -49,7 +49,7 @@ func TestMutatingRoutesRefuseNonOwners(t *testing.T) {
 		"scoped key":   {header: "Bearer " + scoped},
 		"local socket": {local: true},
 	}
-	before := s.DB().Updated
+	before := s.state(t).Updated
 	for name, credential := range credentials {
 		for _, route := range routes {
 			w := Wiki{Store: s, Token: "test-owner", ReaderToken: "test-reader", ReaderLocal: credential.local}
@@ -64,7 +64,7 @@ func TestMutatingRoutesRefuseNonOwners(t *testing.T) {
 			}
 		}
 	}
-	if s.DB().Updated != before {
+	if s.state(t).Updated != before {
 		t.Fatal("a non-owner request changed the store")
 	}
 	// The same direct call with owner=false must refuse even if the shared
@@ -77,7 +77,7 @@ func TestMutatingRoutesRefuseNonOwners(t *testing.T) {
 			t.Errorf("%s %s accepted a reader without the shared guard: %d", route.method, route.path, out.Code)
 		}
 	}
-	if s.DB().Updated != before {
+	if s.state(t).Updated != before {
 		t.Fatal("a reader call without the shared guard changed the store")
 	}
 }

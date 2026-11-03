@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -118,10 +119,12 @@ func TestCorruptStoredRevisionIsRefused(t *testing.T) {
 	if _, e := s.put("one", "guide.md", "# Original", 0); e != nil {
 		t.Fatal(e)
 	}
-	article := s.DB().Articles["one/guide.md"]
+	db := s.state(t)
+	article := db.Articles["one/guide.md"]
+	article.Versions = slices.Clone(article.Versions)
 	article.Versions[0].Text = "# Tampered"
-	s.DB().Articles["one/guide.md"] = article
-	b, e := json.Marshal(*s.DB())
+	db.Articles["one/guide.md"] = article
+	b, e := json.Marshal(db)
 	if e != nil {
 		t.Fatal(e)
 	}

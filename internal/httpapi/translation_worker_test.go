@@ -64,7 +64,7 @@ func TestLocalTranslationOriginSurvivesRestartAndApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, err = openStore(s.Dir())
-	if err != nil || s.DB().Version != 11 {
+	if err != nil || s.state(t).Version != 11 {
 		t.Fatal("origin store failed to reopen", err)
 	}
 	private, err := s.page("program/docs/guide.md", false)

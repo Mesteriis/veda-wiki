@@ -26,15 +26,11 @@ func fixtureAsset(t *testing.T, s *Store, sourceID, assetPath string) domain.Blo
 	if err = os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), image, 0600); err != nil {
 		t.Fatal(err)
 	}
-	s.Lock()
-	defer s.Unlock()
-	db := s.Clone()
-	src := db.Sources[sourceID]
-	src.Assets = map[string]domain.BlobRef{assetPath: ref}
-	db.Sources[sourceID] = src
-	if err = s.Commit(db); err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		src := db.Sources[sourceID]
+		src.Assets = map[string]domain.BlobRef{assetPath: ref}
+		db.Sources[sourceID] = src
+	})
 	return ref
 }
 
@@ -50,14 +46,14 @@ func TestMoveCopiesRelativeImageToLocalDestination(t *testing.T) {
 	if err != nil || m.State != "complete" || m.Assets["nested/img/icon.png"] != ref {
 		t.Fatal("move failed", m, err)
 	}
-	if s.DB().Sources["to"].Assets["nested/img/icon.png"] != ref {
+	if s.state(t).Sources["to"].Assets["nested/img/icon.png"] != ref {
 		t.Fatal("target image missing")
 	}
 	if _, err := s.auth().CreateAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 6 || reopened.moves()[0].Assets["nested/img/icon.png"] != ref {
+	if err != nil || reopened.state(t).Version != 6 || reopened.moves()[0].Assets["nested/img/icon.png"] != ref {
 		t.Fatal("move did not survive restart", err)
 	}
 	w := Wiki{Store: reopened, Token: "test-owner"}
@@ -77,14 +73,14 @@ func TestPublicImageCopyRequiresPublicationConfirmation(t *testing.T) {
 	if _, err := s.copyArticle(in); err != domain.ErrInvalid {
 		t.Fatal("private image published without confirmation", err)
 	}
-	if len(s.DB().Sources["to"].Assets) != 0 {
+	if len(s.state(t).Sources["to"].Assets) != 0 {
 		t.Fatal("refused image published")
 	}
 	in.ConfirmPublication = true
 	if _, err := s.copyArticle(in); err != nil {
 		t.Fatal(err)
 	}
-	if s.DB().Sources["to"].Assets["img/icon.png"] != ref {
+	if s.state(t).Sources["to"].Assets["img/icon.png"] != ref {
 		t.Fatal("confirmed image missing")
 	}
 	if r := request(Wiki{Store: s}, "GET", "/media/to/img/icon.png", "", false); r.Code != 200 {
@@ -100,25 +96,25 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	m, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
-	if err != nil || m.State != "waiting_destination" || s.DB().Version != 7 {
+	if err != nil || m.State != "waiting_destination" || s.state(t).Version != 7 {
 		t.Fatal("move not queued", err, m)
 	}
 	if r := request(Wiki{Store: s}, "GET", "/media/handbook/img/icon.png", "", false); r.Code != 404 {
 		t.Fatal("pending image exposed", r.Code)
 	}
 	manager.Once(context.Background())
-	if s.DB().Articles["from/a.md"].Deleted || f.WriteCount() != 1 || f.Contents()["b.md"] == "" || domain.Digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
+	if s.state(t).Articles["from/a.md"].Deleted || f.WriteCount() != 1 || f.Contents()["b.md"] == "" || domain.Digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("bundle was not committed atomically")
 	}
 	manager.Once(context.Background())
-	if s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted || s.DB().Sources["handbook"].Assets["img/icon.png"] != ref {
+	if s.moves()[0].State != "complete" || !s.state(t).Articles["from/a.md"].Deleted || s.state(t).Sources["handbook"].Assets["img/icon.png"] != ref {
 		t.Fatal("observed bundle did not finish move", s.moves())
 	}
 	if _, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 7 {
+	if err != nil || reopened.state(t).Version != 7 {
 		t.Fatal("queued assets did not persist", err)
 	}
 }
@@ -144,11 +140,11 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.DB().Version != 6 {
+	if err != nil || reopened.state(t).Version != 6 {
 		t.Fatal("v6 restart failed", err)
 	}
 	page, err := reopened.page("to/docs/sub/b.md", false)
-	if err != nil || !page.Translated || reopened.DB().Sources["to"].Assets["docs/sub/img/icon.png"] != ref {
+	if err != nil || !page.Translated || reopened.state(t).Sources["to"].Assets["docs/sub/img/icon.png"] != ref {
 		t.Fatal("translation or image lost", err)
 	}
 }

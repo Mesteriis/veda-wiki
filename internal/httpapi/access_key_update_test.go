@@ -148,18 +148,13 @@ func TestExpiredAccessKeyCannotBeRenewed(t *testing.T) {
 	if _, err := s.auth().CreateAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	s.Lock()
-	db := s.Clone()
-	key := db.AccessKeys["person"]
-	key.Expires = time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)
-	db.AccessKeys["person"] = key
-	err := s.Commit(db)
-	s.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.mutate(t, func(db *domain.Database) {
+		key := db.AccessKeys["person"]
+		key.Expires = time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)
+		db.AccessKeys["person"] = key
+	})
 	old := s.auth().ListAccessKeys()[0].ETag
-	if _, err = s.auth().UpdateAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour), old); err != domain.ErrConflict {
+	if _, err := s.auth().UpdateAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour), old); err != domain.ErrConflict {
 		t.Fatal("expired key was renewed", err)
 	}
 }

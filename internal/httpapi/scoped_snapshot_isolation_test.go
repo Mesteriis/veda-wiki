@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"reflect"
 	"slices"
 	"sync"
@@ -24,44 +25,47 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	observed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	s.Lock()
-	src := s.DB().Sources["alpha"]
-	src.Metadata = &domain.WikiMetadata{Title: "Original source"}
-	src.Assets = map[string]domain.BlobRef{"image.png": {SHA: "original"}}
-	s.DB().Sources["alpha"] = src
-	a := s.DB().Articles["alpha/guide.md"]
-	a.Conflicts = []domain.ImportConflict{{Incoming: "original conflict"}}
-	a.Translation = &domain.Translation{Text: "original translation"}
-	a.CopiedFrom = &domain.CopyOrigin{Path: "original path"}
-	a.ReconcileBase = &domain.ReconcileBase{SourceID: "beta", Path: "secret.md"}
-	a.Published = &domain.Revision{Text: "original published"}
-	s.DB().Articles["alpha/guide.md"] = a
+	s.mutate(t, func(db *domain.Database) {
+		src := db.Sources["alpha"]
+		src.Metadata = &domain.WikiMetadata{Title: "Original source"}
+		src.Assets = map[string]domain.BlobRef{"image.png": {SHA: "original"}}
+		db.Sources["alpha"] = src
+		a := db.Articles["alpha/guide.md"]
+		a.Conflicts = []domain.ImportConflict{{Incoming: "original conflict"}}
+		a.Translation = &domain.Translation{Text: "original translation"}
+		a.CopiedFrom = &domain.CopyOrigin{Path: "original path"}
+		a.ReconcileBase = &domain.ReconcileBase{SourceID: "beta", Path: "secret.md"}
+		a.Published = &domain.Revision{Text: "original published"}
+		db.Articles["alpha/guide.md"] = a
+	})
 	s.observations.MarkObserved("alpha", observed)
-	s.Unlock()
 	view, valid, err := scopedView(s, key, time.Now())
 	if err != nil || !valid {
 		t.Fatal("snapshot failed", err)
 	}
-	if _, ok := view.DB().Sources["beta"]; ok {
+	snapshot := view.state(t)
+	if _, ok := snapshot.Sources["beta"]; ok {
 		t.Fatal("other source included")
 	}
-	if _, ok := view.DB().Articles["beta/secret.md"]; ok {
+	if _, ok := snapshot.Articles["beta/secret.md"]; ok {
 		t.Fatal("other article included")
 	}
-	s.Lock()
-	src = s.DB().Sources["alpha"]
-	src.Metadata.Title = "changed source"
-	src.Assets["image.png"] = domain.BlobRef{SHA: "changed"}
-	a = s.DB().Articles["alpha/guide.md"]
-	a.Versions[0].Text = "changed revision"
-	a.Conflicts[0].Incoming = "changed conflict"
-	a.Translation.Text = "changed translation"
-	a.CopiedFrom.Path = "changed path"
-	a.Published.Text = "changed published"
+	// Change the live records in place: the snapshot must not share them.
+	storetest.Corrupt(s.Store, func(db *domain.Database) {
+		src := db.Sources["alpha"]
+		src.Metadata.Title = "changed source"
+		src.Assets["image.png"] = domain.BlobRef{SHA: "changed"}
+		a := db.Articles["alpha/guide.md"]
+		a.Versions[0].Text = "changed revision"
+		a.Conflicts[0].Incoming = "changed conflict"
+		a.Translation.Text = "changed translation"
+		a.CopiedFrom.Path = "changed path"
+		a.Published.Text = "changed published"
+	})
 	s.observations.MarkObserved("alpha", observed.Add(time.Hour))
-	s.Unlock()
-	vs := view.DB().Sources["alpha"]
-	va := view.DB().Articles["alpha/guide.md"]
+	snapshot = view.state(t)
+	vs := snapshot.Sources["alpha"]
+	va := snapshot.Articles["alpha/guide.md"]
 	if va.ReconcileBase != nil {
 		t.Fatal("snapshot included reconciliation baseline from another source")
 	}
@@ -72,9 +76,8 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	vs.Assets["image.png"] = domain.BlobRef{SHA: "snapshot only"}
 	va.Versions[0].Text = "snapshot only"
 	va.Translation.Text = "snapshot only"
-	s.RLock()
-	defer s.RUnlock()
-	if s.DB().Sources["alpha"].Metadata.Title != "changed source" || s.DB().Sources["alpha"].Assets["image.png"].SHA != "changed" || s.DB().Articles["alpha/guide.md"].Versions[0].Text != "changed revision" || s.DB().Articles["alpha/guide.md"].Translation.Text != "changed translation" {
+	live := s.state(t)
+	if live.Sources["alpha"].Metadata.Title != "changed source" || live.Sources["alpha"].Assets["image.png"].SHA != "changed" || live.Articles["alpha/guide.md"].Versions[0].Text != "changed revision" || live.Articles["alpha/guide.md"].Translation.Text != "changed translation" {
 		t.Fatal("snapshot mutation escaped")
 	}
 }
@@ -94,14 +97,14 @@ func TestScopedSnapshotDuringConcurrentMutation(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 2000; i++ {
-			s.Lock()
-			a := s.DB().Articles["alpha/guide.md"]
-			if i%2 == 0 {
-				a.Versions[0].Text = "first"
-			} else {
-				a.Versions[0].Text = "second"
-			}
-			s.Unlock()
+			storetest.Corrupt(s.Store, func(db *domain.Database) {
+				a := db.Articles["alpha/guide.md"]
+				if i%2 == 0 {
+					a.Versions[0].Text = "first"
+				} else {
+					a.Versions[0].Text = "second"
+				}
+			})
 		}
 	}()
 	for i := 0; i < 2000; i++ {
@@ -110,7 +113,7 @@ func TestScopedSnapshotDuringConcurrentMutation(t *testing.T) {
 			wg.Wait()
 			t.Fatal("snapshot failed", err)
 		}
-		text := view.DB().Articles["alpha/guide.md"].Versions[0].Text
+		text := view.state(t).Articles["alpha/guide.md"].Versions[0].Text
 		if text != "first" && text != "second" {
 			wg.Wait()
 			t.Fatal("invalid snapshot")

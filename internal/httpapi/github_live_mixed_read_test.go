@@ -99,7 +99,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 			t.Fatal("partial import")
 		}
 	}
-	metadata := s.DB().Sources["wiki"].Metadata
+	metadata := s.state(t).Sources["wiki"].Metadata
 	if kinds["wiki"] != "wiki" || kinds["program"] != "program" || metadata == nil || metadata.Title != "Handbook" {
 		t.Fatal("source classification or metadata differs")
 	}

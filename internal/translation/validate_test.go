@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
-	"github.com/Mesteriis/veda-wiki/internal/store"
-	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 )
 
 // Scoped readers validate against a read-only store, so Validate must never
@@ -17,7 +15,11 @@ func TestValidateOnlyReadsTheStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readOnly := Service{Store: store.Detached(s.Dir(), storetest.Read(t, s.Store))}
+	snapshot, err := s.Store.Scoped([]string{"program"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnly := Service{Store: snapshot}
 	called := false
 	readOnly.Status = func(_ domain.Database, sourceID string, _ domain.Source) domain.SourceStatus {
 		called = true

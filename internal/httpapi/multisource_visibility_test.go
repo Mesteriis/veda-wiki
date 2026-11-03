@@ -131,7 +131,7 @@ func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherGeneration := s.DB().Sources["two"].ImportGeneration
+	otherGeneration := s.state(t).Sources["two"].ImportGeneration
 	first.Advance(map[string]string{"docs": "not a directory"})
 	newSyncManager(s, client).Once(context.Background())
 	if _, err := s.page("one/docs/guide.md", true); err != domain.ErrNotFound {
@@ -143,7 +143,7 @@ func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 	if page, err := s.page("two/docs/guide.md", true); err != nil || page.Text != "# Second source" {
 		t.Fatal("other repository affected", err)
 	}
-	if s.DB().Sources["two"].ImportGeneration != otherGeneration {
+	if s.state(t).Sources["two"].ImportGeneration != otherGeneration {
 		t.Fatal("other source generation changed")
 	}
 	out := request(Wiki{Store: s, Public: true}, "GET", "/api/v1/search?q=source", "", false)
