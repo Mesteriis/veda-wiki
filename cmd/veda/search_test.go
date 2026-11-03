@@ -73,7 +73,7 @@ func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := a.Versions[0]
-	_, err = s.submitTranslation(translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: original.SHA, Text: "# Руководство\n\nУстановите службу.", ConfirmPublication: true})
+	_, err = s.translation().Submit(translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: original.SHA, Text: "# Руководство\n\nУстановите службу.", ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
 	}

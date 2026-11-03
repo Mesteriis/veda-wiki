@@ -63,7 +63,7 @@ func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 			t.Fatal("other source exposed")
 		}
 		rev := revisions[tc.source+"/"+tc.path]
-		_, err = view.validateTranslation(translationRequest{SourceID: tc.source, Path: tc.path, ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
+		_, err = view.translation().Validate(translationRequest{SourceID: tc.source, Path: tc.path, ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
 		if tc.blocked && err != ErrConflict || !tc.blocked && err != nil {
 			t.Fatal("scoped translation lock mismatch", tc.source, tc.path, err)
 		}

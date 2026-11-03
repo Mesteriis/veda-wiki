@@ -108,7 +108,7 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.submitTranslation(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод\n\n![значок](img/icon.png)"})
+	_, err = s.translation().Submit(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод\n\n![значок](img/icon.png)"})
 	if err != nil {
 		t.Fatal(err)
 	}

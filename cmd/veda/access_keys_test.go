@@ -228,7 +228,7 @@ func TestTranslationDraftCannotModifySourceDuringPreparedMove(t *testing.T) {
 	if s.moves()[0].State != "deleting_source" {
 		t.Fatal("deletion not prepared")
 	}
-	_, err = s.saveTranslation(translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка"}, true)
+	_, err = s.translation().SaveDraft(translationRequest{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка"})
 	if err != ErrConflict {
 		t.Fatal("translation modified source during prepared move", err)
 	}

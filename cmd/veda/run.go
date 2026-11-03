@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"github.com/Mesteriis/veda-wiki/internal/github"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"log"
 	"net"
 	"net/http"
@@ -162,11 +163,11 @@ func main() {
 	manager := newSyncManager(store, github.New())
 	manager.localImportSource = *localImportSource
 	if *translationURL != "" {
-		worker, err := newTranslationWorkerProtocol(store, *translationURL, *translationModel, *translationProtocol)
+		worker, err := translation.NewWorker(store.Store, *translationURL, *translationModel, *translationProtocol)
 		if err != nil {
 			log.Fatal(err)
 		}
-		worker.tokenFile = *translationTokenFile
+		worker.TokenFile = *translationTokenFile
 		workers.Add(1)
 		go func() { defer workers.Done(); worker.Run(ctx, *translationInterval) }()
 	}

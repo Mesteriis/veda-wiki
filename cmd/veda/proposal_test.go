@@ -73,7 +73,7 @@ func TestScopedBundleLocksLinkedTranslationValidation(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatal("scoped snapshot unavailable", err)
 	}
-	_, err = view.validateTranslation(translationRequest{SourceID: "program", Path: "docs/linked.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
+	_, err = view.translation().Validate(translationRequest{SourceID: "program", Path: "docs/linked.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
 	if err != ErrConflict {
 		t.Fatal("scoped validation missed the bundle lock", err)
 	}

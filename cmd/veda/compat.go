@@ -7,6 +7,7 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/search"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 // Temporary aliases while the backend moves into internal packages. Each
@@ -45,7 +46,6 @@ var (
 	identifier    = domain.IDPattern
 	commitID      = domain.CommitIDPattern
 	secretContent = domain.CredentialPattern
-	markdown      = domain.Markdown
 )
 
 var (
@@ -66,7 +66,6 @@ var (
 	moveOperationLocks          = domain.MoveOperationLocks
 	conflictResolutionBlocked   = domain.ConflictResolutionBlocked
 	displayedRevision           = domain.DisplayedRevision
-	translationFingerprint      = domain.TranslationFingerprint
 	linksPresent                = domain.LinksPresent
 	importablePath              = domain.ImportablePath
 	imageRef                    = domain.ImageRef
@@ -91,6 +90,19 @@ func (s *Store) findArticles(query, sourceID string, public bool) []search.Hit {
 }
 
 type copyRequest = transfer.CopyRequest
+
+type (
+	translationRequest   = translation.Request
+	translationCandidate = translation.Candidate
+)
+
+// translation returns the translation service for this store. Validation
+// reports the source status as the agent context does.
+func (s *Store) translation() translation.Service {
+	return translation.Service{Store: s.Store, Status: func(_ *Database, sourceID string, src Source) any {
+		return s.sourceStatusLocked(sourceID, src)
+	}}
+}
 
 // transfer returns the copy and move service for this store. Plans report
 // source statuses as the agent context does.

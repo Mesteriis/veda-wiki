@@ -22,7 +22,7 @@ func TestTranslationsStayBoundToSourceAndOriginalAfterRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = s.submitTranslation(translationRequest{
+		_, err = s.translation().Submit(translationRequest{
 			SourceID: fixture.id, Path: "docs/guide.md", ExpectedRevision: 1,
 			OriginalSHA: article.Versions[0].SHA, Text: fixture.translation,
 			ConfirmPublication: fixture.visibility == "public",

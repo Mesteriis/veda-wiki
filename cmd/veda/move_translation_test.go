@@ -28,7 +28,7 @@ func TestOldBinaryRejectsTranslatedMoveStore(t *testing.T) {
 	programSource(t, s, "from", "private")
 	programSource(t, s, "to", "private")
 	rev, _ := s.put("from", "docs/a.md", "# Original", 0)
-	if _, err := s.submitTranslation(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); err != nil {
+	if _, err := s.translation().Submit(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "docs/b.md", ConfirmMove: true}); err != nil {
@@ -61,7 +61,7 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.submitTranslation(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
+	_, err = s.translation().Submit(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestCopyRetainsTranslationWithoutPublishingIt(t *testing.T) {
 	programSource(t, s, "from", "private")
 	programSource(t, s, "to", "public")
 	rev, _ := s.put("from", "docs/a.md", "# Original", 0)
-	if _, err := s.submitTranslation(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); err != nil {
+	if _, err := s.translation().Submit(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "docs/b.md", ConfirmPublication: true})
@@ -130,7 +130,7 @@ func TestTranslatedMoveKeepsSourceWhenTranslationChanges(t *testing.T) {
 	programSource(t, s, "from", "private")
 	rev, _ := s.put("from", "docs/a.md", "# Original", 0)
 	req := translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}
-	if _, err := s.submitTranslation(req); err != nil {
+	if _, err := s.translation().Submit(req); err != nil {
 		t.Fatal(err)
 	}
 	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Fixture"})
@@ -140,7 +140,7 @@ func TestTranslatedMoveKeepsSourceWhenTranslationChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Text = "# Исправленный перевод"
-	if _, err = s.submitTranslation(req); err != nil {
+	if _, err = s.translation().Submit(req); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
@@ -153,7 +153,7 @@ func TestTranslatedMoveKeepsSourceWhenDestinationTranslationChanges(t *testing.T
 	s := testStore(t)
 	programSource(t, s, "from", "private")
 	rev, _ := s.put("from", "docs/a.md", "# Original", 0)
-	if _, err := s.submitTranslation(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); err != nil {
+	if _, err := s.translation().Submit(translationRequest{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); err != nil {
 		t.Fatal(err)
 	}
 	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Fixture"})
@@ -162,7 +162,7 @@ func TestTranslatedMoveKeepsSourceWhenDestinationTranslationChanges(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.submitTranslation(translationRequest{SourceID: "handbook", Path: "docs/moved.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Новый перевод", ConfirmPublication: true})
+	_, err = s.translation().Submit(translationRequest{SourceID: "handbook", Path: "docs/moved.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Новый перевод", ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestConnectedSourceMoveRetainsTranslation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.submitTranslation(translationRequest{SourceID: "handbook", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: article.Versions[0].SHA, Text: "# Перевод", ConfirmPublication: true})
+	_, err = s.translation().Submit(translationRequest{SourceID: "handbook", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: article.Versions[0].SHA, Text: "# Перевод", ConfirmPublication: true})
 	if err != nil {
 		t.Fatal(err)
 	}

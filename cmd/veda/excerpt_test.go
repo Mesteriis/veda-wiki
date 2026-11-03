@@ -100,7 +100,7 @@ func TestDisplayExcerptTranslationScopeAndRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := translationRequest{SourceID: "alpha", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка 😀"}
-	if _, err = s.submitTranslation(in); err != nil {
+	if _, err = s.translation().Submit(in); err != nil {
 		t.Fatal(err)
 	}
 	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
@@ -134,7 +134,7 @@ func TestDisplayExcerptTranslationScopeAndRevision(t *testing.T) {
 		t.Fatal("missing revision or scope bypass")
 	}
 	in.Text = "# Настройка 😀"
-	if _, err = s.submitTranslation(in); err != nil {
+	if _, err = s.translation().Submit(in); err != nil {
 		t.Fatal(err)
 	}
 	if call(query).Code != 409 {

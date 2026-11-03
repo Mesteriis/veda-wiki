@@ -430,7 +430,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			apiError(rw, ErrInvalid)
 			return
 		}
-		result, err := w.Store.validateTranslation(in)
+		result, err := w.Store.translation().Validate(in)
 		if err != nil {
 			apiError(rw, err)
 			return
@@ -568,7 +568,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			}
 			offset = n
 		}
-		all := w.Store.translationCandidates()
+		all := w.Store.translation().Candidates()
 		if sourceID != "" {
 			filtered := make([]translationCandidate, 0)
 			for _, candidate := range all {
@@ -591,7 +591,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			apiError(rw, ErrInvalid)
 			return
 		}
-		tr, e := w.Store.submitTranslation(in)
+		tr, e := w.Store.translation().Submit(in)
 		if e != nil {
 			apiError(rw, e)
 			return

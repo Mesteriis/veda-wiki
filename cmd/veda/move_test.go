@@ -520,7 +520,7 @@ func TestMoveRejectsTranslationsAndDestinationIdentityChange(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.submitTranslation(translationRequest{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); e != nil {
+	if _, e = s.translation().Submit(translationRequest{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); e != nil {
 		t.Fatal(e)
 	}
 	req := moveRequest{SourceID: "program", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: "a.md", ConfirmMove: true}
@@ -627,7 +627,7 @@ func TestMoveKeepsSourceWhenTranslationIsAddedWhileWaiting(t *testing.T) {
 	if _, e = s.moveArticle(req); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.submitTranslation(translationRequest{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); e != nil {
+	if _, e = s.translation().Submit(translationRequest{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); e != nil {
 		t.Fatal(e)
 	}
 	manager.Once(context.Background())

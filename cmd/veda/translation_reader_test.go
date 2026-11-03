@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,7 +47,7 @@ func TestBlockedTranslationQueueIsScopedAndWorkerContinues(t *testing.T) {
 		jsonResponse(w, 200, map[string]any{"done": true, "response": "# Установка"})
 	}))
 	defer srv.Close()
-	worker, err := newTranslationWorker(s, srv.URL, "fixture")
+	worker, err := translation.NewWorker(s.Store, srv.URL, "fixture", "ollama")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +167,7 @@ func TestDisplayArticleTranslationVisibilityAndStaleness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.saveTranslation(translationRequest{SourceID: "alpha", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка"}, true); err != nil {
+	if _, err = s.translation().SaveDraft(translationRequest{SourceID: "alpha", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: a.Versions[0].SHA, Text: "# Установка"}); err != nil {
 		t.Fatal(err)
 	}
 	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
@@ -198,7 +199,7 @@ func TestDisplayArticleTranslationVisibilityAndStaleness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.submitTranslation(translationRequest{SourceID: "beta", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: b.Versions[0].SHA, Text: "# Установка", ConfirmPublication: true}); err != nil {
+	if _, err = s.translation().Submit(translationRequest{SourceID: "beta", Path: "docs/setup.md", ExpectedRevision: 1, OriginalSHA: b.Versions[0].SHA, Text: "# Установка", ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
 	approved := call("beta", "", true)
