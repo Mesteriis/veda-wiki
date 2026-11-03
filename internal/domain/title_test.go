@@ -1,4 +1,4 @@
-package main
+package domain
 
 import (
 	"strings"
@@ -15,7 +15,7 @@ func TestTitleMatchesFirstMarkdownH1OrPath(t *testing.T) {
 		{"# \n# Other", "folder/doc.md", ""},
 		{strings.Repeat("body\n", 100000) + "# Final", "folder/doc.md", "Final"},
 	} {
-		if got := title(tc.text, tc.path); got != tc.want {
+		if got := Title(tc.text, tc.path); got != tc.want {
 			t.Fatalf("title = %q, want %q", got, tc.want)
 		}
 	}

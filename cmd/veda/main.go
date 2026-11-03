@@ -16,9 +16,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 	"net/url"
@@ -26,27 +24,7 @@ import (
 
 //go:embed ui
 var assets embed.FS
-var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
-type Page struct {
-	searchOriginal            string
-	searchDisplayed           string
-	searchSourceTitle         string
-	ProgramDocumentation      bool          `json:"program_documentation,omitempty"`
-	UnresolvedConflict        bool          `json:"unresolved_conflict,omitempty"`
-	ConflictResolutionBlocked bool          `json:"conflict_resolution_blocked_by_write,omitempty"`
-	TranslationOrigin         string        `json:"translation_origin,omitempty"`
-	TranslationState          string        `json:"translation_state,omitempty"`
-	OriginalSHA               string        `json:"original_sha256,omitempty"`
-	Translated                bool          `json:"translated,omitempty"`
-	Path                      string        `json:"path"`
-	Title                     string        `json:"title"`
-	Environment               string        `json:"environment"`
-	SHA                       string        `json:"sha256"`
-	Updated                   string        `json:"updated_at,omitempty"`
-	Text                      string        `json:"-"`
-	HTML                      template.HTML `json:"-"`
-}
 type Snapshot struct {
 	Generated string `json:"generated_at"`
 	Pages     []Page `json:"pages"`
@@ -111,9 +89,6 @@ type Wiki struct {
 	Sync              *SyncManager
 }
 
-func safePath(p string) bool {
-	return p != "" && !strings.HasPrefix(p, "/") && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../") && (strings.EqualFold(path.Ext(p), ".md") || strings.EqualFold(path.Ext(p), ".markdown"))
-}
 func headingID(id any) string {
 	if b, ok := id.([]byte); ok {
 		return string(b)
@@ -154,39 +129,6 @@ func sourceTarget(pagePath, destination string) (string, string, bool) {
 	}
 	target, valid := repositoryTarget(parts[1], destination)
 	return parts[0], target, valid
-}
-
-func repositoryTarget(articlePath, destination string) (string, bool) {
-	if destination == "" {
-		return "", false
-	}
-	var target string
-	if strings.HasPrefix(destination, "/") {
-		target = path.Clean(strings.TrimPrefix(destination, "/"))
-	} else {
-		target = path.Clean(path.Join(path.Dir(articlePath), destination))
-	}
-	return target, safeRelative(target)
-}
-
-// A README has priority over index.md when resolving a directory. A fixed
-// README dependency therefore cannot be shadowed by a later index.md.
-func directoryReadmeTarget(articlePath, destination string) (string, bool) {
-	if destination == "" {
-		return "", false
-	}
-	base := path.Clean(path.Join(path.Dir(articlePath), destination))
-	if strings.HasPrefix(destination, "/") {
-		base = path.Clean(strings.TrimPrefix(destination, "/"))
-	}
-	if base == "." {
-		return "README.md", true
-	}
-	if !safeRelative(base) {
-		return "", false
-	}
-	target := base + "/README.md"
-	return target, safeRelative(target)
 }
 
 func render(p Page) (template.HTML, template.HTML, error) {
@@ -480,8 +422,8 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	sources := map[string]Source{}
 	for _, source := range w.Store.sources(w.Public) {
 		sources[source.ID] = source.Source
-		if !w.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0 || source.syncIssue != "") {
-			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld, SyncIssue: source.syncIssue, LastImportObservedAt: source.LastImportObservedAt})
+		if !w.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0 || source.SyncIssue != "") {
+			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld, SyncIssue: source.SyncIssue, LastImportObservedAt: source.LastImportObservedAt})
 		}
 	}
 	for _, p := range s.Pages {
@@ -520,7 +462,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if name == "" && (env == "" || env == "all" || env == id) {
 			score := 1
 			if query != "" {
-				score = searchRevisions(query, p.Path, p.searchSourceTitle, p.searchOriginal, p.searchDisplayed, terms)
+				score = searchRevisions(query, p.Path, p.SearchSourceTitle, p.SearchOriginal, p.SearchDisplayed, terms)
 			}
 			if score > 0 {
 				v.Pages = append(v.Pages, p)

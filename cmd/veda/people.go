@@ -12,24 +12,6 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Human identities are distinct from API/agent keys. Teams grant read-only
-// access to named sources. Password hashes never appear in administrative views.
-type WikiTeam struct {
-	ID       string   `json:"id"`
-	Sources  []string `json:"sources"`
-	Revision int      `json:"revision"`
-}
-type WikiUser struct {
-	ID           string   `json:"id"`
-	Admin        bool     `json:"admin,omitempty"`
-	SetupExpires string   `json:"setup_expires,omitempty"`
-	Salt         string   `json:"salt"`
-	PasswordHash string   `json:"password_hash"`
-	Teams        []string `json:"teams"`
-	Disabled     bool     `json:"disabled"`
-	Revision     int      `json:"revision"`
-	AuthVersion  int      `json:"auth_version"`
-}
 type WikiUserView struct {
 	ID       string   `json:"id"`
 	Admin    bool     `json:"admin"`

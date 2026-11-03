@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
 	"net/url"
 	"os"
@@ -13,100 +12,6 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
-
-// Move records one explicit, revision-bound move; source history is retained.
-type Move struct {
-	ID                      string             `json:"id"`
-	SourceID                string             `json:"source_id"`
-	SourcePath              string             `json:"source_path"`
-	SourceRevision          int                `json:"source_revision"`
-	SourceConnectionID      string             `json:"source_connection_id,omitempty"`
-	SourceRepositoryID      int64              `json:"source_repository_id,omitempty"`
-	SourceBranch            string             `json:"source_branch,omitempty"`
-	DestinationID           string             `json:"destination_id"`
-	DestinationPath         string             `json:"destination_path"`
-	DestinationConnectionID string             `json:"destination_connection_id,omitempty"`
-	DestinationRepositoryID int64              `json:"destination_repository_id,omitempty"`
-	DestinationBranch       string             `json:"destination_branch,omitempty"`
-	SHA                     string             `json:"sha256"`
-	State                   string             `json:"state"`
-	PreparedDeletion        string             `json:"prepared_deletion,omitempty"`
-	TranslationFingerprint  string             `json:"translation_fingerprint,omitempty"`
-	Assets                  map[string]BlobRef `json:"assets,omitempty"`
-	Links                   map[string]string  `json:"links,omitempty"`
-	Created                 string             `json:"created_at"`
-}
-
-func translationFingerprint(tr *Translation) string {
-	if tr == nil {
-		return ""
-	}
-	b, _ := json.Marshal(tr)
-	return digest(b)
-}
-
-func movedTranslation(tr *Translation) *Translation {
-	if tr == nil {
-		return nil
-	}
-	copy := *tr
-	copy.PublicApproved = false
-	return &copy
-}
-
-func assetsPresent(source Source, expected map[string]BlobRef) bool {
-	for name, ref := range expected {
-		if actual, ok := source.Assets[name]; !ok || actual != ref {
-			return false
-		}
-	}
-	return true
-}
-
-func linksPresent(db Database, sourceID string, expected map[string]string) bool {
-	src, ok := db.Sources[sourceID]
-	if !ok {
-		return false
-	}
-	for name, sha := range expected {
-		a, exists := db.Articles[sourceID+"/"+name]
-		if !exists || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
-			return false
-		}
-		if src.ConnectionID != "" && a.UpstreamHash != sha {
-			return false
-		}
-		if src.Visibility == "public" && (a.Published == nil || a.Published.SHA != sha) {
-			return false
-		}
-		for _, conflict := range a.Conflicts {
-			if conflict.Resolution == "" {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// Pending remote bundles have not acquired upstream hashes yet. Their local
-// revisions must still match until a complete remote pull confirms them.
-func localLinksPresent(db Database, sourceID string, expected map[string]string) bool {
-	if _, ok := db.Sources[sourceID]; !ok {
-		return false
-	}
-	for name, sha := range expected {
-		a, ok := db.Articles[sourceID+"/"+name]
-		if !ok || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
-			return false
-		}
-		for _, conflict := range a.Conflicts {
-			if conflict.Resolution == "" {
-				return false
-			}
-		}
-	}
-	return true
-}
 
 func (s *Store) linkContents(sourceID string, expected map[string]string) (map[string]string, error) {
 	s.mu.RLock()
@@ -131,58 +36,6 @@ func remoteAssetPath(name, kind string) bool {
 		return true
 	}
 	return false
-}
-
-// Keep only images still referenced by a later revision of a queued article.
-func retainedPendingAssets(value, articlePath string, candidates map[string]BlobRef) map[string]BlobRef {
-	if len(candidates) == 0 {
-		return nil
-	}
-	refs := map[string]BlobRef{}
-	root := markdown.Parser().Parse(text.NewReader([]byte(value)))
-	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		image, ok := node.(*ast.Image)
-		if !entering || !ok {
-			return ast.WalkContinue, nil
-		}
-		u, err := url.Parse(string(image.Destination))
-		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
-			return ast.WalkContinue, nil
-		}
-		name, valid := repositoryTarget(articlePath, u.Path)
-		if ref, found := candidates[name]; valid && found {
-			refs[name] = ref
-		}
-		return ast.WalkContinue, nil
-	})
-	return refs
-}
-
-func retainedPendingLinks(value, articlePath string, candidates map[string]string) map[string]string {
-	if len(candidates) == 0 {
-		return nil
-	}
-	refs := map[string]string{}
-	root := markdown.Parser().Parse(text.NewReader([]byte(value)))
-	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		link, ok := node.(*ast.Link)
-		if !entering || !ok {
-			return ast.WalkContinue, nil
-		}
-		u, err := url.Parse(string(link.Destination))
-		if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
-			return ast.WalkContinue, nil
-		}
-		name, valid := repositoryTarget(articlePath, u.Path)
-		if _, found := candidates[name]; !valid || !found {
-			name, valid = directoryReadmeTarget(articlePath, u.Path)
-		}
-		if sha, found := candidates[name]; valid && found {
-			refs[name] = sha
-		}
-		return ast.WalkContinue, nil
-	})
-	return refs
 }
 
 func (s *Store) readAsset(ref BlobRef) ([]byte, error) {
@@ -223,58 +76,6 @@ func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
 	return nil
 }
 
-// A prepared deletion may have reached GitHub even when the response was lost.
-// Keep both local copies stable until a complete remote pull resolves it.
-func moveDeletionLocks(db Database, sourceID, p string) bool {
-	return bundleLocks(db, sourceID, p) || moveOperationLocks(db, sourceID, p)
-}
-
-func bundleLocks(db Database, sourceID, p string) bool {
-	for _, job := range db.Outbox {
-		if (len(job.Bundle) == 0 && !job.scopeBundle) || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
-			continue
-		}
-		if job.Path == p {
-			return true
-		}
-		if _, ok := job.Bundle[p]; ok {
-			return true
-		}
-		if _, ok := job.Links[p]; ok {
-			return true
-		}
-		if job.scopeBundlePaths[p] {
-			return true
-		}
-	}
-	return false
-}
-
-func moveOperationLocks(db Database, sourceID, p string) bool {
-	for _, m := range db.Moves {
-		if m.State == "deleting_source" {
-			if (m.SourceID == sourceID && m.SourcePath == p) || (m.DestinationID == sourceID && m.DestinationPath == p) {
-				return true
-			}
-			if m.DestinationID == sourceID {
-				if _, dependency := m.Links[p]; dependency {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func moveDeletionLocksConnection(db Database, id string) bool {
-	for _, m := range db.Moves {
-		if m.State == "deleting_source" && (m.SourceConnectionID == id || m.DestinationConnectionID == id) {
-			return true
-		}
-	}
-	return false
-}
-
 type moveRequest struct {
 	SourceID           string `json:"source_id"`
 	SourcePath         string `json:"source_path"`
@@ -293,34 +94,6 @@ type transferDependencies struct {
 	Assets         map[string]BlobRef
 	Links          map[string]string
 	DirectoryLinks bool
-}
-
-// Earlier binaries do not retain repository-root references in pending work.
-// Such work requires a version gate before it is committed to disk.
-func hasRootReference(value string) bool {
-	root := markdown.Parser().Parse(text.NewReader([]byte(value)))
-	found := false
-	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		var destination []byte
-		switch n := node.(type) {
-		case *ast.Link:
-			destination = n.Destination
-		case *ast.Image:
-			destination = n.Destination
-		default:
-			return ast.WalkContinue, nil
-		}
-		u, err := url.Parse(string(destination))
-		if err == nil && u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") {
-			found = true
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	return found
 }
 
 func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target Source) (transferDependencies, error) {
@@ -587,104 +360,6 @@ func (s *Store) moves() []Move {
 		return out[i].ID < out[j].ID
 	})
 	return out
-}
-
-// Called only inside the same transaction that changes source or destination.
-// Connected destinations must be observed in GitHub before source removal.
-func reconcileMoves(db *Database) {
-	for id, m := range db.Moves {
-		if m.State != "waiting_destination" && m.State != "waiting_source_delete" && m.State != "deleting_source" {
-			continue
-		}
-		source, exists := db.Articles[m.SourceID+"/"+m.SourcePath]
-		src, srcOK := db.Sources[m.SourceID]
-		if !exists || !srcOK || source.Deleted || translationFingerprint(source.Translation) != m.TranslationFingerprint || len(source.Versions) != m.SourceRevision || source.Versions[m.SourceRevision-1].SHA != m.SHA || src.ConnectionID != m.SourceConnectionID || (m.SourceConnectionID == "" && src.ImportGeneration != "") {
-			m.State = "source_changed"
-			db.Moves[id] = m
-			continue
-		}
-		if m.SourceConnectionID != "" {
-			conn, ok := db.Connections[m.SourceConnectionID]
-			if !ok || conn.RepositoryID != m.SourceRepositoryID || conn.Branch != m.SourceBranch || source.UpstreamHash != m.SHA {
-				m.State = "source_changed"
-				db.Moves[id] = m
-				continue
-			}
-			for _, conflict := range source.Conflicts {
-				if conflict.Resolution == "" {
-					m.State = "source_changed"
-					db.Moves[id] = m
-					break
-				}
-			}
-			if m.State == "source_changed" {
-				continue
-			}
-		}
-		target, exists := db.Articles[m.DestinationID+"/"+m.DestinationPath]
-		dst, dstOK := db.Sources[m.DestinationID]
-		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || translationFingerprint(target.Translation) != translationFingerprint(movedTranslation(source.Translation)) || (m.DestinationConnectionID == "" && !assetsPresent(dst, m.Assets)) || !localLinksPresent(*db, m.DestinationID, m.Links) {
-			m.State = "destination_changed"
-			db.Moves[id] = m
-			continue
-		}
-		conflicting := false
-		for _, c := range target.Conflicts {
-			if c.Resolution == "" {
-				conflicting = true
-				break
-			}
-		}
-		if conflicting {
-			m.State = "destination_changed"
-			db.Moves[id] = m
-			continue
-		}
-		if dst.ConnectionID != m.DestinationConnectionID {
-			m.State = "destination_changed"
-			db.Moves[id] = m
-			continue
-		}
-		if m.DestinationConnectionID != "" {
-			conn, ok := db.Connections[m.DestinationConnectionID]
-			if !ok || conn.RepositoryID != m.DestinationRepositoryID || conn.Branch != m.DestinationBranch {
-				m.State = "destination_changed"
-				db.Moves[id] = m
-				continue
-			}
-			jobID := m.DestinationID + "/" + m.DestinationPath + "@1"
-			job, ok := db.Outbox[jobID]
-			if !ok || job.State == "superseded" || job.SHA != m.SHA {
-				m.State = "destination_changed"
-				db.Moves[id] = m
-				continue
-			}
-			if job.State != "complete" {
-				continue
-			}
-			if !assetsPresent(dst, m.Assets) || !linksPresent(*db, m.DestinationID, m.Links) {
-				m.State = "destination_changed"
-				db.Moves[id] = m
-				continue
-			}
-		}
-		if m.DestinationConnectionID == "" && !linksPresent(*db, m.DestinationID, m.Links) {
-			m.State = "destination_changed"
-			db.Moves[id] = m
-			continue
-		}
-		if m.SourceConnectionID != "" {
-			if m.State != "deleting_source" {
-				m.State = "waiting_source_delete"
-			}
-			db.Moves[id] = m
-			continue
-		}
-		source.Deleted = true
-		db.Articles[m.SourceID+"/"+m.SourcePath] = source
-		m.State = "complete"
-		db.Moves[id] = m
-	}
 }
 
 // Cancellation retains both copies and never attempts a remote deletion.

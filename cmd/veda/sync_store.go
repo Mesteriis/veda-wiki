@@ -10,32 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
-
-type SyncJob struct {
-	scopePrepared    bool
-	scopeBundle      bool
-	scopeBundlePaths map[string]bool
-	ID               string             `json:"id"`
-	SourceID         string             `json:"source_id"`
-	Path             string             `json:"path"`
-	Revision         int                `json:"revision"`
-	SHA              string             `json:"sha256"`
-	State            string             `json:"state"`
-	Created          string             `json:"created_at"`
-	Attempts         int                `json:"attempts"`
-	LastError        string             `json:"last_error,omitempty"`
-	PreparedCommit   string             `json:"prepared_commit,omitempty"`
-	ObservedCommit   string             `json:"observed_commit,omitempty"`
-	NextAttempt      string             `json:"next_attempt,omitempty"`
-	Visibility       string             `json:"visibility"`
-	Assets           map[string]BlobRef `json:"assets,omitempty"`
-	Links            map[string]string  `json:"links,omitempty"`
-	Bundle           map[string]string  `json:"bundle,omitempty"`
-}
 
 var errImportedAssetUnavailable = errors.New("imported asset unavailable")
 
@@ -74,37 +51,6 @@ type adoptionProof struct {
 	Account    GitHubAccount
 	Snapshot   string
 	Context    context.Context
-}
-
-func sourcePublic(db Database, src Source, now time.Time) bool {
-	if src.Visibility != "public" {
-		return false
-	}
-	if src.ConnectionID == "" {
-		return true
-	}
-	c, ok := db.Connections[src.ConnectionID]
-	verified, e := time.Parse(time.RFC3339Nano, c.VerifiedAt)
-	return ok && !c.Paused && c.Verification == "verified" && !c.Private && e == nil && !verified.After(now.Add(time.Minute)) && now.Sub(verified) < 10*time.Minute
-}
-
-// A partial import cannot establish which previously imported paths remain
-// public, regardless of whether the source is local or connected to GitHub.
-// Publication decisions still use sourcePublic, but readers fail closed until
-// the import is complete. Sources without an import are not partial.
-func sourcePublicReadable(db Database, src Source, now time.Time) bool {
-	if src.ConnectionID != "" {
-		c := db.Connections[src.ConnectionID]
-		// A visibility check alone does not establish which head was imported.
-		// Configuration changes clear the recorded head until a fresh pull.
-		// A sync of an unchanged head keeps serving the snapshot under its
-		// previous proof; connectionStatusFor does not refresh it at sync start.
-		// A newer observed head withholds the snapshot until it is imported.
-		if (c.PendingHead != "" && c.PendingHead != c.LastPull) || !commitID.MatchString(c.LastPull) || c.LastPull != src.ImportCommit || !commitID.MatchString(c.TreeSHA) {
-			return false
-		}
-	}
-	return sourcePublic(db, src, now) && !src.ImportPartial
 }
 
 // Record a changed remote head before fetching it, so the public snapshot of
@@ -208,42 +154,6 @@ func (s *Store) sourceSyncState(id string) (string, string) {
 		}
 	}
 	return state, code
-}
-func enqueueWrite(db *Database, a Article, rev Revision) {
-	if db.Outbox == nil {
-		db.Outbox = map[string]SyncJob{}
-	}
-	retained := map[string]BlobRef{}
-	retainedLinks := map[string]string{}
-	privateDependencies := false
-	for id, job := range db.Outbox {
-		if job.SourceID == a.SourceID && job.Path == a.Path && job.State != "complete" && job.State != "superseded" {
-			inherited := retainedPendingAssets(rev.Text, a.Path, job.Assets)
-			inheritedLinks := retainedPendingLinks(rev.Text, a.Path, job.Links)
-			if (len(inherited) > 0 || len(inheritedLinks) > 0) && job.Visibility != "public" {
-				privateDependencies = true
-			}
-			for p, ref := range inherited {
-				retained[p] = ref
-			}
-			for p, sha := range inheritedLinks {
-				retainedLinks[p] = sha
-			}
-		}
-		if job.SourceID == a.SourceID && job.Path == a.Path && job.PreparedCommit == "" && len(job.Bundle) == 0 && (job.State == "pending" || job.State == "retry" || (job.State == "blocked" && job.LastError == "credential_like_content")) {
-			job.State = "superseded"
-			db.Outbox[id] = job
-		}
-	}
-	id := a.SourceID + "/" + a.Path + "@" + strconv.Itoa(rev.Number)
-	visibility := "private"
-	if !privateDependencies && sourcePublic(*db, db.Sources[a.SourceID], time.Now()) {
-		visibility = "public"
-	}
-	if (len(retained) > 0 || len(retainedLinks) > 0) && hasRootReference(rev.Text) && db.Version < 12 {
-		db.Version = 12
-	}
-	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained, Links: retainedLinks}
 }
 func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if !confirm {

@@ -46,17 +46,6 @@ func newLocalClient(base, keyFile string) (*localClient, error) {
 	}
 	return &localClient{base: strings.TrimRight(base, "/"), token: string(token), http: &http.Client{Timeout: 45 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
-func hexKey(s string) ([]byte, error) {
-	if len(s) != 64 {
-		return nil, ErrInvalid
-	}
-	for _, c := range s {
-		if !strings.ContainsRune("0123456789abcdef", c) {
-			return nil, ErrInvalid
-		}
-	}
-	return []byte(s), nil
-}
 func (c *localClient) request(method, route string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

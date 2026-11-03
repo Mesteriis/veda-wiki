@@ -13,15 +13,6 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-type Translation struct {
-	Origin         string `json:"origin,omitempty"`
-	Language       string `json:"language"`
-	OriginalSHA    string `json:"original_sha256"`
-	Text           string `json:"text"`
-	SHA            string `json:"sha256"`
-	Created        string `json:"created_at"`
-	PublicApproved bool   `json:"public_approved"`
-}
 type translationRequest struct {
 	SourceID                       string  `json:"source_id"`
 	Path                           string  `json:"path"`
@@ -215,13 +206,6 @@ func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Trans
 		return Translation{}, e
 	}
 	return tr, nil
-}
-func displayedRevision(a Article, revision Revision, public bool) (Revision, bool) {
-	tr := a.Translation
-	if tr == nil || tr.OriginalSHA != revision.SHA || (public && !tr.PublicApproved) {
-		return revision, false
-	}
-	return Revision{Number: revision.Number, Text: tr.Text, SHA: tr.SHA, Created: tr.Created}, true
 }
 
 type translationCandidate struct {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 const credentialFixture = "password=synthetic-fixture-only"
@@ -195,7 +196,7 @@ func TestCorrectedBlockedJobRetainsReferencedDependencies(t *testing.T) {
 		"prepared": {ID: "prepared", SourceID: "handbook", Path: "guide.md", Revision: 1, State: "blocked", LastError: "credential_like_content", PreparedCommit: "uncertain"},
 	}
 	rev := Revision{Number: 2, Text: "# Safe\n\n![icon](img/icon.png)", SHA: digest([]byte("# Safe\n\n![icon](img/icon.png)"))}
-	enqueueWrite(&db, Article{SourceID: "handbook", Path: "guide.md"}, rev)
+	enqueueWrite(&db, Article{SourceID: "handbook", Path: "guide.md"}, rev, time.Now())
 	if db.Outbox["old"].State != "superseded" || db.Outbox["prepared"].State != "blocked" {
 		t.Fatal("incorrect blocked-job supersession")
 	}

@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,7 +13,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"syscall"
@@ -25,27 +22,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-type WikiMetadata struct {
-	SchemaVersion int    `json:"schema_version" yaml:"schema_version"`
-	Kind          string `json:"kind" yaml:"kind"`
-	Title         string `json:"title" yaml:"title"`
-	Description   string `json:"description,omitempty" yaml:"description,omitempty"`
-	Image         string `json:"image,omitempty" yaml:"image,omitempty"`
-	URL           string `json:"url,omitempty" yaml:"url,omitempty"`
-}
-type BlobRef struct {
-	SHA  string `json:"sha256"`
-	MIME string `json:"mime"`
-}
-type ImportConflict struct {
-	Incoming    string `json:"incoming"`
-	IncomingSHA string `json:"incoming_sha256"`
-	BaseSHA     string `json:"base_sha256"`
-	Commit      string `json:"commit"`
-	Deleted     bool   `json:"deleted"`
-	Created     string `json:"created_at"`
-	Resolution  string `json:"resolution,omitempty"`
-}
 type ImportBatch struct {
 	withheldReasons map[string]int    // local preview only; never serialized
 	SourceID        string            `json:"source_id"`
@@ -76,21 +52,6 @@ type ImportResult struct {
 const maxImportBytes = 32 << 20
 const maxImportRequestBytes = 64 << 20
 
-var secretContent = regexp.MustCompile(`(?i)-----BEGIN .*PRIVATE KEY-----|\b(?:password|passwd|api[_-]?key|access[_-]?token|client_secret)\s*[=:]\s*["']?[^\s"']{6,}|\b(?:ghp_|github_pat_|sk-proj-)[A-Za-z0-9_\-]{12,}|https?://[^\s/]+:[^\s/]+@`)
-var commitID = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
-
-func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
-func safeRelative(p string) bool {
-	if p == "" || !utf8.ValidString(p) || len(p) > 512 || path.Clean(p) != p || strings.HasPrefix(p, "/") || strings.ContainsAny(p, "\\\x00\r\n") {
-		return false
-	}
-	for _, part := range strings.Split(p, "/") {
-		if strings.HasPrefix(part, ".") {
-			return false
-		}
-	}
-	return true
-}
 func validateMetadata(m *WikiMetadata) error {
 	if m == nil || m.SchemaVersion != 1 || m.Kind != "wiki" || strings.TrimSpace(m.Title) == "" || len(m.Title) > 200 || len(m.Description) > 4000 || len(m.URL) > 2048 {
 		return ErrInvalid

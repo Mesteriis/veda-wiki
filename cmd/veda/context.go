@@ -46,7 +46,7 @@ func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
 		for _, job := range s.db.Outbox {
 			if job.SourceID == sourceID && job.State != "complete" && job.State != "superseded" {
 				count++
-				if job.PreparedCommit != "" || job.scopePrepared {
+				if job.PreparedCommit != "" || job.ScopePrepared {
 					prepared++
 				}
 			}

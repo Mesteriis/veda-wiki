@@ -23,13 +23,6 @@ import (
 	"time"
 )
 
-type GitHubAccount struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Login     string `json:"login"`
-	SecretRef string `json:"secret_ref,omitempty"`
-}
-
 // SecretRef is an opaque filename, not credential material. It is removed from
 // API responses; only the private transaction file retains the reference.
 type GitHubSecret struct {
@@ -38,28 +31,6 @@ type GitHubSecret struct {
 	AppID          int64  `json:"app_id,omitempty"`
 	InstallationID int64  `json:"installation_id,omitempty"`
 	PrivateKey     string `json:"private_key,omitempty"`
-}
-type GitHubConnection struct {
-	ID             string `json:"id"`
-	Repository     string `json:"repository"`
-	RepositoryID   int64  `json:"repository_id"`
-	Branch         string `json:"branch"`
-	AccountID      string `json:"account_id,omitempty"`
-	Write          bool   `json:"write"`
-	Private        bool   `json:"private"`
-	Verification   string `json:"verification"`
-	VerifiedAt     string `json:"verified_at"`
-	State          string `json:"state"`
-	LastError      string `json:"last_error,omitempty"`
-	LastPull       string `json:"last_pull,omitempty"`
-	NextAttempt    string `json:"next_attempt,omitempty"`
-	Attempts       int    `json:"attempts"`
-	Paused         bool   `json:"paused"`
-	ConfigRevision int    `json:"config_revision"`
-	TreeSHA        string `json:"tree_sha,omitempty"`
-	// PendingHead is a remote head observed but not yet imported. Until a pull
-	// imports it, the earlier public snapshot may be stale and stays hidden.
-	PendingHead string `json:"pending_head,omitempty"`
 }
 type repositoryInfo struct {
 	ID            int64  `json:"id"`

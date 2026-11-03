@@ -13,15 +13,6 @@ import (
 	"time"
 )
 
-// AccessKey grants current, read-only content from explicitly named sources.
-// The bearer value is returned once and never stored, only its SHA-256 hash.
-type AccessKey struct {
-	ID      string   `json:"id"`
-	Hash    string   `json:"hash"`
-	Sources []string `json:"sources"`
-	Expires string   `json:"expires_at"`
-}
-
 type AccessKeyView struct {
 	ID      string   `json:"id"`
 	Sources []string `json:"sources"`
@@ -276,18 +267,18 @@ func (s *Store) scopedViewLocked(scope []string) (*Store, bool, error) {
 	for id, job := range s.db.Outbox {
 		if selected[job.SourceID] && job.State != "complete" && job.State != "superseded" {
 			paths := map[string]bool{}
-			if len(job.Bundle) != 0 || job.scopeBundle {
+			if len(job.Bundle) != 0 || job.ScopeBundle {
 				for p := range job.Bundle {
 					paths[p] = true
 				}
 				for p := range job.Links {
 					paths[p] = true
 				}
-				for p := range job.scopeBundlePaths {
+				for p := range job.ScopeBundlePaths {
 					paths[p] = true
 				}
 			}
-			db.Outbox[id] = SyncJob{SourceID: job.SourceID, Path: job.Path, State: job.State, scopePrepared: job.PreparedCommit != "" || job.scopePrepared, scopeBundle: len(job.Bundle) != 0 || job.scopeBundle, scopeBundlePaths: paths}
+			db.Outbox[id] = SyncJob{SourceID: job.SourceID, Path: job.Path, State: job.State, ScopePrepared: job.PreparedCommit != "" || job.ScopePrepared, ScopeBundle: len(job.Bundle) != 0 || job.ScopeBundle, ScopeBundlePaths: paths}
 		}
 	}
 	// Preserve only the path locks visible within the authorized sources; the

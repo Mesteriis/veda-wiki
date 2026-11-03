@@ -5,15 +5,6 @@ import (
 	"time"
 )
 
-// CopyOrigin is retained on the destination for owner audit and is never
-// returned on the anonymous public surface.
-type CopyOrigin struct {
-	SourceID       string `json:"source_id"`
-	Path           string `json:"path"`
-	Revision       int    `json:"revision"`
-	SHA            string `json:"sha256"`
-	DirectoryIndex bool   `json:"directory_index,omitempty"`
-}
 type copyRequest struct {
 	SourceID                    string `json:"source_id"`
 	SourcePath                  string `json:"source_path"`
@@ -115,7 +106,7 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	// Reconcile it in the same transaction before queuing the new write.
 	reconcileMoves(&db)
 	if destination.ConnectionID != "" {
-		enqueueWrite(&db, b, copied)
+		enqueueWrite(&db, b, copied, time.Now())
 		if len(dependencies.Assets) > 0 || len(dependencies.Links) > 0 {
 			id := b.SourceID + "/" + b.Path + "@" + strconv.Itoa(copied.Number)
 			job := db.Outbox[id]

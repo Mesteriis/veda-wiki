@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -19,68 +18,6 @@ import (
 const maxStoreBytes = 64 << 20
 const legacyArticleBytes = 256000
 const maxArticleBytes = 1 << 20
-
-var ErrInvalid = errors.New("invalid input")
-var ErrConflict = errors.New("revision conflict")
-var ErrNotFound = errors.New("not found")
-var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
-
-type Source struct {
-	ID               string             `json:"id"`
-	Title            string             `json:"title"`
-	Kind             string             `json:"kind"`
-	Visibility       string             `json:"visibility"`
-	Metadata         *WikiMetadata      `json:"metadata,omitempty"`
-	Assets           map[string]BlobRef `json:"assets,omitempty"`
-	ImportGeneration string             `json:"import_generation,omitempty"`
-	ImportCommit     string             `json:"import_commit,omitempty"`
-	ImportDirty      bool               `json:"import_dirty,omitempty"`
-	ImportPartial    bool               `json:"import_partial,omitempty"`
-	ConnectionID     string             `json:"connection_id,omitempty"`
-}
-
-// SourceView adds ephemeral, owner-visible sync evidence without persisting a
-// timestamp on every unchanged snapshot import.
-type SourceView struct {
-	Source
-	LastImportObservedAt string `json:"last_import_observed_at,omitempty"`
-	LastImportWithheld   *int   `json:"last_import_withheld,omitempty"`
-	UnresolvedConflicts  int    `json:"unresolved_conflicts,omitempty"`
-	syncIssue            string
-}
-type Revision struct {
-	Number  int    `json:"revision"`
-	Text    string `json:"text"`
-	SHA     string `json:"sha256"`
-	Created string `json:"created_at"`
-}
-type Article struct {
-	Translation    *Translation     `json:"translation,omitempty"`
-	CopiedFrom     *CopyOrigin      `json:"copied_from,omitempty"`
-	ReconcileBase  *ReconcileBase   `json:"reconcile_base,omitempty"`
-	SourceID       string           `json:"source_id"`
-	Path           string           `json:"path"`
-	Versions       []Revision       `json:"versions"`
-	UpstreamHash   string           `json:"upstream_sha256,omitempty"`
-	Deleted        bool             `json:"deleted,omitempty"`
-	Conflicts      []ImportConflict `json:"conflicts,omitempty"`
-	Published      *Revision        `json:"published,omitempty"`
-	PublishedLocal bool             `json:"published_local,omitempty"`
-}
-type Database struct {
-	Version       int                         `json:"version"`
-	Updated       string                      `json:"updated_at"`
-	Sources       map[string]Source           `json:"sources"`
-	Articles      map[string]Article          `json:"articles"`
-	Accounts      map[string]GitHubAccount    `json:"github_accounts,omitempty"`
-	Connections   map[string]GitHubConnection `json:"github_connections,omitempty"`
-	Outbox        map[string]SyncJob          `json:"outbox,omitempty"`
-	Moves         map[string]Move             `json:"moves,omitempty"`
-	AccessKeys    map[string]AccessKey        `json:"access_keys,omitempty"`
-	Users         map[string]WikiUser         `json:"users,omitempty"`
-	Teams         map[string]WikiTeam         `json:"teams,omitempty"`
-	SourceMirrors map[string]SourceMirror     `json:"source_mirrors,omitempty"`
-}
 
 // One server process owns the data directory. All writes are serialized and
 // persisted before becoming visible. Whole-state transactions keep article
@@ -605,17 +542,6 @@ func (s *Store) addSource(src Source) error {
 	db.Sources[src.ID] = src
 	return s.commit(db)
 }
-func articlePath(p string, kind string) bool {
-	if !utf8.ValidString(p) || !safePath(p) || len(p) > 512 || strings.ContainsAny(p, "\\\x00\r\n") {
-		return false
-	}
-	for _, part := range strings.Split(p, "/") {
-		if strings.HasPrefix(part, ".") {
-			return false
-		}
-	}
-	return kind != "program" || strings.HasPrefix(p, "docs/")
-}
 func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	if len(text) > maxArticleBytes || !utf8.ValidString(text) || expected < 0 {
 		return Revision{}, ErrInvalid
@@ -663,7 +589,7 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 	db.Articles[key] = article
 	reconcileMoves(&db)
 	if src.ConnectionID != "" {
-		enqueueWrite(&db, article, rev)
+		enqueueWrite(&db, article, rev, time.Now())
 	}
 	// Reconciliation can delete another article when a pending move completes.
 	// Such writes must persist the whole state, not only this article.
@@ -681,33 +607,6 @@ func (s *Store) put(sourceID, p, text string, expected int) (Revision, error) {
 		return Revision{}, err
 	}
 	return rev, nil
-}
-
-// The caller holds the store lock or operates on a request-local snapshot.
-// A blank value means no current sync warning, not proof of live correctness.
-func sourceSyncIssue(db Database, src Source, now time.Time) string {
-	if src.ConnectionID == "" {
-		return ""
-	}
-	conn, exists := db.Connections[src.ConnectionID]
-	switch {
-	case !exists:
-		return "unverified"
-	case conn.Paused:
-		return "paused"
-	case conn.State == "error":
-		return "error"
-	case conn.State == "blocked" || conn.State == "conflict":
-		return "attention"
-	case conn.State == "syncing":
-		return "checking"
-	default:
-		verified, err := time.Parse(time.RFC3339Nano, conn.VerifiedAt)
-		if conn.Verification != "verified" || err != nil || verified.After(now.Add(time.Minute)) || now.Sub(verified) >= 10*time.Minute || !commitID.MatchString(conn.LastPull) || conn.LastPull != src.ImportCommit || !commitID.MatchString(conn.TreeSHA) {
-			return "unverified"
-		}
-	}
-	return ""
 }
 
 func (s *Store) sources(public bool) []SourceView {
@@ -732,7 +631,7 @@ func (s *Store) sources(public bool) []SourceView {
 			}
 			view := SourceView{Source: src}
 			if !public {
-				view.syncIssue = sourceSyncIssue(s.db, src, now)
+				view.SyncIssue = sourceSyncIssue(s.db, src, now)
 				if observed, ok := s.observed[src.ID]; ok {
 					view.LastImportObservedAt = observed.UTC().Format(time.RFC3339Nano)
 				}
@@ -746,18 +645,6 @@ func (s *Store) sources(public bool) []SourceView {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
-}
-func title(text, p string) string {
-	for {
-		line, remaining, more := strings.Cut(text, "\n")
-		if strings.HasPrefix(line, "# ") {
-			return strings.TrimSpace(line[2:])
-		}
-		if !more {
-			return path.Base(p)
-		}
-		text = remaining
-	}
 }
 func (s *Store) snapshot(public bool) Snapshot {
 	s.mu.RLock()
@@ -786,7 +673,7 @@ func (s *Store) snapshot(public bool) Snapshot {
 		if public && rev.Created > snap.Generated {
 			snap.Generated = rev.Created
 		}
-		snap.Pages = append(snap.Pages, Page{Path: key, Title: title(rev.Text, a.Path), Environment: src.ID, SHA: rev.SHA, Updated: rev.Created, searchOriginal: original, searchDisplayed: rev.Text, searchSourceTitle: src.Title})
+		snap.Pages = append(snap.Pages, Page{Path: key, Title: title(rev.Text, a.Path), Environment: src.ID, SHA: rev.SHA, Updated: rev.Created, SearchOriginal: original, SearchDisplayed: rev.Text, SearchSourceTitle: src.Title})
 	}
 	sort.Slice(snap.Pages, func(i, j int) bool { return snap.Pages[i].Path < snap.Pages[j].Path })
 	return snap

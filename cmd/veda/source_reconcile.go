@@ -21,15 +21,6 @@ func reconcileSourceReady(db Database, src Source, dst GitHubConnection) bool {
 		c.RepositoryID != 0 && dst.RepositoryID != 0 && (c.RepositoryID != dst.RepositoryID || c.Branch != dst.Branch)
 }
 
-// ReconcileBase is an owner-only, versioned observation shared by two sources.
-// It is not copy provenance: equal pre-existing articles can establish a base.
-type ReconcileBase struct {
-	SourceID string `json:"source_id"`
-	Path     string `json:"path"`
-	Revision int    `json:"revision"`
-	SHA      string `json:"sha256"`
-}
-
 type reconcileRequest struct {
 	SourceID      string `json:"source_id"`
 	DestinationID string `json:"destination_id"`

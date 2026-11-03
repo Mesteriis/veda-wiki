@@ -286,7 +286,7 @@ func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
 		context := read("/api/v1/context?source_id=handbook&path=AGENTS.md")
 		proposal := read("/api/v1/articles/proposal-base?source_id=handbook&path=AGENTS.md")
 		newProposal := read("/api/v1/articles/new-proposal-base?source_id=handbook&path=new.md")
-		if context.SyncIssue != want || proposal.SyncIssue != want || newProposal.SyncIssue != want || s.sources(false)[0].syncIssue != want {
+		if context.SyncIssue != want || proposal.SyncIssue != want || newProposal.SyncIssue != want || s.sources(false)[0].SyncIssue != want {
 			t.Fatalf("inconsistent warning: context=%q proposal=%q want=%q", context.SyncIssue, proposal.SyncIssue, want)
 		}
 	}

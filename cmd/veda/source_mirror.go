@@ -8,20 +8,6 @@ import (
 	"time"
 )
 
-// SourceMirror stores owner-controlled scheduling and sanitized status only.
-// Article baselines and the durable GitHub outbox remain the source of truth.
-type SourceMirror struct {
-	SourceID      string   `json:"source_id"`
-	DestinationID string   `json:"destination_id"`
-	Enabled       bool     `json:"enabled"`
-	Revision      int      `json:"revision"`
-	State         string   `json:"state"`
-	LastRun       string   `json:"last_run,omitempty"`
-	LastError     string   `json:"last_error,omitempty"`
-	Blocked       int      `json:"blocked"`
-	BlockedPaths  []string `json:"blocked_paths,omitempty"`
-	More          bool     `json:"more"`
-}
 type mirrorRequest struct {
 	SourceID         string `json:"source_id"`
 	DestinationID    string `json:"destination_id"`

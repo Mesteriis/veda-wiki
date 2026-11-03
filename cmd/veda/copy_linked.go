@@ -113,7 +113,7 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 		dst.Assets = s.db.Sources[dst.ID].Assets
 		shadow.db.Sources[dst.ID] = dst
 		a := shadow.db.Articles[in.DestinationID+"/"+in.DestinationPath]
-		enqueueWrite(&shadow.db, a, root)
+		enqueueWrite(&shadow.db, a, root, time.Now())
 		id := a.SourceID + "/" + a.Path + "@1"
 		job := shadow.db.Outbox[id]
 		job.Assets, job.Links, job.Bundle = batchAssets, remoteLinks, bundle
