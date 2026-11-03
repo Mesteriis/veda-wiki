@@ -99,15 +99,12 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if err = os.WriteFile(limitedPath, []byte(limited), 0600); err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := filepath.Abs("../../mcp/server.py")
-	if err != nil {
-		t.Fatal(err)
-	}
+	adapter := vedaBinary(t)
 	script := `import asyncio,json,sys
 from mcp import ClientSession,StdioServerParameters
 from mcp.client.stdio import stdio_client
 async def run(key, expected):
- p=StdioServerParameters(command=sys.executable,args=[sys.argv[1],'--url',sys.argv[2],'--reader-key-file',key])
+ p=StdioServerParameters(command=sys.argv[1],args=['mcp','--url',sys.argv[2],'--reader-key-file',key])
  async with stdio_client(p) as (r,w):
   async with ClientSession(r,w) as s:
    await s.initialize()

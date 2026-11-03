@@ -85,15 +85,12 @@ func TestReconcileThroughMCP(t *testing.T) {
 	}
 	web := httptest.NewServer(Wiki{Store: s, Token: token, Sync: m})
 	defer web.Close()
-	adapter, err := filepath.Abs("../../mcp/server.py")
-	if err != nil {
-		t.Fatal(err)
-	}
+	adapter := vedaBinary(t)
 	script := `import asyncio,json,sys
 from mcp import ClientSession,StdioServerParameters
 from mcp.client.stdio import stdio_client
 async def main():
- p=StdioServerParameters(command=sys.executable,args=[sys.argv[1],"--url",sys.argv[2],"--key-file",sys.argv[3]])
+ p=StdioServerParameters(command=sys.argv[1],args=['mcp',"--url",sys.argv[2],"--key-file",sys.argv[3]])
  async with stdio_client(p) as (r,w):
   async with ClientSession(r,w) as s:
    await s.initialize()
