@@ -120,15 +120,15 @@ func TestMoveDoesNotDeleteSourceWhenDestinationUnavailableOrChanged(t *testing.T
 func TestMoveRejectsAliasedRepositoryAndSamePhysicalPath(t *testing.T) {
 	s, _, original, _ := connectedMoveFixtures(t)
 	// Model a stale second source view of the same repository and branch.
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	alias := db.Connections["two"]
 	alias.RepositoryID = db.Connections["one"].RepositoryID
 	alias.Branch = db.Connections["one"].Branch
 	db.Connections["two"] = alias
 	delete(db.Articles, "two/README.md")
-	err := s.commit(db)
-	s.mu.Unlock()
+	err := s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,9 +158,9 @@ func TestUnavailableDestinationDoesNotBlockOtherSourceMoves(t *testing.T) {
 	}
 	destination.Modify(func() { destination.Fail = true })
 	syncFixtureSource(t, manager, "one")
-	s.mu.RLock()
-	firstState, secondState := s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
-	s.mu.RUnlock()
+	s.RLock()
+	firstState, secondState := s.DB().Moves[first.ID].State, s.DB().Moves[second.ID].State
+	s.RUnlock()
 	if firstState != "waiting_source_delete" || secondState != "deleting_source" {
 		t.Fatalf("unexpected move states: %s %s", firstState, secondState)
 	}
@@ -210,9 +210,9 @@ func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
 	}
 	f.Modify(func() { f.LoseResponse = true })
 	manager.Once(context.Background())
-	s.mu.RLock()
-	firstState, secondState := s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
-	s.mu.RUnlock()
+	s.RLock()
+	firstState, secondState := s.DB().Moves[first.ID].State, s.DB().Moves[second.ID].State
+	s.RUnlock()
 	if firstState != "deleting_source" || secondState != "waiting_source_delete" || f.WriteCount() != 1 {
 		t.Fatal("uncertain attempt did not stop same-head writes")
 	}
@@ -221,9 +221,9 @@ func TestUncertainDeleteRefreshesBranchBeforeAnotherMove(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	s.mu.RLock()
-	firstState, secondState = s.db.Moves[first.ID].State, s.db.Moves[second.ID].State
-	s.mu.RUnlock()
+	s.RLock()
+	firstState, secondState = s.DB().Moves[first.ID].State, s.DB().Moves[second.ID].State
+	s.RUnlock()
 	if firstState != "complete" || secondState != "complete" || f.WriteCount() != 2 {
 		t.Fatalf("moves did not recover: %s %s", firstState, secondState)
 	}
@@ -252,8 +252,8 @@ func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
 	if e != nil || target.Versions[0].Text != "# Local" || target.CopiedFrom == nil {
 		t.Fatal("destination missing", e)
 	}
-	reopened, e := openStore(s.dir)
-	if e != nil || reopened.db.Version != 2 || !reopened.db.Articles["from/a.md"].Deleted || len(reopened.db.Articles["from/a.md"].Versions) != 1 || reopened.moves()[0].State != "complete" {
+	reopened, e := openStore(s.Dir())
+	if e != nil || reopened.DB().Version != 2 || !reopened.DB().Articles["from/a.md"].Deleted || len(reopened.DB().Articles["from/a.md"].Versions) != 1 || reopened.moves()[0].State != "complete" {
 		t.Fatal("move history not durable", e)
 	}
 }
@@ -270,8 +270,8 @@ func TestConnectedSourceMoveWaitsForRemoteDeletion(t *testing.T) {
 	if _, err := s.article("handbook", "README.md", false); err != nil || f.Contents()["README.md"] != "# Source" {
 		t.Fatal("source was deleted before remote deletion", err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 3 || reopened.moves()[0].SourceRepositoryID != f.RepoID {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 3 || reopened.moves()[0].SourceRepositoryID != f.RepoID {
 		t.Fatal("move state was not durable", err)
 	}
 	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Edited externally"})
@@ -355,7 +355,7 @@ func TestConnectedSourceMoveRecoversLostDeleteResponse(t *testing.T) {
 	if err := s.cancelMove(move.ID, true); err != ErrConflict {
 		t.Fatal("uncertain deletion was cancelled", err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,12 +411,12 @@ func TestConnectedSourceMoveUncertainAttemptRemainsLockedAfterRejection(t *testi
 		t.Fatal(err)
 	}
 	// Simulate a prepared request whose outcome could not be determined after restart.
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	move.State, move.PreparedDeletion = "deleting_source", strings.Repeat("a", 40)
 	db.Moves[move.ID] = move
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestMoveWaitsForObservedRemoteDestination(t *testing.T) {
 	if _, e = s.article("local", "a.md", false); e != nil {
 		t.Fatal("source removed before observation", e)
 	}
-	s, e = openStore(s.dir)
+	s, e = openStore(s.Dir())
 	if e != nil {
 		t.Fatal("restart pending move", e)
 	}
@@ -462,7 +462,7 @@ func TestMoveWaitsForObservedRemoteDestination(t *testing.T) {
 	if _, e = s.article("local", "a.md", false); e != ErrNotFound || s.moves()[0].State != "complete" || f.Contents()["moved.md"] != "# Local" {
 		t.Fatal("move did not finish after observation", e, s.moves())
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil || reopened.moves()[0].State != "complete" {
 		t.Fatal("move not durable", e)
 	}
@@ -564,7 +564,7 @@ func TestMoveRejectsTranslationsAndDestinationIdentityChange(t *testing.T) {
 	if _, e = s.moveArticle(req); e != nil {
 		t.Fatal(e)
 	}
-	db := s.clone()
+	db := s.Clone()
 	dst := db.Sources["handbook"]
 	dst.ConnectionID = ""
 	db.Sources[dst.ID] = dst
@@ -599,7 +599,7 @@ func TestMoveRecoversLostRemoteResponseBeforeRemovingSource(t *testing.T) {
 	if _, e := s.article("local", "a.md", false); e != nil {
 		t.Fatal("source removed on ambiguous response", e)
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -635,7 +635,7 @@ func TestCancelWaitingMoveRetainsBothCopies(t *testing.T) {
 	if _, e = s.article("local", "a.md", false); e != nil || s.moves()[0].State != "cancelled" || f.Contents()["moved.md"] != "# Source" {
 		t.Fatal("cancel did not retain copies", e, s.moves())
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil || reopened.moves()[0].State != "cancelled" {
 		t.Fatal("cancel not durable", e)
 	}

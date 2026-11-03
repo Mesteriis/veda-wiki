@@ -25,11 +25,11 @@ func TestMoveLinkedGraphToGitHubWaitsForFullObservation(t *testing.T) {
 		t.Fatal(move, err)
 	}
 	m.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || f.Contents()["a.md"] == "" || f.Contents()["b.md"] == "" || f.Contents()["img/icon.png"] == "" {
+	if s.DB().Articles["from/a.md"].Deleted || f.Contents()["a.md"] == "" || f.Contents()["b.md"] == "" || f.Contents()["img/icon.png"] == "" {
 		t.Fatal("invalid pre-observation state")
 	}
 	m.Once(context.Background())
-	if s.moves()[0].State != "complete" || !s.db.Articles["from/a.md"].Deleted || s.db.Articles["from/b.md"].Deleted {
+	if s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted || s.DB().Articles["from/b.md"].Deleted {
 		t.Fatal("incorrect completed move", s.moves())
 	}
 }
@@ -48,17 +48,17 @@ func TestOldBinaryRejectsConnectedGraphMoveStore(t *testing.T) {
 	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true}); err != nil {
 		t.Fatal(err)
 	}
-	if s.db.Version != 10 {
+	if s.DB().Version != 10 {
 		t.Fatal("graph move did not upgrade store")
 	}
-	state := filepath.Join(s.dir, "state.json")
+	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
 		t.Fatal("old binary did not reject v10")
@@ -82,7 +82,7 @@ func TestCancelledLinkedBundleKeepsSource(t *testing.T) {
 	if err = s.cancelBundle(s.jobs()[0].ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if s.moves()[0].State != "destination_changed" || s.db.Articles["from/a.md"].Deleted {
+	if s.moves()[0].State != "destination_changed" || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("cancelled move removed source", s.moves())
 	}
 }
@@ -139,10 +139,10 @@ func TestLinkedMoveRecoversLostDestinationResponse(t *testing.T) {
 	}
 	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || f.WriteCount() != 1 {
+	if s.DB().Articles["from/a.md"].Deleted || f.WriteCount() != 1 {
 		t.Fatal("source removed before confirmation")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

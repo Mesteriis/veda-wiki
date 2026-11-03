@@ -5,6 +5,7 @@ import (
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/search"
+	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
 // Temporary aliases while the backend moves into internal packages. Each
@@ -73,13 +74,26 @@ var (
 	hasRootReference            = domain.HasRootReference
 	repositoryTarget            = domain.RepositoryTarget
 	directoryReadmeTarget       = domain.DirectoryReadmeTarget
+	importablePath              = domain.ImportablePath
+	remoteAssetPath             = domain.RemoteAssetPath
+	imageRef                    = domain.ImageRef
+	validateMetadata            = domain.ValidateMetadata
+	migrateSQLite               = store.MigrateSQLite
+	atomicPrivateFile           = store.WritePrivateFile
+	privateDataDir              = store.PrivateDataDir
+)
+
+const (
+	maxArticleBytes    = domain.MaxArticleBytes
+	legacyArticleBytes = domain.LegacyArticleBytes
+	sqliteFile         = store.SQLiteFile
 )
 
 // findArticles ranks against a snapshot taken under the store read lock;
 // ranking runs after the lock is released.
 func (s *Store) findArticles(query, sourceID string, public bool) []search.Hit {
-	s.mu.RLock()
-	candidates := search.Candidates(s.db, sourceID, public, time.Now())
-	s.mu.RUnlock()
+	s.RLock()
+	candidates := search.Candidates(*s.DB(), sourceID, public, time.Now())
+	s.RUnlock()
 	return search.Rank(candidates, query)
 }

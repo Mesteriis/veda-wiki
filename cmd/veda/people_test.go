@@ -34,7 +34,7 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(s.dir, "state.json"))
+	raw, err := os.ReadFile(filepath.Join(s.Dir(), "state.json"))
 	if err != nil || strings.Contains(string(raw), password) {
 		t.Fatal("plaintext password stored", err)
 	}
@@ -90,10 +90,10 @@ func TestHumanTeamScopeAndSessionInvalidation(t *testing.T) {
 	if _, err = s.saveTeam("ops", []string{"alpha"}, &team.Revision); err != ErrConflict {
 		t.Fatal("stale team update accepted", err)
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,11 +144,11 @@ func TestOldBinaryRejectsHumanStore(t *testing.T) {
 			s := testStore(t)
 			source(t, s, "alpha", "private")
 			if sqlite {
-				if err := migrateSQLite(s.dir); err != nil {
+				if err := migrateSQLite(s.Dir()); err != nil {
 					t.Fatal(err)
 				}
 				var err error
-				s, err = openStore(s.dir)
+				s, err = openStore(s.Dir())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -160,9 +160,9 @@ func TestOldBinaryRejectsHumanStore(t *testing.T) {
 			if _, err := s.saveUser("person", &groups, &password, nil, nil); err != nil {
 				t.Fatal(err)
 			}
-			file := filepath.Join(s.dir, "state.json")
+			file := filepath.Join(s.Dir(), "state.json")
 			if sqlite {
-				file = filepath.Join(s.dir, sqliteFile)
+				file = filepath.Join(s.Dir(), sqliteFile)
 			}
 			before, err := os.ReadFile(file)
 			if err != nil {
@@ -170,7 +170,7 @@ func TestOldBinaryRejectsHumanStore(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+			out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 			if err == nil || ctx.Err() != nil || (!strings.Contains(string(out), "unsupported store") && !strings.Contains(string(out), "unknown SQLite record category")) {
 				t.Fatal("old binary accepted human store")
 			}
@@ -323,16 +323,16 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 		t.Skip("restored fixture not provided")
 	}
 	s, err := openStore(dir)
-	if err != nil || s.db.Version != 15 {
+	if err != nil || s.DB().Version != 15 {
 		t.Fatal("invalid restored user store", err)
 	}
 	version, ok := s.authenticateUser("person", "synthetic fixture password")
 	if !ok {
 		t.Fatal("restored user login failed")
 	}
-	s.mu.RLock()
+	s.RLock()
 	scope := s.userScopeLocked("person", version)
-	s.mu.RUnlock()
+	s.RUnlock()
 	if len(scope) != 1 || scope[0] != "from" {
 		t.Fatal("restored team scope incorrect")
 	}
@@ -344,10 +344,10 @@ func TestResumePeopleRestoreFixture(t *testing.T) {
 	manager := newSyncManager(s, f.Client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.db.Articles["from/a.md"].Deleted {
+	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("restored queue did not complete")
 	}
-	ref := s.db.Sources["handbook"].Assets["img/icon.png"]
+	ref := s.DB().Sources["handbook"].Assets["img/icon.png"]
 	if ref.SHA == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["related.md"] != "# Related fixture" {
 		t.Fatal("restored bundle incomplete")
 	}

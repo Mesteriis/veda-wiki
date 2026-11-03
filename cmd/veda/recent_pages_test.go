@@ -19,11 +19,11 @@ func TestRecentCardsUseVisibleRevisionTimes(t *testing.T) {
 		if _, err := s.put(item.source, item.path, "# "+item.path, 0); err != nil {
 			t.Fatal(err)
 		}
-		s.mu.Lock()
-		a := s.db.Articles[item.source+"/"+item.path]
+		s.Lock()
+		a := s.DB().Articles[item.source+"/"+item.path]
 		a.Versions[0].Created = item.when
-		s.db.Articles[item.source+"/"+item.path] = a
-		s.mu.Unlock()
+		s.DB().Articles[item.source+"/"+item.path] = a
+		s.Unlock()
 	}
 	read := func(public bool) []Card {
 		t.Helper()
@@ -51,17 +51,17 @@ func TestPublicRecentTimeUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published"})
 	connectFixture(t, s, f, false)
-	s.mu.Lock()
-	a := s.db.Articles["handbook/guide.md"]
+	s.Lock()
+	a := s.DB().Articles["handbook/guide.md"]
 	if a.Published == nil {
-		s.mu.Unlock()
+		s.Unlock()
 		t.Fatal("published fixture unavailable")
 	}
 	a.Published.Created = "2026-01-01T10:00:00Z"
 	text := "# Private local revision"
 	a.Versions = append(a.Versions, Revision{Number: 2, Text: text, SHA: digest([]byte(text)), Created: "2026-03-01T10:00:00Z"})
-	s.db.Articles["handbook/guide.md"] = a
-	s.mu.Unlock()
+	s.DB().Articles["handbook/guide.md"] = a
+	s.Unlock()
 	private := s.snapshot(false)
 	public := s.snapshot(true)
 	if len(private.Pages) != 1 || private.Pages[0].Updated != "2026-03-01T10:00:00Z" {

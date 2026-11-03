@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func testStore(t *testing.T) *Store {
@@ -21,6 +22,15 @@ func testStore(t *testing.T) *Store {
 	}
 	return s
 }
+
+// observedAt reads a source's last import observation time.
+func observedAt(s *Store, sourceID string) time.Time {
+	s.RLock()
+	defer s.RUnlock()
+	at, _ := s.Observed(sourceID)
+	return at
+}
+
 func source(t *testing.T, s *Store, id, visibility string) {
 	t.Helper()
 	if e := s.addSource(Source{ID: id, Title: id, Kind: "wiki", Visibility: visibility}); e != nil {
@@ -97,7 +107,7 @@ func TestPersistenceAndOptimisticConcurrency(t *testing.T) {
 	if _, e := s.put("one", "guide.md", "# Second", 1); e != nil {
 		t.Fatal(e)
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -110,8 +120,8 @@ func TestPersistenceAndOptimisticConcurrency(t *testing.T) {
 func TestFailedPersistenceDoesNotPublishRevision(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "one", "private")
-	state := filepath.Join(s.dir, "state.json")
-	backup := filepath.Join(s.dir, "before-test.json")
+	state := filepath.Join(s.Dir(), "state.json")
+	backup := filepath.Join(s.Dir(), "before-test.json")
 	if e := os.Rename(state, backup); e != nil {
 		t.Fatal(e)
 	}
@@ -141,17 +151,17 @@ func TestCorruptStoredRevisionIsRefused(t *testing.T) {
 	if _, e := s.put("one", "guide.md", "# Original", 0); e != nil {
 		t.Fatal(e)
 	}
-	article := s.db.Articles["one/guide.md"]
+	article := s.DB().Articles["one/guide.md"]
 	article.Versions[0].Text = "# Tampered"
-	s.db.Articles["one/guide.md"] = article
-	b, e := json.Marshal(s.db)
+	s.DB().Articles["one/guide.md"] = article
+	b, e := json.Marshal(*s.DB())
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = os.WriteFile(filepath.Join(s.dir, "state.json"), b, 0600); e != nil {
+	if e = os.WriteFile(filepath.Join(s.Dir(), "state.json"), b, 0600); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = openStore(s.dir); e == nil {
+	if _, e = openStore(s.Dir()); e == nil {
 		t.Fatal("corrupt revision accepted")
 	}
 }

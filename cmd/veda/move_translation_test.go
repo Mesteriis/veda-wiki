@@ -34,14 +34,14 @@ func TestOldBinaryRejectsTranslatedMoveStore(t *testing.T) {
 	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "docs/b.md", ConfirmMove: true}); err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(s.dir, "state.json")
+	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0")
+	command := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0")
 	var exit *exec.ExitError
 	output, err := command.CombinedOutput()
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
@@ -81,8 +81,8 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 5 {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 5 {
 		t.Fatal("store version or restart", err)
 	}
 	if reopened.moves()[0].TranslationFingerprint != m.TranslationFingerprint {
@@ -94,8 +94,8 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 	if err := reopened.revokeAccessKey("agent"); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err = openStore(s.dir)
-	if err != nil || reopened.db.Version != 5 || len(reopened.accessScope(key, time.Now())) != 0 {
+	reopened, err = openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 5 || len(reopened.accessScope(key, time.Now())) != 0 {
 		t.Fatal("revocation did not survive restart", err)
 	}
 }
@@ -144,7 +144,7 @@ func TestTranslatedMoveKeepsSourceWhenTranslationChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if s.moves()[0].State != "source_changed" || s.db.Articles["from/docs/a.md"].Deleted {
+	if s.moves()[0].State != "source_changed" || s.DB().Articles["from/docs/a.md"].Deleted {
 		t.Fatal("changed translation lost")
 	}
 }
@@ -166,7 +166,7 @@ func TestTranslatedMoveKeepsSourceWhenDestinationTranslationChanges(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.moves()[0].State != "destination_changed" || s.db.Articles["from/docs/a.md"].Deleted {
+	if s.moves()[0].State != "destination_changed" || s.DB().Articles["from/docs/a.md"].Deleted {
 		t.Fatal("source lost after destination translation changed")
 	}
 }

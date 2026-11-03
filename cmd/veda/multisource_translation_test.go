@@ -31,11 +31,11 @@ func TestTranslationsStayBoundToSourceAndOriginalAfterRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestTranslationsStayBoundToSourceAndOriginalAfterRestart(t *testing.T) {
 	if result, err := s.importBatch(updated); err != nil || result.Updated != 1 {
 		t.Fatal("changed upstream document was not imported", result, err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

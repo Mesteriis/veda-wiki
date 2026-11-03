@@ -29,7 +29,7 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 	if err != nil || r.Baselines != 1 || r.Created != 1 || r.Updated != 0 || len(r.Blocked) != 1 || r.Blocked[0] != "different.md" {
 		t.Fatalf("unexpected initial result %+v %v", r, err)
 	}
-	if s.db.Version != 18 || s.db.Articles["handbook/remote-only.md"].Deleted || f.WriteCount() != 0 {
+	if s.DB().Version != 18 || s.DB().Articles["handbook/remote-only.md"].Deleted || f.WriteCount() != 0 {
 		t.Fatal("unsafe initial reconciliation")
 	}
 	m.Once(context.Background())
@@ -57,11 +57,11 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err = s.reconcileSources(context.Background(), in)
-	if err != nil || !containsPath(r.Blocked, "same.md") || s.db.Articles["handbook/same.md"].Versions[len(s.db.Articles["handbook/same.md"].Versions)-1].Text != "# Independent remote" {
+	if err != nil || !containsPath(r.Blocked, "same.md") || s.DB().Articles["handbook/same.md"].Versions[len(s.DB().Articles["handbook/same.md"].Versions)-1].Text != "# Independent remote" {
 		t.Fatal("divergence overwritten", r, err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 18 || reopened.db.Articles["handbook/same.md"].ReconcileBase == nil {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 18 || reopened.DB().Articles["handbook/same.md"].ReconcileBase == nil {
 		t.Fatal("baseline lost after reopen", err)
 	}
 }
@@ -119,7 +119,7 @@ func TestReconcileLinkedGraphAndPrivateBaseline(t *testing.T) {
 		t.Fatal("baseline leaked to public")
 	}
 	scoped, ok, err := s.scopedViewLocked([]string{"handbook"})
-	if err != nil || !ok || scoped.db.Articles["handbook/a.md"].ReconcileBase != nil {
+	if err != nil || !ok || scoped.DB().Articles["handbook/a.md"].ReconcileBase != nil {
 		t.Fatal("baseline leaked to scoped reader", err)
 	}
 }
@@ -160,10 +160,10 @@ func TestReconcileSQLiteSurvivesReopen(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,8 +171,8 @@ func TestReconcileSQLiteSurvivesReopen(t *testing.T) {
 	if err != nil || r.Baselines != 1 {
 		t.Fatal("baseline failed", r, err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 18 || reopened.db.Articles["handbook/a.md"].ReconcileBase == nil {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 18 || reopened.DB().Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("sqlite baseline lost", err)
 	}
 }
@@ -186,7 +186,7 @@ func TestReconcileSkipsSecretLikeAndMissingDependencies(t *testing.T) {
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	r, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook"})
-	if err != nil || len(r.Blocked) != 2 || len(s.jobs()) != 0 || len(s.db.Articles) != 2 {
+	if err != nil || len(r.Blocked) != 2 || len(s.jobs()) != 0 || len(s.DB().Articles) != 2 {
 		t.Fatal("unsafe data queued", r, err)
 	}
 }
@@ -205,14 +205,14 @@ func TestOldBinaryRejectsReconciliationStore(t *testing.T) {
 	if _, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook"}); err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(s.dir, "state.json")
+	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
 		t.Fatal("old binary did not reject v18")
@@ -262,7 +262,7 @@ asyncio.run(main())`
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic MCP failed: %v %s", err, out)
 	}
-	if s.db.Version != 18 || s.db.Articles["handbook/a.md"].ReconcileBase == nil {
+	if s.DB().Version != 18 || s.DB().Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("MCP did not persist baseline")
 	}
 }
@@ -310,15 +310,15 @@ func TestReconcileRejectsInvalidStoredBaseline(t *testing.T) {
 	source(t, s, "target", "private")
 	s.put("local", "a.md", "# A", 0)
 	s.put("target", "a.md", "# A", 0)
-	b := s.db.Articles["target/a.md"]
+	b := s.DB().Articles["target/a.md"]
 	b.ReconcileBase = &ReconcileBase{SourceID: "local", Path: "a.md", Revision: 1, SHA: "invalid"}
-	db := s.clone()
+	db := s.Clone()
 	db.Version = 18
 	db.Articles["target/a.md"] = b
-	if err := s.commit(db); err != nil {
+	if err := s.Commit(db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := openStore(s.dir); err == nil {
+	if _, err := openStore(s.Dir()); err == nil {
 		t.Fatal("invalid baseline accepted on reopen")
 	}
 }
@@ -334,24 +334,24 @@ func TestOldBinaryRejectsReconciliationSQLite(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.reconcileSources(context.Background(), reconcileRequest{SourceID: "local", DestinationID: "handbook"}); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(s.dir, "state.sqlite")
+	file := filepath.Join(s.Dir(), "state.sqlite")
 	before, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
 		t.Fatal("old binary did not reject SQLite v18")
@@ -390,7 +390,7 @@ func TestConcurrentReconcileDoesNotDuplicateWrites(t *testing.T) {
 		baselines += r.result.Baselines
 		created += r.result.Created
 	}
-	if baselines != 1 || created != 1 || len(s.jobs()) != 1 || len(s.db.Articles["handbook/new.md"].Versions) != 1 {
+	if baselines != 1 || created != 1 || len(s.jobs()) != 1 || len(s.DB().Articles["handbook/new.md"].Versions) != 1 {
 		t.Fatal("concurrent reconciliations duplicated writes")
 	}
 }

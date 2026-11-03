@@ -28,9 +28,9 @@ func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 		}
 		keys[id] = key
 	}
-	s.mu.Lock()
-	s.db.Moves = map[string]Move{"private-move-id": {State: "deleting_source", SourceID: "source", SourcePath: "docs/item.md", DestinationID: "destination", DestinationPath: "docs/item.md", Links: map[string]string{"docs/dependency.md": "private-link-hash"}, PreparedDeletion: "private-commit-id"}}
-	s.mu.Unlock()
+	s.Lock()
+	s.DB().Moves = map[string]Move{"private-move-id": {State: "deleting_source", SourceID: "source", SourcePath: "docs/item.md", DestinationID: "destination", DestinationPath: "docs/item.md", Links: map[string]string{"docs/dependency.md": "private-link-hash"}, PreparedDeletion: "private-commit-id"}}
+	s.Unlock()
 	for _, tc := range []struct {
 		source, path string
 		blocked      bool

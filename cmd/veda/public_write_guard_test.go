@@ -54,8 +54,8 @@ func TestLegacyCredentialLikePublicJobIsBlockedAndCorrectable(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Model a queued revision created before the public write guard existed.
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	a := db.Articles["handbook/guide.md"]
 	a.Versions = append([]Revision(nil), a.Versions...)
 	a.Versions[1].Text, a.Versions[1].SHA = credentialFixture, digest([]byte(credentialFixture))
@@ -66,8 +66,8 @@ func TestLegacyCredentialLikePublicJobIsBlockedAndCorrectable(t *testing.T) {
 			db.Outbox[id] = job
 		}
 	}
-	err := s.commit(db)
-	s.mu.Unlock()
+	err := s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +114,8 @@ func TestLegacyBundleBlocksCredentialLikeLinkedArticle(t *testing.T) {
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	a := db.Articles["handbook/b.md"]
 	a.Versions = append([]Revision(nil), a.Versions...)
 	a.Versions[0].Text, a.Versions[0].SHA = credentialFixture, digest([]byte(credentialFixture))
@@ -134,8 +134,8 @@ func TestLegacyBundleBlocksCredentialLikeLinkedArticle(t *testing.T) {
 			db.Outbox[id] = job
 		}
 	}
-	err := s.commit(db)
-	s.mu.Unlock()
+	err := s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestCorrectedBlockedJobRetainsReferencedDependencies(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "handbook", "private")
 	ref := fixtureAsset(t, s, "handbook", "img/icon.png")
-	db := s.clone()
+	db := s.Clone()
 	db.Outbox = map[string]SyncJob{
 		"old":      {ID: "old", SourceID: "handbook", Path: "guide.md", Revision: 1, State: "blocked", LastError: "credential_like_content", Assets: map[string]BlobRef{"img/icon.png": ref}},
 		"prepared": {ID: "prepared", SourceID: "handbook", Path: "guide.md", Revision: 1, State: "blocked", LastError: "credential_like_content", PreparedCommit: "uncertain"},
@@ -217,17 +217,17 @@ func TestLegacyPublicCredentialTextCannotPropagateByCopyOrMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Model content made public by an earlier version before the write guard.
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	src := db.Sources["from"]
 	src.Visibility = "public"
 	db.Sources["from"] = src
-	err := s.commit(db)
-	s.mu.Unlock()
+	err := s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := json.Marshal(s.db)
+	before, err := json.Marshal(*s.DB())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestLegacyPublicCredentialTextCannotPropagateByCopyOrMove(t *testing.T) {
 	if _, err = s.moveArticle(move); !errors.Is(err, ErrInvalid) {
 		t.Fatal("legacy public sensitive move accepted", err)
 	}
-	after, err := json.Marshal(s.db)
+	after, err := json.Marshal(*s.DB())
 	if err != nil || string(before) != string(after) {
 		t.Fatal("failed transfer changed state", err)
 	}

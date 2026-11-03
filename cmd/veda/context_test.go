@@ -21,16 +21,16 @@ func TestAgentContextScopesAndReportsStatus(t *testing.T) {
 			}
 		}
 	}
-	s.mu.Lock()
-	src := s.db.Sources["alpha"]
+	s.Lock()
+	src := s.DB().Sources["alpha"]
 	src.ImportPartial = true
 	src.ImportDirty = true
-	s.db.Sources["alpha"] = src
-	s.observed = map[string]time.Time{"alpha": time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-	a := s.db.Articles["alpha/infra/AGENTS.md"]
+	s.DB().Sources["alpha"] = src
+	s.MarkObserved("alpha", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	a := s.DB().Articles["alpha/infra/AGENTS.md"]
 	a.Conflicts = []ImportConflict{{}}
-	s.db.Articles["alpha/infra/AGENTS.md"] = a
-	s.mu.Unlock()
+	s.DB().Articles["alpha/infra/AGENTS.md"] = a
+	s.Unlock()
 	key, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -73,15 +73,15 @@ func TestReadingPageShowsOnlyItsOwnPrivateConflict(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s.mu.Lock()
-	a := s.db.Articles["handbook/conflicted.md"]
+	s.Lock()
+	a := s.DB().Articles["handbook/conflicted.md"]
 	a.Conflicts = []ImportConflict{{}}
-	s.db.Articles["handbook/conflicted.md"] = a
-	a = s.db.Articles["handbook/linked.md"]
+	s.DB().Articles["handbook/conflicted.md"] = a
+	a = s.DB().Articles["handbook/linked.md"]
 	a.Conflicts = []ImportConflict{{}}
-	s.db.Articles["handbook/linked.md"] = a
-	s.db.Outbox = map[string]SyncJob{"fixture": {SourceID: "handbook", Path: "conflicted.md", State: "retry", PreparedCommit: "synthetic-prepared-commit", Bundle: map[string]string{"linked.md": "fixture"}}}
-	s.mu.Unlock()
+	s.DB().Articles["handbook/linked.md"] = a
+	s.DB().Outbox = map[string]SyncJob{"fixture": {SourceID: "handbook", Path: "conflicted.md", State: "retry", PreparedCommit: "synthetic-prepared-commit", Bundle: map[string]string{"linked.md": "fixture"}}}
+	s.Unlock()
 	w := Wiki{Store: s, Token: "test-owner"}
 	for _, tc := range []struct {
 		path                string
@@ -122,16 +122,16 @@ func TestAgentContextRefusesOversizedInstructionSet(t *testing.T) {
 	source(t, s, "alpha", "private")
 	text := strings.Repeat("x", 220000)
 	parts := []string{}
-	s.mu.Lock()
+	s.Lock()
 	for i := 0; i < 7; i++ {
 		name := "AGENTS.md"
 		if i > 0 {
 			name = strings.Join(parts, "/") + "/AGENTS.md"
 		}
-		s.db.Articles["alpha/"+name] = Article{SourceID: "alpha", Path: name, Versions: []Revision{{Number: 1, Text: text}}}
+		s.DB().Articles["alpha/"+name] = Article{SourceID: "alpha", Path: name, Versions: []Revision{{Number: 1, Text: text}}}
 		parts = append(parts, "d")
 	}
-	s.mu.Unlock()
+	s.Unlock()
 	target := strings.Join(parts, "/") + "/guide.md"
 	w := Wiki{Store: s, Token: "test-owner"}
 	r := request(w, "GET", "/api/v1/context?"+url.Values{"source_id": {"alpha"}, "path": {target}}.Encode(), "", true)
@@ -144,14 +144,14 @@ func TestPublicAgentContextUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Published instructions"})
 	connectFixture(t, s, f, false)
-	s.mu.Lock()
-	a := s.db.Articles["handbook/AGENTS.md"]
+	s.Lock()
+	a := s.DB().Articles["handbook/AGENTS.md"]
 	text := "# Private local instructions"
 	a.Versions = append(a.Versions, Revision{Number: 2, Text: text, SHA: digest([]byte(text))})
 	a.Conflicts = []ImportConflict{{}}
-	s.db.Articles["handbook/AGENTS.md"] = a
-	s.observed = map[string]time.Time{"handbook": time.Now()}
-	s.mu.Unlock()
+	s.DB().Articles["handbook/AGENTS.md"] = a
+	s.MarkObserved("handbook", time.Now())
+	s.Unlock()
 	ctx, err := s.agentContext("handbook", "guide.md", true)
 	if err != nil || len(ctx.Instructions) != 1 || ctx.Instructions[0].Text != "# Published instructions" || ctx.Instructions[0].Number != 0 {
 		t.Fatal("public context revealed a private revision", err)
@@ -292,16 +292,16 @@ func TestScopedAgentSeesPausedAndExpiredSourceWarning(t *testing.T) {
 		}
 	}
 	check("")
-	s.mu.Lock()
-	conn := s.db.Connections["handbook"]
+	s.Lock()
+	conn := s.DB().Connections["handbook"]
 	conn.Paused = true
-	s.db.Connections["handbook"] = conn
-	s.mu.Unlock()
+	s.DB().Connections["handbook"] = conn
+	s.Unlock()
 	check("paused")
-	s.mu.Lock()
+	s.Lock()
 	conn.Paused = false
 	conn.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
-	s.db.Connections["handbook"] = conn
-	s.mu.Unlock()
+	s.DB().Connections["handbook"] = conn
+	s.Unlock()
 	check("unverified")
 }

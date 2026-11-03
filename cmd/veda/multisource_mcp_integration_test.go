@@ -53,10 +53,10 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestMultiSourceMCPAfterSQLiteRestart(t *testing.T) {
 	if len(s.conflicts()) != 1 {
 		t.Fatal("fixture did not create an import conflict")
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

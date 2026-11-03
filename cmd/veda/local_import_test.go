@@ -14,7 +14,7 @@ func TestLocalImportIsRestrictedAndPreservesConflicts(t *testing.T) {
 	if _, e := s.importBatch(initial); e != nil {
 		t.Fatal(e)
 	}
-	src := s.db.Sources["handbook"]
+	src := s.DB().Sources["handbook"]
 	gen := src.ImportGeneration
 	next := testBatch()
 	next.Create = false
@@ -75,13 +75,13 @@ func TestLocalImportRefusesPublicOrConnectedSources(t *testing.T) {
 			t.Fatal(e)
 		}
 		if visibility == "private" {
-			s.mu.Lock()
-			v := s.db.Sources["handbook"]
+			s.Lock()
+			v := s.DB().Sources["handbook"]
 			v.ConnectionID = "handbook"
-			s.db.Sources[v.ID] = v
-			s.mu.Unlock()
+			s.DB().Sources[v.ID] = v
+			s.Unlock()
 		}
-		gen := s.db.Sources["handbook"].ImportGeneration
+		gen := s.DB().Sources["handbook"].ImportGeneration
 		batch.Create = false
 		batch.Complete = false
 		batch.ExpectedImport = &gen

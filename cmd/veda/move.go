@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"net/url"
 	"os"
 	"path"
@@ -14,53 +13,31 @@ import (
 )
 
 func (s *Store) linkContents(sourceID string, expected map[string]string) (map[string]string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if !linksPresent(s.db, sourceID, expected) {
+	s.RLock()
+	defer s.RUnlock()
+	if !linksPresent(*s.DB(), sourceID, expected) {
 		return nil, ErrConflict
 	}
 	texts := make(map[string]string, len(expected))
 	for name := range expected {
-		a := s.db.Articles[sourceID+"/"+name]
+		a := s.DB().Articles[sourceID+"/"+name]
 		texts[name] = a.Versions[len(a.Versions)-1].Text
 	}
 	return texts, nil
 }
 
-func remoteAssetPath(name, kind string) bool {
-	if !importablePath(name, kind) {
-		return false
-	}
-	switch strings.ToLower(path.Ext(name)) {
-	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
-		return true
-	}
-	return false
-}
-
 func (s *Store) readAsset(ref BlobRef) ([]byte, error) {
-	if _, err := hexKey(ref.SHA); err != nil {
-		return nil, ErrInvalid
-	}
-	filename := path.Join(s.dir, "blobs", ref.SHA)
-	info, err := os.Lstat(filename)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, ErrInvalid
-	}
-	file, err := os.Open(filename)
+	content, err := s.ReadBlob(ref.SHA)
 	if err != nil {
-		return nil, ErrNotFound
+		return nil, err
 	}
-	defer file.Close()
-	content, err := io.ReadAll(io.LimitReader(file, (4<<20)+1))
-	verified, check := imageRef(content)
-	if err != nil || check != nil || verified != ref {
+	if verified, check := imageRef(content); check != nil || verified != ref {
 		return nil, ErrInvalid
 	}
 	return content, nil
 }
 
-func (s *Store) verifyAsset(ref BlobRef) error { _, err := s.readAsset(ref); return err }
+func (s *Store) verifyAsset(ref BlobRef) error { return s.VerifyBlob(ref) }
 
 func (s *Store) verifyMoveAssets(assets map[string]BlobRef) error {
 	seen := map[BlobRef]bool{}
@@ -158,7 +135,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 				failure = ErrInvalid
 				return ast.WalkStop, nil
 			}
-			original, ok := s.db.Articles[src.ID+"/"+from]
+			original, ok := s.DB().Articles[src.ID+"/"+from]
 			if !ok || original.Deleted || len(original.Versions) == 0 {
 				failure = ErrInvalid
 				return ast.WalkStop, nil
@@ -170,7 +147,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 				}
 			}
 			sha := original.Versions[len(original.Versions)-1].SHA
-			if !linksPresent(s.db, target.ID, map[string]string{to: sha}) {
+			if !linksPresent(*s.DB(), target.ID, map[string]string{to: sha}) {
 				failure = ErrConflict
 				return ast.WalkStop, nil
 			}
@@ -203,7 +180,7 @@ func (s *Store) transferAssets(value, sourcePath, targetPath string, src, target
 				failure = ErrInvalid
 				return ast.WalkStop, nil
 			}
-			info, err := os.Lstat(path.Join(s.dir, "blobs", ref.SHA))
+			info, err := os.Lstat(path.Join(s.Dir(), "blobs", ref.SHA))
 			if err != nil || !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > 4<<20 || total+info.Size() > 16<<20 {
 				failure = ErrInvalid
 				return ast.WalkStop, nil
@@ -228,12 +205,12 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if !in.ConfirmMove {
 		return Move{}, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if moveDeletionLocks(s.db, in.SourceID, in.SourcePath) {
+	s.Lock()
+	defer s.Unlock()
+	if moveDeletionLocks(*s.DB(), in.SourceID, in.SourcePath) {
 		return Move{}, ErrConflict
 	}
-	src, ok := s.db.Sources[in.SourceID]
+	src, ok := s.DB().Sources[in.SourceID]
 	if !ok {
 		return Move{}, ErrNotFound
 	}
@@ -241,7 +218,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if src.ConnectionID == "" && src.ImportGeneration != "" {
 		return Move{}, ErrInvalid
 	}
-	a, ok := s.db.Articles[in.SourceID+"/"+in.SourcePath]
+	a, ok := s.DB().Articles[in.SourceID+"/"+in.SourcePath]
 	if !ok || a.Deleted {
 		return Move{}, ErrNotFound
 	}
@@ -249,24 +226,24 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 		return Move{}, ErrConflict
 	}
 	if src.ConnectionID != "" {
-		c, connected := s.db.Connections[src.ConnectionID]
+		c, connected := s.DB().Connections[src.ConnectionID]
 		if !connected || !c.Write || c.Paused || a.UpstreamHash != a.Versions[in.ExpectedRevision-1].SHA {
 			return Move{}, ErrConflict
 		}
 		// Different source IDs may point at the very same GitHub branch. A
 		// copy to the same physical path followed by deletion would erase both.
-		if dst, exists := s.db.Sources[in.DestinationID]; exists && dst.ConnectionID != "" {
-			other, connected := s.db.Connections[dst.ConnectionID]
+		if dst, exists := s.DB().Sources[in.DestinationID]; exists && dst.ConnectionID != "" {
+			other, connected := s.DB().Connections[dst.ConnectionID]
 			if connected && c.RepositoryID == other.RepositoryID && c.Branch == other.Branch && in.SourcePath == in.DestinationPath {
 				return Move{}, ErrConflict
 			}
 		}
 	}
 	// Translations belong to program documents; never discard one when moving.
-	if a.Translation != nil && s.db.Sources[in.DestinationID].Kind != "program" {
+	if a.Translation != nil && s.DB().Sources[in.DestinationID].Kind != "program" {
 		return Move{}, ErrInvalid
 	}
-	for _, m := range s.db.Moves {
+	for _, m := range s.DB().Moves {
 		if (m.State == "waiting_destination" || m.State == "waiting_source_delete" || m.State == "deleting_source") && m.SourceID == in.SourceID && m.SourcePath == in.SourcePath {
 			return Move{}, ErrConflict
 		}
@@ -279,7 +256,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	if in.IncludeLinked {
 		db, rev, dependencies, e = s.prepareCopyLinkedLocal(copyIn)
 	} else {
-		dependencies, e = s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.db.Sources[in.DestinationID])
+		dependencies, e = s.transferAssets(a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, s.DB().Sources[in.DestinationID])
 		if e == nil {
 			db, rev, e = s.prepareCopy(copyIn)
 		}
@@ -293,7 +270,7 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	}
 	if len(dependencies.Assets) > 0 {
 		version := 6
-		if s.db.Sources[in.DestinationID].ConnectionID != "" {
+		if s.DB().Sources[in.DestinationID].ConnectionID != "" {
 			version = 7
 		}
 		if db.Version < version {
@@ -341,16 +318,16 @@ func (s *Store) moveArticle(in moveRequest) (Move, error) {
 	db.Moves[id] = m
 	reconcileMoves(&db)
 	m = db.Moves[id]
-	if e = s.commit(db); e != nil {
+	if e = s.Commit(db); e != nil {
 		return Move{}, e
 	}
 	return m, nil
 }
 func (s *Store) moves() []Move {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Move, 0, len(s.db.Moves))
-	for _, m := range s.db.Moves {
+	s.RLock()
+	defer s.RUnlock()
+	out := make([]Move, 0, len(s.DB().Moves))
+	for _, m := range s.DB().Moves {
 		out = append(out, m)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -367,9 +344,9 @@ func (s *Store) cancelMove(id string, confirm bool) error {
 	if !confirm {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m, ok := s.db.Moves[id]
+	s.Lock()
+	defer s.Unlock()
+	m, ok := s.DB().Moves[id]
 	if !ok {
 		return ErrNotFound
 	}
@@ -377,7 +354,7 @@ func (s *Store) cancelMove(id string, confirm bool) error {
 		return ErrConflict
 	}
 	m.State = "cancelled"
-	db := s.clone()
+	db := s.Clone()
 	db.Moves[id] = m
-	return s.commit(db)
+	return s.Commit(db)
 }

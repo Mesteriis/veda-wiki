@@ -65,11 +65,11 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	child := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 		t.Fatal("fixture process unexpectedly exited normally")
 	}
 	releaseOnce.Do(func() { close(released) })
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,11 +140,11 @@ func TestSQLiteCrashBeforeRemoteCommitPreservesLaterEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	recovery := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
 	if err := recovery.Run(); err != nil {
 		t.Fatal("recovery process failed", err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,11 +158,11 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	child := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 	if err := child.Wait(); err == nil {
 		t.Fatal("fixture process unexpectedly exited normally")
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	recovery := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL, "VEDA_RECOVERY_FORCE_RETRY=1")
+	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+gateway.URL, "VEDA_RECOVERY_FORCE_RETRY=1")
 	if err := recovery.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestSQLiteLateRemoteCommitRacesRetryWithoutLosingEdits(t *testing.T) {
 	if err := recovery.Wait(); err != nil {
 		t.Fatal("recovery process failed", err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,11 +281,11 @@ func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +318,7 @@ func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	child := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	child.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
 		t.Fatal("fixture process unexpectedly exited normally")
 	}
 	releaseOnce.Do(func() { close(release) })
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,11 +352,11 @@ func TestSQLiteCrashAfterRemoteCommitPreservesLaterEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	recovery := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
+	recovery.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+gateway.URL)
 	if err := recovery.Run(); err != nil {
 		t.Fatal("recovery process failed", err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,11 +370,11 @@ func TestSQLiteLaterEditAfterLostResponseRecoversInFreshProcess(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,11 +399,11 @@ func TestSQLiteLaterEditAfterLostResponseRecoversInFreshProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	cmd.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+f.Server.URL)
+	cmd.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+f.Server.URL)
 	if err := cmd.Run(); err != nil {
 		t.Fatal("recovery subprocess failed", err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +426,7 @@ func TestSQLitePreparedWriteRecoversInFreshProcess(t *testing.T) {
 	if f.WriteCount() != 1 || len(jobs) != 1 || jobs[0].PreparedCommit == "" {
 		t.Fatal("fixture did not preserve ambiguous commit")
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal("fixture migration failed", err)
 	}
 	exe, err := os.Executable()
@@ -436,11 +436,11 @@ func TestSQLitePreparedWriteRecoversInFreshProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	cmd.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+f.Server.URL)
+	cmd.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+f.Server.URL)
 	if err := cmd.Run(); err != nil {
 		t.Fatal("recovery subprocess failed", err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,16 +458,16 @@ func TestSQLiteIndexDirectoryMoveRecoversInFreshProcess(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmMove: true, ConfirmPublication: true})
-	if err != nil || move.State != "waiting_destination" || s.db.Version != 17 {
+	if err != nil || move.State != "waiting_destination" || s.DB().Version != 17 {
 		t.Fatal("fixture move not queued", err)
 	}
 	f.Modify(func() { f.LoseResponse = true })
 	m.Once(context.Background())
 	jobs := s.jobs()
-	if f.WriteCount() != 1 || len(jobs) != 1 || jobs[0].PreparedCommit == "" || s.db.Articles["from/guide.md"].Deleted {
+	if f.WriteCount() != 1 || len(jobs) != 1 || jobs[0].PreparedCommit == "" || s.DB().Articles["from/guide.md"].Deleted {
 		t.Fatal("ambiguous move was not retained")
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal("fixture migration failed", err)
 	}
 	exe, err := os.Executable()
@@ -477,16 +477,16 @@ func TestSQLiteIndexDirectoryMoveRecoversInFreshProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestSyncRecoveryFixtureProcess$")
-	cmd.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.dir, "VEDA_RECOVERY_ENDPOINT="+f.Server.URL)
+	cmd.Env = append(os.Environ(), "VEDA_RECOVERY_FIXTURE=1", "VEDA_RECOVERY_DIR="+s.Dir(), "VEDA_RECOVERY_ENDPOINT="+f.Server.URL)
 	if err = cmd.Run(); err != nil {
 		t.Fatal("recovery subprocess failed", err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	jobs = reopened.jobs()
-	if len(jobs) != 1 || jobs[0].State != "complete" || f.WriteCount() != 1 || f.Contents()["docs/README.md"] != "# Synthetic index" || reopened.moves()[0].State != "complete" || !reopened.db.Articles["from/guide.md"].Deleted || reopened.db.Articles["from/docs/index.md"].Deleted {
+	if len(jobs) != 1 || jobs[0].State != "complete" || f.WriteCount() != 1 || f.Contents()["docs/README.md"] != "# Synthetic index" || reopened.moves()[0].State != "complete" || !reopened.DB().Articles["from/guide.md"].Deleted || reopened.DB().Articles["from/docs/index.md"].Deleted {
 		t.Fatal("recovery lost or duplicated the mapped move")
 	}
 }

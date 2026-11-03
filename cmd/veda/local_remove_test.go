@@ -17,15 +17,15 @@ func TestRemoveLocalSourceGuardAndSQLite(t *testing.T) {
 	if _, err := s.put("other", "keep.md", "# Keep", 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	generation := s.db.Sources["handbook"].ImportGeneration
+	generation := s.DB().Sources["handbook"].ImportGeneration
 	w := Wiki{Store: s, ReaderLocal: true, LocalImportSource: "handbook"}
 	body, _ := json.Marshal(map[string]any{"expected_generation": generation, "confirm": true})
 	call := func(root bool, origin string, body string) int {
@@ -52,28 +52,28 @@ func TestRemoveLocalSourceGuardAndSQLite(t *testing.T) {
 	if _, err = s.removeLocalImportedSource("handbook", generation); err != ErrConflict {
 		t.Fatal("dependent team ignored", err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	delete(db.Teams, "fixture-team")
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if call(true, "", string(body)) != 200 {
 		t.Fatal("authorized deletion failed")
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.db.Sources["handbook"]; ok {
+	if _, ok := s.DB().Sources["handbook"]; ok {
 		t.Fatal("source remains")
 	}
-	if _, ok := s.db.Articles["handbook/README.md"]; ok {
+	if _, ok := s.DB().Articles["handbook/README.md"]; ok {
 		t.Fatal("article remains")
 	}
-	if _, ok := s.db.Articles["other/keep.md"]; !ok {
+	if _, ok := s.DB().Articles["other/keep.md"]; !ok {
 		t.Fatal("other article removed")
 	}
 }

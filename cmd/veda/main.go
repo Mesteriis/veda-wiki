@@ -88,9 +88,9 @@ type Wiki struct {
 func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Referrer-Policy", "no-referrer")
 	if w.Store != nil {
-		w.Store.mu.RLock()
-		invalid := w.Store.invalid
-		w.Store.mu.RUnlock()
+		w.Store.RLock()
+		invalid := w.Store.InvalidLocked()
+		w.Store.RUnlock()
 		if invalid {
 			http.Error(rw, "Store unavailable", http.StatusServiceUnavailable)
 			return
@@ -309,13 +309,13 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	terms := search.Terms(query)
 	scores := map[string]int{}
-	w.Store.mu.RLock()
-	for _, source := range w.Store.db.Sources {
-		if source.ConnectionID != "" && (!w.Public || sourcePublicReadable(w.Store.db, source, time.Now())) {
+	w.Store.RLock()
+	for _, source := range w.Store.DB().Sources {
+		if source.ConnectionID != "" && (!w.Public || sourcePublicReadable(*w.Store.DB(), source, time.Now())) {
 			v.GitHubCount++
 		}
 	}
-	w.Store.mu.RUnlock()
+	w.Store.RUnlock()
 	groups := map[string]*Group{}
 	sources := map[string]Source{}
 	for _, source := range w.Store.sources(w.Public) {

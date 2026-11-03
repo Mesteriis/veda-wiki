@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Mesteriis/veda-wiki/internal/store"
 	"os"
 	"path"
 	"time"
@@ -13,14 +14,14 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 	if err != nil {
 		return Database{}, Revision{}, transferDependencies{}, err
 	}
-	src := s.db.Sources[in.SourceID]
-	dst := s.db.Sources[in.DestinationID]
+	src := s.DB().Sources[in.SourceID]
+	dst := s.DB().Sources[in.DestinationID]
 	if dst.ConnectionID == "" && dst.ImportGeneration != "" {
 		return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 	}
-	shadow := &Store{dir: s.dir, db: s.clone()}
+	shadow := &Store{store.Detached(s.Dir(), s.Clone())}
 	now := time.Now()
-	public := sourcePublic(s.db, dst, now)
+	public := sourcePublic(*s.DB(), dst, now)
 	var root Revision
 	links := map[string]string{}
 	remoteLinks := map[string]string{}
@@ -37,9 +38,9 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 				bundle[item.DestinationPath] = item.SHA
 			}
 		}
-		a := s.db.Articles[in.SourceID+"/"+item.SourcePath]
+		a := s.DB().Articles[in.SourceID+"/"+item.SourcePath]
 		rev := a.Versions[item.Revision-1]
-		sourcePublicRevision := sourcePublicReadable(s.db, src, now) && (src.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
+		sourcePublicRevision := sourcePublicReadable(*s.DB(), src, now) && (src.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
 		if public && (secretContent.MatchString(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 			return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 		}
@@ -51,8 +52,8 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 		}
 		copied := Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
 		b := Article{SourceID: in.DestinationID, Path: item.DestinationPath, Versions: []Revision{copied}, CopiedFrom: &CopyOrigin{SourceID: in.SourceID, Path: item.SourcePath, Revision: item.Revision, SHA: rev.SHA, DirectoryIndex: item.DirectoryIndex}, Translation: movedTranslation(a.Translation)}
-		if item.DirectoryIndex && shadow.db.Version < 17 {
-			shadow.db.Version = 17
+		if item.DirectoryIndex && shadow.DB().Version < 17 {
+			shadow.DB().Version = 17
 		}
 		if public {
 			published := copied
@@ -60,7 +61,7 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 			b.Published = &published
 			b.PublishedLocal = true
 		}
-		shadow.db.Articles[in.DestinationID+"/"+item.DestinationPath] = b
+		shadow.DB().Articles[in.DestinationID+"/"+item.DestinationPath] = b
 		if item.SourcePath == in.SourcePath {
 			root = copied
 		}
@@ -78,14 +79,14 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 	// links; real upstream and publication state are never fabricated in storage.
 	validationSource.ConnectionID = ""
 	validationSource.Visibility = "private"
-	shadow.db.Sources[dst.ID] = validationSource
+	shadow.DB().Sources[dst.ID] = validationSource
 	batchAssets := map[string]BlobRef{}
 	verifiedAssets := map[BlobRef]bool{}
 	rootReferences := false
 	directoryLinks := false
 	var total int64
 	for _, item := range plan.Articles {
-		a := s.db.Articles[in.SourceID+"/"+item.SourcePath]
+		a := s.DB().Articles[in.SourceID+"/"+item.SourcePath]
 		rootReferences = rootReferences || hasRootReference(a.Versions[item.Revision-1].Text)
 		deps, e := shadow.transferAssets(a.Versions[item.Revision-1].Text, item.SourcePath, item.DestinationPath, src, dst)
 		if e != nil {
@@ -94,7 +95,7 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 		directoryLinks = directoryLinks || deps.DirectoryLinks
 		for p, ref := range deps.Assets {
 			if !verifiedAssets[ref] {
-				info, err := os.Lstat(path.Join(s.dir, "blobs", ref.SHA))
+				info, err := os.Lstat(path.Join(s.Dir(), "blobs", ref.SHA))
 				if err != nil || !info.Mode().IsRegular() || total+info.Size() > 16<<20 {
 					return Database{}, Revision{}, transferDependencies{}, ErrInvalid
 				}
@@ -110,14 +111,14 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 	}
 	if dst.ConnectionID != "" {
 		// The asset index reflects only the last observed remote tree.
-		dst.Assets = s.db.Sources[dst.ID].Assets
-		shadow.db.Sources[dst.ID] = dst
-		a := shadow.db.Articles[in.DestinationID+"/"+in.DestinationPath]
-		enqueueWrite(&shadow.db, a, root, time.Now())
+		dst.Assets = s.DB().Sources[dst.ID].Assets
+		shadow.DB().Sources[dst.ID] = dst
+		a := shadow.DB().Articles[in.DestinationID+"/"+in.DestinationPath]
+		enqueueWrite(shadow.DB(), a, root, time.Now())
 		id := a.SourceID + "/" + a.Path + "@1"
-		job := shadow.db.Outbox[id]
+		job := shadow.DB().Outbox[id]
 		job.Assets, job.Links, job.Bundle = batchAssets, remoteLinks, bundle
-		shadow.db.Outbox[id] = job
+		shadow.DB().Outbox[id] = job
 		version := 7
 		if len(remoteLinks) > 0 {
 			version = 8
@@ -125,17 +126,17 @@ func (s *Store) prepareCopyLinkedLocal(in copyRequest) (Database, Revision, tran
 		if len(bundle) > 0 {
 			version = 9
 		}
-		if shadow.db.Version < version {
-			shadow.db.Version = version
+		if shadow.DB().Version < version {
+			shadow.DB().Version = version
 		}
-		if rootReferences && (len(batchAssets) > 0 || len(remoteLinks) > 0 || len(bundle) > 0) && shadow.db.Version < 12 {
-			shadow.db.Version = 12
+		if rootReferences && (len(batchAssets) > 0 || len(remoteLinks) > 0 || len(bundle) > 0) && shadow.DB().Version < 12 {
+			shadow.DB().Version = 12
 		}
 	} else {
-		shadow.db.Sources[dst.ID] = dst
+		shadow.DB().Sources[dst.ID] = dst
 	}
-	if directoryLinks && shadow.db.Version < 16 {
-		shadow.db.Version = 16
+	if directoryLinks && shadow.DB().Version < 16 {
+		shadow.DB().Version = 16
 	}
-	return shadow.db, root, transferDependencies{Assets: batchAssets, Links: links, DirectoryLinks: directoryLinks}, nil
+	return *shadow.DB(), root, transferDependencies{Assets: batchAssets, Links: links, DirectoryLinks: directoryLinks}, nil
 }

@@ -37,17 +37,17 @@ func TestAgentRoutesVPSRequestAcrossSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	s.db.Moves = map[string]Move{"fixture-move": {State: "deleting_source", SourceID: "vps", SourcePath: "ops/containers.md", DestinationID: "homelab", DestinationPath: "ops/other.md"}}
-	s.db.Outbox = map[string]SyncJob{"fixture-bundle": {State: "pending", SourceID: "homelab", Path: "ops/root.md", Bundle: map[string]string{"ops/containers.md": "fixture-hash"}}}
-	s.mu.Unlock()
+	s.Lock()
+	s.DB().Moves = map[string]Move{"fixture-move": {State: "deleting_source", SourceID: "vps", SourcePath: "ops/containers.md", DestinationID: "homelab", DestinationPath: "ops/other.md"}}
+	s.DB().Outbox = map[string]SyncJob{"fixture-bundle": {State: "pending", SourceID: "homelab", Path: "ops/root.md", Bundle: map[string]string{"ops/containers.md": "fixture-hash"}}}
+	s.Unlock()
 	server := httptest.NewServer(Wiki{Store: s, Token: "owner"})
 	defer server.Close()
 	keys := t.TempDir()

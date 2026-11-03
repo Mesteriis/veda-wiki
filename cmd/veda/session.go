@@ -313,9 +313,9 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 			jsonResponse(rw, 403, map[string]string{"error": "access denied"})
 			return
 		}
-		w.Store.mu.RLock()
-		current, exists := w.Store.db.Users[user.ID]
-		w.Store.mu.RUnlock()
+		w.Store.RLock()
+		current, exists := w.Store.DB().Users[user.ID]
+		w.Store.RUnlock()
 		if !exists || current.AuthVersion != user.AuthVersion {
 			apiError(rw, ErrConflict)
 			return

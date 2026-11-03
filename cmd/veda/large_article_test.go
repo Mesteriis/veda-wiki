@@ -23,10 +23,10 @@ func TestLargeArticlesPersistWithVersionGateAndAPI(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer test-owner")
 	out := httptest.NewRecorder()
 	w.ServeHTTP(out, req)
-	if out.Code != 201 || s.db.Version != 13 {
-		t.Fatal("large article not written with version gate", out.Code, s.db.Version)
+	if out.Code != 201 || s.DB().Version != 13 {
+		t.Fatal("large article not written with version gate", out.Code, s.DB().Version)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,10 +46,10 @@ func TestLargeImportUsesVersionGate(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if s.db.Version != 13 {
+	if s.DB().Version != 13 {
 		t.Fatal("large import did not upgrade store")
 	}
-	if _, err := openStore(s.dir); err != nil {
+	if _, err := openStore(s.Dir()); err != nil {
 		t.Fatal("large import could not reopen", err)
 	}
 }
@@ -64,14 +64,14 @@ func TestPreviousBinaryRefusesLargeArticleStore(t *testing.T) {
 	if _, err := s.put("fixture", "large.md", strings.Repeat("x", legacyArticleBytes+1), 0); err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(s.dir, "state.json")
+	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
 		t.Fatal("old binary did not reject v13")

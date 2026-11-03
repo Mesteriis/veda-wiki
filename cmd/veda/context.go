@@ -37,13 +37,13 @@ type agentContext struct {
 
 // The caller holds the store read or write lock, and has authorized the source.
 func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
-	status := contextStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty, SyncIssue: sourceSyncIssue(s.db, src, time.Now())}
-	if conn, ok := s.db.Connections[src.ConnectionID]; src.ConnectionID != "" && ok {
+	status := contextStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty, SyncIssue: sourceSyncIssue(*s.DB(), src, time.Now())}
+	if conn, ok := s.DB().Connections[src.ConnectionID]; src.ConnectionID != "" && ok {
 		status.SyncState = conn.State
 		status.SyncError = conn.LastError
 		status.SyncVerification = conn.Verification
 		count, prepared := 0, 0
-		for _, job := range s.db.Outbox {
+		for _, job := range s.DB().Outbox {
 			if job.SourceID == sourceID && job.State != "complete" && job.State != "superseded" {
 				count++
 				if job.PreparedCommit != "" || job.ScopePrepared {
@@ -54,14 +54,14 @@ func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
 		status.UnconfirmedWrites = &count
 		status.PreparedWrites = &prepared
 	}
-	if observed, ok := s.observed[sourceID]; ok {
+	if observed, ok := s.Observed(sourceID); ok {
 		value := observed.UTC().Format(time.RFC3339Nano)
 		status.LastImportObservedAt = &value
 	}
-	if count, ok := s.withheld[sourceID]; ok {
+	if count, ok := s.Withheld(sourceID); ok {
 		status.LastImportWithheld = &count
 	}
-	for _, article := range s.db.Articles {
+	for _, article := range s.DB().Articles {
 		if article.SourceID != sourceID {
 			continue
 		}
@@ -77,10 +77,10 @@ func (s *Store) sourceStatusLocked(sourceID string, src Source) contextStatus {
 // Read all ancestor instructions and source status under one lock so the
 // result cannot combine different revisions of an import transaction.
 func (s *Store) agentContext(sourceID, target string, public bool) (agentContext, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	src, ok := s.db.Sources[sourceID]
-	if !ok || (public && !sourcePublicReadable(s.db, src, time.Now())) {
+	s.RLock()
+	defer s.RUnlock()
+	src, ok := s.DB().Sources[sourceID]
+	if !ok || (public && !sourcePublicReadable(*s.DB(), src, time.Now())) {
 		return agentContext{}, ErrNotFound
 	}
 	if !articlePath(target, src.Kind) {
@@ -97,7 +97,7 @@ func (s *Store) agentContext(sourceID, target string, public bool) (agentContext
 		if i > 0 {
 			name = strings.Join(parts[:i], "/") + "/AGENTS.md"
 		}
-		a, exists := s.db.Articles[sourceID+"/"+name]
+		a, exists := s.DB().Articles[sourceID+"/"+name]
 		if !exists || a.Deleted || len(a.Versions) == 0 || (public && src.ConnectionID != "" && a.Published == nil) {
 			result.Missing = append(result.Missing, name)
 			continue

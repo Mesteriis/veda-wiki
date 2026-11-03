@@ -14,11 +14,11 @@ func TestMoveLinkedGraphToLocalIsAtomic(t *testing.T) {
 	s.put("from", "a.md", "[B](b.md)", 0)
 	s.put("from", "b.md", "[A](a.md)", 0)
 	move, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md", ConfirmMove: true, IncludeLinked: true})
-	if err != nil || move.State != "complete" || !s.db.Articles["from/a.md"].Deleted || s.db.Articles["from/b.md"].Deleted || s.db.Articles["to/b.md"].CopiedFrom == nil {
+	if err != nil || move.State != "complete" || !s.DB().Articles["from/a.md"].Deleted || s.DB().Articles["from/b.md"].Deleted || s.DB().Articles["to/b.md"].CopiedFrom == nil {
 		t.Fatal(move, err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 8 || len(reopened.moves()[0].Links) != 1 {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 8 || len(reopened.moves()[0].Links) != 1 {
 		t.Fatal("move not durable", err)
 	}
 }
@@ -33,12 +33,12 @@ func TestPreparedRemoteDeletionLocksLinkedDestination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	move.State, move.PreparedDeletion = "deleting_source", strings.Repeat("a", 40)
 	db.Moves[move.ID] = move
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,15 +48,15 @@ func TestPreparedRemoteDeletionLocksLinkedDestination(t *testing.T) {
 	if _, err = s.moveArticle(moveRequest{SourceID: "to", SourcePath: "b.md", ExpectedRevision: 1, DestinationID: "other", DestinationPath: "b.md", ConfirmMove: true}); err != ErrConflict {
 		t.Fatal("linked move was not locked", err)
 	}
-	if s.db.Articles["to/b.md"].Deleted || len(s.db.Articles["to/b.md"].Versions) != 1 {
+	if s.DB().Articles["to/b.md"].Deleted || len(s.DB().Articles["to/b.md"].Versions) != 1 {
 		t.Fatal("linked article changed")
 	}
-	s.mu.Lock()
-	db = s.clone()
+	s.Lock()
+	db = s.Clone()
 	move.State = "complete"
 	db.Moves[move.ID] = move
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestRemoteMoveLinkedGraphKeepsSourceIfDestinationChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.Contents()["README.md"] == "" || s.db.Articles["handbook/README.md"].Deleted {
+	if f.Contents()["README.md"] == "" || s.DB().Articles["handbook/README.md"].Deleted {
 		t.Fatal("source removed after dependency changed")
 	}
 }
@@ -93,7 +93,7 @@ func TestRemoteMoveLinkedGraphDeletesOnlyRequestedArticle(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.moves()[0].State != "complete" || f.Contents()["README.md"] != "" || f.Contents()["b.md"] != "# B" || s.db.Articles["to/b.md"].Deleted {
+	if s.moves()[0].State != "complete" || f.Contents()["README.md"] != "" || f.Contents()["b.md"] != "# B" || s.DB().Articles["to/b.md"].Deleted {
 		t.Fatal("unexpected remote deletion", s.moves())
 	}
 }

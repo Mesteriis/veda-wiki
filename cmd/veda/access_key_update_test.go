@@ -80,10 +80,10 @@ func TestAccessKeyScopeUpdateAppliesToExistingSessionAndBearer(t *testing.T) {
 	if call("POST", "/api/v1/access-keys", payload, "", "owner", nil).Code != 409 {
 		t.Fatal("stale update accepted")
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,13 +145,13 @@ func TestExpiredAccessKeyCannotBeRenewed(t *testing.T) {
 	if _, err := s.createAccessKey("person", []string{"alpha"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	key := db.AccessKeys["person"]
 	key.Expires = time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)
 	db.AccessKeys["person"] = key
-	err := s.commit(db)
-	s.mu.Unlock()
+	err := s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,9 +24,9 @@ func TestReaderTranslationValidationIsScopedAndNonMutating(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rev := s.db.Articles["alpha/docs/guide.md"].Versions[0]
+	rev := s.DB().Articles["alpha/docs/guide.md"].Versions[0]
 	in := translationRequest{SourceID: "alpha", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Руководство\n\nВыполните `install`."}
-	before, err := json.Marshal(s.db)
+	before, err := json.Marshal(*s.DB())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestReaderTranslationValidationIsScopedAndNonMutating(t *testing.T) {
 	if len(failures) != 0 {
 		t.Fatal("concurrent validation failed")
 	}
-	after, _ := json.Marshal(s.db)
+	after, _ := json.Marshal(*s.DB())
 	if !bytes.Equal(after, before) {
 		t.Fatal("validation mutated state")
 	}
@@ -111,7 +111,7 @@ func TestTranslationValidationReportsPausedSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rev := s.db.Articles["handbook/docs/guide.md"].Versions[0]
+	rev := s.DB().Articles["handbook/docs/guide.md"].Versions[0]
 	if err := s.pauseConnection("handbook", true); err != nil {
 		t.Fatal(err)
 	}

@@ -98,10 +98,10 @@ func TestMirrorSyntheticScale(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,17 +132,17 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	if s.mirrors()[0].State != "blocked" || s.mirrors()[0].Blocked != 2 || len(s.jobs()) != 10 || f.WriteCount() != 10 {
 		t.Fatal("scale reconciliation did not converge", s.mirrors()[0].State, passes)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	baselines := 0
-	for _, a := range s.db.Articles {
+	for _, a := range s.DB().Articles {
 		if a.SourceID == "handbook" && a.ReconcileBase != nil {
 			baselines++
 		}
 	}
-	if baselines != 534 || len(s.db.Sources["handbook"].Assets) != 147 || len(f.Contents()) != 1+611+147 {
+	if baselines != 534 || len(s.DB().Sources["handbook"].Assets) != 147 || len(f.Contents()) != 1+611+147 {
 		t.Fatal("scale state mismatch", baselines)
 	}
 	if requests.Load() != 78 {
@@ -150,7 +150,7 @@ func TestMirrorSyntheticScale(t *testing.T) {
 	}
 	for _, i := range []int{524, 525} {
 		name := fmt.Sprintf("pages/page-%03d.md", i)
-		if f.Contents()[name] != fmt.Sprintf("# Independently changed %d", i) || s.db.Articles["local/"+name].Deleted {
+		if f.Contents()[name] != fmt.Sprintf("# Independently changed %d", i) || s.DB().Articles["local/"+name].Deleted {
 			t.Fatal("divergent article was changed")
 		}
 	}

@@ -34,19 +34,19 @@ func (s *Store) validateTranslation(in translationRequest) (map[string]any, erro
 	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) || !validTranslationFingerprint(in.ExpectedTranslationFingerprint) {
 		return nil, ErrInvalid
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	src, ok := s.db.Sources[in.SourceID]
+	s.RLock()
+	defer s.RUnlock()
+	src, ok := s.DB().Sources[in.SourceID]
 	if !ok {
 		return nil, ErrNotFound
 	}
 	if src.Kind != "program" || !articlePath(in.Path, src.Kind) {
 		return nil, ErrInvalid
 	}
-	if moveDeletionLocks(s.db, in.SourceID, in.Path) {
+	if moveDeletionLocks(*s.DB(), in.SourceID, in.Path) {
 		return nil, ErrConflict
 	}
-	a, ok := s.db.Articles[in.SourceID+"/"+in.Path]
+	a, ok := s.DB().Articles[in.SourceID+"/"+in.Path]
 	if !ok || a.Deleted {
 		return nil, ErrNotFound
 	}
@@ -146,9 +146,9 @@ func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Trans
 	if in.ExpectedRevision < 1 || len(in.Text) == 0 || len(in.Text) > maxArticleBytes || !utf8.ValidString(in.Text) || !validTranslationFingerprint(in.ExpectedTranslationFingerprint) {
 		return Translation{}, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, ok := s.db.Sources[in.SourceID]
+	s.Lock()
+	defer s.Unlock()
+	src, ok := s.DB().Sources[in.SourceID]
 	if !ok {
 		return Translation{}, ErrNotFound
 	}
@@ -156,10 +156,10 @@ func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Trans
 		return Translation{}, ErrInvalid
 	}
 	key := in.SourceID + "/" + in.Path
-	if moveDeletionLocks(s.db, in.SourceID, in.Path) {
+	if moveDeletionLocks(*s.DB(), in.SourceID, in.Path) {
 		return Translation{}, ErrConflict
 	}
-	a, ok := s.db.Articles[key]
+	a, ok := s.DB().Articles[key]
 	if !ok || a.Deleted {
 		return Translation{}, ErrNotFound
 	}
@@ -184,7 +184,7 @@ func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Trans
 	if !reflect.DeepEqual(protectedMarkdown(rev.Text), protectedMarkdown(in.Text)) {
 		return Translation{}, ErrInvalid
 	}
-	public := sourcePublic(s.db, src, time.Now())
+	public := sourcePublic(*s.DB(), src, time.Now())
 	if public && ((!in.ConfirmPublication && !privateDraft) || secretContent.MatchString(in.Text)) {
 		return Translation{}, ErrInvalid
 	}
@@ -197,13 +197,13 @@ func (s *Store) saveTranslation(in translationRequest, privateDraft bool) (Trans
 	}
 	tr := Translation{Language: "ru", OriginalSHA: rev.SHA, Text: in.Text, SHA: digest([]byte(in.Text)), Created: time.Now().UTC().Format(time.RFC3339Nano), PublicApproved: public && in.ConfirmPublication, Origin: origin}
 	a.Translation = &tr
-	db := s.clone()
+	db := s.Clone()
 	if origin != "" && db.Version < 11 {
 		db.Version = 11
 	}
 	db.Articles[key] = a
 	reconcileMoves(&db)
-	if e := s.commit(db); e != nil {
+	if e := s.Commit(db); e != nil {
 		return Translation{}, e
 	}
 	return tr, nil
@@ -219,11 +219,11 @@ type translationCandidate struct {
 }
 
 func (s *Store) translationCandidates() []translationCandidate {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	out := []translationCandidate{}
-	for _, a := range s.db.Articles {
-		src := s.db.Sources[a.SourceID]
+	for _, a := range s.DB().Articles {
+		src := s.DB().Sources[a.SourceID]
 		if src.Kind != "program" || a.Deleted {
 			continue
 		}
@@ -236,7 +236,7 @@ func (s *Store) translationCandidates() []translationCandidate {
 		}
 		r := a.Versions[len(a.Versions)-1]
 		visibility := "private"
-		if sourcePublic(s.db, src, time.Now()) {
+		if sourcePublic(*s.DB(), src, time.Now()) {
 			visibility = "public"
 		}
 		state := "needed"

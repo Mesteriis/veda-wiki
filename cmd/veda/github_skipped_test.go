@@ -38,7 +38,7 @@ func TestSkippedProgramRechecksVisibilityAndImportsNewDocs(t *testing.T) {
 		t.Fatal("imported a repository without docs")
 	}
 	firstTree, firstRepo := treeCalls.Load(), repoCalls.Load()
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	before := s.db.Sources["program"].ImportGeneration
+	before := s.DB().Sources["program"].ImportGeneration
 	if _, err := s.page("program/docs/guide.md", true); err != nil {
 		t.Fatal("initial public document unavailable", err)
 	}
@@ -74,7 +74,7 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	if c := s.connections()[0]; c.State != "error" || c.Verification != "unknown" || c.LastError != "invalid_docs_directory" {
 		t.Fatal("invalid docs entry was accepted or misclassified", c.State, c.Verification, c.LastError)
 	}
-	if s.db.Sources["program"].ImportGeneration != before || s.db.Articles["program/docs/guide.md"].Deleted {
+	if s.DB().Sources["program"].ImportGeneration != before || s.DB().Articles["program/docs/guide.md"].Deleted {
 		t.Fatal("invalid docs entry changed the local snapshot")
 	}
 	if _, err := s.page("program/docs/guide.md", false); err != nil {
@@ -83,7 +83,7 @@ func TestProgramDocsReplacedByFilePreservesLocalSnapshot(t *testing.T) {
 	if _, err := s.page("program/docs/guide.md", true); err == nil {
 		t.Fatal("stale snapshot remained publicly visible")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestChangedRepositoryTypeClosesPublicSnapshotAndRecovers(t *testing.T) {
 			if _, err := s.page("source/"+tc.oldPath, false); err != nil {
 				t.Fatal("local article was lost", err)
 			}
-			reopened, err := openStore(s.dir)
+			reopened, err := openStore(s.Dir())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -268,17 +268,17 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 				}
 				m.Once(context.Background())
 				if sqlite {
-					if err := migrateSQLite(s.dir); err != nil {
+					if err := migrateSQLite(s.Dir()); err != nil {
 						t.Fatal(err)
 					}
 					var err error
-					s, err = openStore(s.dir)
+					s, err = openStore(s.Dir())
 					if err != nil {
 						t.Fatal(err)
 					}
 					m = newSyncManager(s, f.Client())
 				}
-				before := s.db.Sources["source"].ImportGeneration
+				before := s.DB().Sources["source"].ImportGeneration
 				f.Advance(tc.files)
 				m.Once(context.Background())
 				c := s.connections()[0]
@@ -286,13 +286,13 @@ func TestInvalidWikiMetadataPreservesSnapshotAndRecovers(t *testing.T) {
 					t.Fatal("incorrect metadata failure state", c.State, c.LastError)
 				}
 				p, err := s.page("source/README.md", false)
-				if err != nil || p.Text != "# Original wiki" || s.db.Sources["source"].ImportGeneration != before {
+				if err != nil || p.Text != "# Original wiki" || s.DB().Sources["source"].ImportGeneration != before {
 					t.Fatal("invalid metadata changed local snapshot", err)
 				}
 				if _, err := s.page("source/README.md", true); err == nil {
 					t.Fatal("unverified public snapshot exposed")
 				}
-				s, err = openStore(s.dir)
+				s, err = openStore(s.Dir())
 				if err != nil {
 					t.Fatal(err)
 				}

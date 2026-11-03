@@ -255,10 +255,10 @@ func TestLiveGitHubBranchMove(t *testing.T) {
 		if err != nil || article.Versions[0].Text != draftText {
 			t.Fatal("local write unavailable during outage", err)
 		}
-		if err := migrateSQLite(store.dir); err != nil {
+		if err := migrateSQLite(store.Dir()); err != nil {
 			t.Fatal("fixture migration failed", err)
 		}
-		store, err = openStore(store.dir)
+		store, err = openStore(store.Dir())
 		if err != nil {
 			t.Fatal("fixture reopen failed", err)
 		}

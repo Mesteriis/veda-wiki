@@ -37,10 +37,10 @@ func TestSameMediaPathsRemainSourceScopedAfterSQLiteRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestSameMediaPathsRemainSourceScopedAfterSQLiteRestart(t *testing.T) {
 	if _, err = s.importBatch(updated); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

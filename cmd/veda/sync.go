@@ -50,9 +50,9 @@ func (m *SyncManager) Run(ctx context.Context, interval time.Duration) {
 func (m *SyncManager) Once(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.store.mu.RLock()
-	invalid := m.store.invalid
-	m.store.mu.RUnlock()
+	m.store.RLock()
+	invalid := m.store.InvalidLocked()
+	m.store.RUnlock()
 	if invalid {
 		return
 	}
@@ -62,9 +62,9 @@ func (m *SyncManager) Once(ctx context.Context) {
 		}
 		// A previous source may have put this account on rate-limit cooldown.
 		// Reload rather than using the snapshot taken before the loop.
-		m.store.mu.RLock()
-		c, exists := m.store.db.Connections[initial.ID]
-		m.store.mu.RUnlock()
+		m.store.RLock()
+		c, exists := m.store.DB().Connections[initial.ID]
+		m.store.RUnlock()
 		if !exists {
 			continue
 		}
@@ -116,9 +116,9 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 	if in.Expected == nil || (in.AccountID == nil && in.Write == nil) {
 		return GitHubConnection{}, ErrInvalid
 	}
-	m.store.mu.RLock()
-	c, ok := m.store.db.Connections[in.ID]
-	m.store.mu.RUnlock()
+	m.store.RLock()
+	c, ok := m.store.DB().Connections[in.ID]
+	m.store.RUnlock()
 	if !ok {
 		return c, ErrNotFound
 	}
@@ -162,12 +162,12 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 		}
 		info = &repository
 	}
-	m.store.mu.Lock()
-	defer m.store.mu.Unlock()
-	if moveDeletionLocksConnection(m.store.db, c.ID) {
+	m.store.Lock()
+	defer m.store.Unlock()
+	if moveDeletionLocksConnection(*m.store.DB(), c.ID) {
 		return c, ErrConflict
 	}
-	current, ok := m.store.db.Connections[c.ID]
+	current, ok := m.store.DB().Connections[c.ID]
 	if !ok || current.ConfigRevision != *in.Expected {
 		return c, ErrConflict
 	}
@@ -188,7 +188,7 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 	}
 	c.LastPull = ""
 	c.TreeSHA = ""
-	db := m.store.clone()
+	db := m.store.Clone()
 	if info != nil {
 		c.Private = *info.Private
 		c.Verification = "verified"
@@ -214,7 +214,7 @@ func (m *SyncManager) configure(ctx context.Context, in configureRequest) (GitHu
 			db.Outbox[id] = j
 		}
 	}
-	if e := m.store.commit(db); e != nil {
+	if e := m.store.Commit(db); e != nil {
 		return c, e
 	}
 	m.Wake()
@@ -320,17 +320,17 @@ func (m *SyncManager) connect(ctx context.Context, in connectRequest) (GitHubCon
 		}
 		return GitHubConnection{}, ErrConflict
 	}
-	m.store.mu.Lock()
-	defer m.store.mu.Unlock()
-	if _, ok := m.store.db.Connections[c.ID]; ok {
+	m.store.Lock()
+	defer m.store.Unlock()
+	if _, ok := m.store.DB().Connections[c.ID]; ok {
 		return c, ErrConflict
 	}
-	if _, ok := m.store.db.Sources[c.ID]; ok {
+	if _, ok := m.store.DB().Sources[c.ID]; ok {
 		return c, ErrConflict
 	}
-	db := m.store.clone()
+	db := m.store.Clone()
 	db.Connections[c.ID] = c
-	if e = m.store.commit(db); e != nil {
+	if e = m.store.Commit(db); e != nil {
 		return c, e
 	}
 	m.Wake()
@@ -340,7 +340,7 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 	if !commitID.MatchString(entry.SHA) {
 		return nil, ErrInvalid
 	}
-	dir := filepath.Join(m.store.dir, "git-objects", fmt.Sprint(c.RepositoryID))
+	dir := filepath.Join(m.store.Dir(), "git-objects", fmt.Sprint(c.RepositoryID))
 	filename := filepath.Join(dir, entry.SHA)
 	if info, e := os.Lstat(filename); e == nil && info.Mode().IsRegular() && info.Size() <= 4<<20 {
 		b, e := os.ReadFile(filename)
@@ -352,21 +352,21 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 	// disconnected private source. The repository tree supplies the exact Git
 	// object and length; source identities and article state stay independent.
 	if c.Private {
-		m.store.mu.RLock()
+		m.store.RLock()
 		var articles []string
 		var images []BlobRef
-		for id, src := range m.store.db.Sources {
+		for id, src := range m.store.DB().Sources {
 			if src.Visibility != "private" || src.ConnectionID != "" {
 				continue
 			}
-			if a, ok := m.store.db.Articles[id+"/"+entry.Path]; ok && !a.Deleted && len(a.Versions) > 0 {
+			if a, ok := m.store.DB().Articles[id+"/"+entry.Path]; ok && !a.Deleted && len(a.Versions) > 0 {
 				articles = append(articles, a.Versions[len(a.Versions)-1].Text)
 			}
 			if ref, ok := src.Assets[entry.Path]; ok {
 				images = append(images, ref)
 			}
 		}
-		m.store.mu.RUnlock()
+		m.store.RUnlock()
 		var local []byte
 		matched := false
 		for _, text := range articles {
@@ -412,17 +412,6 @@ func (m *SyncManager) cachedBlob(ctx context.Context, c GitHubConnection, entry 
 	}
 	return b, nil
 }
-func importablePath(p, kind string) bool {
-	if !safeRelative(p) || (kind == "program" && !strings.HasPrefix(p, "docs/")) {
-		return false
-	}
-	for _, part := range strings.Split(p, "/") {
-		if part == "node_modules" || part == "vendor" || part == "dist" {
-			return false
-		}
-	}
-	return true
-}
 func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head, token string, tree github.Tree) (ImportBatch, error) {
 	batch := ImportBatch{SourceID: c.ID, Kind: "program", Files: map[string]string{}, Assets: map[string][]byte{}, Commit: head, Complete: true}
 	entries := map[string]github.TreeEntry{}
@@ -454,9 +443,9 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 		// Treating it as one would delete previously imported documentation.
 		return batch, &github.RemoteError{Code: "invalid_docs_directory"}
 	} else if !hasDocs {
-		m.store.mu.RLock()
-		existing, found := m.store.db.Sources[c.ID]
-		m.store.mu.RUnlock()
+		m.store.RLock()
+		existing, found := m.store.DB().Sources[c.ID]
+		m.store.RUnlock()
 		if !found || existing.Kind != "program" {
 			return batch, ErrNoDocs
 		}
@@ -513,9 +502,9 @@ func (m *SyncManager) remoteBatch(ctx context.Context, c GitHubConnection, head,
 			return batch, &github.RemoteError{Code: "veda_image_unavailable"}
 		}
 	}
-	m.store.mu.RLock()
-	src, exists := m.store.db.Sources[c.ID]
-	m.store.mu.RUnlock()
+	m.store.RLock()
+	src, exists := m.store.DB().Sources[c.ID]
+	m.store.RUnlock()
 	expected := src.ImportGeneration
 	batch.ExpectedImport = &expected
 	batch.Create = !exists
@@ -564,9 +553,9 @@ func (m *SyncManager) syncSource(ctx context.Context, c GitHubConnection) {
 			return
 		}
 	}
-	m.store.mu.RLock()
-	source, exists := m.store.db.Sources[c.ID]
-	m.store.mu.RUnlock()
+	m.store.RLock()
+	source, exists := m.store.DB().Sources[c.ID]
+	m.store.RUnlock()
 	matchingVisibility := exists && (source.Visibility == "private") == c.Private
 	repairingAssets := false
 	if !exists && c.State == "skipped" && !visibilityChanged && head == c.LastPull && commitID.MatchString(c.TreeSHA) {
@@ -679,9 +668,9 @@ func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection,
 		}
 		// A request with an uncertain outcome may have advanced this branch.
 		// Pull again before attempting another deletion using the same head.
-		m.store.mu.RLock()
-		current := m.store.db.Moves[move.ID]
-		m.store.mu.RUnlock()
+		m.store.RLock()
+		current := m.store.DB().Moves[move.ID]
+		m.store.RUnlock()
 		if current.State == "deleting_source" {
 			return true, err
 		}
@@ -692,10 +681,10 @@ func (m *SyncManager) deletePendingMove(ctx context.Context, c GitHubConnection,
 func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, token string, candidate Move) (bool, error) {
 	var destinationRevision int
 	if candidate.DestinationConnectionID != "" {
-		m.store.mu.RLock()
-		destination, ok := m.store.db.Connections[candidate.DestinationConnectionID]
-		target, targetOK := m.store.db.Articles[candidate.DestinationID+"/"+candidate.DestinationPath]
-		m.store.mu.RUnlock()
+		m.store.RLock()
+		destination, ok := m.store.DB().Connections[candidate.DestinationConnectionID]
+		target, targetOK := m.store.DB().Articles[candidate.DestinationID+"/"+candidate.DestinationPath]
+		m.store.RUnlock()
 		if !ok || !targetOK || len(target.Versions) != 1 || destination.Paused || destination.RepositoryID != candidate.DestinationRepositoryID || destination.Branch != candidate.DestinationBranch {
 			return true, ErrConflict
 		}
@@ -749,28 +738,28 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 	if err != nil {
 		return true, err
 	}
-	m.store.mu.Lock()
-	defer m.store.mu.Unlock()
-	current, ok := m.store.db.Connections[c.ID]
+	m.store.Lock()
+	defer m.store.Unlock()
+	current, ok := m.store.DB().Connections[c.ID]
 	if !ok || current.Paused || !current.Write || current.ConfigRevision != c.ConfigRevision || current.RepositoryID != c.RepositoryID || current.Branch != c.Branch {
 		return true, ErrConflict
 	}
 	if candidate.DestinationConnectionID != "" {
-		destination, ok := m.store.db.Connections[candidate.DestinationConnectionID]
+		destination, ok := m.store.DB().Connections[candidate.DestinationConnectionID]
 		if !ok || destination.Paused || destination.ConfigRevision != destinationRevision {
 			return true, ErrConflict
 		}
 	}
-	for _, move := range m.store.db.Moves {
+	for _, move := range m.store.DB().Moves {
 		if move.ID != candidate.ID || move.SourceConnectionID != c.ID || (move.State != "waiting_source_delete" && move.State != "deleting_source") {
 			continue
 		}
 		// Re-evaluate the complete local invariants immediately before preparing.
-		db := m.store.clone()
+		db := m.store.Clone()
 		reconcileMoves(&db)
 		move = db.Moves[move.ID]
 		if move.State != "waiting_source_delete" && move.State != "deleting_source" {
-			return true, m.store.commit(db)
+			return true, m.store.Commit(db)
 		}
 		if err := m.store.verifyMoveAssets(move.Assets); err != nil {
 			return true, err
@@ -781,7 +770,7 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 		prepare := func(commit string) error {
 			move.State, move.PreparedDeletion = "deleting_source", commit
 			db.Moves[move.ID] = move
-			if err := m.store.commit(db); err != nil {
+			if err := m.store.Commit(db); err != nil {
 				return err
 			}
 			prepared = true
@@ -794,7 +783,7 @@ func (m *SyncManager) deleteMove(ctx context.Context, c GitHubConnection, head, 
 		if prepared && previousState == "waiting_source_delete" && errors.As(err, &remote) && (remote.Status == 409 || remote.Status == 422) {
 			move.State, move.PreparedDeletion = "waiting_source_delete", ""
 			db.Moves[move.ID] = move
-			if commitErr := m.store.commit(db); commitErr != nil {
+			if commitErr := m.store.Commit(db); commitErr != nil {
 				return true, commitErr
 			}
 		}
@@ -835,10 +824,10 @@ func (m *SyncManager) pushPending(ctx context.Context, c GitHubConnection, head,
 		if due, e := time.Parse(time.RFC3339Nano, job.NextAttempt); e == nil && due.After(time.Now()) {
 			continue
 		}
-		m.store.mu.RLock()
-		a, ok := m.store.db.Articles[c.ID+"/"+job.Path]
-		current, connected := m.store.db.Connections[c.ID]
-		m.store.mu.RUnlock()
+		m.store.RLock()
+		a, ok := m.store.DB().Articles[c.ID+"/"+job.Path]
+		current, connected := m.store.DB().Connections[c.ID]
+		m.store.RUnlock()
 		if !ok || !connected || current.Paused || current.ConfigRevision != c.ConfigRevision {
 			return ErrConflict
 		}
@@ -932,9 +921,9 @@ func bundleHasCredentialLikeText(files map[string][]byte) bool {
 // Refuse to overwrite pre-existing files while composing the article and its
 // images. The subsequent exact-head update makes this check race-safe.
 func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, head, treeSHA, token string, job SyncJob, article Article) (map[string][]byte, error) {
-	m.store.mu.RLock()
-	source, ok := m.store.db.Sources[c.ID]
-	m.store.mu.RUnlock()
+	m.store.RLock()
+	source, ok := m.store.DB().Sources[c.ID]
+	m.store.RUnlock()
 	if !ok || source.ImportPartial {
 		return nil, ErrConflict
 	}
@@ -981,9 +970,9 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 		return nil, ErrInvalid
 	}
 	files := map[string][]byte{job.Path: []byte(article.Versions[job.Revision-1].Text)}
-	m.store.mu.RLock()
-	bundle, bundleErr := bundleContentsLocked(m.store.db, job)
-	m.store.mu.RUnlock()
+	m.store.RLock()
+	bundle, bundleErr := bundleContentsLocked(*m.store.DB(), job)
+	m.store.RUnlock()
 	if bundleErr != nil {
 		return nil, bundleErr
 	}
@@ -1005,10 +994,10 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 	}
 	// Do not introduce a new README over an index added remotely since the
 	// transfer was planned. The checked tree is bound to the CAS update.
-	m.store.mu.RLock()
+	m.store.RLock()
 	shadowed := false
 	for name := range files {
-		a, exists := m.store.db.Articles[c.ID+"/"+name]
+		a, exists := m.store.DB().Articles[c.ID+"/"+name]
 		if !exists || a.CopiedFrom == nil || !a.CopiedFrom.DirectoryIndex {
 			continue
 		}
@@ -1020,7 +1009,7 @@ func (m *SyncManager) pendingBundle(ctx context.Context, c GitHubConnection, hea
 			}
 		}
 	}
-	m.store.mu.RUnlock()
+	m.store.RUnlock()
 	if shadowed {
 		return nil, ErrConflict
 	}

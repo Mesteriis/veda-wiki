@@ -26,11 +26,11 @@ func TestHiddenPartialSourceRequiresPublicationApprovalForTransfer(t *testing.T)
 			} else {
 				f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": text, "b.md": "# Other"})
 				connectFixture(t, s, f, true)
-				s.mu.Lock()
-				src := s.db.Sources["handbook"]
+				s.Lock()
+				src := s.DB().Sources["handbook"]
 				src.ImportPartial = true
-				s.db.Sources["handbook"] = src
-				s.mu.Unlock()
+				s.DB().Sources["handbook"] = src
+				s.Unlock()
 			}
 			source(t, s, "target", "public")
 			if _, err := s.page("handbook/a.md", true); err != ErrNotFound {
@@ -48,14 +48,14 @@ func TestHiddenPartialSourceRequiresPublicationApprovalForTransfer(t *testing.T)
 				_, err := s.moveArticle(moveReq)
 				return err
 			}
-			before, err := json.Marshal(s.db)
+			before, err := json.Marshal(*s.DB())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if err := run(false); err != ErrInvalid {
 				t.Fatal("hidden source published without approval", err)
 			}
-			after, err := json.Marshal(s.db)
+			after, err := json.Marshal(*s.DB())
 			if err != nil || string(before) != string(after) {
 				t.Fatal("refused transfer changed state", err)
 			}

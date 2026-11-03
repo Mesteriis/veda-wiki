@@ -20,10 +20,10 @@ func TestTranslationFingerprintPreventsConcurrentOverwrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			if sqlite {
-				if err := migrateSQLite(s.dir); err != nil {
+				if err := migrateSQLite(s.Dir()); err != nil {
 					t.Fatal(err)
 				}
-				s, err = openStore(s.dir)
+				s, err = openStore(s.Dir())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -83,7 +83,7 @@ func TestTranslationFingerprintPreventsConcurrentOverwrite(t *testing.T) {
 			if _, err = s.submitTranslation(base); !errors.Is(err, ErrConflict) {
 				t.Fatal("reused fingerprint accepted", err)
 			}
-			reopened, err := openStore(s.dir)
+			reopened, err := openStore(s.Dir())
 			if err != nil {
 				t.Fatal(err)
 			}

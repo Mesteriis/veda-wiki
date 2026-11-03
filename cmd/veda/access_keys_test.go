@@ -21,12 +21,12 @@ func TestAccessKeyScopePersistenceExpiryAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := os.ReadFile(filepath.Join(s.dir, "state.json"))
+	state, err := os.ReadFile(filepath.Join(s.Dir(), "state.json"))
 	if err != nil || strings.Contains(string(state), key) {
 		t.Fatal("bearer token was stored", err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 4 {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 4 {
 		t.Fatal("key store did not persist", err)
 	}
 	scope := reopened.accessScope(key, time.Now())
@@ -45,7 +45,7 @@ func TestAccessKeyScopePersistenceExpiryAndRevocation(t *testing.T) {
 	if reopened.accessScope(key, time.Now()) != nil {
 		t.Fatal("revoked key accepted")
 	}
-	reopened, err = openStore(s.dir)
+	reopened, err = openStore(s.Dir())
 	if err != nil || reopened.accessScope(key, time.Now()) != nil {
 		t.Fatal("revocation not durable", err)
 	}
@@ -101,21 +101,21 @@ func TestScopedReaderCannotCrossSourceBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(s.dir, "blobs"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(s.Dir(), "blobs"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(s.dir, "blobs", ref.SHA), image, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), image, 0600); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	for _, id := range []string{"alpha", "beta"} {
 		src := db.Sources[id]
 		src.Assets = map[string]BlobRef{"image.png": ref}
 		db.Sources[id] = src
 	}
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestAccessKeyCreationRejectsInvalidScope(t *testing.T) {
 	if _, err := s.createAccessKey("agent", []string{"alpha"}, time.Now().Add(-time.Second)); err != ErrInvalid {
 		t.Fatal("expired key created", err)
 	}
-	if s.db.Version != 1 || len(s.db.AccessKeys) != 0 {
+	if s.DB().Version != 1 || len(s.DB().AccessKeys) != 0 {
 		t.Fatal("invalid request mutated store")
 	}
 }
@@ -233,8 +233,8 @@ func TestGitHubSourceMovePreservesVersion4AndAccessKeys(t *testing.T) {
 	if err != nil || move.State != "waiting_source_delete" {
 		t.Fatal("move did not start", err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
 		t.Fatal("move downgraded or lost scoped access", err)
 	}
 }
@@ -245,15 +245,15 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	_ = connectFixture(t, s, f, true)
 	_, err := s.moveArticle(moveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
-	if err != nil || s.db.Version != 3 {
+	if err != nil || s.DB().Version != 3 {
 		t.Fatal("version 3 move not created", err)
 	}
 	key, err := s.createAccessKey("agent", []string{"local"}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 4 || len(reopened.accessScope(key, time.Now())) != 1 {
 		t.Fatal("version upgrade lost access", err)
 	}
 	manager := newSyncManager(reopened, f.Client())

@@ -37,7 +37,7 @@ func TestExportV12RestoreFixture(t *testing.T) {
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	m, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, IncludeLinked: true})
-	if err != nil || m.State != "waiting_destination" || s.db.Version != 12 {
+	if err != nil || m.State != "waiting_destination" || s.DB().Version != 12 {
 		t.Fatal("fixture move", err, m)
 	}
 	if err = s.pauseConnection("handbook", true); err != nil {
@@ -46,14 +46,14 @@ func TestExportV12RestoreFixture(t *testing.T) {
 	if _, err = s.createAccessKey("fixture", []string{"from"}, time.Now().Add(30*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	key := db.AccessKeys["fixture"]
 	hash := sha256.Sum256([]byte(strings.Repeat("e", 64)))
 	key.Hash = hex.EncodeToString(hash[:])
 	db.AccessKeys[key.ID] = key
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestExportV12RestoreFixture(t *testing.T) {
 		}
 	}
 	reopened, err := openStore(dir)
-	if err != nil || reopened.db.Version != 12 || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || reopened.jobs()[0].Bundle["related.md"] != digest([]byte("# Related fixture")) || !reopened.db.Connections["handbook"].Paused {
+	if err != nil || reopened.DB().Version != 12 || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || reopened.jobs()[0].Bundle["related.md"] != digest([]byte("# Related fixture")) || !reopened.DB().Connections["handbook"].Paused {
 		t.Fatal("fixture validation", err)
 	}
 }
@@ -75,7 +75,7 @@ func TestResumeV12RestoreFixture(t *testing.T) {
 		t.Skip("restored fixture not provided")
 	}
 	s, err := openStore(dir)
-	if err != nil || s.db.Version != 12 || !s.db.Connections["handbook"].Paused {
+	if err != nil || s.DB().Version != 12 || !s.DB().Connections["handbook"].Paused {
 		t.Fatal("invalid restored fixture", err)
 	}
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
@@ -86,10 +86,10 @@ func TestResumeV12RestoreFixture(t *testing.T) {
 	m := newSyncManager(s, f.Client())
 	m.Once(context.Background())
 	m.Once(context.Background())
-	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.db.Articles["from/a.md"].Deleted {
+	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("restored queue did not complete")
 	}
-	ref := s.db.Sources["handbook"].Assets["img/icon.png"]
+	ref := s.DB().Sources["handbook"].Assets["img/icon.png"]
 	if ref.SHA == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["b.md"] == "" || f.Contents()["related.md"] != "# Related fixture" {
 		t.Fatal("restored image or article missing")
 	}

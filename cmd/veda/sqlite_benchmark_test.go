@@ -25,14 +25,14 @@ func BenchmarkSQLiteSingleArticleUpdateLargeCorpus(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	state := s.clone()
+	state := s.Clone()
 	text := "# Operations\n" + strings.Repeat("container vps service documentation\n", 3500)
 	sha := digest([]byte(text))
 	for i := 0; i < 200; i++ {
 		p := fmt.Sprintf("%03d.md", i)
 		state.Articles["docs/"+p] = Article{SourceID: "docs", Path: p, Versions: []Revision{{Number: 1, Text: text, SHA: sha}}}
 	}
-	if err = s.commit(state); err != nil {
+	if err = s.Commit(state); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()

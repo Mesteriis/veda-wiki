@@ -16,10 +16,10 @@ type mirrorRequest struct {
 }
 
 func (s *Store) mirrors() []SourceMirror {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]SourceMirror, 0, len(s.db.SourceMirrors))
-	for _, m := range s.db.SourceMirrors {
+	s.RLock()
+	defer s.RUnlock()
+	result := make([]SourceMirror, 0, len(s.DB().SourceMirrors))
+	for _, m := range s.DB().SourceMirrors {
 		m.BlockedPaths = slices.Clone(m.BlockedPaths)
 		result = append(result, m)
 	}
@@ -28,9 +28,9 @@ func (s *Store) mirrors() []SourceMirror {
 }
 
 func (s *Store) hasEnabledMirror(sourceID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, mirror := range s.db.SourceMirrors {
+	s.RLock()
+	defer s.RUnlock()
+	for _, mirror := range s.DB().SourceMirrors {
 		if mirror.Enabled && mirror.SourceID == sourceID {
 			return true
 		}
@@ -58,23 +58,23 @@ func (s *Store) configureMirror(ctx context.Context, in mirrorRequest) (SourceMi
 	if !identifier.MatchString(in.SourceID) || !identifier.MatchString(in.DestinationID) || in.SourceID == in.DestinationID || in.Enabled == nil || in.ExpectedRevision == nil || *in.ExpectedRevision < 0 {
 		return SourceMirror{}, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Lock()
+	defer s.Unlock()
 	if err := ctx.Err(); err != nil {
 		return SourceMirror{}, err
 	}
-	old, exists := s.db.SourceMirrors[in.DestinationID]
+	old, exists := s.DB().SourceMirrors[in.DestinationID]
 	if exists && (old.Revision != *in.ExpectedRevision || old.SourceID != in.SourceID) || !exists && *in.ExpectedRevision != 0 {
 		return SourceMirror{}, ErrConflict
 	}
-	src, srcOK := s.db.Sources[in.SourceID]
-	dst, dstOK := s.db.Sources[in.DestinationID]
+	src, srcOK := s.DB().Sources[in.SourceID]
+	dst, dstOK := s.DB().Sources[in.DestinationID]
 	if !srcOK || !dstOK {
 		return SourceMirror{}, ErrNotFound
 	}
 	if *in.Enabled {
-		c, ok := s.db.Connections[dst.ConnectionID]
-		if dst.Visibility != "private" || src.Kind != dst.Kind || !ok || c.ID != dst.ID || !c.Private || c.Verification != "verified" || c.Paused || !c.Write || c.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(s.db, src, c) || mirrorWouldCycle(s.db, src.ID, dst.ID) {
+		c, ok := s.DB().Connections[dst.ConnectionID]
+		if dst.Visibility != "private" || src.Kind != dst.Kind || !ok || c.ID != dst.ID || !c.Private || c.Verification != "verified" || c.Paused || !c.Write || c.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(*s.DB(), src, c) || mirrorWouldCycle(*s.DB(), src.ID, dst.ID) {
 			return SourceMirror{}, ErrConflict
 		}
 	}
@@ -93,7 +93,7 @@ func (s *Store) configureMirror(ctx context.Context, in mirrorRequest) (SourceMi
 	} else {
 		mirror.State = "paused"
 	}
-	db := s.clone()
+	db := s.Clone()
 	db.SourceMirrors[in.DestinationID] = mirror
 	if db.Version < 19 {
 		db.Version = 19
@@ -101,15 +101,15 @@ func (s *Store) configureMirror(ctx context.Context, in mirrorRequest) (SourceMi
 	if err := ctx.Err(); err != nil {
 		return SourceMirror{}, err
 	}
-	if err := s.commit(db); err != nil {
+	if err := s.Commit(db); err != nil {
 		return SourceMirror{}, err
 	}
 	return mirror, nil
 }
 func (s *Store) recordMirrorResult(m SourceMirror, r reconcileResult, err error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	current, ok := s.db.SourceMirrors[m.DestinationID]
+	s.Lock()
+	defer s.Unlock()
+	current, ok := s.DB().SourceMirrors[m.DestinationID]
 	if !ok || !current.Enabled || current.Revision != m.Revision || current.SourceID != m.SourceID {
 		return nil
 	}
@@ -119,7 +119,7 @@ func (s *Store) recordMirrorResult(m SourceMirror, r reconcileResult, err error)
 	current.More = r.More
 	current.LastError = ""
 	pendingWrites := false
-	for _, job := range s.db.Outbox {
+	for _, job := range s.DB().Outbox {
 		if job.SourceID == current.DestinationID && (job.State == "pending" || job.State == "retry" || job.State == "prepared") {
 			pendingWrites = true
 			break
@@ -144,7 +144,7 @@ func (s *Store) recordMirrorResult(m SourceMirror, r reconcileResult, err error)
 	default:
 		current.State = "ready"
 	}
-	db := s.clone()
+	db := s.Clone()
 	db.SourceMirrors[current.DestinationID] = current
-	return s.commit(db)
+	return s.Commit(db)
 }

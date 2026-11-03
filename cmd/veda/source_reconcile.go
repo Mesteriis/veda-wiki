@@ -74,28 +74,28 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 	if in.Limit < 1 || in.Limit > 50 {
 		return result, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Lock()
+	defer s.Unlock()
 	if mirrorRevision != nil {
-		mirror, ok := s.db.SourceMirrors[in.DestinationID]
+		mirror, ok := s.DB().SourceMirrors[in.DestinationID]
 		if !ok || !mirror.Enabled || mirror.Revision != *mirrorRevision || mirror.SourceID != in.SourceID {
 			return result, ErrConflict
 		}
 	}
-	src, ok := s.db.Sources[in.SourceID]
+	src, ok := s.DB().Sources[in.SourceID]
 	if !ok {
 		return result, ErrNotFound
 	}
-	dst, ok := s.db.Sources[in.DestinationID]
+	dst, ok := s.DB().Sources[in.DestinationID]
 	if !ok {
 		return result, ErrNotFound
 	}
-	conn, connected := s.db.Connections[dst.ConnectionID]
-	if dst.Visibility != "private" || src.Kind != dst.Kind || !connected || conn.ID != dst.ID || !conn.Private || conn.Verification != "verified" || conn.Paused || !conn.Write || conn.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(s.db, src, conn) {
+	conn, connected := s.DB().Connections[dst.ConnectionID]
+	if dst.Visibility != "private" || src.Kind != dst.Kind || !connected || conn.ID != dst.ID || !conn.Private || conn.Verification != "verified" || conn.Paused || !conn.Write || conn.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(*s.DB(), src, conn) {
 		return result, ErrConflict
 	}
 	paths := []string{}
-	for _, a := range s.db.Articles {
+	for _, a := range s.DB().Articles {
 		if a.SourceID == src.ID && !a.Deleted {
 			paths = append(paths, a.Path)
 		}
@@ -106,7 +106,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		a := s.db.Articles[src.ID+"/"+p]
+		a := s.DB().Articles[src.ID+"/"+p]
 		if a.Deleted || len(a.Versions) == 0 {
 			result.Blocked = append(result.Blocked, p)
 			continue
@@ -118,11 +118,11 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 				unsafe = true
 			}
 		}
-		if unsafe || (src.ConnectionID != "" && a.UpstreamHash != rev.SHA) || pendingReconcilePath(s.db, src.ID, p) || pendingReconcilePath(s.db, dst.ID, p) {
+		if unsafe || (src.ConnectionID != "" && a.UpstreamHash != rev.SHA) || pendingReconcilePath(*s.DB(), src.ID, p) || pendingReconcilePath(*s.DB(), dst.ID, p) {
 			result.Blocked = append(result.Blocked, p)
 			continue
 		}
-		target, exists := s.db.Articles[dst.ID+"/"+p]
+		target, exists := s.DB().Articles[dst.ID+"/"+p]
 		if exists {
 			if target.Deleted || len(target.Versions) == 0 {
 				result.Blocked = append(result.Blocked, p)
@@ -182,7 +182,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 					if err := ctx.Err(); err != nil {
 						return result, err
 					}
-					if err = s.commit(db); err != nil {
+					if err = s.Commit(db); err != nil {
 						return result, err
 					}
 					changes++
@@ -197,7 +197,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 					result.More = true
 					break
 				}
-				db := s.clone()
+				db := s.Clone()
 				target.ReconcileBase = &ReconcileBase{SourceID: src.ID, Path: p, Revision: rev.Number, SHA: rev.SHA}
 				db.Articles[dst.ID+"/"+p] = target
 				if db.Version < 18 {
@@ -206,7 +206,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 				if err := ctx.Err(); err != nil {
 					return result, err
 				}
-				if err := s.commit(db); err != nil {
+				if err := s.Commit(db); err != nil {
 					return result, err
 				}
 				changes++
@@ -238,8 +238,8 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 				safe := planErr == nil && len(plan.Articles) <= in.Limit-changes
 				if safe {
 					for _, item := range plan.Articles {
-						linked := s.db.Articles[src.ID+"/"+item.SourcePath]
-						if item.CredentialLike || item.DirectoryIndex || item.Destination == "conflict" || pendingReconcilePath(s.db, src.ID, item.SourcePath) || pendingReconcilePath(s.db, dst.ID, item.DestinationPath) || (src.ConnectionID != "" && linked.UpstreamHash != item.SHA) {
+						linked := s.DB().Articles[src.ID+"/"+item.SourcePath]
+						if item.CredentialLike || item.DirectoryIndex || item.Destination == "conflict" || pendingReconcilePath(*s.DB(), src.ID, item.SourcePath) || pendingReconcilePath(*s.DB(), dst.ID, item.DestinationPath) || (src.ConnectionID != "" && linked.UpstreamHash != item.SHA) {
 							safe = false
 							break
 						}
@@ -268,7 +268,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 						if err := ctx.Err(); err != nil {
 							return result, err
 						}
-						if e := s.commit(db); e != nil {
+						if e := s.Commit(db); e != nil {
 							return result, e
 						}
 						changes += added
@@ -292,7 +292,7 @@ func (s *Store) reconcileSourcesExpected(ctx context.Context, in reconcileReques
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		if err = s.commit(db); err != nil {
+		if err = s.Commit(db); err != nil {
 			return result, err
 		}
 		changes++

@@ -154,18 +154,18 @@ func TestStaleOutboxObservationCannotUndoPublicationApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := s.connections()[0]
-	s.mu.Lock()
+	s.Lock()
 	key := "handbook/new.md@1"
-	j := s.db.Outbox[key]
+	j := s.DB().Outbox[key]
 	j.Visibility = "private"
-	s.db.Outbox[key] = j
-	s.mu.Unlock()
+	s.DB().Outbox[key] = j
+	s.Unlock()
 	old := s.jobs()[0]
-	s.mu.Lock()
-	j = s.db.Outbox[key]
+	s.Lock()
+	j = s.DB().Outbox[key]
 	j.Visibility = "public"
-	s.db.Outbox[key] = j
-	s.mu.Unlock()
+	s.DB().Outbox[key] = j
+	s.Unlock()
 	if err := s.setJobFor(c, old, "blocked", "publication_confirmation_required", ""); err != ErrConflict {
 		t.Fatal("changed visibility was overwritten", err)
 	}
@@ -173,11 +173,11 @@ func TestStaleOutboxObservationCannotUndoPublicationApproval(t *testing.T) {
 		t.Fatal("changed job was blocked")
 	}
 	old = s.jobs()[0]
-	s.mu.Lock()
-	j = s.db.Outbox[key]
+	s.Lock()
+	j = s.DB().Outbox[key]
 	j.State = "conflict"
-	s.db.Outbox[key] = j
-	s.mu.Unlock()
+	s.DB().Outbox[key] = j
+	s.Unlock()
 	if err := s.setJobFor(c, old, "retry", "upstream_unavailable", ""); err != ErrConflict {
 		t.Fatal("conflict state was overwritten", err)
 	}
@@ -192,7 +192,7 @@ func TestGitHubPublicPullAndTrackedProgramScope(t *testing.T) {
 	if len(s.snapshot(true).Pages) != 1 {
 		t.Fatal("program scope")
 	}
-	if s.db.Sources["handbook"].ConnectionID != "handbook" {
+	if s.DB().Sources["handbook"].ConnectionID != "handbook" {
 		t.Fatal("connection provenance missing")
 	}
 	if _, e := s.importBatch(testBatch()); !errorsIsConflictOrInvalid(e) {
@@ -210,7 +210,7 @@ func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	if len(s.jobs()) != 1 {
 		t.Fatal("write and outbox not atomic")
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -223,11 +223,11 @@ func TestGitHubWriteThroughAndRestartDurability(t *testing.T) {
 	if job.State != "prepared" || job.PreparedCommit == "" || job.ObservedCommit != "" {
 		t.Fatal("write response must not be reported as a subsequent observation", job)
 	}
-	reopened, e = openStore(s.dir)
+	reopened, e = openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
-	if reopened.jobs()[0].ObservedCommit != "" || reopened.db.Outbox[job.ID].ObservedCommit != "" {
+	if reopened.jobs()[0].ObservedCommit != "" || reopened.DB().Outbox[job.ID].ObservedCommit != "" {
 		t.Fatal("unconfirmed observation after restart", e)
 	}
 	m = newSyncManager(reopened, f.Client())
@@ -246,7 +246,7 @@ func TestGitHubLostResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	if f.WriteCount() != 1 || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("prepared write not durable")
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -259,10 +259,10 @@ func TestGitHubLostResponseRecoversWithoutDuplicatePush(t *testing.T) {
 
 func TestLegacyUnconfirmedObservedCommitIsNotReported(t *testing.T) {
 	s := testStore(t)
-	s.mu.Lock()
-	s.db.Outbox = map[string]SyncJob{}
-	s.db.Outbox["fixture"] = SyncJob{ID: "fixture", State: "prepared", ObservedCommit: strings.Repeat("a", 40)}
-	s.mu.Unlock()
+	s.Lock()
+	s.DB().Outbox = map[string]SyncJob{}
+	s.DB().Outbox["fixture"] = SyncJob{ID: "fixture", State: "prepared", ObservedCommit: strings.Repeat("a", 40)}
+	s.Unlock()
 	if got := s.jobs(); len(got) != 1 || got[0].ObservedCommit != "" {
 		t.Fatal("legacy unconfirmed commit was exposed as an observation")
 	}
@@ -280,11 +280,11 @@ func testLaterEditRetainsUncertainWrite(t *testing.T, sqlite bool) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	if sqlite {
-		if err := migrateSQLite(s.dir); err != nil {
+		if err := migrateSQLite(s.Dir()); err != nil {
 			t.Fatal(err)
 		}
 		var err error
-		s, err = openStore(s.dir)
+		s, err = openStore(s.Dir())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -305,7 +305,7 @@ func testLaterEditRetainsUncertainWrite(t *testing.T, sqlite bool) {
 	if len(jobs) != 2 || jobs[0].State != "retry" || jobs[0].PreparedCommit == "" || jobs[1].State != "pending" {
 		t.Fatal("later edit discarded uncertain write", jobs)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,11 +344,11 @@ func TestLaterEditCannotOvertakeDeferredPreparedWrite(t *testing.T) {
 	}
 	f.Modify(func() { f.Reject = false })
 	// Force a long retry delay so only an incorrect later-job dispatch can write.
-	s.mu.Lock()
-	first := s.db.Outbox["handbook/README.md@2"]
+	s.Lock()
+	first := s.DB().Outbox["handbook/README.md@2"]
 	first.NextAttempt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
-	s.db.Outbox[first.ID] = first
-	s.mu.Unlock()
+	s.DB().Outbox[first.ID] = first
+	s.Unlock()
 	if err := m.pushPending(context.Background(), s.connections()[0], f.Head, f.Commits[f.Head].Tree, githubtest.Access); err != nil {
 		t.Fatal(err)
 	}
@@ -369,11 +369,11 @@ func testConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T, sqlite bool
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	m := connectFixture(t, s, f, true)
 	if sqlite {
-		if err := migrateSQLite(s.dir); err != nil {
+		if err := migrateSQLite(s.Dir()); err != nil {
 			t.Fatal(err)
 		}
 		var err error
-		s, err = openStore(s.dir)
+		s, err = openStore(s.Dir())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -398,7 +398,7 @@ func testConflictResolutionDoesNotDiscardPreparedWrite(t *testing.T, sqlite bool
 			t.Fatal("uncertain write was discarded", choice, err)
 		}
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestExternalMatchForLaterEditDoesNotDiscardOlderUncertainWrite(t *testing.T
 	if len(s.conflicts()) != 1 || f.WriteCount() != 0 || f.Contents()["README.md"] != "# Second edit" {
 		t.Fatal("uncertain write did not preserve external content")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +538,7 @@ func TestGitHubCredentialsRedactedAndAppTokensScoped(t *testing.T) {
 	if e != nil || account.SecretRef != "" {
 		t.Fatal(account, e)
 	}
-	state, e := os.ReadFile(path.Join(s.dir, "state.json"))
+	state, e := os.ReadFile(path.Join(s.Dir(), "state.json"))
 	if e != nil || strings.Contains(string(state), githubtest.Access) {
 		t.Fatal("credential stored in article transaction")
 	}
@@ -651,11 +651,11 @@ func TestGitHubPauseAndExpiredProofFailClosed(t *testing.T) {
 	if len(s.snapshot(true).Pages) != 1 {
 		t.Fatal("resumed source not verified")
 	}
-	s.mu.Lock()
-	c := s.db.Connections["handbook"]
+	s.Lock()
+	c := s.DB().Connections["handbook"]
 	c.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
-	s.db.Connections[c.ID] = c
-	s.mu.Unlock()
+	s.DB().Connections[c.ID] = c
+	s.Unlock()
 	if len(s.snapshot(true).Pages) != 0 {
 		t.Fatal("expired verification published")
 	}
@@ -769,11 +769,11 @@ func TestGitHubExpiredPublicProofDoesNotApproveQueuedWrite(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Upstream"})
 	m := connectFixture(t, s, f, true)
-	s.mu.Lock()
-	c := s.db.Connections["handbook"]
+	s.Lock()
+	c := s.DB().Connections["handbook"]
 	c.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
-	s.db.Connections[c.ID] = c
-	s.mu.Unlock()
+	s.DB().Connections[c.ID] = c
+	s.Unlock()
 	if _, e := s.put("handbook", "README.md", "# Unverified edit", 1); e != nil {
 		t.Fatal(e)
 	}

@@ -27,21 +27,21 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.MkdirAll(filepath.Join(s.dir, "blobs"), 0700); err != nil {
+	if err = os.MkdirAll(filepath.Join(s.Dir(), "blobs"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(s.dir, "blobs", ref.SHA), image, 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), image, 0600); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	initial := s.clone()
+	s.Lock()
+	initial := s.Clone()
 	for _, id := range []string{"alpha", "beta"} {
 		src := initial.Sources[id]
 		src.Assets = map[string]BlobRef{"image.png": ref}
 		initial.Sources[id] = src
 	}
-	err = s.commit(initial)
-	s.mu.Unlock()
+	err = s.Commit(initial)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,26 +101,26 @@ func TestScopedBrowserSessionIsolationAndRevocation(t *testing.T) {
 	if call("GET", "/api/v1/github/accounts", "", "", cookie, false).Code != 404 {
 		t.Fatal("reader session gained admin access")
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	k := db.AccessKeys["person"]
 	k.Expires = time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)
 	db.AccessKeys["person"] = k
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if call("GET", "/api/state?page=alpha%2Fguide.md", "", "", cookie, false).Code != 404 {
 		t.Fatal("expired key still reads private data")
 	}
-	s.mu.Lock()
-	db = s.clone()
+	s.Lock()
+	db = s.Clone()
 	k = db.AccessKeys["person"]
 	k.Expires = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
 	db.AccessKeys["person"] = k
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}

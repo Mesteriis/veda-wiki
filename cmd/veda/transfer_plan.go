@@ -27,11 +27,11 @@ func (s *Store) directoryTransferSource(sourceID, articlePath, destination strin
 	if !ok {
 		return "", false, false
 	}
-	if a, exists := s.db.Articles[sourceID+"/"+readme]; exists && !a.Deleted && len(a.Versions) > 0 {
+	if a, exists := s.DB().Articles[sourceID+"/"+readme]; exists && !a.Deleted && len(a.Versions) > 0 {
 		return readme, true, false
 	}
 	index := path.Join(path.Dir(readme), "index.md")
-	if a, exists := s.db.Articles[sourceID+"/"+index]; exists && !a.Deleted && len(a.Versions) > 0 {
+	if a, exists := s.DB().Articles[sourceID+"/"+index]; exists && !a.Deleted && len(a.Versions) > 0 {
 		return index, true, true
 	}
 	return readme, true, false
@@ -44,8 +44,8 @@ type transferPlan struct {
 }
 
 func (s *Store) planTransfer(in copyRequest) (transferPlan, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	return s.planTransferLocked(in)
 }
 
@@ -54,18 +54,18 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 	if in.SourceID == in.DestinationID || in.ExpectedRevision < 1 {
 		return transferPlan{}, ErrInvalid
 	}
-	src, ok := s.db.Sources[in.SourceID]
+	src, ok := s.DB().Sources[in.SourceID]
 	if !ok {
 		return transferPlan{}, ErrNotFound
 	}
-	dst, ok := s.db.Sources[in.DestinationID]
+	dst, ok := s.DB().Sources[in.DestinationID]
 	if !ok {
 		return transferPlan{}, ErrNotFound
 	}
 	if !articlePath(in.SourcePath, src.Kind) || !articlePath(in.DestinationPath, dst.Kind) {
 		return transferPlan{}, ErrInvalid
 	}
-	root, ok := s.db.Articles[in.SourceID+"/"+in.SourcePath]
+	root, ok := s.DB().Articles[in.SourceID+"/"+in.SourcePath]
 	if !ok || root.Deleted {
 		return transferPlan{}, ErrNotFound
 	}
@@ -98,7 +98,7 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 			return transferPlan{}, ErrInvalid
 		}
 		mappedFrom[current.from], mappedTo[current.to] = current.to, current.from
-		a, exists := s.db.Articles[in.SourceID+"/"+current.from]
+		a, exists := s.DB().Articles[in.SourceID+"/"+current.from]
 		if !exists || a.Deleted || len(a.Versions) == 0 {
 			return transferPlan{}, ErrNotFound
 		}
@@ -109,9 +109,9 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 		}
 		rev := a.Versions[len(a.Versions)-1]
 		state := "missing"
-		if _, exists := s.db.Articles[in.DestinationID+"/"+current.to]; exists {
+		if _, exists := s.DB().Articles[in.DestinationID+"/"+current.to]; exists {
 			state = "conflict"
-			if linksPresent(s.db, in.DestinationID, map[string]string{current.to: rev.SHA}) {
+			if linksPresent(*s.DB(), in.DestinationID, map[string]string{current.to: rev.SHA}) {
 				state = "matching"
 			}
 		}
@@ -170,7 +170,7 @@ func (s *Store) planTransferLocked(in copyRequest) (transferPlan, error) {
 		if _, mapped := mappedTo[competitor]; mapped {
 			return transferPlan{}, ErrConflict
 		}
-		if a, exists := s.db.Articles[dst.ID+"/"+competitor]; exists && !a.Deleted {
+		if a, exists := s.DB().Articles[dst.ID+"/"+competitor]; exists && !a.Deleted {
 			return transferPlan{}, ErrConflict
 		}
 	}

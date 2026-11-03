@@ -21,19 +21,19 @@ func fixtureAsset(t *testing.T, s *Store, sourceID, assetPath string) BlobRef {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.MkdirAll(filepath.Join(s.dir, "blobs"), 0700); err != nil {
+	if err = os.MkdirAll(filepath.Join(s.Dir(), "blobs"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(s.dir, "blobs", ref.SHA), image, 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), image, 0600); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	db := s.clone()
+	s.Lock()
+	defer s.Unlock()
+	db := s.Clone()
 	src := db.Sources[sourceID]
 	src.Assets = map[string]BlobRef{assetPath: ref}
 	db.Sources[sourceID] = src
-	if err = s.commit(db); err != nil {
+	if err = s.Commit(db); err != nil {
 		t.Fatal(err)
 	}
 	return ref
@@ -52,14 +52,14 @@ func TestOldBinaryRejectsImageMoveStore(t *testing.T) {
 	if _, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "b.md", ConfirmMove: true}); err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(s.dir, "state.json")
+	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
 		t.Fatal("old binary did not reject v6")
@@ -82,14 +82,14 @@ func TestMoveCopiesRelativeImageToLocalDestination(t *testing.T) {
 	if err != nil || m.State != "complete" || m.Assets["nested/img/icon.png"] != ref {
 		t.Fatal("move failed", m, err)
 	}
-	if s.db.Sources["to"].Assets["nested/img/icon.png"] != ref {
+	if s.DB().Sources["to"].Assets["nested/img/icon.png"] != ref {
 		t.Fatal("target image missing")
 	}
 	if _, err := s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 6 || reopened.moves()[0].Assets["nested/img/icon.png"] != ref {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 6 || reopened.moves()[0].Assets["nested/img/icon.png"] != ref {
 		t.Fatal("move did not survive restart", err)
 	}
 	w := Wiki{Store: reopened, Token: "test-owner"}
@@ -119,12 +119,12 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 	if _, err = s.createAccessKey("agent", []string{"to"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 6 {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 6 {
 		t.Fatal("v6 restart failed", err)
 	}
 	page, err := reopened.page("to/docs/sub/b.md", false)
-	if err != nil || !page.Translated || reopened.db.Sources["to"].Assets["docs/sub/img/icon.png"] != ref {
+	if err != nil || !page.Translated || reopened.DB().Sources["to"].Assets["docs/sub/img/icon.png"] != ref {
 		t.Fatal("translation or image lost", err)
 	}
 }
@@ -138,22 +138,22 @@ func TestCopyImageRejectsCollisionAndPreservesSource(t *testing.T) {
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md"}); err != nil {
 		t.Fatal(err)
 	}
-	if s.db.Sources["to"].Assets["img/icon.png"] != ref || s.db.Articles["from/a.md"].Deleted {
+	if s.DB().Sources["to"].Assets["img/icon.png"] != ref || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("copy lost data")
 	}
 	s.put("from", "b.md", "![icon](img/icon.png)", 0)
-	db := s.clone()
+	db := s.Clone()
 	dst := db.Sources["to"]
 	dst.Assets = map[string]BlobRef{"img/icon.png": {SHA: strings.Repeat("a", 64), MIME: "image/png"}}
 	db.Sources["to"] = dst
-	s.mu.Lock()
-	s.db = db
-	s.mu.Unlock()
+	s.Lock()
+	*s.DB() = db
+	s.Unlock()
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "b.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "b.md"})
 	if err != ErrConflict {
 		t.Fatal("collision accepted", err)
 	}
-	if _, exists := s.db.Articles["to/b.md"]; exists {
+	if _, exists := s.DB().Articles["to/b.md"]; exists {
 		t.Fatal("failed copy committed")
 	}
 }
@@ -168,7 +168,7 @@ func TestMoveImageWaitsForVerifiedBlobBeforeRemoteDeletion(t *testing.T) {
 		t.Fatal("move", m, err)
 	}
 	ref := m.Assets["nested/img/icon.png"]
-	if err = os.WriteFile(filepath.Join(s.dir, "blobs", ref.SHA), []byte("corrupt synthetic image"), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), []byte("corrupt synthetic image"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
@@ -201,7 +201,7 @@ func TestMoveImageFromConnectedSourceToLocal(t *testing.T) {
 	if _, exists := f.Contents()["guide.md"]; exists {
 		t.Fatal("remote source still exists")
 	}
-	if s.db.Sources["to"].Assets["nested/img/icon.png"] != m.Assets["nested/img/icon.png"] {
+	if s.DB().Sources["to"].Assets["nested/img/icon.png"] != m.Assets["nested/img/icon.png"] {
 		t.Fatal("target image missing")
 	}
 }
@@ -215,17 +215,17 @@ func TestMoveImageDetectsChangedDestinationBeforeDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	dst := db.Sources["to"]
 	dst.Assets = map[string]BlobRef{}
 	db.Sources["to"] = dst
 	reconcileMoves(&db)
-	if err = s.commit(db); err != nil {
-		s.mu.Unlock()
+	if err = s.Commit(db); err != nil {
+		s.Unlock()
 		t.Fatal(err)
 	}
-	s.mu.Unlock()
+	s.Unlock()
 	manager.Once(context.Background())
 	if s.moves()[0].State != "destination_changed" || f.WriteCount() != 0 || f.Contents()["guide.md"] == "" {
 		t.Fatal("source removed after target image changed")
@@ -242,14 +242,14 @@ func TestPublicImageCopyRequiresPublicationConfirmation(t *testing.T) {
 	if _, err := s.copyArticle(in); err != ErrInvalid {
 		t.Fatal("private image published without confirmation", err)
 	}
-	if len(s.db.Sources["to"].Assets) != 0 {
+	if len(s.DB().Sources["to"].Assets) != 0 {
 		t.Fatal("refused image published")
 	}
 	in.ConfirmPublication = true
 	if _, err := s.copyArticle(in); err != nil {
 		t.Fatal(err)
 	}
-	if s.db.Sources["to"].Assets["img/icon.png"] != ref {
+	if s.DB().Sources["to"].Assets["img/icon.png"] != ref {
 		t.Fatal("confirmed image missing")
 	}
 	if r := request(Wiki{Store: s}, "GET", "/media/to/img/icon.png", "", false); r.Code != 200 {
@@ -277,25 +277,25 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	m, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
-	if err != nil || m.State != "waiting_destination" || s.db.Version != 7 {
+	if err != nil || m.State != "waiting_destination" || s.DB().Version != 7 {
 		t.Fatal("move not queued", err, m)
 	}
 	if r := request(Wiki{Store: s}, "GET", "/media/handbook/img/icon.png", "", false); r.Code != 404 {
 		t.Fatal("pending image exposed", r.Code)
 	}
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || f.WriteCount() != 1 || f.Contents()["b.md"] == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
+	if s.DB().Articles["from/a.md"].Deleted || f.WriteCount() != 1 || f.Contents()["b.md"] == "" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("bundle was not committed atomically")
 	}
 	manager.Once(context.Background())
-	if s.moves()[0].State != "complete" || !s.db.Articles["from/a.md"].Deleted || s.db.Sources["handbook"].Assets["img/icon.png"] != ref {
+	if s.moves()[0].State != "complete" || !s.DB().Articles["from/a.md"].Deleted || s.DB().Sources["handbook"].Assets["img/icon.png"] != ref {
 		t.Fatal("observed bundle did not finish move", s.moves())
 	}
 	if _, err := s.createAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
-	if err != nil || reopened.db.Version != 7 {
+	reopened, err := openStore(s.Dir())
+	if err != nil || reopened.DB().Version != 7 {
 		t.Fatal("queued assets did not persist", err)
 	}
 }
@@ -311,17 +311,17 @@ func TestCopyImageQueuesBundleWithoutDeletingSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.db.Version != 7 || s.jobs()[0].Assets["img/icon.png"] != ref {
+	if s.DB().Version != 7 || s.jobs()[0].Assets["img/icon.png"] != ref {
 		t.Fatal("copy dependencies not persisted")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	manager := newSyncManager(reopened, f.Client())
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if reopened.jobs()[0].State != "complete" || reopened.db.Articles["from/a.md"].Deleted || reopened.db.Sources["handbook"].Assets["img/icon.png"] != ref {
+	if reopened.jobs()[0].State != "complete" || reopened.DB().Articles["from/a.md"].Deleted || reopened.DB().Sources["handbook"].Assets["img/icon.png"] != ref {
 		t.Fatal("copy did not synchronize")
 	}
 }
@@ -330,16 +330,16 @@ func TestConnectedBundleUploadsIdenticalImageOnlyOnce(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")
 	ref := fixtureAsset(t, s, "from", "img/one.png")
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	src := db.Sources["from"]
 	src.Assets = map[string]BlobRef{"img/one.png": ref, "img/two.png": ref}
 	db.Sources[src.ID] = src
-	if err := s.commit(db); err != nil {
-		s.mu.Unlock()
+	if err := s.Commit(db); err != nil {
+		s.Unlock()
 		t.Fatal(err)
 	}
-	s.mu.Unlock()
+	s.Unlock()
 	s.put("from", "a.md", "![one](img/one.png)\n![two](img/two.png)", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
@@ -370,14 +370,14 @@ func TestOldBinaryRejectsQueuedImageStore(t *testing.T) {
 	if _, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true}); err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(s.dir, "state.json")
+	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
 		t.Fatal("old binary did not reject v7")
@@ -401,7 +401,7 @@ func TestConnectedImageMoveRecoversLostResponse(t *testing.T) {
 	}
 	f.Modify(func() { f.LoseResponse = true })
 	manager.Once(context.Background())
-	if f.WriteCount() != 1 || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 1 || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("lost response removed source")
 	}
 	if err = s.retryConnection("handbook"); err != nil {
@@ -427,7 +427,7 @@ func TestMoveWaitsWhenRemoteArticleExistsButImageIsMissing(t *testing.T) {
 	manager.Once(context.Background())
 	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "b.md": "![icon](img/icon.png)"})
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || s.moves()[0].State != "waiting_destination" {
+	if s.DB().Articles["from/a.md"].Deleted || s.moves()[0].State != "waiting_destination" {
 		t.Fatal("source deleted before image was observed")
 	}
 	manager.Once(context.Background())
@@ -449,7 +449,7 @@ func TestConnectedImageMoveRejectsRemoteCollision(t *testing.T) {
 	}
 	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "img/icon.png": "unrelated remote content"})
 	manager.Once(context.Background())
-	if f.WriteCount() != 0 || f.Contents()["img/icon.png"] != "unrelated remote content" || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 0 || f.Contents()["img/icon.png"] != "unrelated remote content" || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("remote image overwritten")
 	}
 }
@@ -469,12 +469,12 @@ func TestEditedPendingCopyKeepsReferencedAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.moves()[0].State != "destination_changed" || s.db.Outbox["handbook/b.md@2"].Assets["img/icon.png"] != ref {
+	if s.moves()[0].State != "destination_changed" || s.DB().Outbox["handbook/b.md@2"].Assets["img/icon.png"] != ref {
 		t.Fatal("pending dependency lost after edit")
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
+	if s.DB().Articles["from/a.md"].Deleted || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("edit lost the image or original")
 	}
 }
@@ -490,7 +490,7 @@ func TestEditedPreparedBundleUpdatesFromObservedBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.WriteCount() != 1 || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 1 || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("initial bundle not pending")
 	}
 	if _, err := s.put("handbook", "b.md", "# Updated\n![icon](img/icon.png)", 1); err != nil {
@@ -498,7 +498,7 @@ func TestEditedPreparedBundleUpdatesFromObservedBase(t *testing.T) {
 	}
 	manager.Once(context.Background())
 	manager.Once(context.Background())
-	if s.db.Articles["from/a.md"].Deleted || f.Contents()["b.md"] != "# Updated\n![icon](img/icon.png)" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
+	if s.DB().Articles["from/a.md"].Deleted || f.Contents()["b.md"] != "# Updated\n![icon](img/icon.png)" || digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA {
 		t.Fatal("prepared bundle edit did not synchronize safely")
 	}
 }
@@ -526,7 +526,7 @@ func TestConcurrentEditCannotReviveSupersededBundle(t *testing.T) {
 	default:
 		t.Fatal("commit hook was not called")
 	}
-	if f.WriteCount() != 0 || s.db.Outbox["handbook/b.md@1"].State != "superseded" || s.db.Outbox["handbook/b.md@2"].Assets["img/icon.png"] != ref {
+	if f.WriteCount() != 0 || s.DB().Outbox["handbook/b.md@1"].State != "superseded" || s.DB().Outbox["handbook/b.md@2"].Assets["img/icon.png"] != ref {
 		t.Fatal("superseded bundle was revived")
 	}
 }
@@ -538,25 +538,25 @@ func TestEditedPendingCopyDoesNotPublishPrivateAssets(t *testing.T) {
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
-	s.mu.Lock()
-	c := s.db.Connections["handbook"]
+	s.Lock()
+	c := s.DB().Connections["handbook"]
 	c.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
-	s.db.Connections[c.ID] = c
-	s.mu.Unlock()
+	s.DB().Connections[c.ID] = c
+	s.Unlock()
 	_, err := s.copyArticle(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	c = s.db.Connections["handbook"]
+	s.Lock()
+	c = s.DB().Connections["handbook"]
 	c.VerifiedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	s.db.Connections[c.ID] = c
-	s.mu.Unlock()
+	s.DB().Connections[c.ID] = c
+	s.Unlock()
 	_, err = s.put("handbook", "b.md", "# Updated\n![icon](img/icon.png)", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	job := s.db.Outbox["handbook/b.md@2"]
+	job := s.DB().Outbox["handbook/b.md@2"]
 	if job.Visibility != "private" || len(job.Assets) != 1 {
 		t.Fatal("unapproved asset became public")
 	}
@@ -579,7 +579,7 @@ func TestEditedPendingCopyDoesNotSendRemovedImages(t *testing.T) {
 	if _, err := s.put("handbook", "b.md", "# No image", 1); err != nil {
 		t.Fatal(err)
 	}
-	if len(s.db.Outbox["handbook/b.md@2"].Assets) != 0 {
+	if len(s.DB().Outbox["handbook/b.md@2"].Assets) != 0 {
 		t.Fatal("removed image retained")
 	}
 	manager.Once(context.Background())
@@ -596,7 +596,7 @@ func TestImageMoveDoesNotPublishToPartialTarget(t *testing.T) {
 	s.put("from", "a.md", "![icon](img/icon.png)", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "broken.png": "not an image"})
 	manager := connectFixture(t, s, f, true)
-	if !s.db.Sources["handbook"].ImportPartial {
+	if !s.DB().Sources["handbook"].ImportPartial {
 		t.Fatal("fixture must be partial")
 	}
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
@@ -604,7 +604,7 @@ func TestImageMoveDoesNotPublishToPartialTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.Once(context.Background())
-	if f.WriteCount() != 0 || s.db.Articles["from/a.md"].Deleted {
+	if f.WriteCount() != 0 || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("partial target received write or lost source")
 	}
 }
@@ -675,7 +675,7 @@ func TestImageTransferRejectsImportedDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := s.moveArticle(moveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "imported", DestinationPath: "b.md", ConfirmMove: true})
-	if err != ErrInvalid || s.db.Articles["from/a.md"].Deleted {
+	if err != ErrInvalid || s.DB().Articles["from/a.md"].Deleted {
 		t.Fatal("imported destination accepted", err)
 	}
 }
@@ -685,8 +685,8 @@ func TestImageTransferLimitsDependencies(t *testing.T) {
 	source(t, s, "from", "private")
 	source(t, s, "to", "private")
 	ref := fixtureAsset(t, s, "from", "img/0.png")
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	src := db.Sources["from"]
 	src.Assets = map[string]BlobRef{}
 	var content strings.Builder
@@ -696,11 +696,11 @@ func TestImageTransferLimitsDependencies(t *testing.T) {
 		fmt.Fprintf(&content, "![image](%s)\n", name)
 	}
 	db.Sources["from"] = src
-	if err := s.commit(db); err != nil {
-		s.mu.Unlock()
+	if err := s.Commit(db); err != nil {
+		s.Unlock()
 		t.Fatal(err)
 	}
-	s.mu.Unlock()
+	s.Unlock()
 	if _, err := s.put("from", "a.md", content.String(), 0); err != nil {
 		t.Fatal(err)
 	}

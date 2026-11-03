@@ -33,10 +33,10 @@ func hasImportConflict(a Article, hash string, deleted bool) bool {
 }
 
 func (s *Store) conflicts() []ConflictRecord {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	out := []ConflictRecord{}
-	for _, a := range s.db.Articles {
+	for _, a := range s.DB().Articles {
 		for i, c := range a.Conflicts {
 			if c.Resolution == "" {
 				out = append(out, ConflictRecord{SourceID: a.SourceID, Path: a.Path, Index: i, Revision: len(a.Versions), Conflict: c})
@@ -58,20 +58,20 @@ func (s *Store) resolveConflict(sourceID, p string, index, expected int, resolut
 	if index < 0 || expected < 1 || (resolution != "local" && resolution != "upstream") {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Lock()
+	defer s.Unlock()
 	key := sourceID + "/" + p
-	if moveDeletionLocks(s.db, sourceID, p) {
+	if moveDeletionLocks(*s.DB(), sourceID, p) {
 		return ErrConflict
 	}
-	a, ok := s.db.Articles[key]
+	a, ok := s.DB().Articles[key]
 	if !ok {
 		return ErrNotFound
 	}
 	if expected != len(a.Versions) || index >= len(a.Conflicts) || a.Conflicts[index].Resolution != "" {
 		return ErrConflict
 	}
-	if conflictResolutionBlocked(s.db, sourceID, p) {
+	if conflictResolutionBlocked(*s.DB(), sourceID, p) {
 		return ErrConflict
 	}
 	for _, c := range a.Conflicts[index+1:] {
@@ -95,9 +95,9 @@ func (s *Store) resolveConflict(sourceID, p string, index, expected int, resolut
 			a.Versions = append(append([]Revision(nil), a.Versions...), Revision{Number: len(a.Versions) + 1, Text: incoming.Incoming, SHA: incoming.IncomingSHA, Created: time.Now().UTC().Format(time.RFC3339Nano)})
 		}
 	}
-	db := s.clone()
+	db := s.Clone()
 	db.Articles[key] = a
-	if s.db.Sources[sourceID].ConnectionID != "" {
+	if s.DB().Sources[sourceID].ConnectionID != "" {
 		if resolution == "local" {
 			enqueueWrite(&db, a, a.Versions[len(a.Versions)-1], time.Now())
 		} else {
@@ -109,5 +109,5 @@ func (s *Store) resolveConflict(sourceID, p string, index, expected int, resolut
 			}
 		}
 	}
-	return s.commit(db)
+	return s.Commit(db)
 }

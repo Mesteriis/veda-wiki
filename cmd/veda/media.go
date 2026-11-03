@@ -22,11 +22,11 @@ func (w Wiki) media(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	w.Store.mu.RLock()
-	src, ok := w.Store.db.Sources[parts[0]]
+	w.Store.RLock()
+	src, ok := w.Store.DB().Sources[parts[0]]
 	ref, present := src.Assets[parts[1]]
-	visible := sourcePublicReadable(w.Store.db, src, time.Now())
-	w.Store.mu.RUnlock()
+	visible := sourcePublicReadable(*w.Store.DB(), src, time.Now())
+	w.Store.RUnlock()
 	if _, e := hexKey(ref.SHA); e != nil {
 		http.NotFound(rw, r)
 		return
@@ -35,7 +35,7 @@ func (w Wiki) media(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	file, e := os.Open(path.Join(w.Store.dir, "blobs", ref.SHA))
+	file, e := os.Open(path.Join(w.Store.Dir(), "blobs", ref.SHA))
 	if e != nil {
 		http.NotFound(rw, r)
 		return

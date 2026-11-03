@@ -31,7 +31,7 @@ func TestCopyUpdatesExistingDestinationWithRevisionGuards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := s.db.Articles["handbook/guide.md"]
+	a := s.DB().Articles["handbook/guide.md"]
 	if rev.Number != 2 || len(a.Versions) != 2 || a.Versions[0].Text != "# Old" || a.CopiedFrom == nil || a.CopiedFrom.SourceID != "local" || a.UpstreamHash != digest([]byte("# Old")) {
 		t.Fatal("history or provenance not preserved")
 	}
@@ -43,11 +43,11 @@ func TestCopyUpdatesExistingDestinationWithRevisionGuards(t *testing.T) {
 	if f.Contents()["guide.md"] != "# New" || s.jobs()[0].State != "complete" {
 		t.Fatal("copy update was not confirmed")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reopened.db.Articles["handbook/guide.md"].Versions) != 2 || reopened.db.Articles["local/guide.md"].Deleted {
+	if len(reopened.DB().Articles["handbook/guide.md"].Versions) != 2 || reopened.DB().Articles["local/guide.md"].Deleted {
 		t.Fatal("state did not survive restart")
 	}
 }
@@ -75,7 +75,7 @@ func TestCopyUpdateRejectsConcurrentConflictAndLinkedGraph(t *testing.T) {
 	if _, err := s.copyArticle(req); !errors.Is(err, ErrInvalid) {
 		t.Fatal("linked update accepted without graph support", err)
 	}
-	if len(s.db.Articles["b/x.md"].Versions) != 2 {
+	if len(s.DB().Articles["b/x.md"].Versions) != 2 {
 		t.Fatal("failed update changed destination")
 	}
 }
@@ -184,7 +184,7 @@ func TestCopyUpdateReconcilesWaitingMove(t *testing.T) {
 	if _, err = s.copyArticle(copyRequest{SourceID: "local", SourcePath: "new.md", ExpectedRevision: 1, DestinationID: "two", DestinationPath: "moved.md", ExpectedDestinationRevision: &expected}); err != nil {
 		t.Fatal(err)
 	}
-	if s.db.Moves[move.ID].State != "destination_changed" || s.db.Articles["one/README.md"].Deleted {
+	if s.DB().Moves[move.ID].State != "destination_changed" || s.DB().Articles["one/README.md"].Deleted {
 		t.Fatal("move was not reconciled safely")
 	}
 }
@@ -204,14 +204,14 @@ func TestCopyUpdatePublicDestinationRequiresPublicationApproval(t *testing.T) {
 	if _, err := s.copyArticle(req); !errors.Is(err, ErrInvalid) {
 		t.Fatal("private update published without approval", err)
 	}
-	if s.db.Articles["public/x.md"].Versions[0].Text != "# Public" {
+	if s.DB().Articles["public/x.md"].Versions[0].Text != "# Public" {
 		t.Fatal("rejected update changed article")
 	}
 	req.ConfirmPublication = true
 	if _, err := s.copyArticle(req); err != nil {
 		t.Fatal(err)
 	}
-	a := s.db.Articles["public/x.md"]
+	a := s.DB().Articles["public/x.md"]
 	if a.Published == nil || a.Published.Text != "# Private" || len(a.Versions) != 2 {
 		t.Fatal("approved update not published")
 	}
@@ -227,10 +227,10 @@ func TestCopyUpdateSQLiteReopen(t *testing.T) {
 	if _, err := s.put("b", "x.md", "# Before", 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,11 +238,11 @@ func TestCopyUpdateSQLiteReopen(t *testing.T) {
 	if _, err = s.copyArticle(copyRequest{SourceID: "a", SourcePath: "x.md", ExpectedRevision: 1, DestinationID: "b", DestinationPath: "x.md", ExpectedDestinationRevision: &expected}); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := reopened.db.Articles["b/x.md"]
+	a := reopened.DB().Articles["b/x.md"]
 	if len(a.Versions) != 2 || a.Versions[0].Text != "# Before" || a.CopiedFrom == nil || a.CopiedFrom.SHA != a.Versions[1].SHA {
 		t.Fatal("update did not survive reopen")
 	}

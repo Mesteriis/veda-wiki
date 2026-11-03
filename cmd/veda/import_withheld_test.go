@@ -62,7 +62,7 @@ func TestImportWithheldCountIsScopedTransientAndOnlyUpdatedOnSuccess(t *testing.
 	if count := s.sources(false)[0].LastImportWithheld; count == nil || *count != 3 {
 		t.Fatal("failed import changed count")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

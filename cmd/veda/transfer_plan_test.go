@@ -17,7 +17,7 @@ func TestTransferPlanCyclesAndDestinationStates(t *testing.T) {
 	s.put("from", "c.md", "# C", 0)
 	s.put("to", "b.md", "[A](a.md)", 0)
 	s.put("to", "c.md", "# different", 0)
-	before, _ := json.Marshal(s.db)
+	before, _ := json.Marshal(*s.DB())
 	p, err := s.planTransfer(copyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md"})
 	if err != nil || len(p.Articles) != 3 {
 		t.Fatal(p, err)
@@ -25,7 +25,7 @@ func TestTransferPlanCyclesAndDestinationStates(t *testing.T) {
 	if p.Articles[0].Destination != "missing" || p.Articles[1].Destination != "matching" || p.Articles[2].Destination != "conflict" {
 		t.Fatal(p)
 	}
-	after, _ := json.Marshal(s.db)
+	after, _ := json.Marshal(*s.DB())
 	if string(before) != string(after) {
 		t.Fatal("plan changed state")
 	}
@@ -116,7 +116,7 @@ func TestTransferPlanScopedReadersNeedBothSources(t *testing.T) {
 		return out
 	}
 	plan := map[string]any{"source_id": "from", "source_path": "a.md", "expected_revision": 1, "destination_id": "to", "destination_path": "a.md"}
-	before, _ := json.Marshal(s.db)
+	before, _ := json.Marshal(*s.DB())
 	if got := call("/api/v1/articles/transfer-plan", key, plan); got.Code != 200 || strings.Contains(got.Body.String(), "# A") {
 		t.Fatal("scoped plan failed or returned article text", got.Code)
 	}
@@ -132,7 +132,7 @@ func TestTransferPlanScopedReadersNeedBothSources(t *testing.T) {
 	if got := call("/api/v1/articles/copy", key, plan); got.Code != 403 {
 		t.Fatal("scoped reader copied article", got.Code)
 	}
-	after, _ := json.Marshal(s.db)
+	after, _ := json.Marshal(*s.DB())
 	if string(before) != string(after) {
 		t.Fatal("read-only plan changed state")
 	}
@@ -179,8 +179,8 @@ func TestTransferPlanIncludesBothAuthorizedSourceStatuses(t *testing.T) {
 	if _, err := s.put("from", "other.md", "# Other", 0); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	from := db.Sources["from"]
 	from.ImportDirty = true
 	db.Sources["from"] = from
@@ -190,8 +190,8 @@ func TestTransferPlanIncludesBothAuthorizedSourceStatuses(t *testing.T) {
 	a := db.Articles["from/other.md"]
 	a.Conflicts = []ImportConflict{{}}
 	db.Articles["from/other.md"] = a
-	err := s.commit(db)
-	s.mu.Unlock()
+	err := s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}

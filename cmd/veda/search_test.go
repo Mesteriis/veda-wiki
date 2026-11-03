@@ -23,15 +23,15 @@ func TestSearchUsesOneRevisionDuringConcurrentUpdates(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 1000; i++ {
-			s.mu.Lock()
-			a := s.db.Articles["src/guide.md"]
+			s.Lock()
+			a := s.DB().Articles["src/guide.md"]
 			if i%2 == 0 {
 				a.Versions[0].Text = "# beta\n\nbeta"
 			} else {
 				a.Versions[0].Text = "# alpha\n\nalpha"
 			}
-			s.db.Articles["src/guide.md"] = a
-			s.mu.Unlock()
+			s.DB().Articles["src/guide.md"] = a
+			s.Unlock()
 		}
 	}()
 	for i := 0; i < 1000; i++ {
@@ -47,12 +47,12 @@ func TestPublicSearchUsesPublishedRevision(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Published guide\npublic keyword"})
 	connectFixture(t, s, f, false)
-	s.mu.Lock()
-	a := s.db.Articles["handbook/guide.md"]
+	s.Lock()
+	a := s.DB().Articles["handbook/guide.md"]
 	text := "# Confidential local\nprivate keyword"
 	a.Versions = append(a.Versions, Revision{Number: 2, Text: text, SHA: digest([]byte(text))})
-	s.db.Articles["handbook/guide.md"] = a
-	s.mu.Unlock()
+	s.DB().Articles["handbook/guide.md"] = a
+	s.Unlock()
 	if hits := s.findArticles("confidential", "", true); len(hits) != 0 {
 		t.Fatal("public search leaked local revision")
 	}
@@ -97,11 +97,11 @@ func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
 	if hits := s.findArticles("Deployment Установите", "", true); len(hits) != 0 {
 		t.Fatal("search combined words from different texts")
 	}
-	s.mu.Lock()
-	a = s.db.Articles["handbook/docs/guide.md"]
+	s.Lock()
+	a = s.DB().Articles["handbook/docs/guide.md"]
 	a.Translation.PublicApproved = false
-	s.db.Articles["handbook/docs/guide.md"] = a
-	s.mu.Unlock()
+	s.DB().Articles["handbook/docs/guide.md"] = a
+	s.Unlock()
 	if hits := s.findArticles("Руководство", "", true); len(hits) != 0 {
 		t.Fatal("public search exposed unapproved translation")
 	}
@@ -118,12 +118,12 @@ func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
 	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.View.Pages) != 0 {
 		t.Fatal("browser search exposed unapproved translation")
 	}
-	s.mu.Lock()
-	a = s.db.Articles["handbook/docs/guide.md"]
+	s.Lock()
+	a = s.DB().Articles["handbook/docs/guide.md"]
 	local := "# Hidden local draft\n\nSecret term."
 	a.Versions = append(a.Versions, Revision{Number: 2, Text: local, SHA: digest([]byte(local))})
-	s.db.Articles["handbook/docs/guide.md"] = a
-	s.mu.Unlock()
+	s.DB().Articles["handbook/docs/guide.md"] = a
+	s.Unlock()
 	if hits := s.findArticles("Hidden", "", true); len(hits) != 0 {
 		t.Fatal("public search exposed unpublished original")
 	}

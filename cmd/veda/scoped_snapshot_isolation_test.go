@@ -23,57 +23,57 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	observed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	s.mu.Lock()
-	src := s.db.Sources["alpha"]
+	s.Lock()
+	src := s.DB().Sources["alpha"]
 	src.Metadata = &WikiMetadata{Title: "Original source"}
 	src.Assets = map[string]BlobRef{"image.png": {SHA: "original"}}
-	s.db.Sources["alpha"] = src
-	a := s.db.Articles["alpha/guide.md"]
+	s.DB().Sources["alpha"] = src
+	a := s.DB().Articles["alpha/guide.md"]
 	a.Conflicts = []ImportConflict{{Incoming: "original conflict"}}
 	a.Translation = &Translation{Text: "original translation"}
 	a.CopiedFrom = &CopyOrigin{Path: "original path"}
 	a.ReconcileBase = &ReconcileBase{SourceID: "beta", Path: "secret.md"}
 	a.Published = &Revision{Text: "original published"}
-	s.db.Articles["alpha/guide.md"] = a
-	s.observed = map[string]time.Time{"alpha": observed}
-	s.mu.Unlock()
+	s.DB().Articles["alpha/guide.md"] = a
+	s.MarkObserved("alpha", observed)
+	s.Unlock()
 	view, valid, err := s.scopedView(key, time.Now())
 	if err != nil || !valid {
 		t.Fatal("snapshot failed", err)
 	}
-	if _, ok := view.db.Sources["beta"]; ok {
+	if _, ok := view.DB().Sources["beta"]; ok {
 		t.Fatal("other source included")
 	}
-	if _, ok := view.db.Articles["beta/secret.md"]; ok {
+	if _, ok := view.DB().Articles["beta/secret.md"]; ok {
 		t.Fatal("other article included")
 	}
-	s.mu.Lock()
-	src = s.db.Sources["alpha"]
+	s.Lock()
+	src = s.DB().Sources["alpha"]
 	src.Metadata.Title = "changed source"
 	src.Assets["image.png"] = BlobRef{SHA: "changed"}
-	a = s.db.Articles["alpha/guide.md"]
+	a = s.DB().Articles["alpha/guide.md"]
 	a.Versions[0].Text = "changed revision"
 	a.Conflicts[0].Incoming = "changed conflict"
 	a.Translation.Text = "changed translation"
 	a.CopiedFrom.Path = "changed path"
 	a.Published.Text = "changed published"
-	s.observed["alpha"] = observed.Add(time.Hour)
-	s.mu.Unlock()
-	vs := view.db.Sources["alpha"]
-	va := view.db.Articles["alpha/guide.md"]
+	s.MarkObserved("alpha", observed.Add(time.Hour))
+	s.Unlock()
+	vs := view.DB().Sources["alpha"]
+	va := view.DB().Articles["alpha/guide.md"]
 	if va.ReconcileBase != nil {
 		t.Fatal("snapshot included reconciliation baseline from another source")
 	}
-	if vs.Metadata.Title != "Original source" || vs.Assets["image.png"].SHA != "original" || va.Versions[0].Text != "# Original" || va.Conflicts[0].Incoming != "original conflict" || va.Translation.Text != "original translation" || va.CopiedFrom.Path != "original path" || va.Published.Text != "original published" || !view.observed["alpha"].Equal(observed) {
+	if vs.Metadata.Title != "Original source" || vs.Assets["image.png"].SHA != "original" || va.Versions[0].Text != "# Original" || va.Conflicts[0].Incoming != "original conflict" || va.Translation.Text != "original translation" || va.CopiedFrom.Path != "original path" || va.Published.Text != "original published" || !observedAt(view, "alpha").Equal(observed) {
 		t.Fatal("snapshot shared mutable state")
 	}
 	vs.Metadata.Title = "snapshot only"
 	vs.Assets["image.png"] = BlobRef{SHA: "snapshot only"}
 	va.Versions[0].Text = "snapshot only"
 	va.Translation.Text = "snapshot only"
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.db.Sources["alpha"].Metadata.Title != "changed source" || s.db.Sources["alpha"].Assets["image.png"].SHA != "changed" || s.db.Articles["alpha/guide.md"].Versions[0].Text != "changed revision" || s.db.Articles["alpha/guide.md"].Translation.Text != "changed translation" {
+	s.RLock()
+	defer s.RUnlock()
+	if s.DB().Sources["alpha"].Metadata.Title != "changed source" || s.DB().Sources["alpha"].Assets["image.png"].SHA != "changed" || s.DB().Articles["alpha/guide.md"].Versions[0].Text != "changed revision" || s.DB().Articles["alpha/guide.md"].Translation.Text != "changed translation" {
 		t.Fatal("snapshot mutation escaped")
 	}
 }
@@ -93,14 +93,14 @@ func TestScopedSnapshotDuringConcurrentMutation(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 2000; i++ {
-			s.mu.Lock()
-			a := s.db.Articles["alpha/guide.md"]
+			s.Lock()
+			a := s.DB().Articles["alpha/guide.md"]
 			if i%2 == 0 {
 				a.Versions[0].Text = "first"
 			} else {
 				a.Versions[0].Text = "second"
 			}
-			s.mu.Unlock()
+			s.Unlock()
 		}
 	}()
 	for i := 0; i < 2000; i++ {
@@ -109,7 +109,7 @@ func TestScopedSnapshotDuringConcurrentMutation(t *testing.T) {
 			wg.Wait()
 			t.Fatal("snapshot failed", err)
 		}
-		text := view.db.Articles["alpha/guide.md"].Versions[0].Text
+		text := view.DB().Articles["alpha/guide.md"].Versions[0].Text
 		if text != "first" && text != "second" {
 			wg.Wait()
 			t.Fatal("invalid snapshot")

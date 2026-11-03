@@ -40,9 +40,9 @@ func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 		}
 	}
 	// A linked bundle blocks resolution even before a ref update is prepared.
-	s.mu.Lock()
-	s.db.Outbox["fixture-bundle"] = SyncJob{SourceID: "handbook", Path: "b.md", State: "pending", Bundle: map[string]string{"linked.md": strings.Repeat("a", 64)}, Links: map[string]string{"dependency.md": strings.Repeat("b", 64)}}
-	s.mu.Unlock()
+	s.Lock()
+	s.DB().Outbox["fixture-bundle"] = SyncJob{SourceID: "handbook", Path: "b.md", State: "pending", Bundle: map[string]string{"linked.md": strings.Repeat("a", 64)}, Links: map[string]string{"dependency.md": strings.Repeat("b", 64)}}
+	s.Unlock()
 	for _, path := range []string{"b.md", "linked.md", "dependency.md"} {
 		r := httptest.NewRequest("GET", "/api/v1/articles/proposal-base?source_id=handbook&path="+path, nil)
 		r.Header.Set("Authorization", "Bearer "+key)
@@ -66,9 +66,9 @@ func TestScopedBundleLocksLinkedTranslationValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	s.db.Outbox = map[string]SyncJob{"bundle": {SourceID: "program", Path: "docs/root.md", State: "pending", Bundle: map[string]string{"docs/linked.md": rev.SHA}}}
-	s.mu.Unlock()
+	s.Lock()
+	s.DB().Outbox = map[string]SyncJob{"bundle": {SourceID: "program", Path: "docs/root.md", State: "pending", Bundle: map[string]string{"docs/linked.md": rev.SHA}}}
+	s.Unlock()
 	view, valid, err := s.scopedView(key, time.Now())
 	if err != nil || !valid {
 		t.Fatal("scoped snapshot unavailable", err)
@@ -98,11 +98,11 @@ func testProposalConflict(t *testing.T, sqlite bool) {
 		t.Fatal(err)
 	}
 	if sqlite {
-		if err := migrateSQLite(s.dir); err != nil {
+		if err := migrateSQLite(s.Dir()); err != nil {
 			t.Fatal(err)
 		}
 		var err error
-		s, err = openStore(s.dir)
+		s, err = openStore(s.Dir())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +172,7 @@ func testProposalConflict(t *testing.T, sqlite bool) {
 	if _, err = s.put("handbook", "README.md", "# Reviewed proposal", 2); err != nil {
 		t.Fatal("write after resolution failed", err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,11 +221,11 @@ func TestNewProposalBaseChecksScopeAndVisiblePath(t *testing.T) {
 	if call("source_id=alpha&path=..%2Fbad.md", key, false).Code != 400 {
 		t.Fatal("invalid path accepted")
 	}
-	s.mu.Lock()
-	a := s.db.Articles["alpha/exists.md"]
+	s.Lock()
+	a := s.DB().Articles["alpha/exists.md"]
 	a.Deleted = true
-	s.db.Articles["alpha/exists.md"] = a
-	s.mu.Unlock()
+	s.DB().Articles["alpha/exists.md"] = a
+	s.Unlock()
 	if call("source_id=alpha&path=exists.md", key, false).Code != 200 {
 		t.Fatal("deleted history disclosed")
 	}

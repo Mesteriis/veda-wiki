@@ -18,25 +18,25 @@ func TestGitHubUnchangedHeadRepairsCorruptAsset(t *testing.T) {
 	})
 	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
-	ref := s.db.Sources["handbook"].Assets["image.png"]
+	ref := s.DB().Sources["handbook"].Assets["image.png"]
 	if ref.SHA == "" {
 		t.Fatal("fixture image was not imported")
 	}
-	filename := filepath.Join(s.dir, "blobs", ref.SHA)
+	filename := filepath.Join(s.Dir(), "blobs", ref.SHA)
 	if err := os.WriteFile(filename, []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	// Remove the independent Git object cache to exercise the upstream blob path.
 	gitSHA := github.BlobDigest(image, 40)
-	if err := os.Remove(filepath.Join(s.dir, "git-objects", "41", gitSHA)); err != nil {
+	if err := os.Remove(filepath.Join(s.Dir(), "git-objects", "41", gitSHA)); err != nil {
 		t.Fatal(err)
 	}
-	before := s.db.Sources["handbook"].ImportGeneration
+	before := s.DB().Sources["handbook"].ImportGeneration
 	m.Once(context.Background())
 	if err := s.verifyAsset(ref); err != nil {
 		t.Fatal("unchanged head did not repair asset", err)
 	}
-	if s.db.Sources["handbook"].ImportGeneration != before {
+	if s.DB().Sources["handbook"].ImportGeneration != before {
 		t.Fatal("unchanged head changed import generation")
 	}
 	media := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/media/handbook/image.png", "", true)
@@ -51,18 +51,18 @@ func TestGitHubAssetRepairFailureDoesNotObserveHead(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "image.png": string(image)})
 	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
-	before := s.observed["handbook"]
-	ref := s.db.Sources["handbook"].Assets["image.png"]
-	if err := os.Remove(filepath.Join(s.dir, "blobs", ref.SHA)); err != nil {
+	before := observedAt(s, "handbook")
+	ref := s.DB().Sources["handbook"].Assets["image.png"]
+	if err := os.Remove(filepath.Join(s.Dir(), "blobs", ref.SHA)); err != nil {
 		t.Fatal(err)
 	}
 	gitSHA := github.BlobDigest(image, 40)
-	if err := os.Remove(filepath.Join(s.dir, "git-objects", "41", gitSHA)); err != nil {
+	if err := os.Remove(filepath.Join(s.Dir(), "git-objects", "41", gitSHA)); err != nil {
 		t.Fatal(err)
 	}
 	f.Modify(func() { delete(f.Blobs, gitSHA) })
 	m.Once(context.Background())
-	if !s.observed["handbook"].Equal(before) {
+	if !observedAt(s, "handbook").Equal(before) {
 		t.Fatal("failed repair advanced observation")
 	}
 	if conn := s.connections()[0]; conn.State != "error" {
@@ -76,13 +76,13 @@ func TestGitHubPartialSnapshotReportsUnrecoverableRetainedAsset(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "image.png": string(image)})
 	f.Modify(func() { f.Private = true })
 	m := connectFixture(t, s, f, false)
-	ref := s.db.Sources["handbook"].Assets["image.png"]
+	ref := s.DB().Sources["handbook"].Assets["image.png"]
 	f.Advance(map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Guide", "bad.md": string([]byte{0xff})})
 	syncFixtureSource(t, m, "handbook")
-	if source := s.db.Sources["handbook"]; !source.ImportPartial || source.Assets["image.png"] != ref {
+	if source := s.DB().Sources["handbook"]; !source.ImportPartial || source.Assets["image.png"] != ref {
 		t.Fatal("fixture did not retain partial asset")
 	}
-	if err := os.Remove(filepath.Join(s.dir, "blobs", ref.SHA)); err != nil {
+	if err := os.Remove(filepath.Join(s.Dir(), "blobs", ref.SHA)); err != nil {
 		t.Fatal(err)
 	}
 	syncFixtureSource(t, m, "handbook")

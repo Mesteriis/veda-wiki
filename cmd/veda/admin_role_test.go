@@ -35,10 +35,10 @@ func TestAdministratorRoleInvalidatesOldSessionsAndSurvivesReopen(t *testing.T) 
 		t.Fatal("old session survived role change")
 	}
 	version, ok := s.authenticateUser("admin", password)
-	if !ok || !s.adminSessionValid("admin", version) || s.db.Version != 20 {
+	if !ok || !s.adminSessionValid("admin", version) || s.DB().Version != 20 {
 		t.Fatal("administrator not active")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil || !reopened.adminSessionValid("admin", version) {
 		t.Fatal("role did not survive reopen", err)
 	}
@@ -140,7 +140,7 @@ func TestAdministratorBootstrapIsOneTimeAndLocalRootOnly(t *testing.T) {
 	if err := json.Unmarshal(out.Body.Bytes(), &response); err != nil || len(response.Token) != 64 {
 		t.Fatal("invalid setup token")
 	}
-	raw, err := os.ReadFile(filepath.Join(s.dir, "state.json"))
+	raw, err := os.ReadFile(filepath.Join(s.Dir(), "state.json"))
 	if err != nil || strings.Contains(string(raw), response.Token) {
 		t.Fatal("setup token persisted in plaintext", err)
 	}
@@ -208,11 +208,11 @@ func TestAdminSetupExpiredTokenRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	u := s.db.Users["operator"]
+	s.Lock()
+	u := s.DB().Users["operator"]
 	u.SetupExpires = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
-	s.db.Users["operator"] = u
-	s.mu.Unlock()
+	s.DB().Users["operator"] = u
+	s.Unlock()
 	if err := s.finishAdminSetup("operator", token, "synthetic long password"); err == nil {
 		t.Fatal("expired setup token accepted")
 	}
@@ -221,10 +221,10 @@ func TestAdminSetupExpiredTokenRejected(t *testing.T) {
 func TestAdminBootstrapSurvivesSQLiteRestart(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "fixture", "private")
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,14 +232,14 @@ func TestAdminBootstrapSurvivesSQLiteRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = s.finishAdminSetup("operator", token, "synthetic password"); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,11 +259,11 @@ func TestOlderBinaryRefusesAdministratorStore(t *testing.T) {
 			s := testStore(t)
 			source(t, s, "fixture", "private")
 			if sqlite {
-				if err := migrateSQLite(s.dir); err != nil {
+				if err := migrateSQLite(s.Dir()); err != nil {
 					t.Fatal(err)
 				}
 				var err error
-				s, err = openStore(s.dir)
+				s, err = openStore(s.Dir())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -275,14 +275,14 @@ func TestOlderBinaryRefusesAdministratorStore(t *testing.T) {
 			if sqlite {
 				name = "state.sqlite"
 			}
-			file := filepath.Join(s.dir, name)
+			file := filepath.Join(s.Dir(), name)
 			before, err := os.ReadFile(file)
 			if err != nil {
 				t.Fatal(err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+			output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 			var exit *exec.ExitError
 			if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
 				t.Fatal("old binary did not refuse administrator store")

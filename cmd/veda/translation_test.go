@@ -110,7 +110,7 @@ func TestTranslationPreservesOriginalAndBecomesStale(t *testing.T) {
 	if _, e = s.submitTranslation(in); e != ErrConflict {
 		t.Fatal("stale submission accepted", e)
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -135,10 +135,10 @@ func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
 				t.Fatal(err)
 			}
 			if sqlite {
-				if err = migrateSQLite(s.dir); err != nil {
+				if err = migrateSQLite(s.Dir()); err != nil {
 					t.Fatal(err)
 				}
-				s, err = openStore(s.dir)
+				s, err = openStore(s.Dir())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -165,7 +165,7 @@ func TestTranslationRefusesImportConflictWithoutRevisionChange(t *testing.T) {
 			if candidates := s.translationCandidates(); len(candidates) != 1 || candidates[0].State != "blocked_conflict" {
 				t.Fatal("conflicted translation did not report its blocker", candidates)
 			}
-			reopened, err := openStore(s.dir)
+			reopened, err := openStore(s.Dir())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -217,11 +217,11 @@ func TestPrivateTranslationCannotAppearAfterVisibilityChanges(t *testing.T) {
 	if _, e := s.submitTranslation(in); e != nil {
 		t.Fatal(e)
 	}
-	s.mu.Lock()
-	src := s.db.Sources["program"]
+	s.Lock()
+	src := s.DB().Sources["program"]
 	src.Visibility = "public"
-	s.db.Sources[src.ID] = src
-	s.mu.Unlock()
+	s.DB().Sources[src.ID] = src
+	s.Unlock()
 	candidates := s.translationCandidates()
 	if len(candidates) != 1 || candidates[0].State != "publication_review" {
 		t.Fatal("publication review missing", candidates)

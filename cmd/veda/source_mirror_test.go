@@ -32,11 +32,11 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 	enabled := true
 	expected := 0
 	conf, err := s.configureMirror(context.Background(), mirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &enabled, ExpectedRevision: &expected})
-	if err != nil || conf.Revision != 1 || s.db.Version != 19 {
+	if err != nil || conf.Revision != 1 || s.DB().Version != 19 {
 		t.Fatal("enable failed", err)
 	}
 	m.Once(context.Background())
-	if s.db.Articles["handbook/a.md"].ReconcileBase == nil || s.mirrors()[0].State != "ready" {
+	if s.DB().Articles["handbook/a.md"].ReconcileBase == nil || s.mirrors()[0].State != "ready" {
 		t.Fatal("baseline not created")
 	}
 	if _, err = s.put("local", "a.md", "# Changed", 1); err != nil {
@@ -63,8 +63,8 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 	if len(s.jobs()) != 1 || f.Contents()["a.md"] != "# Changed" || s.mirrors()[0].State != "paused" {
 		t.Fatal("paused mirror continued")
 	}
-	r, err := openStore(s.dir)
-	if err != nil || r.db.Version != 19 || len(r.mirrors()) != 1 || r.mirrors()[0].Enabled {
+	r, err := openStore(s.Dir())
+	if err != nil || r.DB().Version != 19 || len(r.mirrors()) != 1 || r.mirrors()[0].Enabled {
 		t.Fatal("configuration did not survive reopen", err)
 	}
 }
@@ -138,10 +138,10 @@ func TestMirrorConfigurationGuardsAndOwnerAPI(t *testing.T) {
 }
 func TestMirrorSQLiteSurvivesReopen(t *testing.T) {
 	s, _, f := mirrorFixture(t)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestMirrorSQLiteSurvivesReopen(t *testing.T) {
 	if _, err = s.configureMirror(context.Background(), mirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &enabled, ExpectedRevision: &expected}); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil || len(s.mirrors()) != 1 || !s.mirrors()[0].Enabled {
 		t.Fatal("mirror lost on reopen", err)
 	}
@@ -159,8 +159,8 @@ func TestMirrorSQLiteSurvivesReopen(t *testing.T) {
 	if _, err = s.put("local", "a.md", "# Edited after reopen", 1); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
-	if err != nil || s.mirrors()[0].State != "ready" || s.db.Articles["handbook/a.md"].ReconcileBase == nil {
+	s, err = openStore(s.Dir())
+	if err != nil || s.mirrors()[0].State != "ready" || s.DB().Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("background status not persisted", err)
 	}
 }
@@ -258,7 +258,7 @@ asyncio.run(main())`
 		t.Fatalf("synthetic MCP failed: %v %s", err, out)
 	}
 	m.Once(context.Background())
-	if s.mirrors()[0].State != "ready" || s.db.Articles["handbook/a.md"].ReconcileBase == nil {
+	if s.mirrors()[0].State != "ready" || s.DB().Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("MCP-configured mirror did not run")
 	}
 }
@@ -272,11 +272,11 @@ func TestOldBinaryRejectsMirrorStore(t *testing.T) {
 		t.Run(map[bool]string{false: "json", true: "sqlite"}[sqlite], func(t *testing.T) {
 			s, _, _ := mirrorFixture(t)
 			if sqlite {
-				if err := migrateSQLite(s.dir); err != nil {
+				if err := migrateSQLite(s.Dir()); err != nil {
 					t.Fatal(err)
 				}
 				var err error
-				s, err = openStore(s.dir)
+				s, err = openStore(s.Dir())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -290,14 +290,14 @@ func TestOldBinaryRejectsMirrorStore(t *testing.T) {
 			if sqlite {
 				name = "state.sqlite"
 			}
-			file := filepath.Join(s.dir, name)
+			file := filepath.Join(s.Dir(), name)
 			before, err := os.ReadFile(file)
 			if err != nil {
 				t.Fatal(err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+			out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 			var exit *exec.ExitError
 			if !errors.As(err, &exit) || ctx.Err() != nil || (!strings.Contains(string(out), "unsupported store") && !strings.Contains(string(out), "unknown SQLite record category")) {
 				t.Fatalf("old binary did not reject mirror store: %s", out)
@@ -363,10 +363,10 @@ func TestMirrorSQLiteManyMatchingArticles(t *testing.T) {
 	f := githubtest.New(t, remote)
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,12 +385,12 @@ func TestMirrorSQLiteManyMatchingArticles(t *testing.T) {
 	if s.mirrors()[0].State != "ready" {
 		t.Fatal("matching batch did not converge", s.mirrors()[0].State)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	count := 0
-	for _, a := range reopened.db.Articles {
+	for _, a := range reopened.DB().Articles {
 		if a.SourceID == "handbook" && a.ReconcileBase != nil {
 			count++
 		}
@@ -441,7 +441,7 @@ func TestMirrorCancelledWhileWaitingDoesNotChangeConfiguration(t *testing.T) {
 	revision := 0
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s.mu.Lock()
+	s.Lock()
 	started := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
@@ -451,7 +451,7 @@ func TestMirrorCancelledWhileWaitingDoesNotChangeConfiguration(t *testing.T) {
 	}()
 	<-started
 	cancel()
-	s.mu.Unlock()
+	s.Unlock()
 	err := <-done
 	if !errors.Is(err, context.Canceled) || len(s.mirrors()) != 0 {
 		t.Fatal("cancelled configuration committed", err)
@@ -477,7 +477,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 	case <-m.wake:
 	default:
 	}
-	current := s.db.Sources["local"].ImportGeneration
+	current := s.DB().Sources["local"].ImportGeneration
 	b.Create = false
 	b.Complete = false
 	b.ExpectedImport = &current
@@ -498,7 +498,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 	default:
 		t.Fatal("mirror not awakened")
 	}
-	current = s.db.Sources["local"].ImportGeneration
+	current = s.DB().Sources["local"].ImportGeneration
 	b.ExpectedImport = &current
 	encoded, _ = json.Marshal(b)
 	r = httptest.NewRequest("POST", "/api/v1/import", bytes.NewReader(encoded))
@@ -513,7 +513,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 		t.Fatal("unchanged import awakened mirror")
 	default:
 	}
-	current = s.db.Sources["local"].ImportGeneration
+	current = s.DB().Sources["local"].ImportGeneration
 	b.ExpectedImport = &current
 	b.Assets = map[string][]byte{"image.png": smallPNG(t)}
 	encoded, _ = json.Marshal(b)
@@ -534,7 +534,7 @@ func TestLocalImportWakesEnabledMirrorOnlyForChanges(t *testing.T) {
 	if _, err = s.configureMirror(context.Background(), mirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &no, ExpectedRevision: &revision}); err != nil {
 		t.Fatal(err)
 	}
-	current = s.db.Sources["local"].ImportGeneration
+	current = s.DB().Sources["local"].ImportGeneration
 	b.ExpectedImport = &current
 	b.Files["README.md"] = "# Changed while paused"
 	encoded, _ = json.Marshal(b)
@@ -607,9 +607,9 @@ func TestConnectedMirrorRejectsUnverifiedAndPartialSource(t *testing.T) {
 	for _, condition := range []string{"paused", "unverified", "partial", "same-repository"} {
 		t.Run(condition, func(t *testing.T) {
 			s, _, _, _ := connectedMoveFixtures(t)
-			s.mu.Lock()
-			src := s.db.Sources["one"]
-			c := s.db.Connections[src.ConnectionID]
+			s.Lock()
+			src := s.DB().Sources["one"]
+			c := s.DB().Connections[src.ConnectionID]
 			switch condition {
 			case "paused":
 				c.Paused = true
@@ -618,12 +618,12 @@ func TestConnectedMirrorRejectsUnverifiedAndPartialSource(t *testing.T) {
 			case "partial":
 				src.ImportPartial = true
 			case "same-repository":
-				c.RepositoryID = s.db.Connections["two"].RepositoryID
-				c.Branch = s.db.Connections["two"].Branch
+				c.RepositoryID = s.DB().Connections["two"].RepositoryID
+				c.Branch = s.DB().Connections["two"].Branch
 			}
-			s.db.Sources["one"] = src
-			s.db.Connections[src.ConnectionID] = c
-			s.mu.Unlock()
+			s.DB().Sources["one"] = src
+			s.DB().Connections[src.ConnectionID] = c
+			s.Unlock()
 			enabled, revision := true, 0
 			if _, err := s.configureMirror(context.Background(), mirrorRequest{SourceID: "one", DestinationID: "two", Enabled: &enabled, ExpectedRevision: &revision}); !errors.Is(err, ErrConflict) {
 				t.Fatal("unsafe source accepted", err)
@@ -652,16 +652,16 @@ func TestConnectedReconcileBlocksUnobservedLinkedArticle(t *testing.T) {
 	files["linked.md"] = "# Linked"
 	first.Advance(files)
 	m.Once(context.Background())
-	s.mu.Lock()
-	linked := s.db.Articles["one/linked.md"]
+	s.Lock()
+	linked := s.DB().Articles["one/linked.md"]
 	linked.UpstreamHash = ""
-	s.db.Articles["one/linked.md"] = linked
-	s.mu.Unlock()
+	s.DB().Articles["one/linked.md"] = linked
+	s.Unlock()
 	r, err := s.reconcileSources(context.Background(), reconcileRequest{SourceID: "one", DestinationID: "two"})
 	if err != nil || !containsPath(r.Blocked, "new.md") || !containsPath(r.Blocked, "linked.md") {
 		t.Fatal("unobserved linked revision accepted", r, err)
 	}
-	if _, ok := s.db.Articles["two/new.md"]; ok {
+	if _, ok := s.DB().Articles["two/new.md"]; ok {
 		t.Fatal("linked graph copied despite unobserved revision")
 	}
 }
@@ -672,11 +672,11 @@ func TestConnectedMirrorSQLiteQueueAndDivergence(t *testing.T) {
 	files["README.md"] = "# Source"
 	second.Advance(files)
 	m.Once(context.Background())
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -693,7 +693,7 @@ func TestConnectedMirrorSQLiteQueueAndDivergence(t *testing.T) {
 	if len(s.jobs()) != 1 || s.jobs()[0].State != "pending" {
 		t.Fatal("mirror update not queued")
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

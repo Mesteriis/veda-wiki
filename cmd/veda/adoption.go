@@ -11,15 +11,15 @@ var errLocalImportActive = errors.New("local importer is configured for source")
 // change. Callers hold the store lock. Pending operations and tombstones need
 // separate reconciliation before the source can be adopted safely.
 func (s *Store) adoptionSnapshotLocked(id string) (string, error) {
-	src, ok := s.db.Sources[id]
-	if s.invalid || !ok || src.ConnectionID != "" || src.Visibility != "private" {
+	src, ok := s.DB().Sources[id]
+	if s.InvalidLocked() || !ok || src.ConnectionID != "" || src.Visibility != "private" {
 		return "", ErrConflict
 	}
-	if _, exists := s.db.Connections[id]; exists {
+	if _, exists := s.DB().Connections[id]; exists {
 		return "", ErrConflict
 	}
 	articles := map[string]Article{}
-	for key, a := range s.db.Articles {
+	for key, a := range s.DB().Articles {
 		if a.SourceID != id {
 			continue
 		}
@@ -33,12 +33,12 @@ func (s *Store) adoptionSnapshotLocked(id string) (string, error) {
 		}
 		articles[key] = a
 	}
-	for _, j := range s.db.Outbox {
+	for _, j := range s.DB().Outbox {
 		if j.SourceID == id && j.State != "complete" && j.State != "superseded" {
 			return "", ErrConflict
 		}
 	}
-	for _, m := range s.db.Moves {
+	for _, m := range s.DB().Moves {
 		if m.SourceID != id && m.DestinationID != id {
 			continue
 		}
@@ -59,7 +59,7 @@ func (s *Store) adoptionSnapshotLocked(id string) (string, error) {
 }
 
 func (s *Store) adoptionSnapshot(id string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	return s.adoptionSnapshotLocked(id)
 }

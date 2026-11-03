@@ -57,30 +57,30 @@ type adoptionProof struct {
 // Record a changed remote head before fetching it, so the public snapshot of
 // the previous head is withheld until that head is imported.
 func (s *Store) observeChangedHead(expected GitHubConnection, head string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.db.Connections[expected.ID]
-	if s.invalid || !ok || c.Paused || c.ConfigRevision != expected.ConfigRevision || !commitID.MatchString(head) {
+	s.Lock()
+	defer s.Unlock()
+	c, ok := s.DB().Connections[expected.ID]
+	if s.InvalidLocked() || !ok || c.Paused || c.ConfigRevision != expected.ConfigRevision || !commitID.MatchString(head) {
 		return ErrConflict
 	}
 	if c.PendingHead == head {
 		return nil
 	}
 	c.PendingHead = head
-	db := s.clone()
+	db := s.Clone()
 	db.Connections[c.ID] = c
-	return s.commitConnections(db)
+	return s.CommitConnections(db)
 }
 
 // An unchanged, freshly verified GitHub head confirms the already imported
 // snapshot without downloading every blob again. Never accept an observation
 // from a request that raced with reconfiguration or a different import.
 func (s *Store) observeGitHubHead(expected GitHubConnection, head, tree string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.db.Connections[expected.ID]
-	src, exists := s.db.Sources[expected.ID]
-	if s.invalid || !ok || !exists || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || c.Private != expected.Private || c.Verification != "verified" || c.LastPull != head || c.TreeSHA != tree || src.ConnectionID != c.ID || src.ImportCommit != head || (src.Visibility == "private") != c.Private {
+	s.Lock()
+	defer s.Unlock()
+	c, ok := s.DB().Connections[expected.ID]
+	src, exists := s.DB().Sources[expected.ID]
+	if s.InvalidLocked() || !ok || !exists || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || c.Private != expected.Private || c.Verification != "verified" || c.LastPull != head || c.TreeSHA != tree || src.ConnectionID != c.ID || src.ImportCommit != head || (src.Visibility == "private") != c.Private {
 		return ErrConflict
 	}
 	for _, ref := range src.Assets {
@@ -92,9 +92,9 @@ func (s *Store) observeGitHubHead(expected GitHubConnection, head, tree string) 
 	return nil
 }
 func (s *Store) retryConnection(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.db.Connections[id]
+	s.Lock()
+	defer s.Unlock()
+	c, ok := s.DB().Connections[id]
 	if !ok {
 		return ErrNotFound
 	}
@@ -110,7 +110,7 @@ func (s *Store) retryConnection(id string) error {
 	if c.State != "syncing" {
 		c.State = "pending"
 	}
-	db := s.clone()
+	db := s.Clone()
 	db.Connections[id] = c
 	for key, j := range db.Outbox {
 		if j.SourceID == id {
@@ -118,19 +118,19 @@ func (s *Store) retryConnection(id string) error {
 			db.Outbox[key] = j
 		}
 	}
-	return s.commit(db)
+	return s.Commit(db)
 }
 
 func (s *Store) sourceSyncState(id string) (string, string) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	state, code := "ready", ""
-	for _, move := range s.db.Moves {
+	for _, move := range s.DB().Moves {
 		if move.SourceConnectionID == id && (move.State == "waiting_source_delete" || move.State == "deleting_source") {
 			state, code = "pending", "move_pending"
 		}
 	}
-	for _, a := range s.db.Articles {
+	for _, a := range s.DB().Articles {
 		if a.SourceID == id {
 			for _, c := range a.Conflicts {
 				if c.Resolution == "" {
@@ -139,7 +139,7 @@ func (s *Store) sourceSyncState(id string) (string, string) {
 			}
 		}
 	}
-	for _, j := range s.db.Outbox {
+	for _, j := range s.DB().Outbox {
 		if j.SourceID != id {
 			continue
 		}
@@ -160,22 +160,22 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	if !confirm {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	job, ok := s.db.Outbox[id]
+	s.Lock()
+	defer s.Unlock()
+	job, ok := s.DB().Outbox[id]
 	if !ok {
 		return ErrNotFound
 	}
-	a, ok := s.db.Articles[job.SourceID+"/"+job.Path]
-	src := s.db.Sources[job.SourceID]
-	if !ok || a.Deleted || expected != len(a.Versions) || job.Revision != expected || job.State == "complete" || job.State == "superseded" || !sourcePublic(s.db, src, time.Now()) {
+	a, ok := s.DB().Articles[job.SourceID+"/"+job.Path]
+	src := s.DB().Sources[job.SourceID]
+	if !ok || a.Deleted || expected != len(a.Versions) || job.Revision != expected || job.State == "complete" || job.State == "superseded" || !sourcePublic(*s.DB(), src, time.Now()) {
 		return ErrConflict
 	}
 	if secretContent.MatchString(a.Versions[expected-1].Text) {
 		return ErrInvalid
 	}
 	for name, sha := range job.Bundle {
-		linked, ok := s.db.Articles[job.SourceID+"/"+name]
+		linked, ok := s.DB().Articles[job.SourceID+"/"+name]
 		if !ok || linked.Deleted || len(linked.Versions) == 0 || linked.Versions[len(linked.Versions)-1].SHA != sha || secretContent.MatchString(linked.Versions[len(linked.Versions)-1].Text) {
 			return ErrInvalid
 		}
@@ -189,7 +189,7 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 	published.Created = time.Now().UTC().Format(time.RFC3339Nano)
 	a.Published = &published
 	a.PublishedLocal = true
-	db := s.clone()
+	db := s.Clone()
 	db.Articles[job.SourceID+"/"+job.Path] = a
 	for name := range job.Bundle {
 		key := job.SourceID + "/" + name
@@ -207,7 +207,7 @@ func (s *Store) publishJob(id string, expected int, confirm bool) error {
 		conn.State = "pending"
 	}
 	db.Connections[conn.ID] = conn
-	return s.commit(db)
+	return s.Commit(db)
 }
 
 // A prepared ref may have reached GitHub even after a lost response. Only a
@@ -216,21 +216,21 @@ func (s *Store) cancelBundle(id string, confirm bool) error {
 	if !confirm {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	job, ok := s.db.Outbox[id]
+	s.Lock()
+	defer s.Unlock()
+	job, ok := s.DB().Outbox[id]
 	if !ok {
 		return ErrNotFound
 	}
 	if len(job.Bundle) == 0 || job.PreparedCommit != "" || job.State == "complete" || job.State == "superseded" {
 		return ErrConflict
 	}
-	db := s.clone()
+	db := s.Clone()
 	job.State = "superseded"
 	job.LastError, job.NextAttempt = "", ""
 	db.Outbox[id] = job
 	reconcileMoves(&db)
-	return s.commit(db)
+	return s.Commit(db)
 }
 func observedWrite(db *Database, sourceID, p, hash, commit string, assets map[string]BlobRef, files map[string]string, complete bool) bool {
 	matched := 0
@@ -302,40 +302,6 @@ func randomID() (string, error) {
 	_, e := rand.Read(b)
 	return hex.EncodeToString(b), e
 }
-func atomicPrivateFile(dir, name string, b []byte) error {
-	if e := os.MkdirAll(dir, 0700); e != nil {
-		return e
-	}
-	info, e := os.Lstat(dir)
-	if e != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return errors.New("private storage unavailable")
-	}
-	f, e := os.CreateTemp(dir, ".pending-")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(f.Name())
-	_, e = f.Write(b)
-	if e == nil {
-		e = f.Sync()
-	}
-	ce := f.Close()
-	if e == nil {
-		e = ce
-	}
-	if e == nil {
-		e = os.Rename(f.Name(), filepath.Join(dir, name))
-	}
-	if e != nil {
-		return e
-	}
-	d, e := os.Open(dir)
-	if e != nil {
-		return e
-	}
-	defer d.Close()
-	return d.Sync()
-}
 func (s *Store) saveAccount(ctx context.Context, g *github.Client, id string, secret github.Secret) (GitHubAccount, error) {
 	if !identifier.MatchString(id) {
 		return GitHubAccount{}, ErrInvalid
@@ -352,28 +318,28 @@ func (s *Store) saveAccount(ctx context.Context, g *github.Client, id string, se
 	if e != nil {
 		return GitHubAccount{}, e
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.db.Accounts[id]; exists {
+	s.Lock()
+	defer s.Unlock()
+	if _, exists := s.DB().Accounts[id]; exists {
 		return GitHubAccount{}, ErrConflict
 	}
-	if e = atomicPrivateFile(filepath.Join(s.dir, "credentials"), ref+".json", b); e != nil {
+	if e = atomicPrivateFile(filepath.Join(s.Dir(), "credentials"), ref+".json", b); e != nil {
 		return GitHubAccount{}, e
 	}
 	account := GitHubAccount{ID: id, Kind: secret.Kind, Login: login, SecretRef: ref}
-	db := s.clone()
+	db := s.Clone()
 	db.Accounts[id] = account
-	if e = s.commit(db); e != nil {
+	if e = s.Commit(db); e != nil {
 		return GitHubAccount{}, e
 	}
 	account.SecretRef = ""
 	return account, nil
 }
 func (s *Store) accounts() []GitHubAccount {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	out := []GitHubAccount{}
-	for _, a := range s.db.Accounts {
+	for _, a := range s.DB().Accounts {
 		a.SecretRef = ""
 		out = append(out, a)
 	}
@@ -384,13 +350,13 @@ func (s *Store) secret(accountID string) (*github.Secret, GitHubAccount, error) 
 	if accountID == "" {
 		return nil, GitHubAccount{}, nil
 	}
-	s.mu.RLock()
-	a, ok := s.db.Accounts[accountID]
-	s.mu.RUnlock()
+	s.RLock()
+	a, ok := s.DB().Accounts[accountID]
+	s.RUnlock()
 	if !ok || len(a.SecretRef) != 32 || strings.ContainsAny(a.SecretRef, "/\\.") {
 		return nil, a, &github.RemoteError{Code: "credentials_missing"}
 	}
-	filename := filepath.Join(s.dir, "credentials", a.SecretRef+".json")
+	filename := filepath.Join(s.Dir(), "credentials", a.SecretRef+".json")
 	info, e := os.Lstat(filename)
 	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
 		return nil, a, &github.RemoteError{Code: "credentials_missing"}
@@ -411,20 +377,20 @@ func (s *Store) secret(accountID string) (*github.Secret, GitHubAccount, error) 
 	return &secret, a, nil
 }
 func (s *Store) connections() []GitHubConnection {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	out := []GitHubConnection{}
-	for _, c := range s.db.Connections {
+	for _, c := range s.DB().Connections {
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 func (s *Store) jobs() []SyncJob {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	out := []SyncJob{}
-	for _, j := range s.db.Outbox {
+	for _, j := range s.DB().Outbox {
 		// Older versions stored a successful ref-update response here before
 		// re-reading the branch. Only completed jobs have a confirmed pull.
 		if j.State != "complete" {
@@ -450,25 +416,25 @@ func (s *Store) recordSkippedRepository(observed GitHubConnection, head, tree st
 	if !commitID.MatchString(head) || !commitID.MatchString(tree) {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.db.Connections[observed.ID]
-	_, exists := s.db.Sources[observed.ID]
+	s.Lock()
+	defer s.Unlock()
+	c, ok := s.DB().Connections[observed.ID]
+	_, exists := s.DB().Sources[observed.ID]
 	if !ok || exists || c.Paused || c.ConfigRevision != observed.ConfigRevision || c.RepositoryID != observed.RepositoryID || c.Branch != observed.Branch || c.Private != observed.Private {
 		return ErrConflict
 	}
 	c.State, c.LastError, c.LastPull, c.TreeSHA = "skipped", "", head, tree
 	c.NextAttempt, c.Attempts = "", 0
-	db := s.clone()
+	db := s.Clone()
 	db.Connections[c.ID] = c
-	return s.commit(db)
+	return s.Commit(db)
 }
 
 func (s *Store) connectionStatusFor(observed GitHubConnection, state, verification, code string, info *github.RepositoryInfo, retryAt time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Lock()
+	defer s.Unlock()
 	id := observed.ID
-	c, ok := s.db.Connections[id]
+	c, ok := s.DB().Connections[id]
 	if !ok {
 		return ErrNotFound
 	}
@@ -503,7 +469,7 @@ func (s *Store) connectionStatusFor(observed GitHubConnection, state, verificati
 		c.Attempts = 0
 		c.NextAttempt = ""
 	}
-	db := s.clone()
+	db := s.Clone()
 	db.Connections[id] = c
 	if code == "rate_limited" {
 		for otherID, other := range db.Connections {
@@ -528,19 +494,19 @@ func (s *Store) connectionStatusFor(observed GitHubConnection, state, verificati
 		if src, found := db.Sources[id]; found && src.Visibility != "private" {
 			src.Visibility = "private"
 			db.Sources[id] = src
-			return s.commit(db)
+			return s.Commit(db)
 		}
 	}
-	return s.commitConnections(db)
+	return s.CommitConnections(db)
 }
 func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, code, prepared string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	j, ok := s.db.Outbox[original.ID]
+	s.Lock()
+	defer s.Unlock()
+	j, ok := s.DB().Outbox[original.ID]
 	if !ok {
 		return ErrNotFound
 	}
-	c, connected := s.db.Connections[expected.ID]
+	c, connected := s.DB().Connections[expected.ID]
 	if !connected || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || j.SourceID != expected.ID || j.Revision != original.Revision || j.SHA != original.SHA || j.Visibility != original.Visibility || j.State == "complete" || j.State == "superseded" || (j.State == "conflict" && state != "conflict") || (j.State != original.State && j.State != "prepared") {
 		return ErrConflict
 	}
@@ -555,23 +521,23 @@ func (s *Store) setJobFor(expected GitHubConnection, original SyncJob, state, co
 	} else {
 		j.NextAttempt = ""
 	}
-	db := s.clone()
+	db := s.Clone()
 	db.Outbox[original.ID] = j
-	return s.commit(db)
+	return s.Commit(db)
 }
 
 // Persist the prepared commit only while the same connection and job remain
 // eligible. A concurrent edit may have superseded the job during network I/O.
 func (s *Store) prepareJob(id, commit string, expected GitHubConnection) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	job, ok := s.db.Outbox[id]
-	connection, connected := s.db.Connections[expected.ID]
+	s.Lock()
+	defer s.Unlock()
+	job, ok := s.DB().Outbox[id]
+	connection, connected := s.DB().Connections[expected.ID]
 	if !ok || !connected || connection.Paused || !connection.Write || connection.ConfigRevision != expected.ConfigRevision || connection.RepositoryID != expected.RepositoryID || connection.Branch != expected.Branch || job.SourceID != expected.ID || job.State == "complete" || job.State == "superseded" || job.State == "conflict" {
 		return ErrConflict
 	}
 	if len(job.Bundle) > 0 {
-		a, ok := s.db.Articles[job.SourceID+"/"+job.Path]
+		a, ok := s.DB().Articles[job.SourceID+"/"+job.Path]
 		if !ok || a.Deleted || len(a.Versions) != job.Revision || a.Versions[job.Revision-1].SHA != job.SHA {
 			return ErrConflict
 		}
@@ -583,10 +549,10 @@ func (s *Store) prepareJob(id, commit string, expected GitHubConnection) error {
 		if job.Visibility == "public" && (a.Published == nil || a.Published.SHA != job.SHA) {
 			return ErrConflict
 		}
-		if _, err := bundleContentsLocked(s.db, job); err != nil {
+		if _, err := bundleContentsLocked(*s.DB(), job); err != nil {
 			return err
 		}
-		if !linksPresent(s.db, job.SourceID, job.Links) {
+		if !linksPresent(*s.DB(), job.SourceID, job.Links) {
 			return ErrConflict
 		}
 	}
@@ -594,17 +560,17 @@ func (s *Store) prepareJob(id, commit string, expected GitHubConnection) error {
 	job.LastError = ""
 	job.NextAttempt = ""
 	job.PreparedCommit = commit
-	db := s.clone()
+	db := s.Clone()
 	db.Outbox[id] = job
-	return s.commit(db)
+	return s.Commit(db)
 }
 func (s *Store) pauseConnection(id string, paused bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if moveDeletionLocksConnection(s.db, id) {
+	s.Lock()
+	defer s.Unlock()
+	if moveDeletionLocksConnection(*s.DB(), id) {
 		return ErrConflict
 	}
-	c, ok := s.db.Connections[id]
+	c, ok := s.DB().Connections[id]
 	if !ok {
 		return ErrNotFound
 	}
@@ -619,7 +585,7 @@ func (s *Store) pauseConnection(id string, paused bool) error {
 			c.NextAttempt = ""
 		}
 	}
-	db := s.clone()
+	db := s.Clone()
 	db.Connections[id] = c
-	return s.commit(db)
+	return s.Commit(db)
 }

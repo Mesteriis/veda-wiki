@@ -72,14 +72,14 @@ func TestOldBinaryRejectsTranslationOriginStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(s.dir, "state.json")
+	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
+	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
 		t.Fatal("old binary did not reject version 11")
@@ -101,8 +101,8 @@ func TestLocalTranslationOriginSurvivesRestartAndApproval(t *testing.T) {
 	if _, err = s.saveTranslation(in, true); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
-	if err != nil || s.db.Version != 11 {
+	s, err = openStore(s.Dir())
+	if err != nil || s.DB().Version != 11 {
 		t.Fatal("origin store failed to reopen", err)
 	}
 	private, err := s.page("program/docs/guide.md", false)
@@ -156,7 +156,7 @@ func TestLocalTranslationOriginSurvivesMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,15 +264,15 @@ func TestLocalTranslationWorkerStopsRemainingChunksWhenWorkBecomesStale(t *testi
 					case "owner":
 						_, changeErr = s.submitTranslation(translationRequest{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Ручной перевод\n\nТекст"})
 					case "deleted", "conflict":
-						s.mu.Lock()
-						a := s.db.Articles["program/docs/guide.md"]
+						s.Lock()
+						a := s.DB().Articles["program/docs/guide.md"]
 						if change == "deleted" {
 							a.Deleted = true
 						} else {
 							a.Conflicts = append(a.Conflicts, ImportConflict{})
 						}
-						s.db.Articles["program/docs/guide.md"] = a
-						s.mu.Unlock()
+						s.DB().Articles["program/docs/guide.md"] = a
+						s.Unlock()
 					}
 					if changeErr != nil {
 						t.Error(changeErr)

@@ -65,9 +65,9 @@ func (w *translationWorker) Run(ctx context.Context, interval time.Duration) {
 // One bounded request per pass; failures back off by revision so one bad
 // document does not prevent other articles from being translated.
 func (w *translationWorker) Once(ctx context.Context) {
-	w.store.mu.RLock()
-	invalid := w.store.invalid
-	w.store.mu.RUnlock()
+	w.store.RLock()
+	invalid := w.store.InvalidLocked()
+	w.store.RUnlock()
 	if invalid {
 		return
 	}
@@ -143,13 +143,13 @@ func (w *translationWorker) Once(ctx context.Context) {
 // This check is advisory between requests: a concurrent change can still occur
 // immediately after it. saveTranslation rechecks the state under the write lock.
 func (s *Store) translationStillNeeded(candidate translationCandidate) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	src, ok := s.db.Sources[candidate.SourceID]
-	if s.invalid || !ok || src.Kind != "program" || moveDeletionLocks(s.db, candidate.SourceID, candidate.Path) {
+	s.RLock()
+	defer s.RUnlock()
+	src, ok := s.DB().Sources[candidate.SourceID]
+	if s.InvalidLocked() || !ok || src.Kind != "program" || moveDeletionLocks(*s.DB(), candidate.SourceID, candidate.Path) {
 		return false
 	}
-	a, ok := s.db.Articles[candidate.SourceID+"/"+candidate.Path]
+	a, ok := s.DB().Articles[candidate.SourceID+"/"+candidate.Path]
 	if !ok || a.Deleted || candidate.Revision < 1 || len(a.Versions) != candidate.Revision || a.Versions[len(a.Versions)-1].SHA != candidate.OriginalSHA {
 		return false
 	}

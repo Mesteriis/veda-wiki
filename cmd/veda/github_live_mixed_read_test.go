@@ -95,7 +95,7 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 			t.Fatal("partial import")
 		}
 	}
-	metadata := s.db.Sources["wiki"].Metadata
+	metadata := s.DB().Sources["wiki"].Metadata
 	if kinds["wiki"] != "wiki" || kinds["program"] != "program" || metadata == nil || metadata.Title != "Handbook" {
 		t.Fatal("source classification or metadata differs")
 	}
@@ -124,10 +124,10 @@ func TestLiveGitHubMixedSourcesReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

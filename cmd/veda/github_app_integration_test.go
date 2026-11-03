@@ -84,7 +84,7 @@ func TestGitHubAppStoredCredentialSync(t *testing.T) {
 	if _, err = store.saveAccount(ctx, client, "app", secret); err != nil {
 		t.Fatal("account verification failed", err)
 	}
-	store, err = openStore(store.dir)
+	store, err = openStore(store.Dir())
 	if err != nil {
 		t.Fatal("cannot reopen store", err)
 	}

@@ -56,7 +56,7 @@ func TestRateLimitStopsOtherConnectionsUsingSameAccount(t *testing.T) {
 	if _, err := s.page("two/docs/b.md", false); err != nil {
 		t.Fatal("shared cooldown lost local content", err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestRateLimitRetryDeadlineSurvivesRestart(t *testing.T) {
 	if err := s.connectionStatusFor(s.connections()[0], "error", "unknown", "rate_limited", nil, due); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

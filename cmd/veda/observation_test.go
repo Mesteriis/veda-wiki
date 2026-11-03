@@ -23,9 +23,9 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 		t.Fatal("public context exposed observation metadata", err)
 	}
 	old := time.Now().Add(-time.Hour).UTC()
-	s.mu.Lock()
-	s.observed["handbook"] = old
-	s.mu.Unlock()
+	s.Lock()
+	s.MarkObserved("handbook", old)
+	s.Unlock()
 	m.Once(context.Background())
 	observed := s.sources(false)[0].LastImportObservedAt
 	stamp, err := time.Parse(time.RFC3339Nano, observed)
@@ -47,7 +47,7 @@ func TestGitHubObservationTracksImportedOrVerifiedHead(t *testing.T) {
 	if s.sources(false)[0].LastImportObservedAt != observed {
 		t.Fatal("stale observation changed timestamp")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil || reopened.sources(false)[0].LastImportObservedAt != "" {
 		t.Fatal("observation persisted across restart", err)
 	}
@@ -123,11 +123,11 @@ func TestImportObservationIsTransientAndOnlyAdvancesOnSuccess(t *testing.T) {
 		t.Fatal("public observation metadata exposed")
 	}
 	old := time.Now().Add(-time.Hour).UTC()
-	s.mu.Lock()
-	s.observed["handbook"] = old
-	s.mu.Unlock()
+	s.Lock()
+	s.MarkObserved("handbook", old)
+	s.Unlock()
 	batch.Create = false
-	gen := s.db.Sources["handbook"].ImportGeneration
+	gen := s.DB().Sources["handbook"].ImportGeneration
 	batch.ExpectedImport = &gen
 	if _, e := s.importBatch(batch); e != nil {
 		t.Fatal(e)
@@ -145,7 +145,7 @@ func TestImportObservationIsTransientAndOnlyAdvancesOnSuccess(t *testing.T) {
 	if s.sources(false)[0].LastImportObservedAt != observed {
 		t.Fatal("failed import advanced observation")
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -189,15 +189,15 @@ func TestStateShowsWarningsOnlyForVisiblePrivateSources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	for _, id := range []string{"alpha", "beta", "open"} {
 		src := db.Sources[id]
 		src.ImportPartial = true
 		db.Sources[id] = src
 	}
-	err := s.commit(db)
-	s.mu.Unlock()
+	err := s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}

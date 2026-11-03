@@ -21,18 +21,18 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	if in.ExpectedRevision < 1 || in.SourceID == in.DestinationID {
 		return Database{}, Revision{}, ErrInvalid
 	}
-	source, ok := s.db.Sources[in.SourceID]
+	source, ok := s.DB().Sources[in.SourceID]
 	if !ok {
 		return Database{}, Revision{}, ErrNotFound
 	}
-	destination, ok := s.db.Sources[in.DestinationID]
+	destination, ok := s.DB().Sources[in.DestinationID]
 	if !ok {
 		return Database{}, Revision{}, ErrNotFound
 	}
 	if !articlePath(in.SourcePath, source.Kind) || !articlePath(in.DestinationPath, destination.Kind) {
 		return Database{}, Revision{}, ErrInvalid
 	}
-	a, ok := s.db.Articles[in.SourceID+"/"+in.SourcePath]
+	a, ok := s.DB().Articles[in.SourceID+"/"+in.SourcePath]
 	if !ok || a.Deleted {
 		return Database{}, Revision{}, ErrNotFound
 	}
@@ -45,9 +45,9 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		}
 	}
 	key := in.DestinationID + "/" + in.DestinationPath
-	b, exists := s.db.Articles[key]
+	b, exists := s.DB().Articles[key]
 	if exists {
-		if in.ExpectedDestinationRevision == nil || *in.ExpectedDestinationRevision < 1 || b.Deleted || len(b.Versions) != *in.ExpectedDestinationRevision || moveDeletionLocks(s.db, in.DestinationID, in.DestinationPath) || conflictResolutionBlocked(s.db, in.DestinationID, in.DestinationPath) {
+		if in.ExpectedDestinationRevision == nil || *in.ExpectedDestinationRevision < 1 || b.Deleted || len(b.Versions) != *in.ExpectedDestinationRevision || moveDeletionLocks(*s.DB(), in.DestinationID, in.DestinationPath) || conflictResolutionBlocked(*s.DB(), in.DestinationID, in.DestinationPath) {
 			return Database{}, Revision{}, ErrConflict
 		}
 		for _, conflict := range b.Conflicts {
@@ -64,8 +64,8 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 		return Database{}, Revision{}, err
 	}
 	now := time.Now()
-	targetPublic := sourcePublic(s.db, destination, now)
-	sourcePublicRevision := sourcePublicReadable(s.db, source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
+	targetPublic := sourcePublic(*s.DB(), destination, now)
+	sourcePublicRevision := sourcePublicReadable(*s.DB(), source, now) && (source.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
 	if targetPublic && (secretContent.MatchString(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 		return Database{}, Revision{}, ErrInvalid
 	}
@@ -87,13 +87,13 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	} else {
 		b.PublishedLocal = false
 	}
-	db := s.clone()
+	db := s.Clone()
 	if dependencies.DirectoryLinks && db.Version < 16 {
 		db.Version = 16
 	}
 	if len(dependencies.Assets) > 0 && destination.ConnectionID == "" {
 		destination.Assets = make(map[string]BlobRef, len(destination.Assets)+len(dependencies.Assets))
-		for p, ref := range s.db.Sources[in.DestinationID].Assets {
+		for p, ref := range s.DB().Sources[in.DestinationID].Assets {
 			destination.Assets[p] = ref
 		}
 		for p, ref := range dependencies.Assets {
@@ -144,8 +144,8 @@ func (s *Store) prepareCopy(in copyRequest) (Database, Revision, error) {
 	return db, copied, nil
 }
 func (s *Store) copyArticle(in copyRequest) (Revision, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Lock()
+	defer s.Unlock()
 	if in.IncludeLinked {
 		if in.ExpectedDestinationRevision != nil && *in.ExpectedDestinationRevision != 0 {
 			return Revision{}, ErrInvalid
@@ -154,7 +154,7 @@ func (s *Store) copyArticle(in copyRequest) (Revision, error) {
 		if err != nil {
 			return Revision{}, err
 		}
-		if err = s.commit(db); err != nil {
+		if err = s.Commit(db); err != nil {
 			return Revision{}, err
 		}
 		return revision, nil
@@ -163,7 +163,7 @@ func (s *Store) copyArticle(in copyRequest) (Revision, error) {
 	if err != nil {
 		return Revision{}, err
 	}
-	if err = s.commit(db); err != nil {
+	if err = s.Commit(db); err != nil {
 		return Revision{}, err
 	}
 	return revision, nil

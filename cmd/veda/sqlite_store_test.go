@@ -3,74 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
+	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
-
-func TestSQLiteMigrationAndRestart(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "local", "private")
-	if _, err := s.put("local", "guide.md", "# First", 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateSQLite(s.dir); err != nil {
-		t.Fatal(err)
-	}
-	marker, err := os.ReadFile(filepath.Join(s.dir, "state.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m sqliteMarker
-	if json.Unmarshal(marker, &m) != nil || m.Version != 14 || m.Backend != "sqlite" {
-		t.Fatal("invalid marker")
-	}
-	previous, err := os.ReadFile(filepath.Join(s.dir, "state.before-sqlite.json"))
-	if err != nil || !strings.Contains(string(previous), "# First") {
-		t.Fatal("missing JSON backup", err)
-	}
-	reopened, err := openStore(s.dir)
-	if err != nil || !reopened.sqlite {
-		t.Fatal("cannot open SQLite", err)
-	}
-	db, err := sqliteDB(s.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var journal string
-	var syncMode, tempMode int
-	if db.QueryRow("PRAGMA journal_mode").Scan(&journal) != nil || db.QueryRow("PRAGMA synchronous").Scan(&syncMode) != nil || db.QueryRow("PRAGMA temp_store").Scan(&tempMode) != nil || journal != "delete" || syncMode != 3 || tempMode != 2 {
-		t.Fatal("SQLite durability or temporary storage settings are incorrect")
-	}
-	db.Close()
-	if _, err = reopened.put("local", "guide.md", "# Second", 1); err != nil {
-		t.Fatal(err)
-	}
-	again, err := openStore(s.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	page, err := again.page("local/guide.md", false)
-	if err != nil || page.Text != "# Second" {
-		t.Fatal("revision not durable", err)
-	}
-	original, err := os.ReadFile(filepath.Join(s.dir, "state.before-sqlite.json"))
-	if err != nil || string(original) != string(previous) {
-		t.Fatal("backup changed", err)
-	}
-	if err = migrateSQLite(s.dir); err == nil {
-		t.Fatal("repeat migration accepted")
-	}
-}
 
 func TestSQLiteMigrationRestoresPendingSync(t *testing.T) {
 	s := testStore(t)
@@ -79,10 +20,10 @@ func TestSQLiteMigrationRestoresPendingSync(t *testing.T) {
 	if _, err := s.put("handbook", "README.md", "# Local update", 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,98 +33,23 @@ func TestSQLiteMigrationRestoresPendingSync(t *testing.T) {
 	if f.WriteCount() != 1 || len(s.jobs()) != 1 || s.jobs()[0].State != "complete" {
 		t.Fatal("pending sync not resumed", s.jobs())
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil || reopened.jobs()[0].State != "complete" {
 		t.Fatal("completed sync not durable", err)
-	}
-}
-
-func TestSQLiteOfflineBackupRestores(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "local", "private")
-	if _, err := s.put("local", "guide.md", "# Restored", 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateSQLite(s.dir); err != nil {
-		t.Fatal(err)
-	}
-	restore := filepath.Join(t.TempDir(), "restore")
-	if err := os.Mkdir(restore, 0700); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"state.json", sqliteFile} {
-		data, err := os.ReadFile(filepath.Join(s.dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(filepath.Join(restore, name), data, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	reopened, err := openStore(restore)
-	if err != nil {
-		t.Fatal(err)
-	}
-	page, err := reopened.page("local/guide.md", false)
-	if err != nil || page.Text != "# Restored" {
-		t.Fatal("restored store lost article", err)
-	}
-}
-
-func TestSQLiteMigrationRequiresExclusiveLock(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "local", "private")
-	lock, err := os.OpenFile(filepath.Join(s.dir, "writer.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
-	if err = migrateSQLite(s.dir); err == nil {
-		t.Fatal("migrated while server lock held")
-	}
-	if _, err = os.Stat(filepath.Join(s.dir, sqliteFile)); !os.IsNotExist(err) {
-		t.Fatal("locked migration created SQLite")
-	}
-}
-
-func TestOldBinaryRejectsSQLiteMarker(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_SQLITE_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "local", "private")
-	if err := migrateSQLite(s.dir); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.dir, "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	if err == nil || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject SQLite marker")
-	}
-	if _, err = openStore(s.dir); err != nil {
-		t.Fatal("old binary modified the migrated store", err)
 	}
 }
 
 func TestSQLiteCommitFailureFailsClosed(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "local", "private")
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := sqliteDB(s.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := storetest.SQLite(t, s.Dir())
 	if _, err = db.Exec("DROP TABLE records"); err != nil {
 		t.Fatal(err)
 	}
@@ -205,17 +71,14 @@ func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "guide.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := sqliteDB(s.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := storetest.SQLite(t, s.Dir())
 	if _, err = db.Exec(`CREATE TRIGGER reject_job BEFORE INSERT ON records WHEN NEW.category='job' BEGIN SELECT RAISE(ABORT, 'fixture'); END`); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +90,7 @@ func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
 	if err != nil || len(article.Versions) != 1 || article.Versions[0].Text != "# Original" || len(s.jobs()) != 0 {
 		t.Fatal("failed transaction changed article or outbox", err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,10 +98,7 @@ func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
 	if err != nil || len(article.Versions) != 1 || len(reopened.jobs()) != 0 {
 		t.Fatal("failed transaction survived restart", err)
 	}
-	db, err = sqliteDB(s.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db = storetest.SQLite(t, s.Dir())
 	if _, err = db.Exec("DROP TRIGGER reject_job"); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +106,7 @@ func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
 	if _, err = s.put("handbook", "guide.md", "# Updated", 1); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err = openStore(s.dir)
+	reopened, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,15 +114,15 @@ func TestSQLiteArticleAndOutboxCommitAtomically(t *testing.T) {
 	if err != nil || len(article.Versions) != 2 || len(reopened.jobs()) != 1 || reopened.jobs()[0].SHA != article.Versions[1].SHA {
 		t.Fatal("successful article and job did not persist", err)
 	}
-	liveJSON, liveErr := json.Marshal(s.db)
-	restoredJSON, restoredErr := json.Marshal(reopened.db)
+	liveJSON, liveErr := json.Marshal(*s.DB())
+	restoredJSON, restoredErr := json.Marshal(*reopened.DB())
 	if liveErr != nil || restoredErr != nil || string(liveJSON) != string(restoredJSON) {
 		t.Fatal("in-memory and restored SQLite state differ")
 	}
 	if _, err = s.put("handbook", "guide.md", "# Updated again", 2); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err = openStore(s.dir)
+	reopened, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,17 +144,17 @@ func TestSQLiteArticleUpdatePersistsMoveReconciliation(t *testing.T) {
 	if err != nil || move.State != "waiting_source_delete" {
 		t.Fatal("fixture move not pending", err)
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.put("local", "copy.md", "# Changed destination", 1); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,28 +179,28 @@ func TestSQLiteArticleUpdatePersistsOtherArticleWhenMoveCompletes(t *testing.T) 
 	if err != nil || move.State != "waiting_destination" {
 		t.Fatal("fixture move not pending", err)
 	}
-	if err = migrateSQLite(s.dir); err != nil {
+	if err = migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	db := s.clone()
+	s.Lock()
+	db := s.Clone()
 	jobID := "handbook/moved.md@1"
 	job := db.Outbox[jobID]
 	job.State = "complete"
 	db.Outbox[jobID] = job
-	err = s.commit(db)
-	s.mu.Unlock()
+	err = s.Commit(db)
+	s.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.put("local", "other.md", "# Changed", 1); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,48 +213,21 @@ func TestSQLiteArticleUpdatePersistsOtherArticleWhenMoveCompletes(t *testing.T) 
 	}
 }
 
-func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
-	s := testStore(t)
-	source(t, s, "local", "private")
-	if err := migrateSQLite(s.dir); err != nil {
-		t.Fatal(err)
-	}
-	s, err := openStore(s.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := s.clone()
-	text := strings.Repeat("x", maxArticleBytes)
-	sha := digest([]byte(text))
-	state.Version = 13
-	for i := 0; i < 65; i++ {
-		p := fmt.Sprintf("%02d.md", i)
-		state.Articles["local/"+p] = Article{SourceID: "local", Path: p, Versions: []Revision{{Number: 1, Text: text, SHA: sha}}}
-	}
-	if err = s.commit(state); err != nil {
-		t.Fatal("SQLite rejected large store", err)
-	}
-	reopened, err := openStore(s.dir)
-	if err != nil || len(reopened.db.Articles) != 65 {
-		t.Fatal("large SQLite store did not reopen", err)
-	}
-}
-
 func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, true)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
-	if err != nil || !s.sqlite {
+	s, err := openStore(s.Dir())
+	if err != nil || !s.IsSQLite() {
 		t.Fatal("SQLite reopen failed", err)
 	}
 	if _, err = s.put("handbook", "README.md", "# Local update", 1); err != nil {
 		t.Fatal(err)
 	}
-	before, err := openStore(s.dir)
+	before, err := openStore(s.Dir())
 	if err != nil || len(before.jobs()) != 1 || before.jobs()[0].State != "pending" {
 		t.Fatal("article and queued write not durable", err)
 	}
@@ -406,7 +239,7 @@ func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	if f.WriteCount() != 1 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("uncertain push not recorded")
 	}
-	restored, err := openStore(s.dir)
+	restored, err := openStore(s.Dir())
 	if err != nil || restored.jobs()[0].PreparedCommit == "" {
 		t.Fatal("uncertain state lost after restart", err)
 	}
@@ -417,7 +250,7 @@ func TestSQLiteLostGitHubResponseRecoversWithoutDuplicatePush(t *testing.T) {
 	if f.WriteCount() != 1 || restored.jobs()[0].State != "complete" || f.Contents()["README.md"] != "# Local update" {
 		t.Fatal("recovery duplicated or lost update")
 	}
-	final, err := openStore(s.dir)
+	final, err := openStore(s.Dir())
 	if err != nil || final.jobs()[0].State != "complete" {
 		t.Fatal("recovery not durable", err)
 	}
@@ -447,10 +280,10 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 		}
 	}
 	m.Once(context.Background())
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +295,7 @@ func TestSQLiteLostResponseKeepsSecondRepositoryIndependent(t *testing.T) {
 	if first.WriteCount() != 1 || second.WriteCount() != 0 || len(s.jobs()) != 1 || s.jobs()[0].PreparedCommit == "" {
 		t.Fatal("first write did not enter recoverable state")
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,30 +321,30 @@ func TestSQLiteConnectionStatusWritesOnlyConnections(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Original"})
 	connectFixture(t, s, f, false)
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	// An uncommitted in-memory change reveals whether article rows are rewritten.
-	a := s.db.Articles["handbook/README.md"]
+	a := s.DB().Articles["handbook/README.md"]
 	a.Versions = append([]Revision(nil), a.Versions...)
 	a.Versions[0].Text = "# Not committed"
 	a.Versions[0].SHA = digest([]byte(a.Versions[0].Text))
-	s.db.Articles["handbook/README.md"] = a
+	s.DB().Articles["handbook/README.md"] = a
 	if err = s.connectionStatusFor(s.connections()[0], "syncing", "verified", "", nil, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if reopened.connections()[0].State != "syncing" {
 		t.Fatal("connection status was not persisted")
 	}
-	if text := reopened.db.Articles["handbook/README.md"].Versions[0].Text; text != "# Original" {
+	if text := reopened.DB().Articles["handbook/README.md"].Versions[0].Text; text != "# Original" {
 		t.Fatal("status update rewrote article records", text)
 	}
 }

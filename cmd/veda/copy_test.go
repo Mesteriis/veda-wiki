@@ -55,7 +55,7 @@ func TestCopyArticlePublicationAndProvenance(t *testing.T) {
 	if _, e := s.copyArticle(req); e != ErrConflict {
 		t.Fatal("destination overwritten", e)
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -125,11 +125,11 @@ func TestCopyToUnverifiedPublicDestinationRequiresLaterApproval(t *testing.T) {
 	}
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	m := connectFixture(t, s, f, true)
-	s.mu.Lock()
-	c := s.db.Connections["handbook"]
+	s.Lock()
+	c := s.DB().Connections["handbook"]
 	c.VerifiedAt = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
-	s.db.Connections[c.ID] = c
-	s.mu.Unlock()
+	s.DB().Connections[c.ID] = c
+	s.Unlock()
 	req := copyRequest{SourceID: "private", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "copy.md"}
 	if _, e := s.copyArticle(req); e != nil {
 		t.Fatal(e)

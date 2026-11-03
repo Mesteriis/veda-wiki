@@ -56,13 +56,13 @@ func TestAdoptPrivateSourcePreservesLocalData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.db.Sources["handbook"].ConnectionID != "handbook" || s.db.Sources["handbook"].Visibility != "private" {
+	if s.DB().Sources["handbook"].ConnectionID != "handbook" || s.DB().Sources["handbook"].Visibility != "private" {
 		t.Fatal("source not attached privately")
 	}
-	same := s.db.Articles["handbook/same.md"]
-	different := s.db.Articles["handbook/different.md"]
-	local := s.db.Articles["handbook/local-only.md"]
-	remote := s.db.Articles["handbook/remote-only.md"]
+	same := s.DB().Articles["handbook/same.md"]
+	different := s.DB().Articles["handbook/different.md"]
+	local := s.DB().Articles["handbook/local-only.md"]
+	remote := s.DB().Articles["handbook/remote-only.md"]
 	if len(same.Versions) != 1 || same.UpstreamHash == "" || len(different.Versions) != 2 || different.Versions[1].Text != "# Local edit" || len(different.Conflicts) != 1 || different.Conflicts[0].Incoming != "# Remote" || local.Deleted || local.UpstreamHash != "" || len(remote.Versions) != 1 {
 		t.Fatal("adoption did not preserve article state")
 	}
@@ -70,7 +70,7 @@ func TestAdoptPrivateSourcePreservesLocalData(t *testing.T) {
 		t.Fatal("adoption unexpectedly queued or wrote content")
 	}
 	m.Once(context.Background())
-	if s.db.Articles["handbook/local-only.md"].Deleted || f.WriteCount() != 0 {
+	if s.DB().Articles["handbook/local-only.md"].Deleted || f.WriteCount() != 0 {
 		t.Fatal("sync deleted or uploaded local-only content")
 	}
 }
@@ -100,7 +100,7 @@ func TestAdoptRejectsConcurrentLocalEdit(t *testing.T) {
 	if editErr != nil || !errors.Is(err, ErrConflict) || len(s.connections()) != 0 {
 		t.Fatalf("concurrent edit was not rejected: %v", err)
 	}
-	a := s.db.Articles["handbook/README.md"]
+	a := s.DB().Articles["handbook/README.md"]
 	if a.Versions[len(a.Versions)-1].Text != "# Concurrent edit" {
 		t.Fatal("concurrent edit lost")
 	}
@@ -144,10 +144,10 @@ func TestAdoptSQLiteSurvivesReopen(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	s, err := openStore(s.dir)
+	s, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,11 +160,11 @@ func TestAdoptSQLiteSurvivesReopen(t *testing.T) {
 	if _, err = m.connect(context.Background(), connectRequest{ID: "handbook", Repository: "org/handbook", AccountID: "operator", AdoptExisting: true}); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openStore(s.dir)
+	reopened, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reopened.db.Sources["handbook"].ConnectionID != "handbook" || len(reopened.db.Articles["handbook/README.md"].Conflicts) != 1 || reopened.db.Articles["handbook/local.md"].Deleted {
+	if reopened.DB().Sources["handbook"].ConnectionID != "handbook" || len(reopened.DB().Articles["handbook/README.md"].Conflicts) != 1 || reopened.DB().Articles["handbook/local.md"].Deleted {
 		t.Fatal("adoption did not survive reopen")
 	}
 }
@@ -225,7 +225,7 @@ func TestAdoptThroughOwnerAPI(t *testing.T) {
 	if r := request(w, "POST", "/api/v1/github/connections", body, true); r.Code != 202 {
 		t.Fatal("owner adoption failed", r.Code)
 	}
-	if s.db.Sources["handbook"].ConnectionID != "handbook" || len(s.db.Articles["handbook/README.md"].Conflicts) != 1 {
+	if s.DB().Sources["handbook"].ConnectionID != "handbook" || len(s.DB().Articles["handbook/README.md"].Conflicts) != 1 {
 		t.Fatal("owner API did not preserve conflict")
 	}
 }
@@ -332,11 +332,11 @@ func TestAdoptionCommitChecksCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	account := s.db.Accounts["operator"]
+	account := s.DB().Accounts["operator"]
 	b := testBatch()
 	b.Create = false
 	b.Files["README.md"] = "# Remote"
-	gen := s.db.Sources["handbook"].ImportGeneration
+	gen := s.DB().Sources["handbook"].ImportGeneration
 	b.ExpectedImport = &gen
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

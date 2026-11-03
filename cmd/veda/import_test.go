@@ -55,7 +55,7 @@ func testBatch() ImportBatch {
 }
 func applyAgain(s *Store, b ImportBatch) ImportBatch {
 	b.Create = false
-	g := s.db.Sources[b.SourceID].ImportGeneration
+	g := s.DB().Sources[b.SourceID].ImportGeneration
 	b.ExpectedImport = &g
 	return b
 }
@@ -247,7 +247,7 @@ func TestImportIsAtomicIdempotentAndPersists(t *testing.T) {
 	if e != nil || p.Text != "# Initial" {
 		t.Fatal("partial batch committed", e)
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -268,8 +268,8 @@ func TestUnchangedImportRepairsMissingOrCorruptAssets(t *testing.T) {
 				t.Fatal(err)
 			}
 			b = applyAgain(s, b)
-			ref := s.db.Sources[b.SourceID].Assets["images/test.png"]
-			filename := filepath.Join(s.dir, "blobs", ref.SHA)
+			ref := s.DB().Sources[b.SourceID].Assets["images/test.png"]
+			filename := filepath.Join(s.Dir(), "blobs", ref.SHA)
 			if err = os.Remove(filename); err != nil {
 				t.Fatal(err)
 			}
@@ -319,9 +319,9 @@ func TestFailedAssetRepairDoesNotAdvanceObservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	b = applyAgain(s, b)
-	previous := s.observed[b.SourceID]
-	ref := s.db.Sources[b.SourceID].Assets["image.png"]
-	filename := filepath.Join(s.dir, "blobs", ref.SHA)
+	previous := observedAt(s, b.SourceID)
+	ref := s.DB().Sources[b.SourceID].Assets["image.png"]
+	filename := filepath.Join(s.Dir(), "blobs", ref.SHA)
 	if err := os.Remove(filename); err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestFailedAssetRepairDoesNotAdvanceObservation(t *testing.T) {
 	if _, err := s.importBatch(b); err == nil {
 		t.Fatal("failed repair reported success")
 	}
-	if !s.observed[b.SourceID].Equal(previous) {
+	if !observedAt(s, b.SourceID).Equal(previous) {
 		t.Fatal("failed repair advanced observation")
 	}
 }
@@ -410,7 +410,7 @@ func TestImportConflictsPreserveBothVersionsAndResolve(t *testing.T) {
 	if p.Text != "# Remote" || len(s.conflicts()) != 0 {
 		t.Fatal("resolution failed")
 	}
-	reopened, e := openStore(s.dir)
+	reopened, e := openStore(s.Dir())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -436,13 +436,13 @@ func TestImportConflictSupersessionAndUpstreamRevert(t *testing.T) {
 	b = applyAgain(s, b)
 	b.Commit = strings.Repeat("b", 40)
 	s.importBatch(b)
-	if len(s.db.Articles["handbook/README.md"].Conflicts) != 1 {
+	if len(s.DB().Articles["handbook/README.md"].Conflicts) != 1 {
 		t.Fatal("unchanged incoming duplicated")
 	}
 	b = applyAgain(s, b)
 	b.Files = map[string]string{"README.md": "# Remote two"}
 	s.importBatch(b)
-	if len(s.conflicts()) != 1 || len(s.db.Articles["handbook/README.md"].Conflicts) != 2 {
+	if len(s.conflicts()) != 1 || len(s.DB().Articles["handbook/README.md"].Conflicts) != 2 {
 		t.Fatal("prior incoming history lost or still pending")
 	}
 	b = applyAgain(s, b)
@@ -511,13 +511,13 @@ func TestPrivateImportPreservesImagesNeededByLocalEdits(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.db.Sources["handbook"].Assets["images/keep.png"]; !ok {
+	if _, ok := s.DB().Sources["handbook"].Assets["images/keep.png"]; !ok {
 		t.Fatal("local edit lost its image")
 	}
-	if _, ok := s.db.Sources["handbook"].Assets["images/remove.png"]; ok {
+	if _, ok := s.DB().Sources["handbook"].Assets["images/remove.png"]; ok {
 		t.Fatal("unreferenced upstream image retained")
 	}
-	if len(s.conflicts()) != 1 || !s.db.Articles["handbook/clean.md"].Deleted {
+	if len(s.conflicts()) != 1 || !s.DB().Articles["handbook/clean.md"].Deleted {
 		t.Fatal("deletion handling changed")
 	}
 	r := request(Wiki{Store: s, Token: "test-owner"}, "GET", "/media/handbook/images/keep.png", "", true)
@@ -540,7 +540,7 @@ func TestPrivatePartialImportRetainsUnobservedImages(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.db.Sources["handbook"].Assets["images/unobserved.png"]; !ok {
+	if _, ok := s.DB().Sources["handbook"].Assets["images/unobserved.png"]; !ok {
 		t.Fatal("partial observation removed an image")
 	}
 }
@@ -566,10 +566,10 @@ func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
 			if changed {
 				b.Files["README.md"] = "# Changed"
 			}
-			before := s.observed[b.SourceID]
-			generation := s.db.Sources[b.SourceID].ImportGeneration
-			ref := s.db.Sources[b.SourceID].Assets["images/retained.png"]
-			filename := filepath.Join(s.dir, "blobs", ref.SHA)
+			before := observedAt(s, b.SourceID)
+			generation := s.DB().Sources[b.SourceID].ImportGeneration
+			ref := s.DB().Sources[b.SourceID].Assets["images/retained.png"]
+			filename := filepath.Join(s.Dir(), "blobs", ref.SHA)
 			if err := os.Remove(filename); err != nil {
 				t.Fatal(err)
 			}
@@ -585,7 +585,7 @@ func TestLocalImportRejectsMissingRetainedImage(t *testing.T) {
 			if response.Code != 503 || json.Unmarshal(response.Body.Bytes(), &body) != nil || body["error"] != "asset_unavailable" {
 				t.Fatal("import did not report the asset error", response.Code, response.Body.String())
 			}
-			if !s.observed[b.SourceID].Equal(before) || s.db.Sources[b.SourceID].ImportGeneration != generation {
+			if !observedAt(s, b.SourceID).Equal(before) || s.DB().Sources[b.SourceID].ImportGeneration != generation {
 				t.Fatal("failed import advanced the source")
 			}
 			if err := os.WriteFile(filename, image, 0600); err != nil {
@@ -609,7 +609,7 @@ func TestPrivateImagesAreNotRetainedOnGitHubPublication(t *testing.T) {
 	f.Modify(func() { f.Private = false })
 	f.Advance(map[string]string{"src/main.go": "package main"})
 	m.Once(context.Background())
-	if _, ok := s.db.Sources["handbook"].Assets["docs/image.png"]; ok {
+	if _, ok := s.DB().Sources["handbook"].Assets["docs/image.png"]; ok {
 		t.Fatal("private image survived publication")
 	}
 	if got := request(Wiki{Store: s, Public: true}, "GET", "/media/handbook/docs/image.png", "", false); got.Code != 404 {
@@ -637,8 +637,8 @@ func TestImportMediaPrivacyIntegrityAndMarkdownLinks(t *testing.T) {
 	if e != nil || !strings.Contains(string(body), "/media/handbook/assets%2Fcover.png") {
 		t.Fatal(body, e)
 	}
-	ref := s.db.Sources["handbook"].Assets["assets/cover.png"]
-	os.WriteFile(filepath.Join(s.dir, "blobs", ref.SHA), []byte("corrupt"), 0600)
+	ref := s.DB().Sources["handbook"].Assets["assets/cover.png"]
+	os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), []byte("corrupt"), 0600)
 	if r := request(w, "GET", "/media/handbook/assets/cover.png", "", true); r.Code != 503 {
 		t.Fatal("corrupt asset served", r.Code)
 	}

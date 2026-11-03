@@ -37,11 +37,11 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 	if len(s.snapshot(true).Pages) != 2 {
 		t.Fatal("initial sources not public")
 	}
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestMultiSourceVisibilityAndOutageAreIndependentAfterSQLiteRestart(t *testi
 	if page, err := s.page("two/docs/guide.md", false); err != nil || page.Text != "# Second public canary" {
 		t.Fatal("outage removed local copy", err)
 	}
-	restored, err := openStore(s.dir)
+	restored, err := openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,15 +119,15 @@ func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 		}
 	}
 	manager.Once(context.Background())
-	if err := migrateSQLite(s.dir); err != nil {
+	if err := migrateSQLite(s.Dir()); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherGeneration := s.db.Sources["two"].ImportGeneration
+	otherGeneration := s.DB().Sources["two"].ImportGeneration
 	first.Advance(map[string]string{"docs": "not a directory"})
 	newSyncManager(s, client).Once(context.Background())
 	if _, err := s.page("one/docs/guide.md", true); err != ErrNotFound {
@@ -139,14 +139,14 @@ func TestInvalidDocsEntryDoesNotAffectOtherRepository(t *testing.T) {
 	if page, err := s.page("two/docs/guide.md", true); err != nil || page.Text != "# Second source" {
 		t.Fatal("other repository affected", err)
 	}
-	if s.db.Sources["two"].ImportGeneration != otherGeneration {
+	if s.DB().Sources["two"].ImportGeneration != otherGeneration {
 		t.Fatal("other source generation changed")
 	}
 	out := request(Wiki{Store: s, Public: true}, "GET", "/api/v1/search?q=source", "", false)
 	if out.Code != 200 || strings.Contains(out.Body.String(), "First source") || !strings.Contains(out.Body.String(), "Second source") {
 		t.Fatal("merged public search violated isolation", out.Code)
 	}
-	s, err = openStore(s.dir)
+	s, err = openStore(s.Dir())
 	if err != nil {
 		t.Fatal(err)
 	}

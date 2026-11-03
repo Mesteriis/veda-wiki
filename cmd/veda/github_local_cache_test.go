@@ -50,13 +50,13 @@ func TestPrivateAdoptionReusesOnlyVerifiedLocalBlobs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.connected {
-				src := s.db.Sources["handbook"]
+				src := s.DB().Sources["handbook"]
 				src.ConnectionID = "handbook"
-				s.db.Sources["handbook"] = src
+				s.DB().Sources["handbook"] = src
 			}
 			if tc.corrupt {
-				ref := s.db.Sources["handbook"].Assets[name]
-				if err := os.WriteFile(filepath.Join(s.dir, "blobs", ref.SHA), []byte("corrupt"), 0600); err != nil {
+				ref := s.DB().Sources["handbook"].Assets[name]
+				if err := os.WriteFile(filepath.Join(s.Dir(), "blobs", ref.SHA), []byte("corrupt"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -162,10 +162,10 @@ func TestPrivateRepositoryImportReusesSeparateLocalSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Once(context.Background())
-	if requests.Load() != 2 || len(s.db.Sources["handbook"].Assets) != 1 || s.db.Articles["handbook/topic/000.md"].Versions[0].Text != "# Different upstream" {
+	if requests.Load() != 2 || len(s.DB().Sources["handbook"].Assets) != 1 || s.DB().Articles["handbook/topic/000.md"].Versions[0].Text != "# Different upstream" {
 		t.Fatal("separate source did not reuse exact private objects", requests.Load())
 	}
-	if s.db.Articles["local/topic/000.md"].Versions[0].Text == s.db.Articles["handbook/topic/000.md"].Versions[0].Text {
+	if s.DB().Articles["local/topic/000.md"].Versions[0].Text == s.DB().Articles["handbook/topic/000.md"].Versions[0].Text {
 		t.Fatal("independent source was overwritten")
 	}
 }
