@@ -1,10 +1,13 @@
-.PHONY: build test frontend
+.PHONY: build test frontend lint
 frontend:
 	cd web && npm ci --no-audit --no-fund && npm run build
 	rm -rf cmd/veda/ui
 	cp -R web/dist cmd/veda/ui
 build: frontend
 	go build -trimpath -o veda ./cmd/veda
-test: frontend
+lint:
+	python3 scripts/check_file_size.py --max 500 --include 'scripts/**/*.py'
+	go run honnef.co/go/tools/cmd/staticcheck@2026.2.2 ./...
+test: frontend lint
 	node --test web/src/*.test.js
 	go test -race ./... && go vet ./...
