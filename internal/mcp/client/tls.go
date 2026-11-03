@@ -8,20 +8,24 @@ import (
 	"strings"
 )
 
-// tlsConfig adds the certificates named by SSL_CERT_FILE and SSL_CERT_DIR (a
-// colon-separated list of directories) to the system roots, as OpenSSL did
-// for the Python adapter. Go reads these variables itself only on Unix
-// systems other than macOS. Without them it returns nil: system roots only.
-// Unreadable files are skipped, as Go does.
+// tlsConfig always requires TLS 1.2 or newer. When SSL_CERT_FILE or
+// SSL_CERT_DIR (a colon-separated list of directories) is set, only the
+// certificates they name are trusted: the pool starts empty, as with OpenSSL
+// in the Python adapter, so the system roots do not apply. Go reads these
+// variables itself only on Unix systems other than macOS. When neither is set,
+// RootCAs stays nil and the system roots are used. Unreadable files and
+// directories are skipped, as Go does.
 func tlsConfig() *tls.Config {
+	return &tls.Config{RootCAs: environmentRoots(), MinVersion: tls.VersionTLS12}
+}
+
+// environmentRoots returns nil when no certificate variable is set.
+func environmentRoots() *x509.CertPool {
 	file, dirs := os.Getenv("SSL_CERT_FILE"), os.Getenv("SSL_CERT_DIR")
 	if file == "" && dirs == "" {
 		return nil
 	}
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		roots = x509.NewCertPool()
-	}
+	roots := x509.NewCertPool()
 	var paths []string
 	if file != "" {
 		paths = append(paths, file)
@@ -43,5 +47,5 @@ func tlsConfig() *tls.Config {
 			roots.AppendCertsFromPEM(data)
 		}
 	}
-	return &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
+	return roots
 }

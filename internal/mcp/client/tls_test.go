@@ -1,6 +1,8 @@
 package client
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -45,5 +47,54 @@ func TestHonorsCertificateEnvironment(t *testing.T) {
 	t.Setenv("SSL_CERT_DIR", filepath.Join(dir, "missing")+":"+dir)
 	if err := request(); err != nil {
 		t.Fatalf("SSL_CERT_DIR: %v", err)
+	}
+}
+
+func writeCert(t *testing.T, path string, cert *x509.Certificate) {
+	t.Helper()
+	block := &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}
+	if err := os.WriteFile(path, pem.EncodeToMemory(block), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCertificateEnvironmentReplacesSystemRoots checks that a set variable
+// yields a pool holding exactly the named certificates, and that an unset
+// environment leaves RootCAs nil so the system roots apply.
+func TestCertificateEnvironmentReplacesSystemRoots(t *testing.T) {
+	first := httptest.NewTLSServer(http.NotFoundHandler())
+	defer first.Close()
+	second := httptest.NewUnstartedServer(http.NotFoundHandler())
+	second.StartTLS()
+	defer second.Close()
+	dir := t.TempDir()
+	fileCert, dirCert := filepath.Join(dir, "file.pem"), filepath.Join(dir, "certs", "dir.pem")
+	if err := os.Mkdir(filepath.Dir(dirCert), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeCert(t, fileCert, first.Certificate())
+	writeCert(t, dirCert, second.Certificate())
+
+	t.Setenv("SSL_CERT_FILE", "")
+	t.Setenv("SSL_CERT_DIR", "")
+	config := tlsConfig()
+	if config.RootCAs != nil || config.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("unset environment: RootCAs %v, MinVersion %x", config.RootCAs, config.MinVersion)
+	}
+
+	t.Setenv("SSL_CERT_FILE", fileCert)
+	t.Setenv("SSL_CERT_DIR", filepath.Dir(dirCert))
+	pool := tlsConfig().RootCAs
+	want := x509.NewCertPool()
+	want.AddCert(first.Certificate())
+	want.AddCert(second.Certificate())
+	if pool == nil || !pool.Equal(want) {
+		t.Fatal("pool is not exactly the certificates named by the environment")
+	}
+
+	t.Setenv("SSL_CERT_DIR", "")
+	t.Setenv("SSL_CERT_FILE", filepath.Join(dir, "missing.pem"))
+	if pool := tlsConfig().RootCAs; pool == nil || !pool.Equal(x509.NewCertPool()) {
+		t.Fatal("an unreadable SSL_CERT_FILE must yield an empty pool, not the system roots")
 	}
 }

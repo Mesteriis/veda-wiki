@@ -111,8 +111,8 @@ func TestPrepareTranslationRequiresProgramDocs(t *testing.T) {
 
 func TestPrepareTranslationValidatesCurrentRevision(t *testing.T) {
 	fake, base := startREST(t, map[string]string{
-		"GET /api/v1/sources":                         `[{"id":"p","kind":"program"}]`,
-		"GET /api/v1/articles":                        `{"source_id":"p","path":"docs/a.md","versions":[{"revision":1},{"revision":2,"sha256":"orig"}]}`,
+		"GET /api/v1/sources":                        `[{"id":"p","kind":"program"}]`,
+		"GET /api/v1/articles":                       `{"source_id":"p","path":"docs/a.md","versions":[{"revision":1},{"revision":2,"sha256":"orig"}]}`,
 		"POST /api/v1/articles/translation-validate": `{"translation_fingerprint":"fp","source_status":{"s":1},"valid":true}`,
 	})
 	got := success(t, call(t, connect(t, base, true), "veda_prepare_translation",
