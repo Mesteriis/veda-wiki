@@ -22,7 +22,7 @@ type readerSessions struct {
 	active   map[[32]byte]time.Time
 	scoped   map[[32]byte][32]byte
 	users    map[[32]byte]userSession
-	attempts []time.Time
+	attempts map[[32]byte][]time.Time
 }
 
 type userSession struct {
@@ -30,20 +30,51 @@ type userSession struct {
 	AuthVersion int
 }
 
-// Caller holds the session mutex. The same global limiter protects login and
-// password confirmation, including attempts against unknown identities.
-func (s *readerSessions) allowAttempt(now time.Time) bool {
-	kept := s.attempts[:0]
-	for _, t := range s.attempts {
-		if t.After(now.Add(-time.Minute)) {
-			kept = append(kept, t)
+const (
+	attemptsPerIdentity = 10
+	attemptPruneAt      = 1024
+	attemptIdentityMax  = 4096
+)
+
+// Caller holds the session mutex. Password and setup-token checks are limited
+// per identity, including unknown identities, so failures against one name
+// cannot lock out other accounts. Random 256-bit keys are not limited here.
+// The identity table is bounded; only a flood of distinct names fills it.
+func (s *readerSessions) allowAttempt(kind, identity string, now time.Time) bool {
+	bucket := sha256.Sum256([]byte(kind + "\x00" + identity))
+	recent := func(times []time.Time) []time.Time {
+		kept := times[:0]
+		for _, t := range times {
+			if t.After(now.Add(-time.Minute)) {
+				kept = append(kept, t)
+			}
+		}
+		return kept
+	}
+	if s.attempts == nil {
+		s.attempts = map[[32]byte][]time.Time{}
+	}
+	if len(s.attempts) >= attemptPruneAt {
+		for id, times := range s.attempts {
+			if kept := recent(times); len(kept) == 0 {
+				delete(s.attempts, id)
+			} else {
+				s.attempts[id] = kept
+			}
 		}
 	}
-	s.attempts = kept
-	if len(kept) >= 10 {
+	kept := recent(s.attempts[bucket])
+	if len(kept) >= attemptsPerIdentity {
+		s.attempts[bucket] = kept
 		return false
 	}
-	s.attempts = append(s.attempts, now)
+	if len(kept) == 0 {
+		delete(s.attempts, bucket)
+		if len(s.attempts) >= attemptIdentityMax {
+			return false
+		}
+	}
+	s.attempts[bucket] = append(kept, now)
 	return true
 }
 
@@ -217,7 +248,7 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessions.mu.Lock()
-		allowed := sessions.allowAttempt(time.Now())
+		allowed := sessions.allowAttempt("user", in.Username, time.Now())
 		sessions.mu.Unlock()
 		if !allowed {
 			jsonResponse(rw, 429, map[string]string{"error": "try again later"})
@@ -271,7 +302,7 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessions.mu.Lock()
-		allowed := sessions.allowAttempt(time.Now())
+		allowed := sessions.allowAttempt("user", user.ID, time.Now())
 		sessions.mu.Unlock()
 		if !allowed {
 			jsonResponse(rw, 429, map[string]string{"error": "try again later"})
@@ -319,8 +350,9 @@ func (w Wiki) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	keyAttempt := in.Username == "" && in.Password == ""
 	sessions.mu.Lock()
-	if !sessions.allowAttempt(now) {
+	if !keyAttempt && !sessions.allowAttempt("user", in.Username, now) {
 		sessions.mu.Unlock()
 		jsonResponse(rw, 429, map[string]string{"error": "try again later"})
 		return

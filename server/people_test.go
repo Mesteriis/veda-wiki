@@ -293,8 +293,21 @@ func TestHumanLoginUsesGenericFailuresAndRateLimit(t *testing.T) {
 	if a.Code != 403 || b.Code != 403 || a.Body.String() != b.Body.String() {
 		t.Fatal("login reveals account existence")
 	}
-	for i := 0; i < 8; i++ {
+	// Unknown and existing identities are limited alike, per identity.
+	for i := 0; i < 9; i++ {
 		if r := login("missing", "wrong synthetic password"); r.Code != 403 {
+			t.Fatal("unexpected rate state", r.Code)
+		}
+	}
+	if r := login("missing", "wrong synthetic password"); r.Code != 429 {
+		t.Fatal("unknown identity rate limit missing", r.Code)
+	}
+	if r := login("person", password); r.Code != 200 {
+		t.Fatal("another identity's failures locked out this account", r.Code)
+	}
+	// Every check counts, including the successful login above.
+	for i := 0; i < 8; i++ {
+		if r := login("person", "wrong synthetic password"); r.Code != 403 {
 			t.Fatal("unexpected rate state", r.Code)
 		}
 	}

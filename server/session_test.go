@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -221,16 +222,49 @@ func TestReaderSessionExpiryAndRateLimit(t *testing.T) {
 		t.Fatal("expired session accepted")
 	}
 	s := &readerSessions{active: map[[32]byte]time.Time{}}
-	w := Wiki{ReaderToken: "key", Sessions: s}
-	for i := 0; i < 11; i++ {
-		r := httptest.NewRequest("POST", "http://localhost/api/session/login", strings.NewReader(`{"key":"bad"}`))
+	key := strings.Repeat("b", 64)
+	w := Wiki{ReaderToken: key, Sessions: s}
+	login := func(body string) int {
+		r := httptest.NewRequest("POST", "http://localhost/api/session/login", strings.NewReader(body))
 		r.Host = "localhost"
 		r.RemoteAddr = "127.0.0.1:1"
 		r.Header.Set("Origin", "http://localhost")
 		out := httptest.NewRecorder()
 		w.ServeHTTP(out, r)
-		if i == 10 && out.Code != 429 {
-			t.Fatal("rate limit", out.Code)
+		return out.Code
+	}
+	// Random 256-bit keys cannot be guessed, so failed key attempts must not
+	// let an anonymous client lock out key and link logins.
+	for i := 0; i < 11; i++ {
+		if code := login(`{"key":"bad"}`); code != 403 {
+			t.Fatal("bad key", i, code)
 		}
+	}
+	for i := 0; i < 11; i++ {
+		if code := login(`{"username":"someone","password":"wrong synthetic password"}`); i == 10 && code != 429 {
+			t.Fatal("password rate limit", code)
+		}
+	}
+	if code := login(`{"key":"` + key + `"}`); code != 200 {
+		t.Fatal("failed attempts locked out a valid key", code)
+	}
+}
+
+func TestLoginAttemptTableIsBounded(t *testing.T) {
+	s := &readerSessions{}
+	now := time.Now()
+	for i := 0; i < attemptIdentityMax; i++ {
+		if !s.allowAttempt("user", strconv.Itoa(i), now) {
+			t.Fatal("identity rejected before the table was full", i)
+		}
+	}
+	if s.allowAttempt("user", "new", now) {
+		t.Fatal("full table accepted a new identity")
+	}
+	if !s.allowAttempt("user", "0", now) {
+		t.Fatal("full table locked out a known identity below its limit")
+	}
+	if !s.allowAttempt("user", "new", now.Add(2*time.Minute)) || len(s.attempts) != 1 {
+		t.Fatal("expired identities were not pruned", len(s.attempts))
 	}
 }

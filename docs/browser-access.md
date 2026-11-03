@@ -39,8 +39,13 @@ cover the chosen address. The public-only listener is unchanged.
 
 Successful login sets an HttpOnly, SameSite=Strict session cookie (Secure over
 HTTPS). Sessions expire after eight hours and are held only in memory; restart
-revokes them. Logout revokes the current session. The server applies a global
-limit of ten login attempts per minute and at most 100 active sessions. To
+revokes them. Logout revokes the current session. Password and setup-token
+checks are limited to ten attempts per minute for each user name, including
+unknown names, so failures against one name do not lock out other accounts.
+Reader and scoped key logins are not rate limited because the keys are random
+256-bit values. The server keeps at most 4096 recently attempted names; when a
+flood of distinct names fills that table, new names wait until entries expire.
+At most 100 sessions are active. To
 revoke all sessions restart the service; credential rotation requires replacing
 the reader key in the private data directory and restarting the service.
 
@@ -69,7 +74,7 @@ the intended person securely; the user can then change it. Passwords must be
 10–128 Unicode characters and at most 512 UTF-8 bytes. VEDA stores salted
 Argon2id hashes (19 MiB, two iterations, one lane), never plaintext passwords;
 administrative listings return neither hashes nor salts. Password confirmation
-and login share the ten-attempts-per-minute limiter. This is a local reader
+and login share the same per-user ten-attempts-per-minute limit. This is a local reader
 account system; MFA, SSO, account recovery, account deletion and audit history
 are not implemented. Do not expose it remotely without a suitable HTTPS and
 network-access design.
