@@ -100,6 +100,16 @@ func (w Wiki) api(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required; browser writes are disabled"})
 		return
 	}
+	w.routeAPI(rw, r, owner, reader)
+}
+
+// routeAPI checks the required role in every route, independently of the
+// shared guard in api(). Non-owners may only read and run the two validations.
+func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
+	if r.Method != "GET" && !owner && !(r.Method == "POST" && reader && (r.URL.Path == "/api/v1/articles/translation-validate" || r.URL.Path == "/api/v1/articles/transfer-plan")) {
+		jsonResponse(rw, 403, map[string]string{"error": "owner authorization required"})
+		return
+	}
 	if r.URL.Path == "/api/v1/access-keys" || r.URL.Path == "/api/v1/access-keys/revoke" {
 		if !owner {
 			http.NotFound(rw, r)
