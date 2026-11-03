@@ -9,3 +9,8 @@ export async function fetchState(fetcher, url, signal, etag) {
   }
   return { data: await response.json(), etag: response.headers.get('ETag') || '' };
 }
+
+// A hidden tab stops polling once it holds a state; the first load always runs.
+export function shouldPoll(visibilityState, etag) {
+  return visibilityState !== 'hidden' || !etag;
+}

@@ -2,27 +2,20 @@ import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { buildTree, buildMergedTree } from "./tree.js";
 import { catalogPages } from "./catalog.js";
 import { readVisits, recordVisit, saveVisits, clearVisits, visibleVisits } from "./recent.js";
-import { githubErrorMessage, githubVisibilityLabel } from "./githubErrors.js";
-import { githubSourceId } from "./githubSourceId.js";
+import { I } from "./icon.jsx";
+import { AccessSettings } from "./AccessSettings.jsx";
+import { GitHubConnect } from "./GitHubConnect.jsx";
 import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
-import { fetchState } from "./statePoll.js";
+import { fetchState, shouldPoll } from "./statePoll.js";
 const Features = createContext(() => {});
 const descriptions = {
   github: [
     "GitHub",
     "Управление подключениями GitHub",
   ],
-  graph: [
-    "Граф знаний",
-    "Граф знаний пока недоступен. Для навигации используйте структуру разделов и ссылки на страницах.",
-  ],
   favorites: [
     "Избранное",
     "Избранное ещё не настроено. Можно пользоваться закладками браузера.",
-  ],
-  recent: [
-    "История просмотров",
-    "История просмотров пока не записывается. На главной показаны основные страницы wiki.",
   ],
   api: [
     "API и MCP",
@@ -42,7 +35,7 @@ const descriptions = {
   ],
   profile: [
     "Профиль",
-    "База знаний VEDA. Учётные записи и роли VEDA пока не настроены.",
+    "Вход в учётную запись VEDA и смена пароля.",
   ],
 };
 const pageHref = (p) => "/?page=" + encodeURIComponent(p);
@@ -51,17 +44,6 @@ function updatedLabel(value) {
   return value && !Number.isNaN(date.getTime())
     ? `Обновлено ${new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(date)}`
     : "Время обновления неизвестно";
-}
-function I({ name, ...rest }) {
-  return (
-    <img
-      className="icon"
-      src={"/assets/icons/" + name + ".svg"}
-      alt=""
-      aria-hidden="true"
-      {...rest}
-    />
-  );
 }
 function F({ name, children, className = "", label }) {
   const open = useContext(Features);
@@ -677,7 +659,7 @@ function ReaderAccess() {
     const controller = new AbortController();
     fetch("/api/session/status", { signal: controller.signal })
       .then((r) => { if (!r.ok) throw Error(); return r.json(); })
-      .then(async (result) => { setStatus(result.authenticated); if (result.authenticated) { const profile = await fetch("/api/session/profile"); if (profile.ok) setCanChangePassword((await profile.json()).password_change); } })
+      .then(async (result) => { setStatus(result.authenticated); if (result.authenticated) { const profile = await fetch("/api/session/profile", { signal: controller.signal }); if (profile.ok) setCanChangePassword((await profile.json()).password_change); } })
       .catch((e) => { if (e.name !== "AbortError") setMessage("Вход доступен на приватном адресе через HTTPS или на этом компьютере."); });
     return () => controller.abort();
   }, []);
@@ -721,335 +703,45 @@ function ReaderAccess() {
     </div>
   );
 }
-function AccessSettings() {
-  const [status, setStatus] = useState(null);
-  const [sharedSession, setSharedSession] = useState(false);
-  const [accessTab, setAccessTab] = useState("users");
-  const [accessModal, setAccessModal] = useState(null);
-  const accessModalRef = useRef(null);
-  useEffect(() => { if (accessModal) accessModalRef.current?.showModal(); else accessModalRef.current?.close(); }, [accessModal]);
-  const [sources, setSources] = useState([]);
-  const [keys, setKeys] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [issued, setIssued] = useState(null);
-  const [editing, setEditing] = useState(null);
-  const [editingTeam, setEditingTeam] = useState(null);
-  const [editingUser, setEditingUser] = useState(null);
-  const [resettingUser, setResettingUser] = useState(null);
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function json(route, options = {}) {
-    const response = await fetch(route, options);
-    if (!response.ok) { const error = Error("request failed"); error.status = response.status; throw error; }
-    return response.json();
-  }
-  async function refresh() {
-    const [available, existing, groups, people] = await Promise.all([json("/api/access/sources"), json("/api/access/keys"), json("/api/access/teams"), json("/api/access/users")]);
-    setSources(available); setKeys(existing); setTeams(groups); setUsers(people);
-  }
-  async function send(route, body) {
-    return json(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  }
-  useEffect(() => {
-    const controller = new AbortController();
-    json("/api/access/session/status", { signal: controller.signal })
-      .then(async (s) => { setStatus(s.authenticated); setSharedSession(!!s.via_reader_session); if (s.authenticated) await refresh(); })
-      .catch((e) => { if (e.name !== "AbortError") setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
-    return () => controller.abort();
-  }, []);
-  async function login(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    setBusy(true); setMessage("");
-    try { await send("/api/access/session/login", { username: data.get("username"), password: data.get("password") }); setStatus(true); await refresh(); }
-    catch { setMessage("Не удалось войти или загрузить источники. Проверьте подключение."); }
-    finally { form.reset(); setBusy(false); }
-  }
-  async function create(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    const days = Number(data.get("days")); const selected = data.getAll("sources");
-    if (!Number.isInteger(days) || days < 1 || days > 365 || !selected.length) { setMessage("Выберите источники и срок от 1 до 365 дней."); return; }
-    setBusy(true); setMessage(""); setIssued(null);
-    try {
-      const result = await send("/api/access/keys", { id: data.get("id"), sources: selected, expires_at: new Date(Date.now() + days * 86400000).toISOString() });
-      setIssued(result); form.reset(); setAccessModal(null);
-      try { await refresh(); } catch { setMessage("Ключ создан, но список не обновился. Сохраните ключ и обновите список позже."); }
-    } catch { setMessage("Создание не подтверждено: ключ мог быть создан. Проверьте список перед повтором."); }
-    finally { setBusy(false); }
-  }
-  async function revoke(id) {
-    if (!window.confirm(`Отозвать ключ ${id}? Доступ по нему прекратится.`)) return;
-    setBusy(true); setMessage("");
-    try { await send("/api/access/keys/revoke", { id }); await refresh(); }
-    catch { setMessage("Не удалось подтвердить отзыв. Обновите список перед повтором."); }
-    finally { setBusy(false); }
-  }
-  async function update(event, key) {
-    event.preventDefault();
-    const selected = new FormData(event.currentTarget).getAll("sources");
-    if (!selected.length) { setMessage("Выберите хотя бы один источник."); return; }
-    setBusy(true); setMessage("");
-    try {
-      await send("/api/access/keys", { id: key.id, sources: selected, expires_at: key.expires_at, expected_etag: key.etag });
-      setEditing(null); setAccessModal(null);
-      try { await refresh(); } catch { setMessage("Права изменены, но список не обновился. Обновите его позже."); }
-    } catch (error) {
-      setMessage(error.status === 409 ? "Ключ изменился или срок истёк. Обновите список и проверьте права." : "Изменение не подтверждено. Обновите список перед повтором.");
-    } finally { setBusy(false); }
-  }
-  async function saveTeam(event, team = null) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const selected = data.getAll("sources");
-    if (!selected.length) { setMessage("Выберите хотя бы один источник для команды."); return; }
-    const body = { id: team?.id || data.get("id"), sources: selected };
-    if (team) body.expected_revision = team.revision;
-    setBusy(true); setMessage("");
-    try { await send("/api/access/teams", body); setEditingTeam(null); if (!team) form.reset(); setAccessModal(null); await refresh(); }
-    catch (error) { setMessage(error.status === 409 ? "Команда изменилась. Обновите список и проверьте права." : "Не удалось подтвердить изменение команды. Обновите список перед повтором."); }
-    finally { setBusy(false); }
-  }
-  async function createUser(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    setBusy(true); setMessage("");
-    try { await send("/api/access/users", { id: data.get("id"), password: data.get("password"), teams: data.getAll("teams") }); form.reset(); setAccessModal(null); await refresh(); }
-    catch { form.reset(); setMessage("Создание не подтверждено. Проверьте список пользователей перед повтором."); }
-    finally { setBusy(false); }
-  }
-  async function updateUser(user, changes) {
-    setBusy(true); setMessage("");
-    try { await send("/api/access/users", { id: user.id, expected_revision: user.revision, ...changes }); setEditingUser(null); setResettingUser(null); setAccessModal(null); await refresh(); }
-    catch (error) { setMessage(error.status === 409 ? "Пользователь изменился. Обновите список и повторите действие." : "Изменение не подтверждено. Обновите список перед повтором."); }
-    finally { setBusy(false); }
-  }
-  function updateMembership(event, user) { event.preventDefault(); updateUser(user, { teams: new FormData(event.currentTarget).getAll("teams") }); }
-  function resetPassword(event, user) { event.preventDefault(); const form = event.currentTarget; const password = new FormData(form).get("password"); form.reset(); updateUser(user, { password }); }
-  async function logout() {
-    setBusy(true); setMessage("");
-    try { await send("/api/access/session/logout", {}); setStatus(false); setKeys([]); setSources([]); setTeams([]); setUsers([]); setIssued(null); setEditing(null); setEditingTeam(null); setEditingUser(null); setResettingUser(null); }
-    catch { setMessage("Не удалось завершить сеанс."); }
-    finally { setBusy(false); }
-  }
-  const openModal = (type, item = null) => { setMessage(""); setAccessModal({ type, item }); };
-  const closeModal = () => { setAccessModal(null); setEditing(null); setEditingTeam(null); setEditingUser(null); setResettingUser(null); };
-  const modalTitle = { user: "Новый пользователь", team: "Новая команда", key: "Новый ключ чтения", userTeams: "Изменить команды", password: "Сменить пароль", teamSources: "Источники команды", keySources: "Доступ ключа" };
-  return <div className="settings-page reader-access">
-    {status === false && <div className="panel settings-login"><p>Для управления доступом войдите как администратор.</p><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти в управление доступом</button></form></div>}
-    {status === true && <>
-      <div className="settings-tabs" aria-label="Разделы настроек">{[["users", "Пользователи", "user"], ["teams", "Команды", "users-group"], ["keys", "Ключи доступа", "key"]].map(([id,label,icon]) => <button type="button" aria-pressed={accessTab === id} key={id} onClick={() => setAccessTab(id)}><I name={icon} />{label}</button>)}</div>
-      <section className={`settings-section settings-${accessTab}`}>
-        <div className="settings-heading"><div><h2>{accessTab === "users" ? "Пользователи" : accessTab === "teams" ? "Команды" : "Ключи чтения"}</h2><p>{accessTab === "users" ? "Учётные записи и членство в командах" : accessTab === "teams" ? "Группы пользователей и доступные источники" : "Ключи для чтения выбранных источников"}</p></div><button className="settings-add" onClick={() => openModal(accessTab === "users" ? "user" : accessTab === "teams" ? "team" : "key")} disabled={busy || (accessTab === "keys" && (!!issued || !sources.length))}><I name="plus" />{accessTab === "users" ? "Добавить пользователя" : accessTab === "teams" ? "Добавить команду" : "Создать ключ"}</button></div>
-        {accessTab === "users" && <div className="settings-list">{users.length ? <><div className="settings-table-head" aria-hidden="true"><span>Пользователь</span><span>Роль</span><span>Команды</span><span>Состояние</span><span></span></div>{users.map((user) => <div className="settings-row" key={user.id}><div className="settings-user"><I name="user" /><strong>{user.id}</strong></div><span><span className="settings-role">{user.admin ? "Администратор" : "Читатель"}</span></span><span>{user.teams.join(", ") || "Без команд"}</span><span><span className={`settings-status ${user.disabled ? "is-disabled" : "is-active"}`}><I name={user.disabled ? "circle" : "circle-check"} />{user.disabled ? "Отключён" : "Активен"}</span></span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("userTeams", user)}><I name="users-group" />Команды</button><button disabled={busy} onClick={() => openModal("password", user)}><I name="key" />Сменить пароль</button><button disabled={busy} onClick={() => updateUser(user, { disabled: !user.disabled })}><I name={user.disabled ? "circle-check" : "ban"} />{user.disabled ? "Включить" : "Отключить"}</button></div></div>)}</> : <p>Пользователей пока нет.</p>}</div>}
-        {accessTab === "teams" && <div className="settings-list">{teams.length ? teams.map((team) => <div className="settings-row" key={team.id}><div><strong>{team.id}</strong><small>Команда</small></div><span>{team.sources.join(", ")}</span><span></span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("teamSources", team)}>Изменить источники</button></div></div>) : <p>Команд пока нет.</p>}</div>}
-        {accessTab === "keys" && <div className="settings-list">{keys.length ? keys.map((key) => <div className="settings-row" key={key.id}><div><strong>{key.id}</strong><small>Ключ чтения</small></div><span>{key.sources.join(", ")}</span><span>До {new Date(key.expires_at).toLocaleString("ru-RU")}</span><div className="settings-row-actions"><button disabled={busy} onClick={() => openModal("keySources", key)}>Изменить доступ</button><button disabled={busy} onClick={() => revoke(key.id)}>Отозвать</button></div></div>) : <p>Ключей пока нет.</p>}</div>}
-      </section>
-      {issued && <div className="access-issued" role="status"><strong>Ключ {issued.id} создан</strong><p>Сохраните его сейчас: повторно VEDA его не покажет.</p><textarea readOnly value={issued.key} aria-label="Новый ключ чтения" rows="3" onFocus={(e) => e.target.select()} /><label>Ссылка для входа<textarea readOnly value={`${window.location.origin}/?key=${encodeURIComponent(issued.key)}`} rows="3" onFocus={(e) => e.target.select()} /></label><p>Ссылка содержит ключ доступа. Передавайте её только доверенному получателю.</p><button type="button" onClick={() => setIssued(null)}>Скрыть ключ</button></div>}
-      <dialog className="settings-modal" ref={accessModalRef} onClose={closeModal} onCancel={closeModal} onClick={(event) => { if (event.target === accessModalRef.current) accessModalRef.current.close(); }}><div className="dialog-head"><h2>{modalTitle[accessModal?.type] || "Настройки"}</h2><button type="button" aria-label="Закрыть" onClick={() => accessModalRef.current.close()}><I name="x" /></button></div>
-        {accessModal?.type === "user" && <form onSubmit={createUser}><label>Имя пользователя<input name="id" required placeholder="reader-one" /></label><label>Начальный пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><p>Передайте начальный пароль безопасно; пользователь сможет его сменить.</p><fieldset><legend>Команды пользователя</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} /> {team.id}</label>)}</fieldset><button disabled={busy}>Создать пользователя</button></form>}
-        {accessModal?.type === "team" && <form onSubmit={saveTeam}><label>Идентификатор<input name="id" required placeholder="team-ops" /></label><fieldset><legend>Источники команды</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy || !sources.length}>Создать команду</button></form>}
-        {accessModal?.type === "key" && <form onSubmit={create}><label>Идентификатор<input name="id" required placeholder="agent-one" /></label><label>Срок в днях<input name="days" type="number" min="1" max="365" defaultValue="30" required /></label><fieldset><legend>Доступные источники</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy || !!issued || !sources.length}>Создать ключ</button></form>}
-        {accessModal?.type === "userTeams" && <form onSubmit={(event) => updateMembership(event, accessModal.item)}><fieldset><legend>Команды для {accessModal.item.id}</legend>{teams.map((team) => <label className="access-source" key={team.id}><input type="checkbox" name="teams" value={team.id} defaultChecked={accessModal.item.teams.includes(team.id)} /> {team.id}</label>)}</fieldset><button disabled={busy}>Сохранить команды</button></form>}
-        {accessModal?.type === "password" && <form onSubmit={(event) => resetPassword(event, accessModal.item)}><label>Новый пароль для {accessModal.item.id}<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Сменить пароль</button></form>}
-        {accessModal?.type === "teamSources" && <form onSubmit={(event) => saveTeam(event, accessModal.item)}><fieldset><legend>Источники для {accessModal.item.id}</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} defaultChecked={accessModal.item.sources.includes(source.id)} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy}>Сохранить команду</button></form>}
-        {accessModal?.type === "keySources" && <form onSubmit={(event) => update(event, accessModal.item)}><fieldset><legend>Источники для {accessModal.item.id}</legend>{sources.map((source) => <label className="access-source" key={source.id}><input type="checkbox" name="sources" value={source.id} defaultChecked={accessModal.item.sources.includes(source.id)} /> {source.title} ({source.id})</label>)}</fieldset><button disabled={busy}>Сохранить доступ</button></form>}
-        {message && <p role="alert">{message}</p>}
-      </dialog>
-      {sharedSession ? <p>Вход выполнен через учётную запись. Для выхода используйте профиль.</p> : <button type="button" disabled={busy} onClick={logout}>Выйти из управления доступом</button>}
-    </>}
-    {message && !accessModal && <p role="alert">{message}</p>}
-  </div>;
-}
-function GitHubConnect() {
-  const stateLabels = { pending: "Ожидает синхронизации", syncing: "Синхронизация", ready: "Синхронизирован", paused: "Приостановлен", skipped: "Нет папки docs/", blocked: "Требует внимания", error: "Ошибка синхронизации" };
-  const [status, setStatus] = useState(null);
-  const [sharedSession, setSharedSession] = useState(false);
-  const [accounts, setAccounts] = useState([]);
-  const [repoAccount, setRepoAccount] = useState(null);
-  const [selectedConnection, setSelectedConnection] = useState(null);
-  const [githubDialog, setGithubDialog] = useState(null);
-  const githubDialogRef = useRef(null);
-  useEffect(() => { if (githubDialog) githubDialogRef.current?.showModal(); else githubDialogRef.current?.close(); }, [githubDialog]);
-  const [connections, setConnections] = useState([]);
-  const [mirrors, setMirrors] = useState([]);
-  const [accountKind, setAccountKind] = useState("app");
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (repoAccount === null && accounts.length > 0) setRepoAccount(accounts.length === 1 ? accounts[0].id : "");
-  }, [accounts, repoAccount]);
-  async function json(route, options = {}) {
-    const response = await fetch(route, options);
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      const error = new Error("request failed"); error.code = body.error; error.status = response.status; throw error;
-    }
-    return response.json();
-  }
-  async function refresh() {
-    const [a, c, m] = await Promise.all([json("/api/admin/github/accounts"), json("/api/admin/github/connections"), json("/api/admin/github/mirrors")]);
-    setAccounts(a); setConnections(c); setMirrors(m);
-  }
-  useEffect(() => {
-    const controller = new AbortController();
-    json("/api/admin/session/status", { signal: controller.signal })
-      .then(async (s) => { setStatus(s.authenticated); setSharedSession(!!s.via_reader_session); if (s.authenticated) await refresh(); })
-      .catch((e) => { if (e.name !== "AbortError") setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
-    return () => controller.abort();
-  }, []);
-  useEffect(() => {
-    if (!status) return;
-    const timer = setInterval(() => { refresh().catch(() => setMessage("Не удалось обновить состояние GitHub.")); }, 10000);
-    return () => clearInterval(timer);
-  }, [status]);
-  async function send(route, data) {
-    return json(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-  }
-  async function login(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    setBusy(true); setMessage("");
-    try { await send("/api/admin/session/login", { username: data.get("username"), password: data.get("password") }); setStatus(true); refresh().catch(() => setMessage("Вход выполнен, но не удалось загрузить настройки.")); }
-    catch { setMessage("Не удалось войти. Проверьте данные и подключение."); }
-    finally { form.reset(); setBusy(false); }
-  }
-  async function setup(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    if (data.get("password") !== data.get("confirm")) { setMessage("Пароли не совпадают."); return; }
-    setBusy(true); setMessage("");
-    try { await send("/api/admin/session/setup", { username: data.get("username"), setup_token: data.get("token"), password: data.get("password") }); setMessage("Пароль установлен. Теперь войдите с именем пользователя и паролем."); form.reset(); }
-    catch { setMessage("Не удалось установить пароль. Проверьте код, срок его действия и пароль."); }
-    finally { setBusy(false); }
-  }
-  async function addAccount(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    setBusy(true); setMessage("");
-    const secret = accountKind === "app"
-      ? { kind: "app", app_id: Number(data.get("app_id")), installation_id: Number(data.get("installation_id")), private_key: data.get("private_key") }
-      : { kind: "token", token: data.get("token") };
-    try { await send("/api/admin/github/accounts", { id: data.get("id"), ...secret }); form.reset(); setGithubDialog(null); setMessage("Аккаунт подключён."); refresh().catch(() => setMessage("Аккаунт подключён, но не удалось обновить список.")); }
-    catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось подключить аккаунт. Проверьте данные и идентификатор.")); }
-    finally { if (form.elements.token) form.elements.token.value = ""; if (form.elements.private_key) form.elements.private_key.value = ""; setBusy(false); }
-  }
-  async function connect(event) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    const account = data.get("account");
-    const repository = String(data.get("repository") || "").trim();
-    const generatedId = githubSourceId(repository);
-    if (!generatedId) { setMessage("Укажите адрес GitHub в виде owner/repository или https://github.com/owner/repository."); return; }
-    const customId = String(data.get("id") || "").trim();
-    const sourceId = customId || generatedId;
-    const adopted = data.has("adopt_existing");
-    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(sourceId) || (adopted && !customId)) { setMessage("Укажите корректный идентификатор: строчные латинские буквы, цифры, дефис или подчёркивание. Для привязки существующего источника нужен его идентификатор."); return; }
-    setBusy(true); setMessage("Проверяем доступ к репозиторию и его ветке…");
-    try {
-      await send("/api/admin/github/connections", { id: sourceId, repository, account_id: account, branch: data.get("branch"), write: data.has("write"), adopt_existing: adopted });
-      form.reset(); setGithubDialog(null); setMessage(adopted ? "Источник привязан. Проверьте конфликты и отключите прежний локальный импорт." : `Репозиторий подключён как ${sourceId}; импорт выполняется в фоне.`); refresh().catch(() => setMessage("Репозиторий подключён, но не удалось обновить список."));
-    } catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось подключить репозиторий. Проверьте адрес, ветку и права аккаунта.")); }
-    finally { setBusy(false); }
-  }
-  async function logout() {
-    setBusy(true); setMessage("");
-    try { await send("/api/admin/session/logout", {}); setStatus(false); setAccounts([]); setConnections([]); setMirrors([]); }
-    catch { setMessage("Не удалось завершить сеанс."); }
-    finally { setBusy(false); }
-  }
-  async function syncConnection(id) {
-    setBusy(true); setMessage("");
-    try {
-      await send("/api/admin/github/sync", { id });
-      setMessage("Синхронизация запланирована; ожидающие изменения также могут быть отправлены.");
-      refresh().catch(() => setMessage("Синхронизация запланирована, но состояние источников обновить не удалось."));
-    } catch { setMessage("Не удалось запланировать синхронизацию. Проверьте состояние источника и сеанс администратора."); }
-    finally { setBusy(false); }
-  }
-  async function pauseConnection(connection) {
-    const paused = !connection.paused;
-    setBusy(true); setMessage("");
-    try {
-      await send("/api/admin/github/pause", { id: connection.id, paused });
-      setMessage(paused ? "Синхронизация приостановлена. Уже начатый сетевой запрос может завершиться." : "Синхронизация возобновлена; ожидающие изменения могут быть отправлены.");
-      refresh().catch(() => setMessage("Состояние изменено, но список источников обновить не удалось."));
-    } catch { setMessage("Не удалось изменить состояние синхронизации. Проверьте источник и сеанс администратора."); }
-    finally { setBusy(false); }
-  }
-  async function configureConnection(event, connection) {
-    event.preventDefault(); const data = new FormData(event.currentTarget);
-    setBusy(true); setMessage("");
-    try {
-      await json("/api/admin/github/connections", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: connection.id, account_id: data.get("account"), write: data.has("write"), expected_config_revision: connection.config_revision }) });
-      setMessage(connection.paused ? "Настройки сохранены. Источник остаётся на паузе до возобновления." : "Настройки сохранены; синхронизация проверит репозиторий и может отправить ожидающие изменения.");
-      refresh().catch(() => setMessage("Настройки сохранены, но список источников обновить не удалось."));
-    } catch (e) {
-      setMessage(githubErrorMessage(e.code, e.status, "Не удалось изменить настройки. Проверьте аккаунт и разрешение записи."));
-      refresh().catch(() => setMessage((previous) => `${previous} Не удалось обновить список.`));
-    } finally { setBusy(false); }
-  }
-  async function configureMirror(source, destination, enabled, revision) {
-    setBusy(true); setMessage("");
-    try {
-      await send("/api/admin/github/mirrors", { source_id: source, destination_id: destination, enabled, expected_revision: revision });
-      setMessage(enabled ? "Фоновое согласование включено. Проверьте состояние и конфликты." : "Согласование приостановлено; уже ожидающие отправки изменения сохраняются.");
-      await refresh();
-    } catch (e) { setMessage(githubErrorMessage(e.code, e.status, "Не удалось изменить согласование. Проверьте приватность и права записи источников.")); }
-    finally { setBusy(false); }
-  }
-  const selected = connections.find((connection) => connection.id === selectedConnection) || connections[0];
-  return <div className="github-connect github-page reader-access">
-    <p>Видимость определяется репозиторием. Wiki использует <code>veda.yaml</code>, программа — <code>docs/</code>.</p>
-    {status === false && <><form onSubmit={login}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>Войти</button></form><details><summary>Первый вход — установить пароль</summary><form onSubmit={setup}><label>Имя пользователя<input name="username" autoComplete="username" required /></label><label>Одноразовый код<input name="token" type="password" autoComplete="off" required /></label><label>Новый пароль<input name="password" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><label>Повторите пароль<input name="confirm" type="password" minLength="10" maxLength="128" autoComplete="new-password" required /></label><button disabled={busy}>Установить пароль</button></form></details></>}
-    {status === true && <>
-      <div className="github-page-actions"><button type="button" className="github-action secondary" onClick={() => { setMessage(""); setGithubDialog("account"); }}>Добавить аккаунт</button><button type="button" className="github-action primary" onClick={() => { setMessage(""); setGithubDialog("repository"); }}>Подключить репозиторий</button></div>
-      <dialog className="github-action-dialog" ref={githubDialogRef} onClose={() => setGithubDialog(null)} onCancel={() => setGithubDialog(null)} onClick={(event) => { if (event.target === githubDialogRef.current) githubDialogRef.current.close(); }}>
-        <div className="dialog-head"><h2>{githubDialog === "account" ? "Аккаунт GitHub" : "Подключить репозиторий"}</h2><button type="button" aria-label="Закрыть" onClick={() => githubDialogRef.current.close()}><I name="x" /></button></div>
-        {githubDialog === "account" && <form onSubmit={addAccount}><label>Идентификатор<input name="id" required placeholder="personal" /></label><label>Способ подключения<select value={accountKind} onChange={(e) => setAccountKind(e.target.value)}><option value="app">GitHub App</option><option value="token">Токен</option></select></label>{accountKind === "app" ? <><label>App ID<input name="app_id" type="number" min="1" step="1" required /></label><label>Installation ID<input name="installation_id" type="number" min="1" step="1" required /></label><label>Приватный ключ App<textarea name="private_key" autoComplete="off" required rows="4" /></label></> : <label>Токен<input name="token" type="password" autoComplete="off" required /></label>}<button disabled={busy}>Сохранить аккаунт</button></form>}
-        {githubDialog === "repository" && <form onSubmit={connect}><label>Адрес или owner/repository<input name="repository" required placeholder="owner/repository" /></label><label>Ветка (необязательно)<input name="branch" /></label><label>Аккаунт<select name="account" value={repoAccount || ""} onChange={(event) => setRepoAccount(event.target.value)}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" /> Разрешить запись в репозиторий</label><p>Идентификатор источника будет выбран автоматически; импорт и наблюдение начнутся после подключения.</p><details><summary>Дополнительные настройки источника</summary><label>Идентификатор источника<input name="id" placeholder="автоматически" /></label><label className="github-write"><input type="checkbox" name="adopt_existing" /> Привязать существующий приватный источник</label><p>Для привязки укажите его идентификатор и аккаунт. Локальные статьи сохранятся без автоматической отправки; прежний импорт нужно перенастроить.</p></details><button disabled={busy}>{busy ? "Проверяем…" : "Подключить"}</button></form>}
-        {message && <p role="status">{message}</p>}
-      </dialog>
-      <div className="github-workspace"><aside className="github-accounts panel"><h2>Подключённые аккаунты</h2>{accounts.map((account) => <section className="github-account" key={account.id}><strong><I name="brand-github" />{account.login || account.id}</strong><small>{account.id}</small>{connections.filter((connection) => connection.account_id === account.id).map((connection) => <button type="button" className={selected?.id === connection.id ? "github-repo active" : "github-repo"} key={connection.id} onClick={() => setSelectedConnection(connection.id)}><I name="notes" />{connection.repository}</button>)}</section>)}{connections.filter((connection) => !accounts.some((account) => account.id === connection.account_id)).length > 0 && <section className="github-account"><strong>Другие подключения</strong>{connections.filter((connection) => !accounts.some((account) => account.id === connection.account_id)).map((connection) => <button type="button" className={selected?.id === connection.id ? "github-repo active" : "github-repo"} key={connection.id} onClick={() => setSelectedConnection(connection.id)}><I name="notes" />{connection.repository}</button>)}</section>}{!accounts.length && !connections.length && <p>Аккаунты и репозитории ещё не подключены.</p>}</aside>
-      <section className="github-repository panel">{selected ? [selected].map((c) => {
-        const limited = c.last_error === "rate_limited" && Date.parse(c.next_attempt) > Date.now();
-        const detail = limited ? `Лимит GitHub, повтор после ${new Date(c.next_attempt).toLocaleString()}` : c.last_error ? githubErrorMessage(c.last_error, 0, "Проверьте состояние источника.") : "";
-        return <div key={c.id}><div className="github-breadcrumb">GitHub / {c.account_id || "Публичный доступ"} / {c.repository}</div><h2>{c.repository}</h2><p>Источник: {c.id}</p><dl className="github-facts"><div><dt>Видимость</dt><dd>{githubVisibilityLabel(c)}</dd></div><div><dt>Аккаунт</dt><dd>{c.account_id || "Без аккаунта"}</dd></div><div><dt>Состояние синхронизации</dt><dd>{stateLabels[c.state] || "Состояние неизвестно"}{detail ? ` — ${detail}` : ""}</dd></div><div><dt>Последняя проверка</dt><dd>{c.verified_at ? new Date(c.verified_at).toLocaleString("ru-RU") : "Нет данных"}</dd></div><div><dt>Право на запись</dt><dd>{c.write ? "Разрешено" : "Только чтение"}</dd></div></dl><div className="github-repo-actions"><button type="button" disabled={busy || c.paused || limited} onClick={() => syncConnection(c.id)} aria-label={`Синхронизировать ${c.id}`}>Синхронизировать</button> <button type="button" disabled={busy} onClick={() => pauseConnection(c)} aria-label={`${c.paused ? "Возобновить" : "Приостановить"} синхронизацию ${c.id}`}>{c.paused ? "Возобновить" : "Приостановить"}</button><details><summary>Настроить подключение {c.id}</summary><form key={c.config_revision} onSubmit={(e) => configureConnection(e, c)}><label>Аккаунт<select name="account" defaultValue={c.account_id || ""}><option value="">Без аккаунта — только публичное чтение</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.login} ({a.id})</option>)}</select></label><label className="github-write"><input type="checkbox" name="write" defaultChecked={c.write} /> Разрешить запись в репозиторий</label><button disabled={busy}>Сохранить настройки</button></form></details></div></div>;
-      }) : <p>Выберите репозиторий или подключите новый.</p>}</section></div>
-      <details className="github-mirrors panel"><summary>Фоновое согласование источников</summary><h3>Фоновое согласование</h3>
-      <p>Приватные источники остаются раздельными. Подключённый источник должен быть полностью синхронизирован и проверен. Расхождения требуют проверки; удаление не выполняется. Для включения нужна совместимая резервная копия: формат хранилища обновится.</p>
-      <form onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); configureMirror(d.get("source"), d.get("destination"), true, 0); }}>
-        <label>Исходный источник<input name="source" required placeholder="infra" /></label>
-        <label>Репозиторий<select name="destination" required defaultValue=""><option value="">Выберите источник GitHub</option>{connections.filter((c) => c.write && c.private && !mirrors.some((m) => m.destination_id === c.id)).map((c) => <option key={c.id} value={c.id}>{c.id} · {c.repository}</option>)}</select></label>
-        <button disabled={busy}>Включить согласование</button>
-      </form>
-      {mirrors.length > 0 && <ul>{mirrors.map((m) => <li key={m.destination_id}>{m.source_id} → {m.destination_id} · {({pending:"Ожидает",ready:"Проход завершён",syncing:"Синхронизация",blocked:"Требует внимания",error:"Ошибка",paused:"Приостановлено"})[m.state] || "Состояние неизвестно"}{m.blocked ? ` · ожидают или требуют проверки: ${m.blocked}` : ""} <button type="button" disabled={busy} onClick={() => configureMirror(m.source_id, m.destination_id, !m.enabled, m.revision)}>{m.enabled ? "Приостановить" : "Возобновить"}</button>{m.blocked_paths?.length > 0 && <details><summary>Показать статьи</summary><ul>{m.blocked_paths.map((p) => <li key={p}>{p}</li>)}</ul>{m.blocked > m.blocked_paths.length && <p>Показаны первые {m.blocked_paths.length} из {m.blocked}.</p>}</details>}</li>)}</ul>}
-      </details><p>Синхронизация также отправляет ожидающие изменения, если запись в репозиторий разрешена. Во время проверки и на паузе публичные статьи источника временно скрыты; локальная копия остаётся доступной авторизованным читателям.</p>
-      {sharedSession ? <p>Вход выполнен через учётную запись. Для выхода используйте профиль.</p> : <button onClick={logout} disabled={busy}>Выйти из управления</button>}
-    </>}
-    {message && <p role="status">{message}</p>}
-  </div>;
-}
 export function App({ linkLoginError = false }) {
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [feature, setFeature] = useState(null);
   const modal = useRef(null);
+  // The tag belongs to the displayed state, so it survives restarts of the
+  // polling effect (for example after a dialog closes) together with that state.
+  const etag = useRef("");
   useEffect(() => {
     const c = new AbortController();
-    let timer, etag = "";
+    let timer, busy = false;
     async function refreshState() {
+      clearTimeout(timer);
+      timer = undefined;
+      if (!shouldPoll(document.visibilityState, etag.current)) return;
+      busy = true;
       try {
-        const next = await fetchState(fetch, "/api/state" + window.location.search, c.signal, etag);
+        const next = await fetchState(fetch, "/api/state" + window.location.search, c.signal, etag.current);
         if (!c.signal.aborted) {
-          etag = next.etag;
+          etag.current = next.etag;
           if (!next.unchanged) setData(next.data);
           setError("");
         }
       } catch (e) {
         if (!c.signal.aborted) {
-          if (e.status) etag = "";
+          if (e.status) etag.current = "";
           if (e.status === 404) setData(null);
           setError(e.message);
         }
       } finally {
+        busy = false;
         if (!c.signal.aborted) timer = setTimeout(refreshState, 10000);
       }
     }
+    // A hidden tab leaves no timer; resume at once when it becomes visible.
+    const resume = () => { if (document.visibilityState === "visible" && !busy && timer === undefined) refreshState(); };
+    document.addEventListener("visibilitychange", resume);
     refreshState();
-    return () => { c.abort(); clearTimeout(timer); };
+    return () => { c.abort(); clearTimeout(timer); document.removeEventListener("visibilitychange", resume); };
   }, [feature]);
   useEffect(() => {
     if (feature) modal.current.showModal();
