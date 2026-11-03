@@ -3,7 +3,6 @@ package transfer
 import (
 	"net/url"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
@@ -153,5 +152,5 @@ func (s Service) ResolveDependencies(db *domain.Database, value, sourcePath, tar
 
 // blobPath is the file of an image blob, for size checks before reading it.
 func (s Service) blobPath(ref domain.BlobRef) string {
-	return path.Join(s.Store.Dir(), "blobs", ref.SHA)
+	return s.Store.BlobPath(ref.SHA)
 }

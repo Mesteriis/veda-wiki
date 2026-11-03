@@ -1,8 +1,6 @@
 package transfer
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"sort"
 	"time"
 
@@ -85,7 +83,14 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 			return domain.Move{}, domain.ErrConflict
 		}
 	}
-	copyIn := CopyRequest{SourceID: in.SourceID, SourcePath: in.SourcePath, ExpectedRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, ConfirmPublication: in.ConfirmPublication}
+	copyIn := CopyRequest{
+		SourceID:           in.SourceID,
+		SourcePath:         in.SourcePath,
+		ExpectedRevision:   in.ExpectedRevision,
+		DestinationID:      in.DestinationID,
+		DestinationPath:    in.DestinationPath,
+		ConfirmPublication: in.ConfirmPublication,
+	}
 	var rev domain.Revision
 	var dependencies Dependencies
 	var e error
@@ -101,14 +106,27 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 		return domain.Move{}, e
 	}
 	setMoveVersion(db, in, destinationSource, a, dependencies)
-	id, e := newID()
+	id, e := store.RandomID()
 	if e != nil {
 		return domain.Move{}, e
 	}
 	if db.Moves == nil {
 		db.Moves = map[string]domain.Move{}
 	}
-	m := domain.Move{ID: id, SourceID: in.SourceID, SourcePath: in.SourcePath, SourceRevision: in.ExpectedRevision, DestinationID: in.DestinationID, DestinationPath: in.DestinationPath, SHA: rev.SHA, TranslationFingerprint: domain.TranslationFingerprint(a.Translation), Assets: dependencies.Assets, Links: dependencies.Links, State: "waiting_destination", Created: time.Now().UTC().Format(time.RFC3339Nano)}
+	m := domain.Move{
+		ID:                     id,
+		SourceID:               in.SourceID,
+		SourcePath:             in.SourcePath,
+		SourceRevision:         in.ExpectedRevision,
+		DestinationID:          in.DestinationID,
+		DestinationPath:        in.DestinationPath,
+		SHA:                    rev.SHA,
+		TranslationFingerprint: domain.TranslationFingerprint(a.Translation),
+		Assets:                 dependencies.Assets,
+		Links:                  dependencies.Links,
+		State:                  "waiting_destination",
+		Created:                time.Now().UTC().Format(time.RFC3339Nano),
+	}
 	if src.ConnectionID != "" {
 		conn := db.Connections[src.ConnectionID]
 		m.SourceConnectionID, m.SourceRepositoryID, m.SourceBranch = src.ConnectionID, conn.RepositoryID, conn.Branch
@@ -221,10 +239,4 @@ func (s Service) LinkContents(sourceID string, expected map[string]string) (map[
 		return nil, err
 	}
 	return texts, nil
-}
-
-func newID() (string, error) {
-	b := make([]byte, 16)
-	_, e := rand.Read(b)
-	return hex.EncodeToString(b), e
 }

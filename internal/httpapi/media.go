@@ -4,7 +4,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 	"time"
 
@@ -48,7 +47,7 @@ func (h handler) media(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	file, err := os.Open(path.Join(h.Store.Dir(), "blobs", ref.SHA))
+	file, err := os.Open(h.Store.BlobPath(ref.SHA))
 	if err != nil {
 		http.NotFound(rw, r)
 		return

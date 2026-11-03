@@ -2,8 +2,6 @@ package syncer
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -23,12 +21,6 @@ const (
 	maxCredentialsBytes = 32768
 )
 
-func randomID() (string, error) {
-	b := make([]byte, 16)
-	_, e := rand.Read(b)
-	return hex.EncodeToString(b), e
-}
-
 // SaveAccount verifies a GitHub credential and stores it under a new account
 // ID. The returned account never carries the secret reference.
 func (m *Manager) SaveAccount(ctx context.Context, id string, secret github.Secret) (domain.GitHubAccount, error) {
@@ -39,7 +31,7 @@ func (m *Manager) SaveAccount(ctx context.Context, id string, secret github.Secr
 	if e != nil {
 		return domain.GitHubAccount{}, e
 	}
-	ref, e := randomID()
+	ref, e := store.RandomID()
 	if e != nil {
 		return domain.GitHubAccount{}, e
 	}

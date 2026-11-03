@@ -11,11 +11,17 @@ import (
 // Blobs are immutable image files named by their SHA-256 digest under
 // dir/blobs. They are written before any record references them.
 
+// BlobPath returns the file that holds the image blob with digest sha. The
+// digest is not validated; ReadBlob and VerifyBlob check the content.
+func (s *Store) BlobPath(sha string) string {
+	return path.Join(s.dir, "blobs", sha)
+}
+
 func (s *Store) readBlob(sha string) ([]byte, domain.BlobRef, error) {
 	if _, err := domain.HexKey(sha); err != nil {
 		return nil, domain.BlobRef{}, domain.ErrInvalid
 	}
-	filename := path.Join(s.dir, "blobs", sha)
+	filename := s.BlobPath(sha)
 	info, err := os.Lstat(filename)
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, domain.BlobRef{}, domain.ErrInvalid
@@ -134,13 +140,4 @@ func (s *Store) WriteBlobs(blobs map[string][]byte) (map[string]domain.BlobRef, 
 		return refs, nil
 	}
 	return refs, syncDir(directory)
-}
-
-// WriteBlob stores one image durably; see WriteBlobs.
-func (s *Store) WriteBlob(data []byte) (domain.BlobRef, error) {
-	refs, err := s.WriteBlobs(map[string][]byte{"": data})
-	if err != nil {
-		return domain.BlobRef{}, err
-	}
-	return refs[""], nil
 }
