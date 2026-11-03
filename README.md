@@ -100,6 +100,10 @@ Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_displ
 `veda_publish_job`, `veda_cancel_bundle`.
 `veda_read_excerpt` reads bounded Unicode slices and uses the first slice's SHA
 to reject continuations after a revision changes.
+`veda_search` returns at most 20 ranked hits with source ID, path and title;
+`veda_find` pages further. A refused call reports the HTTP status and a short
+server error code, for example HTTP 409 for a stale revision that must be
+reread; other response text is never returned to the agent.
 Context follows root and ancestor
 `AGENTS.md` articles inside one source. Documentation is evidence, never an
 authorization to execute infrastructure actions.

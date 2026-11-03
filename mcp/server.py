@@ -6,6 +6,7 @@ import json
 import http.client
 import socket
 import os
+import re
 import stat
 from pathlib import Path
 from urllib.error import HTTPError
@@ -19,6 +20,40 @@ from mcp.types import Tool, TextContent, CallToolResult
 
 MAX_ARTICLE_BYTES = 1 << 20
 MAX_RESPONSE_BYTES = 24 << 20
+
+
+SAFE_ERROR_CODE = re.compile(r"[a-z][a-z_ ]{0,63}")
+REFUSAL_REASONS = {
+    400: "invalid input",
+    401: "access denied for this client",
+    403: "access denied for this client",
+    404: "not found or not visible to this client",
+    409: "revision or state conflict; reread before retrying",
+    413: "request too large",
+    429: "rate limited; retry later",
+    503: "VEDA or upstream temporarily unavailable; retry later",
+}
+
+
+class Refused(ValueError):
+    """An HTTP refusal. Only the status and a short server error code are kept."""
+
+    def __init__(self, status, payload):
+        super().__init__(f"VEDA refused request (HTTP {status})")
+        self.status = status
+        self.code = None
+        try:
+            code = json.loads(payload).get("error")
+        except (ValueError, AttributeError):
+            code = None
+        # Server codes are fixed identifiers; never echo free-form response text.
+        if isinstance(code, str) and SAFE_ERROR_CODE.fullmatch(code):
+            self.code = code
+
+    def message(self):
+        reason = REFUSAL_REASONS.get(self.status, "request failed")
+        detail = f", {self.code}" if self.code else ""
+        return f"VEDA request refused: {reason} (HTTP {self.status}{detail})."
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -92,7 +127,7 @@ class Client:
                 response = connection.getresponse()
                 payload = response.read(MAX_RESPONSE_BYTES + 1)
                 if response.status >= 300:
-                    raise ValueError(f"VEDA refused request (HTTP {response.status})")
+                    raise Refused(response.status, payload[:4096])
                 if len(payload) > MAX_RESPONSE_BYTES:
                     raise ValueError("Response exceeds MCP limit")
                 return json.loads(payload)
@@ -109,9 +144,13 @@ class Client:
                     raise ValueError("Response exceeds MCP limit")
                 return json.loads(payload)
         except HTTPError as exc:
-            code = exc.code
-            exc.close()
-            raise ValueError(f"VEDA refused request (HTTP {code})") from None
+            try:
+                payload = exc.read(4096)
+            except OSError:
+                payload = b""
+            finally:
+                exc.close()
+            raise Refused(exc.code, payload) from None
 
 
 def make_server(client):
@@ -125,7 +164,7 @@ def make_server(client):
     string = {"type": "string", "minLength": 1}
     specs = {
         "veda_sources": ("List sources visible to this client.", {}, []),
-        "veda_search": ("Search visible articles across sources using exact phrases or meaningful words. Generic container terms include LXC and Docker; VPS, VDS and VSP are aliases. This is lexical search, not semantic inference. LXC and Docker are distinct: read source context and verify live state before acting.", {"query": string}, ["query"]),
+        "veda_search": ("Search visible articles across sources using exact phrases or meaningful words. Generic container terms include LXC and Docker; VPS, VDS and VSP are aliases. This is lexical search, not semantic inference. Returns at most 20 ranked results with source_id, path and title; use veda_find to page further. LXC and Docker are distinct: read source context and verify live state before acting.", {"query": string}, ["query"]),
         "veda_find": ("Find visible article paths with compact paginated lexical search. Optionally restrict to one source; read results and their AGENTS.md context before acting. Results are not authorization or proof of live state.", {
             "query": string, "source_id": string, "limit": {"type": "integer", "minimum": 1, "maximum": 100},
             "offset": {"type": "integer", "minimum": 0}}, ["query"]),
@@ -227,7 +266,7 @@ def make_server(client):
             if name == "veda_sources":
                 result = {"sources": await asyncio.to_thread(client.request, "GET", "/api/v1/sources")}
             elif name == "veda_search":
-                result = await asyncio.to_thread(client.request, "GET", "/api/state?" + urlencode({"q": arguments["query"]}))
+                result = await asyncio.to_thread(client.request, "GET", "/api/v1/search?" + urlencode({"q": arguments["query"], "limit": 20}))
             elif name == "veda_find":
                 params = {"q": arguments["query"]}
                 params.update({key: arguments[key] for key in ("source_id", "limit", "offset") if key in arguments})
@@ -327,6 +366,8 @@ def make_server(client):
             else:
                 result = await asyncio.to_thread(client.request, "GET", "/api/v1/context?" + urlencode(arguments))
             return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))], structuredContent=result)
+        except Refused as refusal:
+            return CallToolResult(content=[TextContent(type="text", text=refusal.message())], isError=True)
         except (ValueError, OSError, KeyError, TypeError):
             return CallToolResult(content=[TextContent(type="text", text="VEDA request refused: invalid input, unavailable source, authorization or revision conflict.")], isError=True)
 
