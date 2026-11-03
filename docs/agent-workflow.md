@@ -74,7 +74,7 @@ synthetic files and do not validate deployed keys or agent configurations.
 These examples are for a server on the same machine. Loopback addresses inside
 another host or container are not reachable from the client machine. For a
 trusted directly reachable HTTPS VEDA instance, pass `--url https://VEDA-HOST
---reader-key-file /private/agent.key --allow-remote-reader-https` to the
+--reader-key-file /private/agent.key --allow-remote-reader-https` to
 `veda mcp`. Certificate and hostname verification stay enabled and redirects are
 refused; when `SSL_CERT_FILE` or `SSL_CERT_DIR` is set, only the certificates they
 name are trusted, otherwise the system roots are; use a distinct source-scoped key for each agent. A remote HTTPS
@@ -108,7 +108,12 @@ verified by this repository's tests.
 
 When a key must be sent by the local machine instead of stored on the server,
 run the same remote command with `--reader-key-preamble` under
-`veda mcp-relay --key-file /private/agent.key -- ssh pve '...'`.
+`veda mcp-relay --key-file /private/agent.key -- ssh pve '...'`. This `ssh pve`
+example has not been exercised end to end.
+
+A call whose arguments fail validation returns an error result reading `Input
+validation error: <reason>`; the reason names only the property, never an
+argument value.
 
 ## Project instructions
 

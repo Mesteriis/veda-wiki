@@ -2,7 +2,6 @@ package client
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"syscall"
@@ -50,7 +49,7 @@ func readKeyFile(path string) (string, error) {
 		return "", err
 	}
 	if !validKey(string(data)) {
-		return "", fmt.Errorf("invalid key")
+		return "", errors.New("invalid key")
 	}
 	return string(data), nil
 }

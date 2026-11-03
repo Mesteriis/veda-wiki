@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 )
 
@@ -15,7 +16,9 @@ import (
 // add trusted roots on every platform, as they did for the Python adapter's
 // OpenSSL; Go itself ignores them on macOS.
 func TestHonorsCertificateEnvironment(t *testing.T) {
+	var served atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		served.Add(1)
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
@@ -38,6 +41,9 @@ func TestHonorsCertificateEnvironment(t *testing.T) {
 	t.Setenv("SSL_CERT_DIR", "")
 	if request() == nil {
 		t.Fatal("untrusted certificate accepted")
+	}
+	if n := served.Load(); n != 0 {
+		t.Fatalf("%d requests reached the handler despite the untrusted certificate", n)
 	}
 	t.Setenv("SSL_CERT_FILE", certFile)
 	if err := request(); err != nil {

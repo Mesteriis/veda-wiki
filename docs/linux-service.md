@@ -56,7 +56,8 @@ starting or retrying; do not remove migration artifacts blindly.
 Set up and test backups before relying on the service. Keep the executable and
 state versions compatible during restore; the example unit is not an automated
 backup or recovery mechanism. Successful CI runs also provide temporary
-`veda-linux-ci` artifacts for amd64 and arm64, with a SHA-256 manifest. These
+`veda-ci` artifacts for linux-amd64, linux-arm64 and darwin-arm64, with a
+SHA-256 manifest. These
 are CI builds, not signed releases, and expire under GitHub Actions retention.
 Verify the manifest before installing. A locally built ARM64 archive passed a
 synthetic Linux ARM64 container check for health, REST, isolation, embedded UI,

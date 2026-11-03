@@ -52,6 +52,6 @@ jobs:
         run: scripts/smoke_fresh_systemd.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: veda-linux-ci
+          name: veda-ci
           path: ${{ runner.temp }}/veda-artifacts/
           if-no-files-found: error
