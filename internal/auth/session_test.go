@@ -24,3 +24,22 @@ func TestLoginAttemptTableIsBounded(t *testing.T) {
 		t.Fatal("expired identities were not pruned", len(s.attempts))
 	}
 }
+
+// A login without Current cannot confirm restricted sessions, so pruning
+// treats scoped and user sessions as no longer valid instead of panicking.
+func TestIssueWithoutCurrentPrunesRestrictedSessions(t *testing.T) {
+	s := &Sessions{}
+	now := time.Now()
+	grants := []Grant{{Scoped: true, Scope: [32]byte{1}}, {Named: true, User: SessionUser{ID: "person"}}, {}}
+	for _, grant := range grants {
+		if _, err := s.Issue(Login{Now: now, Authenticate: func() (Grant, bool) { return grant, true }, Current: func(Grant) bool { return true }}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Issue(Login{Now: now, Authenticate: func() (Grant, bool) { return Grant{}, true }}); err != nil {
+		t.Fatal(err)
+	}
+	if active, scoped := s.Count(); active != 2 || scoped != 0 || len(s.users) != 0 {
+		t.Fatal("restricted sessions survived a login without Current", active, scoped, len(s.users))
+	}
+}

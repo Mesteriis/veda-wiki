@@ -69,7 +69,8 @@ type Login struct {
 	// Authenticate checks the credentials and returns what they grant.
 	Authenticate func() (Grant, bool)
 	// Current reports whether an existing scoped or named session is still
-	// valid; invalid ones are pruned before the session limit is applied.
+	// valid; invalid ones are pruned before the session limit is applied. A
+	// nil Current treats every scoped and named session as invalid.
 	Current func(Grant) bool
 }
 
@@ -207,10 +208,14 @@ func (s *Sessions) Issue(l Login) (string, error) {
 	if !ok {
 		return "", ErrDenied
 	}
+	current := l.Current
+	if current == nil {
+		current = func(Grant) bool { return false }
+	}
 	for h, expiry := range s.active {
 		scope, restricted := s.scoped[h]
 		user, isUser := s.users[h]
-		if !expiry.After(l.Now) || (restricted && !l.Current(Grant{Scoped: true, Scope: scope})) || (isUser && !l.Current(Grant{Named: true, User: user})) {
+		if !expiry.After(l.Now) || (restricted && !current(Grant{Scoped: true, Scope: scope})) || (isUser && !current(Grant{Named: true, User: user})) {
 			s.forget(h)
 		}
 	}
@@ -243,7 +248,8 @@ func (s *Sessions) Issue(l Login) (string, error) {
 }
 
 // Count returns the number of live-or-unpruned sessions and how many of them
-// are scoped to an access key.
+// are scoped to an access key. It is a test seam for handler tests in other
+// packages; production code does not call it.
 func (s *Sessions) Count() (active, scoped int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
