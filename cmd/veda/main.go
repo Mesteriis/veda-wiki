@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Mesteriis/veda-wiki/internal/render"
+	"github.com/Mesteriis/veda-wiki/internal/search"
 	"html/template"
 	"io/fs"
 	"net"
@@ -306,7 +307,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("graph") == "1" {
 		v.GraphEdges = render.GraphEdges(s.Pages)
 	}
-	terms := searchTerms(query)
+	terms := search.Terms(query)
 	scores := map[string]int{}
 	w.Store.mu.RLock()
 	for _, source := range w.Store.db.Sources {
@@ -359,7 +360,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		if name == "" && (env == "" || env == "all" || env == id) {
 			score := 1
 			if query != "" {
-				score = searchRevisions(query, p.Path, p.SearchSourceTitle, p.SearchOriginal, p.SearchDisplayed, terms)
+				score = search.Revisions(query, p.Path, p.SearchSourceTitle, p.SearchOriginal, p.SearchDisplayed, terms)
 			}
 			if score > 0 {
 				v.Pages = append(v.Pages, p)

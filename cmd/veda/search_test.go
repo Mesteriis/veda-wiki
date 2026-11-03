@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"math/rand"
+	"github.com/Mesteriis/veda-wiki/internal/search"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -10,36 +10,6 @@ import (
 	"testing"
 	"time"
 )
-
-func TestSearchTermsAndRanking(t *testing.T) {
-	terms := searchTerms("создай контейнер на моём VPS")
-	if len(terms) != 2 {
-		t.Fatal("unexpected tokens", terms)
-	}
-	if score := searchScore("создай контейнер на моём VPS", "example-vps/docs/setup.md", "Deploy an LXC guest", terms); score == 0 {
-		t.Fatal("alias and source match missing")
-	}
-	qTypo := "создай контейнер на моем VSP"
-	if score := searchScore(qTypo, "example-vps/docs/setup.md", "Deploy an LXC guest", searchTerms(qTypo)); score == 0 {
-		t.Fatal("VSP alias did not find VPS documentation")
-	}
-	if score := searchScore(qTypo, "example-vps/docs/docker.md", "Docker service", searchTerms(qTypo)); score == 0 {
-		t.Fatal("container request did not find Docker documentation")
-	}
-	if score := searchScore("lxc vps", "example-vps/docs/docker.md", "Docker service", searchTerms("lxc vps")); score != 0 {
-		t.Fatal("specific LXC request matched Docker-only documentation")
-	}
-	if score := searchScore("создай контейнер на моём VPS", "example-vps/docs/backup.md", "Backup instructions", terms); score != 0 {
-		t.Fatal("single token matched a multiword query")
-	}
-	q := "container VPS"
-	ts := searchTerms(q)
-	exact := searchScore(q, "container VPS setup", "", ts)
-	partial := searchScore(q, "example-vps/setup.md", "LXC setup", ts)
-	if exact <= partial || partial == 0 {
-		t.Fatal("unexpected ranking", exact, partial)
-	}
-}
 
 func TestSearchUsesOneRevisionDuringConcurrentUpdates(t *testing.T) {
 	s := testStore(t)
@@ -250,9 +220,9 @@ func TestCompactSearchPaginationAndScope(t *testing.T) {
 	for _, token := range []string{"", key} {
 		r := call("/api/v1/search?q=lxc+vps&limit=1&offset=1", token)
 		var result struct {
-			Results []searchHit `json:"results"`
-			Total   int         `json:"total"`
-			Offset  int         `json:"offset"`
+			Results []search.Hit `json:"results"`
+			Total   int          `json:"total"`
+			Offset  int          `json:"offset"`
 		}
 		if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &result) != nil || result.Total != 2 || result.Offset != 1 || len(result.Results) != 1 || result.Results[0].SourceID != "open" || strings.Contains(r.Body.String(), "private") {
 			t.Fatal("invalid page or scope", r.Code)
@@ -264,77 +234,5 @@ func TestCompactSearchPaginationAndScope(t *testing.T) {
 	}
 	if call("/api/v1/search?q=", key).Code != 400 || call("/api/v1/search?q=lxc&limit=101", key).Code != 400 {
 		t.Fatal("invalid query accepted")
-	}
-}
-
-func TestExactPhraseFastPathPreservesSearchRanking(t *testing.T) {
-	for _, tc := range []struct {
-		query, metadata, body string
-		want                  int
-	}{
-		{"container vps", "path", "Mixed heading\ncontainer vps\nmore", 1000},
-		{"CONTAINER VPS", "path", "Mixed heading\ncontainer vps\nmore", 1000},
-		{"container vps", "path", "Mixed heading\nCONTAINER VPS\nmore", 1000},
-		{"контейнер VPS", "path", "Контейнер VPS", 1000},
-		{"k", "path", "K", 1000},
-		{"container vps", "path", strings.Repeat("X", 8190) + "container vps", 1000},
-		{"lxc vps", "vps/docker.md", "Docker service", 0},
-	} {
-		if got := searchScore(tc.query, tc.metadata, tc.body, searchTerms(tc.query)); got != tc.want {
-			t.Fatalf("query %q got %d, want %d", tc.query, got, tc.want)
-		}
-	}
-}
-
-// Compare the request-local scratch path with the original strings.ToLower
-// semantics, including Unicode fallback and successive documents of different sizes.
-func TestSearchScratchMatchesOriginalScoring(t *testing.T) {
-	reference := func(query, metadata, body string, terms [][]string) int {
-		query, metadata, body = strings.ToLower(query), strings.ToLower(metadata), strings.ToLower(body)
-		if strings.Contains(metadata, query) || strings.Contains(body, query) {
-			return 1000
-		}
-		hits, score := 0, 0
-		for _, group := range terms {
-			inMetadata, inBody := false, false
-			for _, word := range group {
-				inMetadata = inMetadata || strings.Contains(metadata, word)
-				inBody = inBody || strings.Contains(body, word)
-			}
-			if inMetadata || inBody {
-				hits++
-				if inMetadata {
-					score += 3
-				} else {
-					score++
-				}
-			}
-		}
-		required := 1
-		if len(terms) > 1 {
-			required = 2
-		}
-		if len(terms) == 0 || hits < required {
-			return 0
-		}
-		return score
-	}
-	rng := rand.New(rand.NewSource(42))
-	words := []string{"Container", "vPs", "LXC", "docker", "other", "КОНТЕЙНЕР", "K", "Ⱥ", "İ", "\xff", ""}
-	queries := []string{"container vps", "LXC", "контейнер", "K", "docker vps", "other", "создай", "K", "Ⱥ", "İ", "\xff"}
-	var scratch []byte
-	for i := 0; i < 1000; i++ {
-		var body strings.Builder
-		for j := 0; j < rng.Intn(30); j++ {
-			body.WriteString(words[rng.Intn(len(words))])
-			body.WriteByte(' ')
-		}
-		q, meta := queries[rng.Intn(len(queries))], words[rng.Intn(len(words))]
-		terms := searchTerms(q)
-		got := searchScoreWithScratch(q, meta, body.String(), terms, &scratch)
-		want := reference(q, meta, body.String(), terms)
-		if got != want {
-			t.Fatalf("case %d query %q metadata %q: got %d want %d", i, q, meta, got, want)
-		}
 	}
 }

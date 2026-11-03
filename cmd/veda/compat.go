@@ -1,6 +1,11 @@
 package main
 
-import "github.com/Mesteriis/veda-wiki/internal/domain"
+import (
+	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/search"
+)
 
 // Temporary aliases while the backend moves into internal packages. Each
 // restructure task removes the entries it no longer needs; Task 15 deletes
@@ -68,3 +73,12 @@ var (
 	repositoryTarget            = domain.RepositoryTarget
 	directoryReadmeTarget       = domain.DirectoryReadmeTarget
 )
+
+// findArticles ranks against a snapshot taken under the store read lock;
+// ranking runs after the lock is released.
+func (s *Store) findArticles(query, sourceID string, public bool) []search.Hit {
+	s.mu.RLock()
+	candidates := search.Candidates(s.db, sourceID, public, time.Now())
+	s.mu.RUnlock()
+	return search.Rank(candidates, query)
+}
