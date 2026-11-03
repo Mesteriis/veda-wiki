@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/agentctx"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
@@ -403,7 +404,7 @@ func (w Wiki) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bo
 			return
 		}
 		result, err := w.Store.agentContext(sourceID, target, !owner && !reader)
-		if errors.Is(err, errContextLimit) {
+		if errors.Is(err, agentctx.ErrContextLimit) {
 			jsonResponse(rw, 413, map[string]string{"error": "context exceeds response limit"})
 			return
 		}

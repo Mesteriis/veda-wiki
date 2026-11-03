@@ -34,7 +34,7 @@ type Request struct {
 // read lock.
 type Service struct {
 	Store  *store.Store
-	Status func(db *domain.Database, sourceID string, src domain.Source) any
+	Status func(db domain.Database, sourceID string, src domain.Source) domain.SourceStatus
 }
 
 func validTranslationFingerprint(value *string) bool {
@@ -85,7 +85,7 @@ func (s Service) Validate(in Request) (map[string]any, error) {
 		}
 		var status any
 		if s.Status != nil {
-			status = s.Status(db, in.SourceID, src)
+			status = s.Status(*db, in.SourceID, src)
 		}
 		result = map[string]any{
 			"source_id": in.SourceID, "path": in.Path, "expected_revision": in.ExpectedRevision,

@@ -25,9 +25,9 @@ type PlanItem struct {
 // reservation: execution must revalidate every revision and destination.
 // The statuses are those of Service.Status.
 type Plan struct {
-	Articles          []PlanItem `json:"articles"`
-	SourceStatus      any        `json:"source_status"`
-	DestinationStatus any        `json:"destination_status"`
+	Articles          []PlanItem           `json:"articles"`
+	SourceStatus      *domain.SourceStatus `json:"source_status"`
+	DestinationStatus *domain.SourceStatus `json:"destination_status"`
 }
 
 // DirectoryTransferSource resolves a directory link of the article at
@@ -59,8 +59,9 @@ func (s Service) PlanTransfer(in CopyRequest) (Plan, error) {
 			return err
 		}
 		if s.Status != nil {
-			plan.SourceStatus = s.Status(db, in.SourceID, db.Sources[in.SourceID])
-			plan.DestinationStatus = s.Status(db, in.DestinationID, db.Sources[in.DestinationID])
+			source := s.Status(*db, in.SourceID, db.Sources[in.SourceID])
+			destination := s.Status(*db, in.DestinationID, db.Sources[in.DestinationID])
+			plan.SourceStatus, plan.DestinationStatus = &source, &destination
 		}
 		return nil
 	})

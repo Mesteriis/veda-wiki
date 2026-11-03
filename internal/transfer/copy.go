@@ -16,7 +16,7 @@ import (
 // status for transfer plans; it runs under the store read lock.
 type Service struct {
 	Store  *store.Store
-	Status func(db *domain.Database, sourceID string, src domain.Source) any
+	Status func(db domain.Database, sourceID string, src domain.Source) domain.SourceStatus
 }
 
 // CopyRequest asks to copy one article, or with IncludeLinked its linked

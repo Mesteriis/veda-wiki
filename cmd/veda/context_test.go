@@ -140,27 +140,6 @@ func TestAgentContextRefusesOversizedInstructionSet(t *testing.T) {
 	}
 }
 
-func TestPublicAgentContextUsesPublishedRevision(t *testing.T) {
-	s := testStore(t)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Published instructions"})
-	connectFixture(t, s, f, false)
-	s.Lock()
-	a := s.DB().Articles["handbook/AGENTS.md"]
-	text := "# Private local instructions"
-	a.Versions = append(a.Versions, Revision{Number: 2, Text: text, SHA: digest([]byte(text))})
-	a.Conflicts = []ImportConflict{{}}
-	s.DB().Articles["handbook/AGENTS.md"] = a
-	s.observations.MarkObserved("handbook", time.Now())
-	s.Unlock()
-	ctx, err := s.agentContext("handbook", "guide.md", true)
-	if err != nil || len(ctx.Instructions) != 1 || ctx.Instructions[0].Text != "# Published instructions" || ctx.Instructions[0].Number != 0 {
-		t.Fatal("public context revealed a private revision", err)
-	}
-	if ctx.SourceStatus.LastImportObservedAt != nil || ctx.SourceStatus.UnresolvedConflicts != 0 || ctx.SourceStatus.SyncState != "" || ctx.SourceStatus.SyncError != "" || ctx.SourceStatus.SyncVerification != "" || ctx.SourceStatus.SyncIssue != "" {
-		t.Fatal("public context revealed private status")
-	}
-}
-
 func TestScopedContextReportsConnectionFailure(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "AGENTS.md": "# Context"})

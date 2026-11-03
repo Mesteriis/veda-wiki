@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	"github.com/Mesteriis/veda-wiki/internal/agentctx"
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/search"
@@ -37,6 +38,8 @@ type (
 	GitHubConnection = domain.GitHubConnection
 	SourceMirror     = domain.SourceMirror
 	Page             = domain.Page
+	contextStatus    = domain.SourceStatus
+	agentContext     = agentctx.Result
 )
 
 var (
@@ -62,8 +65,6 @@ var (
 	enqueueWrite              = domain.EnqueueWrite
 	reconcileMoves            = domain.ReconcileMoves
 	moveDeletionLocks         = domain.MoveDeletionLocks
-	bundleLocks               = domain.BundleLocks
-	moveOperationLocks        = domain.MoveOperationLocks
 	conflictResolutionBlocked = domain.ConflictResolutionBlocked
 	displayedRevision         = domain.DisplayedRevision
 	imageRef                  = domain.ImageRef
@@ -96,17 +97,33 @@ type (
 // translation returns the translation service for this store. Validation
 // reports the source status as the agent context does.
 func (s *Store) translation() translation.Service {
-	return translation.Service{Store: s.Store, Status: func(_ *Database, sourceID string, src Source) any {
-		return s.sourceStatusLocked(sourceID, src)
-	}}
+	return translation.Service{Store: s.Store, Status: s.sourceStatus}
 }
 
 // transfer returns the copy and move service for this store. Plans report
 // source statuses as the agent context does.
 func (s *Store) transfer() transfer.Service {
-	return transfer.Service{Store: s.Store, Status: func(_ *Database, sourceID string, src Source) any {
-		return s.sourceStatusLocked(sourceID, src)
-	}}
+	return transfer.Service{Store: s.Store, Status: s.sourceStatus}
+}
+
+// sourceStatus reports a source from the given snapshot and this store's
+// import observations.
+func (s *Store) sourceStatus(db domain.Database, sourceID string, src Source) domain.SourceStatus {
+	return agentctx.Status(db, s.observations, sourceID, src, time.Now())
+}
+
+// agentContext, proposalBase and newProposalBase adapt the agent context
+// package to this store until the HTTP layer moves.
+func (s *Store) agentContext(sourceID, target string, public bool) (agentctx.Result, error) {
+	return agentctx.Context(s.Store, s.observations, sourceID, target, public)
+}
+
+func (s *Store) proposalBase(sourceID, path string) (map[string]any, error) {
+	return agentctx.ProposalBase(s.Store, s.observations, sourceID, path)
+}
+
+func (s *Store) newProposalBase(sourceID, path string) (map[string]any, error) {
+	return agentctx.NewProposalBase(s.Store, s.observations, sourceID, path)
 }
 
 // syncer returns the synchronization manager for this store. Operations that

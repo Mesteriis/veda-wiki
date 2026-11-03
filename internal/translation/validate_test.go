@@ -19,9 +19,12 @@ func TestValidateOnlyReadsTheStore(t *testing.T) {
 	}
 	readOnly := Service{Store: store.Detached(s.Dir(), storetest.Read(t, s.Store))}
 	called := false
-	readOnly.Status = func(_ *domain.Database, sourceID string, _ domain.Source) any { called = true; return sourceID }
+	readOnly.Status = func(_ domain.Database, sourceID string, _ domain.Source) domain.SourceStatus {
+		called = true
+		return domain.SourceStatus{SyncState: sourceID}
+	}
 	got, err := readOnly.Validate(Request{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Руководство\n\nЗапустите `install`."})
-	if err != nil || got["structural_valid"] != true || got["saved"] != false || got["source_status"] != "program" || !called {
+	if err != nil || got["structural_valid"] != true || got["saved"] != false || got["source_status"] != (domain.SourceStatus{SyncState: "program"}) || !called {
 		t.Fatal("read-only validation failed", got, err)
 	}
 	if _, err = readOnly.Submit(Request{SourceID: "program", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Руководство\n\nЗапустите `install`."}); err == nil {

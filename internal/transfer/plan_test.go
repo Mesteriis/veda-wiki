@@ -53,15 +53,15 @@ func TestTransferPlanReportsStatusOfBothSourcesFromOneSnapshot(t *testing.T) {
 	s.source("to", "public")
 	s.put("from", "a.md", "# A", 0)
 	statuses := map[string]string{}
-	s.Status = func(db *domain.Database, sourceID string, src domain.Source) any {
+	s.Status = func(db domain.Database, sourceID string, src domain.Source) domain.SourceStatus {
 		if db.Sources[sourceID].ID != src.ID {
 			t.Fatal("status source does not come from the plan snapshot", sourceID)
 		}
 		statuses[sourceID] = src.Visibility
-		return src.Visibility
+		return domain.SourceStatus{SyncState: src.Visibility}
 	}
 	plan, err := s.PlanTransfer(CopyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "a.md"})
-	if err != nil || plan.SourceStatus != "private" || plan.DestinationStatus != "public" || len(statuses) != 2 {
+	if err != nil || plan.SourceStatus == nil || plan.DestinationStatus == nil || plan.SourceStatus.SyncState != "private" || plan.DestinationStatus.SyncState != "public" || len(statuses) != 2 {
 		t.Fatal("source statuses missing from plan", plan, err)
 	}
 	clear(statuses)
