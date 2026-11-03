@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 	"strings"
 	"testing"
 )
@@ -241,7 +242,7 @@ func TestCopyLinkedRootPathsPreserveSourceDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	html, _, err := render(page)
+	html, _, err := render.Page(page)
 	if err != nil || !strings.Contains(string(html), "page=to%2Fguide.md#start") || !strings.Contains(string(html), "/media/to/img%2Ficon.png") {
 		t.Fatal("copied dependencies do not render", err)
 	}

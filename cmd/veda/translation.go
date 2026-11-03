@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 	"reflect"
 	"sort"
 	"strings"
@@ -115,7 +116,7 @@ func protectedMarkdown(value string) []string {
 		case *ast.CodeBlock:
 			result = append(result, "code:"+string(n.Lines().Value(source)))
 		case *ast.CodeSpan:
-			result = append(result, "inline:"+string(nodeText(n, source)))
+			result = append(result, "inline:"+string(render.NodeText(n, source)))
 		case *ast.Link:
 			result = append(result, "link:"+string(n.Destination))
 		case *ast.Image:

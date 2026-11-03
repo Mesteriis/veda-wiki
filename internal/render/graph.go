@@ -1,4 +1,4 @@
-package main
+package render
 
 import (
 	"net/url"
@@ -6,25 +6,27 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
 
-type GraphEdge struct {
+// Edge is a directed link between two visible pages.
+type Edge struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-// graphEdges derives links only from the already-authorized, displayed snapshot.
-func graphEdges(pages []Page) []GraphEdge {
+// GraphEdges derives links only from the already-authorized, displayed snapshot.
+func GraphEdges(pages []domain.Page) []Edge {
 	visible := make(map[string]bool, len(pages))
 	for _, page := range pages {
 		visible[page.Path] = true
 	}
-	edges := make([]GraphEdge, 0)
-	seen := make(map[GraphEdge]bool)
+	edges := make([]Edge, 0)
+	seen := make(map[Edge]bool)
 	for _, page := range pages {
-		doc := markdown.Parser().Parse(text.NewReader([]byte(page.SearchDisplayed)))
+		doc := domain.Markdown.Parser().Parse(text.NewReader([]byte(page.SearchDisplayed)))
 		_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			link, ok := n.(*ast.Link)
 			if !entering || !ok {
@@ -34,10 +36,10 @@ func graphEdges(pages []Page) []GraphEdge {
 			if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
 				return ast.WalkContinue, nil
 			}
-			sourceID, target, valid := sourceTarget(page.Path, u.Path)
+			sourceID, target, valid := SourceTarget(page.Path, u.Path)
 			if !valid {
 				parts := strings.SplitN(page.Path, "/", 2)
-				if len(parts) == 2 && identifier.MatchString(parts[0]) && path.Clean(path.Join(path.Dir(parts[1]), u.Path)) == "." {
+				if len(parts) == 2 && domain.ValidID(parts[0]) && path.Clean(path.Join(path.Dir(parts[1]), u.Path)) == "." {
 					sourceID, target, valid = parts[0], "", true
 				}
 			}
@@ -54,7 +56,7 @@ func graphEdges(pages []Page) []GraphEdge {
 					}
 				}
 			}
-			edge := GraphEdge{From: page.Path, To: key}
+			edge := Edge{From: page.Path, To: key}
 			if visible[key] && edge.From != edge.To && !seen[edge] {
 				seen[edge] = true
 				edges = append(edges, edge)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 	"image"
 	"image/color"
 	"image/png"
@@ -52,7 +53,7 @@ func TestSameMediaPathsRemainSourceScopedAfterSQLiteRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		html, _, err := render(p)
+		html, _, err := render.Page(p)
 		if err != nil || !strings.Contains(string(html), "/media/"+id+"/docs%2Fimg%2Ficon.png") || !strings.Contains(string(html), "page="+id+"%2Fdocs%2Fother.md") {
 			t.Fatal("relative links lost source identity", id, err)
 		}

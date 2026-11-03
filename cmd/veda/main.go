@@ -1,24 +1,19 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 	"html/template"
 	"io/fs"
 	"net"
 	"net/http"
-	"path"
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
 	"net/url"
 )
 
@@ -56,7 +51,7 @@ type SourceWarning struct {
 	LastImportObservedAt string `json:",omitempty"`
 }
 type View struct {
-	GraphEdges     []GraphEdge
+	GraphEdges     []render.Edge
 	Cards          []Card
 	SourceWarnings []SourceWarning
 
@@ -89,104 +84,6 @@ type Wiki struct {
 	Sync              *SyncManager
 }
 
-func headingID(id any) string {
-	if b, ok := id.([]byte); ok {
-		return string(b)
-	}
-	return fmt.Sprint(id)
-}
-
-type unicodeIDs struct{ used map[string]bool }
-
-func (ids *unicodeIDs) Generate(value []byte, _ ast.NodeKind) []byte {
-	var out strings.Builder
-	for _, r := range strings.ToLower(strings.TrimSpace(string(value))) {
-		if unicode.IsSpace(r) {
-			out.WriteByte('-')
-		} else if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r) || r == '-' || r == '_' {
-			out.WriteRune(r)
-		}
-	}
-	base := out.String()
-	if base == "" {
-		base = "section"
-	}
-	id := base
-	for n := 1; ids.used[id]; n++ {
-		id = fmt.Sprintf("%s-%d", base, n)
-	}
-	ids.used[id] = true
-	return []byte(id)
-}
-func (ids *unicodeIDs) Put(value []byte) { ids.used[string(value)] = true }
-
-// Resolve repository paths independently of the source ID so a document
-// cannot navigate into a different source using parent segments.
-func sourceTarget(pagePath, destination string) (string, string, bool) {
-	parts := strings.SplitN(pagePath, "/", 2)
-	if len(parts) != 2 || !identifier.MatchString(parts[0]) || destination == "" {
-		return "", "", false
-	}
-	target, valid := repositoryTarget(parts[1], destination)
-	return parts[0], target, valid
-}
-
-func render(p Page) (template.HTML, template.HTML, error) {
-	source := []byte(p.Text)
-	doc := markdown.Parser().Parse(text.NewReader(source), parser.WithContext(parser.NewContext(parser.WithIDs(&unicodeIDs{used: map[string]bool{}}))))
-	var toc strings.Builder
-	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if link, ok := n.(*ast.Link); ok {
-			u, e := url.Parse(string(link.Destination))
-			if e == nil && u.Scheme == "" && u.Host == "" && u.Path != "" {
-				sourceID, target, valid := sourceTarget(p.Path, u.Path)
-				if !valid {
-					parts := strings.SplitN(p.Path, "/", 2)
-					if len(parts) == 2 && identifier.MatchString(parts[0]) {
-						resolved := path.Clean(path.Join(path.Dir(parts[1]), u.Path))
-						if strings.HasPrefix(u.Path, "/") {
-							resolved = path.Clean(strings.TrimPrefix(u.Path, "/"))
-						}
-						if resolved == "." {
-							sourceID, target, valid = parts[0], "", true
-						}
-					}
-				}
-				if !valid {
-					link.Destination = nil
-				} else {
-					link.Destination = []byte("/?page=" + url.QueryEscape(sourceID+"/"+target))
-					if u.Fragment != "" {
-						link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
-					}
-				}
-			}
-		}
-		if image, ok := n.(*ast.Image); ok {
-			u, e := url.Parse(string(image.Destination))
-			if e == nil && u.Scheme == "" && u.Host == "" {
-				sourceID, target, valid := sourceTarget(p.Path, u.Path)
-				if valid {
-					image.Destination = []byte("/media/" + sourceID + "/" + url.PathEscape(target))
-				} else {
-					image.Destination = []byte("")
-				}
-			}
-		}
-		if h, ok := n.(*ast.Heading); ok {
-			if id, exists := h.AttributeString("id"); exists {
-				fmt.Fprintf(&toc, "<a class=level%d href=\"#%s\">%s</a>", h.Level, template.HTMLEscapeString(headingID(id)), template.HTMLEscapeString(string(nodeText(h, source))))
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-	var out bytes.Buffer
-	err := markdown.Renderer().Render(&out, source, doc)
-	return template.HTML(out.String()), template.HTML(toc.String()), err
-}
 func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Referrer-Policy", "no-referrer")
 	if w.Store != nil {
@@ -407,7 +304,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	v := View{Public: w.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
 	if r.URL.Query().Get("graph") == "1" {
-		v.GraphEdges = graphEdges(s.Pages)
+		v.GraphEdges = render.GraphEdges(s.Pages)
 	}
 	terms := searchTerms(query)
 	scores := map[string]int{}
@@ -452,7 +349,7 @@ func (w Wiki) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				http.Error(rw, "Page unavailable", http.StatusServiceUnavailable)
 				return
 			}
-			full.HTML, v.TOC, e = render(full)
+			full.HTML, v.TOC, e = render.Page(full)
 			if e != nil {
 				http.Error(rw, "Render unavailable", 500)
 				return

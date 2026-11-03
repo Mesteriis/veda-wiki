@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -32,7 +33,7 @@ func TestGraphUsesVisibleMarkdownLinksOnly(t *testing.T) {
 			t.Fatalf("status: %d", r.Code)
 		}
 		var result struct {
-			View struct{ GraphEdges []GraphEdge }
+			View struct{ GraphEdges []render.Edge }
 		}
 		if err := json.Unmarshal(r.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
@@ -40,7 +41,7 @@ func TestGraphUsesVisibleMarkdownLinksOnly(t *testing.T) {
 		if len(result.View.GraphEdges) != tc.want {
 			t.Fatalf("public=%v edges=%+v", tc.public, result.View.GraphEdges)
 		}
-		if result.View.GraphEdges[0] != (GraphEdge{From: "public/guide.md", To: "public/docs/README.md"}) && tc.public {
+		if result.View.GraphEdges[0] != (render.Edge{From: "public/guide.md", To: "public/docs/README.md"}) && tc.public {
 			t.Fatal(result.View.GraphEdges)
 		}
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,7 +41,7 @@ func TestMovePreservesMatchingRelativeLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	html, _, err := render(page)
+	html, _, err := render.Page(page)
 	if err != nil || !strings.Contains(string(html), "to%2Fguide.md#start") {
 		t.Fatal("link was not preserved", err)
 	}

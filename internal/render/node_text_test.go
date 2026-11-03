@@ -1,9 +1,10 @@
-package main
+package render
 
 import (
 	"bytes"
 	"testing"
 
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
@@ -23,7 +24,7 @@ func TestNodeTextMatchesGoldmarkNodeText(t *testing.T) {
 	headings, spans := 0, 0
 	for _, src := range sources {
 		source := []byte(src)
-		doc := markdown.Parser().Parse(text.NewReader(source))
+		doc := domain.Markdown.Parser().Parse(text.NewReader(source))
 		err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			if !entering {
 				return ast.WalkContinue, nil
@@ -38,7 +39,7 @@ func TestNodeTextMatchesGoldmarkNodeText(t *testing.T) {
 			}
 			//lint:ignore SA1019 the deprecated method is the oracle for the replacement helper
 			want := n.Text(source)
-			if got := nodeText(n, source); !bytes.Equal(got, want) {
+			if got := NodeText(n, source); !bytes.Equal(got, want) {
 				t.Errorf("%T in %q: got %q, want %q", n, src, got, want)
 			}
 			return ast.WalkContinue, nil

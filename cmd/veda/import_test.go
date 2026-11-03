@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 	"image"
 	"image/png"
 	"os"
@@ -631,7 +632,7 @@ func TestImportMediaPrivacyIntegrityAndMarkdownLinks(t *testing.T) {
 		t.Fatal(r.Code)
 	}
 	p, _ := s.page("handbook/README.md", false)
-	body, _, e := render(p)
+	body, _, e := render.Page(p)
 	if e != nil || !strings.Contains(string(body), "/media/handbook/assets%2Fcover.png") {
 		t.Fatal(body, e)
 	}
