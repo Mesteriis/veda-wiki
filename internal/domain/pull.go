@@ -87,7 +87,11 @@ func ObservedWrite(db *Database, sourceID, p, hash, commit string, assets map[st
 			}
 		}
 		eligibleState := job.State != "complete" && job.State != "superseded" && (job.State != "conflict" || (job.PreparedCommit != "" && job.Revision == firstPrepared))
-		eligible := job.SourceID == sourceID && job.Path == p && job.SHA == hash && eligibleState && ((len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0) || (complete && AssetsPresent(Source{Assets: assets}, job.Assets) && linksMatch))
+		eligible := job.SourceID == sourceID &&
+			job.Path == p &&
+			job.SHA == hash &&
+			eligibleState &&
+			((len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0) || (complete && AssetsPresent(Source{Assets: assets}, job.Assets) && linksMatch))
 		matches[id] = eligible
 		if eligible && job.Revision > matched && (firstPrepared == 0 || job.Revision == firstPrepared) {
 			matched = job.Revision
@@ -146,7 +150,16 @@ func ConfirmSourceDeletions(db *Database, connectionID string, files map[string]
 		}
 		target, exists := db.Articles[move.DestinationID+"/"+move.DestinationPath]
 		destination, dstOK := db.Sources[move.DestinationID]
-		valid := exists && dstOK && !target.Deleted && len(target.Versions) == 1 && target.Versions[0].SHA == move.SHA && destination.ConnectionID == move.DestinationConnectionID && TranslationFingerprint(original.Translation) == move.TranslationFingerprint && TranslationFingerprint(target.Translation) == TranslationFingerprint(MovedTranslation(original.Translation)) && AssetsPresent(destination, move.Assets) && LinksPresent(*db, move.DestinationID, move.Links)
+		valid := exists &&
+			dstOK &&
+			!target.Deleted &&
+			len(target.Versions) == 1 &&
+			target.Versions[0].SHA == move.SHA &&
+			destination.ConnectionID == move.DestinationConnectionID &&
+			TranslationFingerprint(original.Translation) == move.TranslationFingerprint &&
+			TranslationFingerprint(target.Translation) == TranslationFingerprint(MovedTranslation(original.Translation)) &&
+			AssetsPresent(destination, move.Assets) &&
+			LinksPresent(*db, move.DestinationID, move.Links)
 		if !assetsAvailable(move.Assets) {
 			valid = false
 		}

@@ -102,7 +102,12 @@ func (s Service) ResolveConflict(sourceID, p string, index, expected int, resolu
 		if resolution == "upstream" {
 			a.Deleted = incoming.Deleted
 			if !incoming.Deleted {
-				a.Versions = append(append([]domain.Revision(nil), a.Versions...), domain.Revision{Number: len(a.Versions) + 1, Text: incoming.Incoming, SHA: incoming.IncomingSHA, Created: time.Now().UTC().Format(time.RFC3339Nano)})
+				a.Versions = append(append([]domain.Revision(nil), a.Versions...), domain.Revision{
+					Number:  len(a.Versions) + 1,
+					Text:    incoming.Incoming,
+					SHA:     incoming.IncomingSHA,
+					Created: time.Now().UTC().Format(time.RFC3339Nano),
+				})
 			}
 		}
 		db.Articles[key] = a

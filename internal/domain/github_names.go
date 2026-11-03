@@ -30,7 +30,17 @@ func RepositoryName(value string) (string, error) {
 
 // ValidBranch reports whether branch is a safe Git branch name.
 func ValidBranch(branch string) bool {
-	return len(branch) > 0 && len(branch) < 200 && !strings.HasPrefix(branch, "-") && !strings.HasPrefix(branch, "/") && !strings.HasSuffix(branch, "/") && !strings.HasSuffix(branch, ".") && !strings.HasSuffix(branch, ".lock") && !strings.Contains(branch, "..") && !strings.Contains(branch, "//") && !strings.ContainsAny(branch, " ~^:?*[\\\r\n\x00") && !strings.Contains(branch, "@{")
+	return len(branch) > 0 &&
+		len(branch) < 200 &&
+		!strings.HasPrefix(branch, "-") &&
+		!strings.HasPrefix(branch, "/") &&
+		!strings.HasSuffix(branch, "/") &&
+		!strings.HasSuffix(branch, ".") &&
+		!strings.HasSuffix(branch, ".lock") &&
+		!strings.Contains(branch, "..") &&
+		!strings.Contains(branch, "//") &&
+		!strings.ContainsAny(branch, " ~^:?*[\\\r\n\x00") &&
+		!strings.Contains(branch, "@{")
 }
 
 // ValidGitHubName reports whether s is a GitHub account or repository name part.

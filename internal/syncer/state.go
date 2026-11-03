@@ -54,11 +54,26 @@ func (m *Manager) observeChangedHead(expected domain.GitHubConnection, head stri
 // snapshot without downloading every blob again. Never accept an observation
 // from a request that raced with reconfiguration or a different import.
 func (m *Manager) observeGitHubHead(expected domain.GitHubConnection, head, tree string) error {
+	// Exclusive is a write-locked read here: it preserves the write-lock span
+	// the old code held while it checked and recorded the observation.
 	return m.store.Exclusive(func(ex *store.Exclusive) error {
 		db := ex.DB()
 		c, ok := db.Connections[expected.ID]
 		src, exists := db.Sources[expected.ID]
-		if ex.Invalid() || !ok || !exists || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || c.Private != expected.Private || c.Verification != "verified" || c.LastPull != head || c.TreeSHA != tree || src.ConnectionID != c.ID || src.ImportCommit != head || (src.Visibility == "private") != c.Private {
+		if ex.Invalid() ||
+			!ok ||
+			!exists ||
+			c.Paused ||
+			c.ConfigRevision != expected.ConfigRevision ||
+			c.RepositoryID != expected.RepositoryID ||
+			c.Branch != expected.Branch ||
+			c.Private != expected.Private ||
+			c.Verification != "verified" ||
+			c.LastPull != head ||
+			c.TreeSHA != tree ||
+			src.ConnectionID != c.ID ||
+			src.ImportCommit != head ||
+			(src.Visibility == "private") != c.Private {
 			return domain.ErrConflict
 		}
 		for _, ref := range src.Assets {
@@ -249,7 +264,19 @@ func (m *Manager) setJobFor(expected domain.GitHubConnection, original domain.Sy
 			return domain.ErrNotFound
 		}
 		c, connected := db.Connections[expected.ID]
-		if !connected || c.Paused || c.ConfigRevision != expected.ConfigRevision || c.RepositoryID != expected.RepositoryID || c.Branch != expected.Branch || j.SourceID != expected.ID || j.Revision != original.Revision || j.SHA != original.SHA || j.Visibility != original.Visibility || j.State == "complete" || j.State == "superseded" || (j.State == "conflict" && state != "conflict") || (j.State != original.State && j.State != "prepared") {
+		if !connected ||
+			c.Paused ||
+			c.ConfigRevision != expected.ConfigRevision ||
+			c.RepositoryID != expected.RepositoryID ||
+			c.Branch != expected.Branch ||
+			j.SourceID != expected.ID ||
+			j.Revision != original.Revision ||
+			j.SHA != original.SHA ||
+			j.Visibility != original.Visibility ||
+			j.State == "complete" ||
+			j.State == "superseded" ||
+			(j.State == "conflict" && state != "conflict") ||
+			(j.State != original.State && j.State != "prepared") {
 			return domain.ErrConflict
 		}
 		j.State = state
@@ -275,7 +302,17 @@ func (m *Manager) prepareJob(id, commit string, expected domain.GitHubConnection
 		db := tx.DB()
 		job, ok := db.Outbox[id]
 		connection, connected := db.Connections[expected.ID]
-		if !ok || !connected || connection.Paused || !connection.Write || connection.ConfigRevision != expected.ConfigRevision || connection.RepositoryID != expected.RepositoryID || connection.Branch != expected.Branch || job.SourceID != expected.ID || job.State == "complete" || job.State == "superseded" || job.State == "conflict" {
+		if !ok ||
+			!connected ||
+			connection.Paused ||
+			!connection.Write ||
+			connection.ConfigRevision != expected.ConfigRevision ||
+			connection.RepositoryID != expected.RepositoryID ||
+			connection.Branch != expected.Branch ||
+			job.SourceID != expected.ID ||
+			job.State == "complete" ||
+			job.State == "superseded" ||
+			job.State == "conflict" {
 			return domain.ErrConflict
 		}
 		if len(job.Bundle) > 0 {

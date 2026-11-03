@@ -33,7 +33,15 @@ func ProposalBase(st *store.Store, obs *importer.Observations, sourceID, path st
 		}
 		blocked := domain.ConflictResolutionBlocked(*db, sourceID, path)
 		rev := a.Versions[len(a.Versions)-1]
-		out = map[string]any{"revision": rev.Number, "sha256": rev.SHA, "unresolved_conflict": unresolved, "conflict_resolution_blocked_by_write": blocked, "write_blocked_by_move": domain.MoveOperationLocks(*db, sourceID, path), "write_blocked_by_bundle": domain.BundleLocks(*db, sourceID, path), "source_status": Status(*db, obs, sourceID, src, time.Now())}
+		out = map[string]any{
+			"revision":                             rev.Number,
+			"sha256":                               rev.SHA,
+			"unresolved_conflict":                  unresolved,
+			"conflict_resolution_blocked_by_write": blocked,
+			"write_blocked_by_move":                domain.MoveOperationLocks(*db, sourceID, path),
+			"write_blocked_by_bundle":              domain.BundleLocks(*db, sourceID, path),
+			"source_status":                        Status(*db, obs, sourceID, src, time.Now()),
+		}
 		return nil
 	})
 	if err != nil {

@@ -79,7 +79,12 @@ func GitHub(args []string) error {
 		if *adopt {
 			client.http.Timeout = 6 * time.Minute
 		}
-		if e = client.request("POST", "/api/v1/github/connections", syncer.ConnectRequest{ID: *id, Repository: *repo, AccountID: *account, Branch: *branch, Write: *write, AdoptExisting: *adopt}, &result); e != nil {
+		if e = client.request(
+			"POST",
+			"/api/v1/github/connections",
+			syncer.ConnectRequest{ID: *id, Repository: *repo, AccountID: *account, Branch: *branch, Write: *write, AdoptExisting: *adopt},
+			&result,
+		); e != nil {
 			return e
 		}
 	case "configure":

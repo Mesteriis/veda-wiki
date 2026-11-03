@@ -131,7 +131,11 @@ func Validate(db *domain.Database) error {
 		}
 		for i, revision := range article.Versions {
 			sum := sha256.Sum256([]byte(revision.Text))
-			if revision.Number != i+1 || len(revision.Text) > domain.MaxArticleBytes || (len(revision.Text) > domain.LegacyArticleBytes && db.Version < 13) || !utf8.ValidString(revision.Text) || revision.SHA != hex.EncodeToString(sum[:]) {
+			if revision.Number != i+1 ||
+				len(revision.Text) > domain.MaxArticleBytes ||
+				(len(revision.Text) > domain.LegacyArticleBytes && db.Version < 13) ||
+				!utf8.ValidString(revision.Text) ||
+				revision.SHA != hex.EncodeToString(sum[:]) {
 				return errors.New("invalid stored revision")
 			}
 		}
@@ -140,7 +144,14 @@ func Validate(db *domain.Database) error {
 			if tr.Origin != "" && (tr.Origin != "local_model" || db.Version < 11) {
 				return errors.New("invalid translation origin")
 			}
-			if src.Kind != "program" || tr.Language != "ru" || len(tr.Text) == 0 || len(tr.Text) > domain.MaxArticleBytes || (len(tr.Text) > domain.LegacyArticleBytes && db.Version < 13) || !utf8.ValidString(tr.Text) || domain.Digest([]byte(tr.Text)) != tr.SHA || len(tr.OriginalSHA) != 64 {
+			if src.Kind != "program" ||
+				tr.Language != "ru" ||
+				len(tr.Text) == 0 ||
+				len(tr.Text) > domain.MaxArticleBytes ||
+				(len(tr.Text) > domain.LegacyArticleBytes && db.Version < 13) ||
+				!utf8.ValidString(tr.Text) ||
+				domain.Digest([]byte(tr.Text)) != tr.SHA ||
+				len(tr.OriginalSHA) != 64 {
 				return errors.New("invalid stored translation")
 			}
 			if _, e := hex.DecodeString(tr.OriginalSHA); e != nil {
@@ -167,7 +178,9 @@ func Validate(db *domain.Database) error {
 			}
 		}
 		for _, c := range article.Conflicts {
-			if !domain.ValidCommitID(c.Commit) || (c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) || (!c.Deleted && (domain.Digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > domain.MaxArticleBytes || (len(c.Incoming) > domain.LegacyArticleBytes && db.Version < 13))) {
+			if !domain.ValidCommitID(c.Commit) ||
+				(c.Deleted && (c.Incoming != "" || c.IncomingSHA != "")) ||
+				(!c.Deleted && (domain.Digest([]byte(c.Incoming)) != c.IncomingSHA || len(c.Incoming) > domain.MaxArticleBytes || (len(c.Incoming) > domain.LegacyArticleBytes && db.Version < 13))) {
 				return errors.New("invalid stored conflict")
 			}
 		}
@@ -175,7 +188,16 @@ func Validate(db *domain.Database) error {
 	for id, m := range db.Moves {
 		source, srcOK := db.Articles[m.SourceID+"/"+m.SourcePath]
 		target, dstOK := db.Articles[m.DestinationID+"/"+m.DestinationPath]
-		if len(id) != 32 || id != m.ID || m.SourceID == m.DestinationID || !srcOK || !dstOK || m.SourceRevision < 1 || m.SourceRevision > len(source.Versions) || len(target.Versions) < 1 || source.Versions[m.SourceRevision-1].SHA != m.SHA || target.Versions[0].SHA != m.SHA {
+		if len(id) != 32 ||
+			id != m.ID ||
+			m.SourceID == m.DestinationID ||
+			!srcOK ||
+			!dstOK ||
+			m.SourceRevision < 1 ||
+			m.SourceRevision > len(source.Versions) ||
+			len(target.Versions) < 1 ||
+			source.Versions[m.SourceRevision-1].SHA != m.SHA ||
+			target.Versions[0].SHA != m.SHA {
 			return errors.New("invalid stored move")
 		}
 		if m.TranslationFingerprint != "" {

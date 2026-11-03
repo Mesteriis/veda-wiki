@@ -92,7 +92,18 @@ func (s *Store) loadSQLite(marker []byte) error {
 		return err
 	}
 	defer rows.Close()
-	result := domain.Database{Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}, Accounts: map[string]domain.GitHubAccount{}, Connections: map[string]domain.GitHubConnection{}, Outbox: map[string]domain.SyncJob{}, Moves: map[string]domain.Move{}, AccessKeys: map[string]domain.AccessKey{}, Users: map[string]domain.WikiUser{}, Teams: map[string]domain.WikiTeam{}, SourceMirrors: map[string]domain.SourceMirror{}}
+	result := domain.Database{
+		Sources:       map[string]domain.Source{},
+		Articles:      map[string]domain.Article{},
+		Accounts:      map[string]domain.GitHubAccount{},
+		Connections:   map[string]domain.GitHubConnection{},
+		Outbox:        map[string]domain.SyncJob{},
+		Moves:         map[string]domain.Move{},
+		AccessKeys:    map[string]domain.AccessKey{},
+		Users:         map[string]domain.WikiUser{},
+		Teams:         map[string]domain.WikiTeam{},
+		SourceMirrors: map[string]domain.SourceMirror{},
+	}
 	metaFound := false
 	for rows.Next() {
 		var category, id string

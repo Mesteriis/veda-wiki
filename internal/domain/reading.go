@@ -41,7 +41,16 @@ func ReadSnapshot(db Database, public bool, now time.Time) Snapshot {
 		if public && rev.Created > snap.Generated {
 			snap.Generated = rev.Created
 		}
-		snap.Pages = append(snap.Pages, Page{Path: key, Title: Title(rev.Text, a.Path), Environment: src.ID, SHA: rev.SHA, Updated: rev.Created, SearchOriginal: original, SearchDisplayed: rev.Text, SearchSourceTitle: src.Title})
+		snap.Pages = append(snap.Pages, Page{
+			Path:              key,
+			Title:             Title(rev.Text, a.Path),
+			Environment:       src.ID,
+			SHA:               rev.SHA,
+			Updated:           rev.Created,
+			SearchOriginal:    original,
+			SearchDisplayed:   rev.Text,
+			SearchSourceTitle: src.Title,
+		})
 	}
 	sort.Slice(snap.Pages, func(i, j int) bool { return snap.Pages[i].Path < snap.Pages[j].Path })
 	return snap
@@ -89,7 +98,21 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 		}
 	}
 	blocked := unresolved && !public && ConflictResolutionBlocked(db, a.SourceID, a.Path)
-	return Page{Path: key, Title: Title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated, TranslationOrigin: origin, TranslationState: translationState, ProgramDocumentation: src.Kind == "program", UnresolvedConflict: unresolved, ConflictResolutionBlocked: blocked}, nil
+	return Page{
+		Path:                      key,
+		Title:                     Title(r.Text, a.Path),
+		Environment:               src.ID,
+		SHA:                       r.SHA,
+		Updated:                   r.Created,
+		Text:                      r.Text,
+		OriginalSHA:               originalSHA,
+		Translated:                translated,
+		TranslationOrigin:         origin,
+		TranslationState:          translationState,
+		ProgramDocumentation:      src.Kind == "program",
+		UnresolvedConflict:        unresolved,
+		ConflictResolutionBlocked: blocked,
+	}, nil
 }
 
 // ReadArticle returns an article record with copied versions. A public reader

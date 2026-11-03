@@ -13,7 +13,14 @@ func ReconcileMoves(db *Database) {
 		}
 		source, exists := db.Articles[m.SourceID+"/"+m.SourcePath]
 		src, srcOK := db.Sources[m.SourceID]
-		if !exists || !srcOK || source.Deleted || TranslationFingerprint(source.Translation) != m.TranslationFingerprint || len(source.Versions) != m.SourceRevision || source.Versions[m.SourceRevision-1].SHA != m.SHA || src.ConnectionID != m.SourceConnectionID || (m.SourceConnectionID == "" && src.ImportGeneration != "") {
+		if !exists ||
+			!srcOK ||
+			source.Deleted ||
+			TranslationFingerprint(source.Translation) != m.TranslationFingerprint ||
+			len(source.Versions) != m.SourceRevision ||
+			source.Versions[m.SourceRevision-1].SHA != m.SHA ||
+			src.ConnectionID != m.SourceConnectionID ||
+			(m.SourceConnectionID == "" && src.ImportGeneration != "") {
 			m.State = "source_changed"
 			db.Moves[id] = m
 			continue
@@ -38,7 +45,14 @@ func ReconcileMoves(db *Database) {
 		}
 		target, exists := db.Articles[m.DestinationID+"/"+m.DestinationPath]
 		dst, dstOK := db.Sources[m.DestinationID]
-		if !exists || !dstOK || target.Deleted || len(target.Versions) != 1 || target.Versions[0].SHA != m.SHA || TranslationFingerprint(target.Translation) != TranslationFingerprint(MovedTranslation(source.Translation)) || (m.DestinationConnectionID == "" && !AssetsPresent(dst, m.Assets)) || !LocalLinksPresent(*db, m.DestinationID, m.Links) {
+		if !exists ||
+			!dstOK ||
+			target.Deleted ||
+			len(target.Versions) != 1 ||
+			target.Versions[0].SHA != m.SHA ||
+			TranslationFingerprint(target.Translation) != TranslationFingerprint(MovedTranslation(source.Translation)) ||
+			(m.DestinationConnectionID == "" && !AssetsPresent(dst, m.Assets)) ||
+			!LocalLinksPresent(*db, m.DestinationID, m.Links) {
 			m.State = "destination_changed"
 			db.Moves[id] = m
 			continue

@@ -34,7 +34,11 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 				retainedLinks[p] = sha
 			}
 		}
-		if job.SourceID == a.SourceID && job.Path == a.Path && job.PreparedCommit == "" && len(job.Bundle) == 0 && (job.State == "pending" || job.State == "retry" || (job.State == "blocked" && job.LastError == "credential_like_content")) {
+		if job.SourceID == a.SourceID &&
+			job.Path == a.Path &&
+			job.PreparedCommit == "" &&
+			len(job.Bundle) == 0 &&
+			(job.State == "pending" || job.State == "retry" || (job.State == "blocked" && job.LastError == "credential_like_content")) {
 			job.State = "superseded"
 			db.Outbox[id] = job
 		}
@@ -47,7 +51,18 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 	if (len(retained) > 0 || len(retainedLinks) > 0) && HasRootReference(rev.Text) && db.Version < 12 {
 		db.Version = 12
 	}
-	db.Outbox[id] = SyncJob{ID: id, SourceID: a.SourceID, Path: a.Path, Revision: rev.Number, SHA: rev.SHA, State: "pending", Created: rev.Created, Visibility: visibility, Assets: retained, Links: retainedLinks}
+	db.Outbox[id] = SyncJob{
+		ID:         id,
+		SourceID:   a.SourceID,
+		Path:       a.Path,
+		Revision:   rev.Number,
+		SHA:        rev.SHA,
+		State:      "pending",
+		Created:    rev.Created,
+		Visibility: visibility,
+		Assets:     retained,
+		Links:      retainedLinks,
+	}
 }
 
 // writeJobID is the outbox ID of the write of revision rev of a.

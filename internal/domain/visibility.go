@@ -57,7 +57,13 @@ func SourceSyncIssue(db Database, src Source, now time.Time) string {
 		return "checking"
 	default:
 		verified, err := time.Parse(time.RFC3339Nano, conn.VerifiedAt)
-		if conn.Verification != "verified" || err != nil || verified.After(now.Add(time.Minute)) || now.Sub(verified) >= 10*time.Minute || !commitIDPattern.MatchString(conn.LastPull) || conn.LastPull != src.ImportCommit || !commitIDPattern.MatchString(conn.TreeSHA) {
+		if conn.Verification != "verified" ||
+			err != nil ||
+			verified.After(now.Add(time.Minute)) ||
+			now.Sub(verified) >= 10*time.Minute ||
+			!commitIDPattern.MatchString(conn.LastPull) ||
+			conn.LastPull != src.ImportCommit ||
+			!commitIDPattern.MatchString(conn.TreeSHA) {
 			return "unverified"
 		}
 	}

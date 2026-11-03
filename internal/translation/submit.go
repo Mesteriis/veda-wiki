@@ -76,7 +76,15 @@ func (s Service) save(in Request, privateDraft bool) (domain.Translation, error)
 			// Approval of an unchanged draft does not change its provenance.
 			origin = a.Translation.Origin
 		}
-		tr = domain.Translation{Language: "ru", OriginalSHA: rev.SHA, Text: in.Text, SHA: domain.Digest([]byte(in.Text)), Created: time.Now().UTC().Format(time.RFC3339Nano), PublicApproved: public && in.ConfirmPublication, Origin: origin}
+		tr = domain.Translation{
+			Language:       "ru",
+			OriginalSHA:    rev.SHA,
+			Text:           in.Text,
+			SHA:            domain.Digest([]byte(in.Text)),
+			Created:        time.Now().UTC().Format(time.RFC3339Nano),
+			PublicApproved: public && in.ConfirmPublication,
+			Origin:         origin,
+		}
 		a.Translation = &tr
 		if origin != "" && db.Version < 11 {
 			db.Version = 11

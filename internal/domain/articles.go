@@ -12,7 +12,11 @@ import (
 // valid identifier, title, kind and visibility, and none of the fields that
 // only imports and GitHub connections set.
 func ValidNewSource(src Source) bool {
-	if !idPattern.MatchString(src.ID) || strings.TrimSpace(src.Title) == "" || len(src.Title) > 200 || (src.Kind != "wiki" && src.Kind != "program") || (src.Visibility != "private" && src.Visibility != "public") {
+	if !idPattern.MatchString(src.ID) ||
+		strings.TrimSpace(src.Title) == "" ||
+		len(src.Title) > 200 ||
+		(src.Kind != "wiki" && src.Kind != "program") ||
+		(src.Visibility != "private" && src.Visibility != "public") {
 		return false
 	}
 	return src.ConnectionID == "" && src.Metadata == nil && len(src.Assets) == 0 && src.ImportGeneration == "" && src.ImportCommit == "" && !src.ImportDirty && !src.ImportPartial

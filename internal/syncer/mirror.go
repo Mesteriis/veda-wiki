@@ -88,7 +88,18 @@ func (m *Manager) ConfigureMirror(ctx context.Context, in MirrorRequest) (domain
 		}
 		if *in.Enabled {
 			c, ok := db.Connections[dst.ConnectionID]
-			if dst.Visibility != "private" || src.Kind != dst.Kind || !ok || c.ID != dst.ID || !c.Private || c.Verification != "verified" || c.Paused || !c.Write || c.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(db, src, c) || mirrorWouldCycle(db, src.ID, dst.ID) {
+			if dst.Visibility != "private" ||
+				src.Kind != dst.Kind ||
+				!ok ||
+				c.ID != dst.ID ||
+				!c.Private ||
+				c.Verification != "verified" ||
+				c.Paused ||
+				!c.Write ||
+				c.LastPull == "" ||
+				dst.ImportPartial ||
+				!reconcileSourceReady(db, src, c) ||
+				mirrorWouldCycle(db, src.ID, dst.ID) {
 				return domain.ErrConflict
 			}
 		}

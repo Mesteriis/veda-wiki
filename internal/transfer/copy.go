@@ -64,7 +64,12 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	key := in.DestinationID + "/" + in.DestinationPath
 	b, exists := db.Articles[key]
 	if exists {
-		if in.ExpectedDestinationRevision == nil || *in.ExpectedDestinationRevision < 1 || b.Deleted || len(b.Versions) != *in.ExpectedDestinationRevision || domain.MoveDeletionLocks(*db, in.DestinationID, in.DestinationPath) || domain.ConflictResolutionBlocked(*db, in.DestinationID, in.DestinationPath) {
+		if in.ExpectedDestinationRevision == nil ||
+			*in.ExpectedDestinationRevision < 1 ||
+			b.Deleted ||
+			len(b.Versions) != *in.ExpectedDestinationRevision ||
+			domain.MoveDeletionLocks(*db, in.DestinationID, in.DestinationPath) ||
+			domain.ConflictResolutionBlocked(*db, in.DestinationID, in.DestinationPath) {
 			return domain.Revision{}, domain.ErrConflict
 		}
 		for _, conflict := range b.Conflicts {

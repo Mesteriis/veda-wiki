@@ -127,7 +127,17 @@ func (r *reconciliation) run(in ReconcileRequest, mirrorRevision *int) error {
 	}
 	src, dst := r.src, r.dst
 	conn, connected := db.Connections[dst.ConnectionID]
-	if dst.Visibility != "private" || src.Kind != dst.Kind || !connected || conn.ID != dst.ID || !conn.Private || conn.Verification != "verified" || conn.Paused || !conn.Write || conn.LastPull == "" || dst.ImportPartial || !reconcileSourceReady(db, src, conn) {
+	if dst.Visibility != "private" ||
+		src.Kind != dst.Kind ||
+		!connected ||
+		conn.ID != dst.ID ||
+		!conn.Private ||
+		conn.Verification != "verified" ||
+		conn.Paused ||
+		!conn.Write ||
+		conn.LastPull == "" ||
+		dst.ImportPartial ||
+		!reconcileSourceReady(db, src, conn) {
 		return domain.ErrConflict
 	}
 	paths := []string{}
@@ -350,7 +360,12 @@ func (r *reconciliation) graph(req transfer.CopyRequest) (added int, copied bool
 	if safe {
 		for _, item := range plan.Articles {
 			linked := db.Articles[src.ID+"/"+item.SourcePath]
-			if item.CredentialLike || item.DirectoryIndex || item.Destination == "conflict" || pendingReconcilePath(db, src.ID, item.SourcePath) || pendingReconcilePath(db, dst.ID, item.DestinationPath) || (src.ConnectionID != "" && linked.UpstreamHash != item.SHA) {
+			if item.CredentialLike ||
+				item.DirectoryIndex ||
+				item.Destination == "conflict" ||
+				pendingReconcilePath(db, src.ID, item.SourcePath) ||
+				pendingReconcilePath(db, dst.ID, item.DestinationPath) ||
+				(src.ConnectionID != "" && linked.UpstreamHash != item.SHA) {
 				safe = false
 				break
 			}

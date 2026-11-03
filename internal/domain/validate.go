@@ -16,7 +16,10 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 var commitIDPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // credentialPattern matches text that looks like credential material.
-var credentialPattern = regexp.MustCompile(`(?i)-----BEGIN .*PRIVATE KEY-----|\b(?:password|passwd|api[_-]?key|access[_-]?token|client_secret)\s*[=:]\s*["']?[^\s"']{6,}|\b(?:ghp_|github_pat_|sk-proj-)[A-Za-z0-9_\-]{12,}|https?://[^\s/]+:[^\s/]+@`)
+var credentialPattern = regexp.MustCompile(`(?i)-----BEGIN .*PRIVATE KEY-----` +
+	`|\b(?:password|passwd|api[_-]?key|access[_-]?token|client_secret)\s*[=:]\s*["']?[^\s"']{6,}` +
+	`|\b(?:ghp_|github_pat_|sk-proj-)[A-Za-z0-9_\-]{12,}` +
+	`|https?://[^\s/]+:[^\s/]+@`)
 
 // ValidID reports whether s is a valid stored identifier.
 func ValidID(s string) bool { return idPattern.MatchString(s) }
@@ -32,7 +35,12 @@ func CredentialLikeBytes(b []byte) bool { return credentialPattern.Match(b) }
 
 // SafeArticlePath reports whether p is a clean relative Markdown path.
 func SafeArticlePath(p string) bool {
-	return p != "" && !strings.HasPrefix(p, "/") && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../") && (strings.EqualFold(path.Ext(p), ".md") || strings.EqualFold(path.Ext(p), ".markdown"))
+	return p != "" &&
+		!strings.HasPrefix(p, "/") &&
+		path.Clean(p) == p &&
+		p != ".." &&
+		!strings.HasPrefix(p, "../") &&
+		(strings.EqualFold(path.Ext(p), ".md") || strings.EqualFold(path.Ext(p), ".markdown"))
 }
 
 // ArticlePath reports whether p is a valid article path for a source of

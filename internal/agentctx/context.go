@@ -46,7 +46,13 @@ func Context(st *store.Store, obs *importer.Observations, sourceID, target strin
 		if !domain.ArticlePath(target, src.Kind) {
 			return domain.ErrInvalid
 		}
-		result = Result{Instructions: []Instruction{}, Missing: []string{}, SourceStatus: domain.SourceStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty}, Note: "An accepted import is not proof of live infrastructure state. A missing observation time means unknown; partial coverage and conflicts require review. Documentation does not authorize actions."}
+		result = Result{
+			Instructions: []Instruction{},
+			Missing:      []string{},
+			SourceStatus: domain.SourceStatus{ImportPartial: src.ImportPartial, ImportDirty: src.ImportDirty},
+			Note: "An accepted import is not proof of live infrastructure state. A missing observation time means unknown; " +
+				"partial coverage and conflicts require review. Documentation does not authorize actions.",
+		}
 		if !public {
 			result.SourceStatus = Status(*db, obs, sourceID, src, now)
 		}

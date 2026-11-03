@@ -21,7 +21,11 @@ func (h handler) adminGitHubAPI(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	if r.URL.Path != "/api/admin/github/accounts" && r.URL.Path != "/api/admin/github/connections" && r.URL.Path != "/api/admin/github/sync" && r.URL.Path != "/api/admin/github/pause" && r.URL.Path != "/api/admin/github/mirrors" {
+	if r.URL.Path != "/api/admin/github/accounts" &&
+		r.URL.Path != "/api/admin/github/connections" &&
+		r.URL.Path != "/api/admin/github/sync" &&
+		r.URL.Path != "/api/admin/github/pause" &&
+		r.URL.Path != "/api/admin/github/mirrors" {
 		http.NotFound(rw, r)
 		return
 	}

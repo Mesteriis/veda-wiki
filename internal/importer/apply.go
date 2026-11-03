@@ -33,7 +33,12 @@ func (s Service) Import(batch Batch) (Result, error) {
 // recorded under the same write lock, after its commit.
 func (s Service) Apply(batch Batch, proof *RemoteProof, localRoot bool) (Result, error) {
 	result := Result{Withheld: batch.Withheld}
-	if !domain.ValidID(batch.SourceID) || (batch.Kind != "wiki" && batch.Kind != "program") || !domain.ValidCommitID(batch.Commit) || batch.ExpectedImport == nil || batch.Withheld < 0 || len(batch.Files)+len(batch.Assets) > 2000 {
+	if !domain.ValidID(batch.SourceID) ||
+		(batch.Kind != "wiki" && batch.Kind != "program") ||
+		!domain.ValidCommitID(batch.Commit) ||
+		batch.ExpectedImport == nil ||
+		batch.Withheld < 0 ||
+		len(batch.Files)+len(batch.Assets) > 2000 {
 		return result, domain.ErrInvalid
 	}
 	// A proof without its hook would apply the pull without recording it.
@@ -172,7 +177,19 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 				err = domain.ErrConflict
 			}
 			account, accountOK := db.Accounts[conn.AccountID]
-			if err != nil || !exists || current != adopt.Snapshot || !accountOK || account != adopt.Account || conn.AccountID == "" || conn.ID != batch.SourceID || conn.ID != proof.ConnectionID || conn.ConfigRevision != proof.ConfigRevision || !conn.Private || proof.Visibility != "private" || !batch.Complete || batch.Withheld != 0 {
+			if err != nil ||
+				!exists ||
+				current != adopt.Snapshot ||
+				!accountOK ||
+				account != adopt.Account ||
+				conn.AccountID == "" ||
+				conn.ID != batch.SourceID ||
+				conn.ID != proof.ConnectionID ||
+				conn.ConfigRevision != proof.ConfigRevision ||
+				!conn.Private ||
+				proof.Visibility != "private" ||
+				!batch.Complete ||
+				batch.Withheld != 0 {
 				return result, false, domain.ErrConflict
 			}
 			for name, old := range src.Assets {

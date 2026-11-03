@@ -76,7 +76,20 @@ func (h handler) excerpt(rw http.ResponseWriter, r *http.Request, public bool) {
 		if end < len(text) {
 			next = &end
 		}
-		jsonResponse(rw, 200, map[string]any{"source_id": sourceID, "path": p, "sha256": page.SHA, "original_sha256": page.OriginalSHA, "translated": page.Translated, "translation_state": page.TranslationState, "translation_origin": page.TranslationOrigin, "program_documentation": page.ProgramDocumentation, "offset": offset, "next_offset": next, "total_characters": len(text), "text": string(text[offset:end])})
+		jsonResponse(rw, 200, map[string]any{
+			"source_id":             sourceID,
+			"path":                  p,
+			"sha256":                page.SHA,
+			"original_sha256":       page.OriginalSHA,
+			"translated":            page.Translated,
+			"translation_state":     page.TranslationState,
+			"translation_origin":    page.TranslationOrigin,
+			"program_documentation": page.ProgramDocumentation,
+			"offset":                offset,
+			"next_offset":           next,
+			"total_characters":      len(text),
+			"text":                  string(text[offset:end]),
+		})
 		return
 	}
 	a, err := h.Store.article(sourceID, p, public)
@@ -99,5 +112,14 @@ func (h handler) excerpt(rw http.ResponseWriter, r *http.Request, public bool) {
 	if end < len(text) {
 		next = &end
 	}
-	jsonResponse(rw, 200, map[string]any{"source_id": sourceID, "path": p, "revision": revision.Number, "sha256": revision.SHA, "offset": offset, "next_offset": next, "total_characters": len(text), "text": string(text[offset:end])})
+	jsonResponse(rw, 200, map[string]any{
+		"source_id":        sourceID,
+		"path":             p,
+		"revision":         revision.Number,
+		"sha256":           revision.SHA,
+		"offset":           offset,
+		"next_offset":      next,
+		"total_characters": len(text),
+		"text":             string(text[offset:end]),
+	})
 }

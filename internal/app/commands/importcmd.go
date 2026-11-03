@@ -47,7 +47,11 @@ func newLocalClient(base, keyFile string) (*localClient, error) {
 	if _, e := domain.HexKey(string(token)); e != nil {
 		return nil, e
 	}
-	return &localClient{base: strings.TrimRight(base, "/"), token: string(token), http: &http.Client{Timeout: 45 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return &localClient{base: strings.TrimRight(base, "/"), token: string(token), http: &http.Client{
+		Timeout:       45 * time.Second,
+		Transport:     &http.Transport{Proxy: nil},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}}, nil
 }
 func (c *localClient) request(method, route string, body any, out any) error {
 	var reader io.Reader

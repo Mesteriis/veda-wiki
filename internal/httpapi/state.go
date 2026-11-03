@@ -124,7 +124,16 @@ func (h handler) state(rw http.ResponseWriter, r *http.Request) {
 	for _, source := range h.Store.sources(h.Public) {
 		sources[source.ID] = source.Source
 		if !h.Public && (source.ImportPartial || source.ImportDirty || source.UnresolvedConflicts > 0 || source.SyncIssue != "") {
-			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{ID: source.ID, Name: source.Title, Partial: source.ImportPartial, Dirty: source.ImportDirty, Conflicts: source.UnresolvedConflicts, Withheld: source.LastImportWithheld, SyncIssue: source.SyncIssue, LastImportObservedAt: source.LastImportObservedAt})
+			v.SourceWarnings = append(v.SourceWarnings, SourceWarning{
+				ID:                   source.ID,
+				Name:                 source.Title,
+				Partial:              source.ImportPartial,
+				Dirty:                source.ImportDirty,
+				Conflicts:            source.UnresolvedConflicts,
+				Withheld:             source.LastImportWithheld,
+				SyncIssue:            source.SyncIssue,
+				LastImportObservedAt: source.LastImportObservedAt,
+			})
 		}
 	}
 	for _, p := range s.Pages {
