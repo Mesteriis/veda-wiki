@@ -76,6 +76,11 @@ func (tx *Tx) narrow(scope txScope, article string) {
 func (s *Store) Update(fn func(tx *Tx) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.update(fn)
+}
+
+// update is Update for a caller that holds the write lock.
+func (s *Store) update(fn func(tx *Tx) error) error {
 	if s.readOnly {
 		return errReadOnly
 	}

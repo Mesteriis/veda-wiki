@@ -318,3 +318,47 @@ func TestAfterCommitRunsOnlyAfterACommit(t *testing.T) {
 		t.Fatal("transaction did not report the failed-closed store")
 	}
 }
+
+func TestExclusiveKeepsEarlierCommitsAndDiscardsAFailedStep(t *testing.T) {
+	st := storetest.New(t)
+	storetest.Source(t, st, "local", "private")
+	refused := errors.New("refused")
+	err := st.Exclusive(func(ex *store.Exclusive) error {
+		if ex.Invalid() {
+			t.Error("healthy store reported invalid")
+		}
+		if err := ex.Update(func(tx *store.Tx) error {
+			tx.DB().Articles["local/first.md"] = revision("local", "first.md", "# First")
+			return nil
+		}); err != nil {
+			return err
+		}
+		if _, ok := ex.DB().Articles["local/first.md"]; !ok {
+			t.Error("committed step is not visible to the next one")
+		}
+		if err := ex.Update(func(tx *store.Tx) error {
+			tx.DB().Articles["local/second.md"] = revision("local", "second.md", "# Second")
+			return refused
+		}); !errors.Is(err, refused) {
+			t.Error("failed step did not return its error", err)
+		}
+		if _, ok := ex.DB().Articles["local/second.md"]; ok {
+			t.Error("failed step changed the committed state")
+		}
+		return refused
+	})
+	if !errors.Is(err, refused) {
+		t.Fatal(err)
+	}
+	reopened, err := store.Open(st.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := storetest.Read(t, reopened)
+	if _, ok := db.Articles["local/first.md"]; !ok {
+		t.Fatal("earlier commit was lost when the exclusive section failed")
+	}
+	if _, ok := db.Articles["local/second.md"]; ok {
+		t.Fatal("failed step reached disk")
+	}
+}
