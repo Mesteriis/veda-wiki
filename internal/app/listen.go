@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -20,6 +21,29 @@ type servedListener struct {
 	server    *http.Server
 	listener  net.Listener
 	cert, key string
+}
+
+// shutdownTimeout bounds the drain of requests and workers; tests shorten it.
+var shutdownTimeout = 10 * time.Second
+
+// errShutdownTimeout reports that requests or workers were still running when
+// the drain timed out; they may still write to the store.
+var errShutdownTimeout = errors.New("shutdown timed out before requests and workers finished")
+
+// abandonedWriterLock keeps a lock that a timed-out shutdown left held
+// reachable, so the file's finalizer cannot close it before the process exits.
+var abandonedWriterLock io.Closer
+
+// releaseWriterLock closes the writer lock when the service stopped. After a
+// drain timeout it keeps the lock held, so no other writer can open the data
+// directory while a request or worker may still commit; the process exit
+// releases it.
+func releaseWriterLock(lock io.Closer, serveErr error) {
+	if errors.Is(serveErr, errShutdownTimeout) {
+		abandonedWriterLock = lock
+		return
+	}
+	_ = lock.Close()
 }
 
 // Drain every listener and wait for background workers before releasing the
@@ -44,7 +68,7 @@ func serveUntilStopped(ctx context.Context, stop context.CancelFunc, endpoints [
 	case first = <-errs:
 	}
 	stop()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	var drains sync.WaitGroup
 	shutdownErrors := make(chan error, len(endpoints))
@@ -63,7 +87,7 @@ func serveUntilStopped(ctx context.Context, stop context.CancelFunc, endpoints [
 	select {
 	case <-done:
 	case <-shutdownCtx.Done():
-		return errors.Join(first, errors.New("shutdown timed out before requests and workers finished"))
+		return errors.Join(first, errShutdownTimeout)
 	}
 	if errors.Is(first, http.ErrServerClosed) {
 		first = nil

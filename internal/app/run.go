@@ -27,8 +27,9 @@ import (
 
 // Run starts the service with the server flags in args (the command line
 // without the program name) and returns when it stops. A SIGINT or SIGTERM
-// starts the bounded shutdown.
-func Run(ctx context.Context, args []string) error {
+// starts the bounded shutdown. If the drain times out, the writer lock stays
+// held until the process exits.
+func Run(ctx context.Context, args []string) (err error) {
 	flags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	data := flags.String("data", ".veda", "Private local data directory (single writer)")
 	listen := flags.String("listen", "127.0.0.1:8080", "API and viewer address")
@@ -82,7 +83,7 @@ func Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
+	defer func() { releaseWriterLock(lock, err) }()
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return errors.New("data directory already in use")
 	}
