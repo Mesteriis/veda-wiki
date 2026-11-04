@@ -1,0 +1,30 @@
+@font-face {
+  font-family: Roboto Condensed;
+  src: url("/assets/fonts/roboto-condensed-cyrillic-400-normal.woff2")
+    format("woff2");
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: Roboto Condensed;
+  src: url("/assets/fonts/roboto-condensed-latin-400-normal.woff2")
+    format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: Roboto Condensed;
+  src: url("/assets/fonts/roboto-condensed-cyrillic-700-normal.woff2")
+    format("woff2");
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: Roboto Condensed;
+  src: url("/assets/fonts/roboto-condensed-latin-700-normal.woff2")
+    format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}

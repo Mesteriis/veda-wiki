@@ -1,0 +1,12 @@
+:root {
+  font-family: "Roboto Condensed", sans-serif;
+  color: #d7edf5;
+  background: #00090e;
+  color-scheme: dark;
+  font-synthesis: none;
+  --cyan: #00edff;
+  --line: #064356;
+  --muted: #94bbce;
+  --panel: #001018;
+  --violet: #d778ff;
+}

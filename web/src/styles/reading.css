@@ -1,0 +1,203 @@
+.reading-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 245px;
+  gap: 20px;
+}
+.reading {
+  padding: 28px 35px;
+  min-width: 0;
+}
+.back-link {
+  color: var(--cyan);
+  font-size: 13px;
+}
+.source-path {
+  color: #8abed5;
+  font-size: 12px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.provenance {
+  color: #6c99af;
+  font-size: 10px;
+  margin: 8px 0 20px;
+  overflow-wrap: anywhere;
+}
+.markdown {
+  line-height: 1.6;
+  font-size: 17px;
+}
+.markdown h1 {
+  font-size: 34px;
+  margin: 22px 0;
+}
+.markdown h2 {
+  font-size: 25px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+  margin: 30px 0 15px;
+}
+.markdown h3 {
+  font-size: 21px;
+}
+.markdown a {
+  color: var(--cyan);
+  text-decoration: underline;
+}
+.markdown pre {
+  background: #00070b;
+  border: 1px solid #093c50;
+  padding: 16px;
+  overflow: auto;
+  border-radius: 5px;
+}
+.markdown code {
+  font-size: 13px;
+  color: #82d9ee;
+}
+.markdown table {
+  display: block;
+  overflow: auto;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.markdown th,
+.markdown td {
+  padding: 10px;
+  border: 1px solid var(--line);
+}
+.markdown blockquote {
+  border-left: 3px solid #00e0ed;
+  padding-left: 16px;
+  color: var(--muted);
+}
+.markdown img {
+  max-width: 100%;
+}
+.toc {
+  align-self: start;
+  padding: 20px 15px;
+  position: sticky;
+  top: 20px;
+  max-height: 85vh;
+  overflow: auto;
+}
+.toc h2 {
+  font-size: 20px;
+  margin: 0 0 15px;
+}
+.toc a {
+  display: block;
+  color: #a0c5da;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.toc .level3 {
+  padding-left: 14px;
+}
+footer {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-top: 30px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.search-results {
+  padding: 0 12px 12px;
+}
+.search-results .section-heading {
+  height: 55px;
+}
+.document-list > a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.document-list > a > span {
+  min-width: 0;
+  flex: 1;
+}
+.document-list strong {
+  display: block;
+  font-weight: 400;
+  font-size: 18px;
+}
+.document-list small {
+  color: #87b9d2;
+  overflow-wrap: anywhere;
+}
+.document-list > a:hover {
+  background: #003047;
+}
+.loading-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+.loading-screen > img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+}
+.loading-screen h1 {
+  letter-spacing: 10px;
+  margin: 0;
+  font-size: 35px;
+}
+.loading-screen p {
+  color: var(--muted);
+}
+.loading-screen a {
+  color: var(--cyan);
+}
+dialog {
+  background: #00151e;
+  color: #d9edf7;
+  border: 1px solid #00abc8;
+  border-radius: 8px;
+  box-shadow: 0 0 40px #0085ad44;
+  padding: 24px;
+  width: min(480px, 90vw);
+}
+dialog::backdrop {
+  background: #000b12cc;
+  backdrop-filter: blur(4px);
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.dialog-head h2 {
+  margin: 0;
+  font-size: 25px;
+  color: #f5fbff;
+}
+.dialog-head button {
+  border: 1px solid #0b4e61;
+  border-radius: 4px;
+  padding: 3px;
+}
+.dialog-head .icon {
+  width: 20px;
+  height: 20px;
+}
+dialog > p {
+  font-size: 17px;
+  line-height: 1.6;
+  color: #a7ccdf;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}

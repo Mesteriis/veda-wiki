@@ -1,0 +1,81 @@
+/* Reference alignment at the 1672px design viewport. */
+@media (min-width: 1451px) {
+  .global-search {
+    position: absolute;
+    left: 460px;
+    top: 26px;
+    margin-top: 0;
+    width: 360px;
+  }
+  .masthead-title {
+    flex: none;
+  }
+  .masthead::before {
+    background-position: calc(100% - 300px) -160px;
+  }
+}
+.sidebar::before {
+  background-position: -450px -10px;
+  opacity: 0.22;
+}
+
+.nav-item {
+  font-size: 17px;
+  letter-spacing: 0.2px;
+}
+.masthead p {
+  letter-spacing: 0.3px;
+}
+.section-heading h2 {
+  letter-spacing: 0.15px;
+}
+@media (max-width: 1450px) {
+  .masthead::before {
+    left: -16px;
+    right: -14px;
+  }
+}
+@media (max-width: 900px) {
+  .masthead::before {
+    left: -14px;
+    right: -14px;
+  }
+}
+@media (max-width: 600px) {
+  .masthead::before {
+    left: -12px;
+    right: -12px;
+  }
+}
+.browse-card:last-child {
+  padding-left: 12px;
+  padding-right: 8px;
+}
+.browse-card:last-child small {
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .popular,
+  .activity {
+    height: auto;
+    min-height: 101px;
+  }
+  .popular .section-heading,
+  .activity .section-heading {
+    height: auto;
+    min-height: 40px;
+    flex-wrap: wrap;
+    padding: 5px 0;
+  }
+  .popular {
+    min-height: 247px;
+  }
+}
+
+/* VEDA is a reading surface; authors use external content channels. */
+.reading-mode { display:flex; align-items:center; gap:7px; color:var(--cyan); border:1px solid var(--line); background:#001319c2; border-radius:5px; padding:9px 12px; white-space:nowrap; font-size:14px; }
+.reading-mode .icon { width:18px; height:18px; }
+.browse-card { text-decoration:none; }
+.browse-card:focus-visible, .browse-card:hover { border-color:var(--cyan); background:#00202b; }
+#knowledge-tree { scroll-margin-top:16px; }
+

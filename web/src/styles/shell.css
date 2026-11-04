@@ -1,0 +1,339 @@
+.panel {
+  border: 1px solid var(--line);
+  background: #001017e8;
+  border-radius: 7px;
+  box-shadow: inset 0 0 20px #001e2a44;
+  overflow: hidden;
+}
+.source-warnings {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.source-warning {
+  padding: 10px 13px;
+  color: #f2d5a1;
+  background: #21190d;
+  border: 1px solid #76572b;
+  border-radius: 6px;
+}
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 248px;
+  padding: 18px 17px 16px 19px;
+  border-right: 1px solid #00b5d7;
+  background: #000a0fe8;
+  display: flex;
+  flex-direction: column;
+  z-index: 3;
+  box-shadow: 3px 0 18px #008fb119;
+}
+.sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 175px 0 100px;
+  z-index: -1;
+  background: url("/assets/veda-header.png") no-repeat right center;
+  background-size: auto 950px;
+  opacity: 0.26;
+  pointer-events: none;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  height: 66px;
+  margin-bottom: 18px;
+}
+.brand-mark {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 9px #00c6ff55);
+}
+.brand strong {
+  display: block;
+  letter-spacing: 6px;
+  font-family: Arial, sans-serif;
+  font-size: 25px;
+  color: white;
+  line-height: 1.3;
+}
+.brand small {
+  display: block;
+  font-family: Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+}
+.mobile-menu-toggle {
+  display: none;
+}
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-item {
+  display: flex;
+  width: 100%;
+  height: 43px;
+  align-items: center;
+  gap: 24px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #d1e4eb;
+  font-size: 16px;
+}
+.nav-item .icon {
+  width: 26px;
+  height: 26px;
+}
+.nav-item.selected {
+  background: #003348a8;
+  border-color: #087a9e;
+  box-shadow:
+    -2px 0 0 #00d9ff,
+    0 0 16px #00b8f22b,
+    inset 0 0 20px #0084ac22;
+  color: #f0f9ff;
+}
+.sidebar-bottom {
+  margin-top: 17px;
+  display: grid;
+  gap: 14px;
+}
+.storage {
+  padding: 10px 16px;
+  height: 87px;
+}
+.storage > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  color: #edf6fb;
+  font-size: 14px;
+}
+.storage .icon {
+  width: 17px;
+  height: 17px;
+}
+.storage p {
+  margin: 6px 0 8px;
+  color: #dbe9f4;
+  font-size: 16px;
+}
+.storage p b {
+  font-weight: 400;
+  color: var(--cyan);
+}
+.storage p span {
+  float: right;
+  color: var(--muted);
+  font-size: 13px;
+}
+.meter {
+  height: 10px;
+  background: #082c3b;
+  border: 1px solid #124354;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.meter i {
+  display: block;
+  width: 18%;
+  height: 100%;
+  background: #00d4ec;
+  box-shadow: 0 0 12px #00eaff;
+  border-radius: 8px;
+}
+.system {
+  padding: 12px 16px;
+  height: 175px;
+}
+.system-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #f0f5fa;
+  font-size: 16px;
+}
+.system-brand > img {
+  width: 25px;
+  height: 30px;
+  object-fit: contain;
+}
+.system-brand > div {
+  line-height: 1.2;
+}
+.system-brand small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+.system-brand > .icon {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+}
+.system dl {
+  margin: 13px 0 0;
+}
+.system dl > div {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.system dt {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.system dt .icon {
+  width: 15px;
+  height: 15px;
+}
+.system dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #00eec9;
+}
+.system dd i {
+  width: 9px;
+  height: 9px;
+  background: #00e6bd;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #00edbf44;
+}
+.system dd.muted {
+  color: #94a7b7;
+  font-size: 11px;
+}
+main {
+  margin-left: 248px;
+  padding: 0 17px 16px 21px;
+  min-height: 100vh;
+}
+.masthead {
+  position: relative;
+  height: 114px;
+  display: flex;
+  align-items: flex-start;
+  padding: 16px 8px 0 6px;
+  gap: 25px;
+  isolation: isolate;
+}
+.masthead::before {
+  content: "";
+  position: absolute;
+  inset: 0 -17px 0 -21px;
+  z-index: -1;
+  background: url("/assets/veda-header.png") no-repeat right -160px;
+  background-size: 1100px auto;
+  opacity: 0.9;
+}
+.masthead h1 {
+  font-size: 38px;
+  line-height: 1.15;
+  color: #f6f8fa;
+  margin: 0 0 2px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+.masthead p {
+  font-size: 18px;
+  margin: 0;
+  white-space: nowrap;
+}
+.masthead-title {
+  flex: 1;
+  min-width: 405px;
+}
+.global-search {
+  margin-top: 11px;
+  height: 39px;
+  border: 1px solid #0b7191;
+  background: #00101ddd;
+  border-radius: 6px;
+  box-shadow: 0 0 7px #008bb539;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 7px;
+  width: 360px;
+  flex-shrink: 1;
+  min-width: 210px;
+}
+.global-search > .icon {
+  height: 20px;
+  width: 20px;
+}
+.global-search input {
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+  border: 0;
+  outline: 0 !important;
+  background: transparent;
+  color: #d9ecf5;
+  font-size: 14px;
+  padding: 5px 0;
+}
+.global-search input::placeholder {
+  color: #c0d5e1;
+  opacity: 1;
+}
+kbd {
+  font-family: inherit;
+  font-size: 12px;
+  display: inline-block;
+  background: #092331;
+  border: 1px solid #123d4e;
+  border-radius: 3px;
+  color: #d4e6ee;
+  line-height: 19px;
+  min-width: 20px;
+  padding: 0 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 11px;
+  margin-left: auto;
+}
+.round {
+  height: 39px;
+  width: 39px;
+  border: 1px solid #185a6b;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #001017a8;
+}
+.round .icon {
+  width: 24px;
+  height: 24px;
+}
+.round.profile {
+  border-color: #00eaf5;
+  color: #e6fcff;
+  font-size: 18px;
+  margin-left: 1px;
+}
+.login-button {
+  border: 1px solid var(--cyan);
+  border-radius: 5px;
+  background: #001319c2;
+  color: var(--cyan);
+  padding: 9px 16px;
+  white-space: nowrap;
+}
