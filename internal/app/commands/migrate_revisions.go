@@ -15,7 +15,7 @@ import (
 func MigrateRevisions(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("migrate-revisions", flag.ContinueOnError)
 	dir := flags.String("data", ".veda", "Private VEDA data directory; server must be stopped")
-	verify := flags.Bool("verify", false, "Check the converted store against state.before-revisions.* without writing")
+	verify := flags.Bool("verify", false, "Check the converted store against state.before-revisions.* read-only; on OK without a completion record, write only state.before-revisions.done")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -24,7 +24,7 @@ func MigrateRevisions(args []string, out io.Writer) error {
 	}
 	if *verify {
 		report, err := store.VerifyRevisions(*dir)
-		if report != (store.MigrationReport{}) {
+		if report.Articles != 0 || report.KeptRevisions != 0 || report.RemovedRevisions != 0 {
 			if _, e := printCounts(out, report); e != nil && err == nil {
 				err = e
 			}
@@ -34,6 +34,9 @@ func MigrateRevisions(args []string, out io.Writer) error {
 			return err
 		}
 		_, err = fmt.Fprintln(out, "verify: OK")
+		if err == nil && report.CompletionRecorded {
+			_, err = fmt.Fprintln(out, "completion recorded")
+		}
 		return err
 	}
 	report, err := store.MigrateRevisions(*dir)
@@ -42,6 +45,11 @@ func MigrateRevisions(args []string, out io.Writer) error {
 	}
 	if _, err = printCounts(out, report); err != nil {
 		return err
+	}
+	if report.CompletionRecorded {
+		if _, err = fmt.Fprintln(out, "migration verified; completion recorded"); err != nil {
+			return err
+		}
 	}
 	_, err = fmt.Fprintln(out, "blob cleanup paused until state.before-revisions.* is removed")
 	return err

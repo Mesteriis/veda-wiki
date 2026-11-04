@@ -16,6 +16,9 @@ import (
 // counts only: no paths, titles, texts or digests.
 type MigrationReport struct {
 	Articles, KeptRevisions, RemovedRevisions int
+	// CompletionRecorded is set when a run found a converted store without
+	// its completion record, verified it and recorded completion.
+	CompletionRecorded bool
 }
 
 var (
@@ -23,12 +26,13 @@ var (
 	errMigrationDone    = errors.New("store is already format v21 and has no state.before-revisions.* backup: nothing to migrate")
 	errMigrationNoStore = errors.New("no store in the data directory")
 	errMigrationLayout  = errors.New("store is in an inconsistent state (revision tables do not match the store format), nothing was changed: restore the PBS snapshot")
-	errMigrationJournal = errors.New("the service did not stop cleanly (SQLite journal present), nothing was changed: start and stop VEDA's previous binary once, then retry")
+	errMigrationJournal = errors.New("the service did not stop cleanly (SQLite journal present), nothing was changed: stop all clients, start the current VEDA binary once with no clients connected (opening the store rolls the journal back; on an unconverted store it then refuses to start, which is expected), stop it, then retry")
 )
 
 // migrateRevisionsFault lets tests fail a step after the backup is written:
 // "apply" before the store is changed, "commit" inside the SQLite
-// transaction after the rows are written, "verify" after the commit.
+// transaction after the rows are written, "verify" after the commit and
+// "record" before the completion record is written.
 var migrateRevisionsFault = func(step string) error { return nil }
 
 // lockDataDir takes the writer lock of the private data directory dir.
@@ -77,7 +81,10 @@ func MigrateRevisions(dir string) (MigrationReport, error) {
 	case backupPresent(dir) && journalPresent(dir):
 		return none, errBackupJournal
 	case backupPresent(dir):
-		if reuse, err = backupMatchesStore(dir); err != nil {
+		if reuse, err = backupMatchesStore(dir); errors.Is(err, errConvertedWithoutRecord) {
+			return recordVerified(dir)
+		}
+		if err != nil {
 			return none, err
 		}
 	case journalPresent(dir):
@@ -125,6 +132,9 @@ func MigrateRevisions(dir string) (MigrationReport, error) {
 	}
 	if err == nil {
 		err = syncDir(dir)
+	}
+	if err == nil {
+		err = migrateRevisionsFault("record")
 	}
 	if err == nil {
 		err = writeCompletion(dir, s.sqlite, plan.report)

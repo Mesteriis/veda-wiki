@@ -78,11 +78,10 @@ instance, after a PBS snapshot of the stopped service, with:
 ```
 
 The command takes the writer lock and refuses an active writer, an unclean
-stop (a `state.sqlite-journal` or `-wal` file: start and stop the previous
-binary once, then retry), an existing `state.before-revisions.*` backup
-(except an identical one, below), an invalid, inconsistent or already
-converted store, and revisions that reference missing or damaged images (it
-prints only their counts). Nothing
+stop (a `state.sqlite-journal` or `-wal` file; see below), an existing
+`state.before-revisions.*` backup (except the cases below), an invalid,
+inconsistent or already converted store, and revisions that reference missing
+or damaged images (it prints only their counts). Nothing
 changes before a complete backup exists: each file is copied to
 `state.before-revisions.<x>.tmp`, synced, reread, compared and renamed, the
 SQLite copy first and `state.before-revisions.json` (the marker for SQLite,
@@ -101,7 +100,11 @@ store file, nothing else.
 `--verify` rebuilds the expected store from the backup and runs the same
 checks against the current store. It opens the store and the backup
 read-only and writes no store file; it takes `writer.lock`, the lock file the
-service creates, so no writer changes the store meanwhile. It prints the counts
+service creates, so no writer changes the store meanwhile. Its only write is
+`state.before-revisions.done`, and only on OK when the record is missing: a
+migration that stopped between its commit and the record. A rerun of
+`migrate-revisions` on such a store does the same and prints
+`migration verified; completion recorded`. It prints the counts
 and `verify: OK` or `verify: FAIL` (non-zero exit). Only a passing verify means
 the migration is good; a service that starts proves nothing.
 
@@ -125,10 +128,12 @@ Or restore the PBS snapshot, with the same loss. If a run failed before
 converting the store, rerun it: a complete backup identical to the unconverted
 store is reused. An incomplete backup, or one taken before later writes to the
 unconverted store, must be deleted before rerunning; the command says which.
-If a backup exists and the store has an SQLite journal from a hard stop, nothing
-may write to the store until it is recovered: stop all clients, run the
-previous binary once so it rolls the journal back, stop it before any client
-connects, then rerun migrate-revisions.
+If the store has an SQLite journal from a hard stop, nothing may write to it
+until it is recovered: stop all clients, start the current binary once with no
+clients connected (opening the store rolls the journal back; on an unconverted
+store it then refuses to start, which is expected), stop it, then rerun
+migrate-revisions or `--verify`. The previous binary is not used for this: it
+refuses a converted store, and on an unconverted one it would serve clients.
 Blob collection stays paused while any `state.before-revisions.*` file exists,
 including the completion record. Binaries before format 21 refuse a converted
 store; rolling back means restoring the backup or the snapshot.

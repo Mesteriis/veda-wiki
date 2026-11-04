@@ -42,6 +42,9 @@ func restoreBackups(t *testing.T, dir string) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.Remove(filepath.Join(dir, backupDone)); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 }
 
 func failAt(t *testing.T, step string) {
@@ -177,8 +180,11 @@ func TestMigrateRevisionsFailureKeepsBackupForRestore(t *testing.T) {
 			if present(filepath.Join(dir, backupDone)) {
 				t.Fatal("completion record after a failure")
 			}
+			// Verify of a converted store without a record records completion.
 			report, err := VerifyRevisions(dir)
-			if (err == nil) != tc.converted || tc.converted && report != v20Report {
+			recorded := v20Report
+			recorded.CompletionRecorded = true
+			if (err == nil) != tc.converted || tc.converted && report != recorded || present(filepath.Join(dir, backupDone)) != tc.converted {
 				t.Fatal("verify after a failure", report, err)
 			}
 			migrateRevisionsFault = func(string) error { return nil }
@@ -194,8 +200,8 @@ func TestMigrateRevisionsFailureKeepsBackupForRestore(t *testing.T) {
 				checkMigrated(t, dir, original, v20Kept)
 				return
 			}
-			if _, err = MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), "converted the store but did not complete") {
-				t.Fatal("rerun after a failure", err)
+			if _, err = MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), "completed and the store is unchanged since") {
+				t.Fatal("rerun after a recorded completion", err)
 			}
 			restoreBackups(t, dir)
 			sameFiles(t, dir, before)

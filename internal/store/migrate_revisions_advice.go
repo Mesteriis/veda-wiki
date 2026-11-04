@@ -31,7 +31,10 @@ const (
 
 var (
 	errChangedSinceMigration = errors.New("the migration completed and the store has changed since; restoring the backup would discard those changes: " + keepAdvice)
-	errBackupJournal         = errors.New("a state.before-revisions.* backup exists and the store has an SQLite journal from an unclean stop; nothing may write to the store until it is recovered: stop all clients, run VEDA's previous binary once so it rolls the journal back, stop it before any client connects, then run migrate-revisions again")
+	errBackupJournal         = errors.New("a state.before-revisions.* backup exists and the store has an SQLite journal from an unclean stop; nothing may write to the store until it is recovered: stop all clients, start the current VEDA binary once with no clients connected (opening the store rolls the journal back; on an unconverted store it then refuses to start, which is expected), stop it, then run migrate-revisions again or migrate-revisions --verify")
+	// errConvertedWithoutRecord marks a converted store whose completion
+	// record is missing; the caller verifies it and records completion.
+	errConvertedWithoutRecord = errors.New("converted store without a completion record")
 )
 
 type completionRecord struct {
@@ -83,7 +86,7 @@ func storeUnchanged(dir string) (completionRecord, bool) {
 }
 
 func (r completionRecord) report() MigrationReport {
-	return MigrationReport{r.Articles, r.KeptRevisions, r.RemovedRevisions}
+	return MigrationReport{Articles: r.Articles, KeptRevisions: r.KeptRevisions, RemovedRevisions: r.RemovedRevisions}
 }
 
 // completedMigration explains a rerun after a completed migration.
@@ -109,7 +112,7 @@ func backupMatchesStore(dir string) (bool, error) {
 		if backupErr != nil {
 			return false, errors.New("state.before-revisions.* is incomplete or damaged and the store is already converted: do not start the service and do not delete anything; restore the PBS snapshot (" + discardWarning + ")")
 		}
-		return false, errors.New("a previous migrate-revisions converted the store but did not complete: do not start the service; " + verifyAdvice)
+		return false, errConvertedWithoutRecord
 	}
 	if backupErr != nil {
 		return false, fmt.Errorf("state.before-revisions.* is incomplete (an interrupted migrate-revisions); the store was not converted (still format v%d): delete the state.before-revisions.* files and run migrate-revisions again", s.db.Version)
@@ -146,10 +149,12 @@ func failedAfterBackup(dir string, cause error) error {
 // state.before-revisions.* backup: it rebuilds the expected state from the
 // backup and runs the checks MigrateRevisions runs after its commit. It takes
 // writer.lock, the lock file the service itself creates, so that no writer
-// changes the store while it is read; it opens the store and the backup
-// read-only and writes no store file. A store changed since a completed
-// migration fails without restore advice; only a failure without a
-// completion record advises restoring. The report is filled when known.
+// changes the store while it is read, and opens the store and the backup
+// read-only. Its only write is the completion record, written when the check
+// passes and no record exists yet (a migration that stopped between its
+// commit and the record). A store changed since a completed migration fails
+// without restore advice; only a failure without a completion record advises
+// restoring. The report is filled when known.
 func VerifyRevisions(dir string) (MigrationReport, error) {
 	var none MigrationReport
 	lock, err := lockDataDir(dir)
@@ -167,31 +172,54 @@ func VerifyRevisions(dir string) (MigrationReport, error) {
 	if journalPresent(dir) {
 		return none, errBackupJournal
 	}
+	if completed {
+		report, _, checked, err := verifyAgainstBackup(dir)
+		if checked && err != nil {
+			err = fmt.Errorf("verify failed: %s; the store file is unchanged since the completed migration, so investigate before restoring anything", scrub(err))
+		}
+		return report, err
+	}
+	return recordVerified(dir)
+}
+
+// recordVerified verifies a store without a completion record against its
+// backup and, when it passes, records completion. The caller holds the lock.
+func recordVerified(dir string) (MigrationReport, error) {
+	report, sqlite, checked, err := verifyAgainstBackup(dir)
+	switch {
+	case checked && err != nil:
+		return report, fmt.Errorf("verify failed: %s; restore: %s (%s)", scrub(err), restoreSteps, discardWarning)
+	case err != nil:
+		return report, err
+	}
+	if err = migrateRevisionsFault("record"); err == nil {
+		err = writeCompletion(dir, sqlite, report)
+	}
+	if err != nil {
+		return report, errors.New("the migration verified but its completion record could not be written: " + scrub(err) + "; do not start the service; run migrate-revisions --verify again")
+	}
+	report.CompletionRecorded = true
+	return report, nil
+}
+
+// verifyAgainstBackup runs the post-migration checks of the store in dir,
+// read-only, against the conversion of its backup. checked reports whether
+// the checks ran; an error with checked false explains why they could not.
+func verifyAgainstBackup(dir string) (report MigrationReport, sqlite, checked bool, err error) {
 	original, sqlite, err := loadBackup(dir)
 	if err != nil {
-		return none, errors.New("no complete state.before-revisions.* backup: " + err.Error())
+		return report, false, false, errors.New("no complete state.before-revisions.* backup: " + err.Error())
 	}
 	current, found, err := readStore(dir, true)
 	if err == nil && found && current.db.Version < domain.RevisionsFormat {
-		return none, fmt.Errorf("the store was not converted (still format v%d): nothing to restore; run migrate-revisions", current.db.Version)
+		return report, sqlite, false, fmt.Errorf("the store was not converted (still format v%d): nothing to restore; run migrate-revisions", current.db.Version)
 	}
 	if err != nil || !found || current.sqlite != sqlite || current.db.Version != domain.RevisionsFormat {
-		err = errors.New("the store is not the format 21 conversion of the backup")
+		return report, sqlite, true, errors.New("the store is not the format 21 conversion of the backup")
 	}
-	report := none
-	if err == nil {
-		var plan revisionPlan
-		if plan, err = planRevisions(original, current.db.Updated); err == nil {
-			report = plan.report
-			err = verifyMigration(dir, sqlite, true, original, plan)
-		}
+	plan, err := planRevisions(original, current.db.Updated)
+	if err != nil {
+		return report, sqlite, true, errors.New("cannot convert the backup: " + err.Error())
 	}
-	switch {
-	case err == nil:
-		return report, nil
-	case completed:
-		return report, fmt.Errorf("verify failed: %s; the store file is unchanged since the completed migration, so investigate before restoring anything", scrub(err))
-	default:
-		return report, fmt.Errorf("verify failed: %s; restore: %s (%s)", scrub(err), restoreSteps, discardWarning)
-	}
+	return plan.report, sqlite, true, verifyMigration(dir, sqlite, true, original, plan)
 }
