@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
@@ -76,7 +77,7 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 5 {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat {
 		t.Fatal("store version or restart", err)
 	}
 	if reopened.Moves()[0].TranslationFingerprint != m.TranslationFingerprint {
@@ -89,7 +90,7 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err = s.reopen()
-	if err != nil || reopened.db().Version != 5 || len(reopened.auth().AccessScope(key, time.Now())) != 0 {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || len(reopened.auth().AccessScope(key, time.Now())) != 0 {
 		t.Fatal("revocation did not survive restart", err)
 	}
 }

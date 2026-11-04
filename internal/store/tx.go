@@ -88,6 +88,7 @@ func (s *Store) update(fn func(tx *Tx) error) error {
 	if err := fn(tx); err != nil {
 		return err
 	}
+	tx.prune()
 	var err error
 	switch tx.scope {
 	case scopeArticle:
@@ -104,6 +105,27 @@ func (s *Store) update(fn func(tx *Tx) error) error {
 		after()
 	}
 	return nil
+}
+
+// prune applies the revision retention rule (domain.PruneArticle) to the
+// final records of the transaction, before they are persisted and published,
+// so memory and disk hold the same pruned history. Only articles the commit
+// persists are pruned: a commit limited to one article prunes that article
+// alone, a connections commit prunes nothing and a whole-state commit prunes
+// every article. A protection lifted by a narrow commit of another article
+// takes effect at that article's next write or the next whole-state commit.
+// Stores below format 21 are not pruned; veda migrate-revisions converts them.
+func (tx *Tx) prune() {
+	if tx.db.Version < domain.RevisionsFormat {
+		return
+	}
+	switch {
+	case tx.scope == scopeConnections:
+	case tx.scope == scopeArticle && tx.article != "":
+		domain.PruneArticle(&tx.db, tx.article)
+	default:
+		domain.PruneAll(&tx.db)
+	}
 }
 
 // An empty key persists the whole state. The caller holds the lock.

@@ -51,7 +51,7 @@ func Open(dir string) (*Store, error) {
 	if err := PrivateDataDir(dir); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: dir, db: domain.Database{Version: 1, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
+	s := &Store{dir: dir, db: domain.Database{Version: domain.RevisionsFormat, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
 	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
 		return nil, errors.New("store must be a private regular file")
 	}

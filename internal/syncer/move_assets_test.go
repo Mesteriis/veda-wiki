@@ -128,7 +128,7 @@ func TestCopyImageQueuesBundleWithoutDeletingSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.db().Version != 7 || s.jobs()[0].Assets["img/icon.png"] != ref {
+	if s.db().Version != domain.RevisionsFormat || s.jobs()[0].Assets["img/icon.png"] != ref {
 		t.Fatal("copy dependencies not persisted")
 	}
 	reopened, err := s.reopen()

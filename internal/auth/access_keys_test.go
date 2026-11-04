@@ -26,7 +26,7 @@ func TestAccessKeyScopePersistenceExpiryAndRevocation(t *testing.T) {
 		t.Fatal("bearer token was stored", err)
 	}
 	reopened, err := reopen(s.Store.Dir())
-	if err != nil || storetest.Read(t, reopened.Store).Version != 4 {
+	if err != nil || storetest.Read(t, reopened.Store).Version != domain.RevisionsFormat {
 		t.Fatal("key store did not persist", err)
 	}
 	scope := reopened.AccessScope(key, time.Now())
@@ -62,7 +62,7 @@ func TestAccessKeyCreationRejectsInvalidScope(t *testing.T) {
 	if _, err := s.CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(-time.Second)); err != domain.ErrInvalid {
 		t.Fatal("expired key created", err)
 	}
-	if storetest.Read(t, s.Store).Version != 1 || len(storetest.Read(t, s.Store).AccessKeys) != 0 {
+	if storetest.Read(t, s.Store).Version != domain.RevisionsFormat || len(storetest.Read(t, s.Store).AccessKeys) != 0 {
 		t.Fatal("invalid request mutated store")
 	}
 }

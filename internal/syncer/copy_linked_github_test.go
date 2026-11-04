@@ -27,7 +27,7 @@ func TestCopyLinkedGraphToGitHubOneCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.db().Version != 9 || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
+	if s.db().Version != domain.RevisionsFormat || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
 		t.Fatal("bundle not persisted")
 	}
 	if _, err = s.reopen(); err != nil {
@@ -54,7 +54,7 @@ func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	_ = connectFixture(t, s, f, true)
 	_, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
-	if err != nil || s.db().Version != 16 || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
+	if err != nil || s.db().Version != domain.RevisionsFormat || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
 		t.Fatal("directory bundle not queued", err)
 	}
 	s, err = s.reopen()
@@ -80,7 +80,7 @@ func TestIndexDirectoryBundleRejectsNewRemoteIndex(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	_, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
-	if err != nil || s.db().Version != 17 {
+	if err != nil || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("index bundle not queued", err)
 	}
 	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
@@ -360,7 +360,7 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 	if _, err := s.copyArticle(in); err != nil {
 		t.Fatal(err)
 	}
-	if s.db().Version != 12 {
+	if s.db().Version != domain.RevisionsFormat {
 		t.Fatal("root dependency bundle did not upgrade the store")
 	}
 	if _, err := s.reopen(); err != nil {

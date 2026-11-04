@@ -177,7 +177,7 @@ func TestGitHubSourceMovePreservesVersion4AndAccessKeys(t *testing.T) {
 		t.Fatal("move did not start", err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.state(t).Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
+	if err != nil || reopened.state(t).Version != domain.RevisionsFormat || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
 		t.Fatal("move downgraded or lost scoped access", err)
 	}
 }
@@ -188,7 +188,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Source"})
 	_ = connectFixture(t, s, f, true)
 	_, err := s.moveArticle(transfer.MoveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
-	if err != nil || s.state(t).Version != 3 {
+	if err != nil || s.state(t).Version != domain.RevisionsFormat {
 		t.Fatal("version 3 move not created", err)
 	}
 	key, err := s.auth().CreateAccessKey("agent", []string{"local"}, time.Now().Add(time.Hour))
@@ -196,7 +196,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.state(t).Version != 4 || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
+	if err != nil || reopened.state(t).Version != domain.RevisionsFormat || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
 		t.Fatal("version upgrade lost access", err)
 	}
 	manager := newSyncManager(reopened, f.Client())

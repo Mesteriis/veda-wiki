@@ -15,7 +15,7 @@ import (
 // Validate checks a whole database before it is opened or committed. It fills
 // absent collections and defaults the publication scope of legacy outbox jobs.
 func Validate(db *domain.Database) error {
-	if (db.Version < 1 || db.Version > 20) || db.Version == 14 || db.Sources == nil || db.Articles == nil {
+	if (db.Version < 1 || db.Version > domain.RevisionsFormat) || db.Version == 14 || db.Sources == nil || db.Articles == nil {
 		return errors.New("unsupported store")
 	}
 	if db.Accounts == nil {

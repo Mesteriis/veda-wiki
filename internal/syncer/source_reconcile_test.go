@@ -31,7 +31,7 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 	if err != nil || r.Baselines != 1 || r.Created != 1 || r.Updated != 0 || len(r.Blocked) != 1 || r.Blocked[0] != "different.md" {
 		t.Fatalf("unexpected initial result %+v %v", r, err)
 	}
-	if s.db().Version != 18 || s.db().Articles["handbook/remote-only.md"].Deleted || f.WriteCount() != 0 {
+	if s.db().Version != domain.RevisionsFormat || s.db().Articles["handbook/remote-only.md"].Deleted || f.WriteCount() != 0 {
 		t.Fatal("unsafe initial reconciliation")
 	}
 	m.Once(context.Background())
@@ -63,7 +63,7 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 		t.Fatal("divergence overwritten", r, err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 18 || reopened.db().Articles["handbook/same.md"].ReconcileBase == nil {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || reopened.db().Articles["handbook/same.md"].ReconcileBase == nil {
 		t.Fatal("baseline lost after reopen", err)
 	}
 }
@@ -116,7 +116,7 @@ func TestReconcileSQLiteSurvivesReopen(t *testing.T) {
 		t.Fatal("baseline failed", r, err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 18 || reopened.db().Articles["handbook/a.md"].ReconcileBase == nil {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || reopened.db().Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("sqlite baseline lost", err)
 	}
 }

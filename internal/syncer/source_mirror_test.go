@@ -21,7 +21,7 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 	enabled := true
 	expected := 0
 	conf, err := s.configureMirror(context.Background(), MirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &enabled, ExpectedRevision: &expected})
-	if err != nil || conf.Revision != 1 || s.db().Version != 19 {
+	if err != nil || conf.Revision != 1 || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("enable failed", err)
 	}
 	m.Once(context.Background())
@@ -53,7 +53,7 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 		t.Fatal("paused mirror continued")
 	}
 	r, err := s.reopen()
-	if err != nil || r.db().Version != 19 || len(r.mirrors()) != 1 || r.mirrors()[0].Enabled {
+	if err != nil || r.db().Version != domain.RevisionsFormat || len(r.mirrors()) != 1 || r.mirrors()[0].Enabled {
 		t.Fatal("configuration did not survive reopen", err)
 	}
 }

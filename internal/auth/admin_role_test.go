@@ -35,7 +35,7 @@ func TestAdministratorRoleInvalidatesOldSessionsAndSurvivesReopen(t *testing.T) 
 		t.Fatal("old session survived role change")
 	}
 	version, ok := s.AuthenticateUser("admin", password)
-	if !ok || !s.AdminSessionValid("admin", version) || storetest.Read(t, s.Store).Version != 20 {
+	if !ok || !s.AdminSessionValid("admin", version) || storetest.Read(t, s.Store).Version != domain.RevisionsFormat {
 		t.Fatal("administrator not active")
 	}
 	reopened, err := reopen(s.Store.Dir())

@@ -253,7 +253,7 @@ func TestLargeImportUsesVersionGate(t *testing.T) {
 	if _, err := s.importBatch(b); err != nil {
 		t.Fatal(err)
 	}
-	if s.db().Version != 13 {
+	if s.db().Version != domain.RevisionsFormat {
 		t.Fatal("large import did not upgrade store")
 	}
 	if _, err := s.reopen(s.Store.Dir()); err != nil {

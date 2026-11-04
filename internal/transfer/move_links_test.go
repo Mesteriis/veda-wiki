@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/render"
 )
 
@@ -30,7 +31,7 @@ func TestMovePreservesMatchingRelativeLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 8 || reopened.Moves()[0].Links["guide.md"] != rev.SHA {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || reopened.Moves()[0].Links["guide.md"] != rev.SHA {
 		t.Fatal("v8 restart", err)
 	}
 	page, err := reopened.page("to/chapter/b.md", false)

@@ -3,6 +3,10 @@ package domain
 // KeepRevisions is how many of an article's newest revisions are always kept.
 const KeepRevisions = 3
 
+// RevisionsFormat is the store format (Database.Version) whose commits prune
+// revision history. It is the newest format; new stores start at it.
+const RevisionsFormat = 21
+
 // JobTerminal reports whether an outbox job state is final. Final jobs stay
 // in the outbox as a record and never read their revision again.
 func JobTerminal(state string) bool {
