@@ -1,4 +1,4 @@
-import { test } from 'vitest';
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { buildTree, buildMergedTree } from "./tree";
 

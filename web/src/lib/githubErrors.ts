@@ -33,11 +33,11 @@ export interface VisibilityInput {
 // enforces its own clock and authorization for every public read.
 export function githubVisibilityLabel(connection: VisibilityInput, now = Date.now()): string {
   const verified = Date.parse(connection.verified_at);
-  if (typeof connection.private !== 'boolean' || connection.paused || connection.verification !== 'verified' || !Number.isFinite(verified)
+  if (typeof connection.private !== "boolean" || connection.paused || connection.verification !== "verified" || !Number.isFinite(verified)
       || verified > now + 60_000 || now - verified >= 600_000) {
-    return 'видимость не подтверждена';
+    return "видимость не подтверждена";
   }
-  return connection.private ? 'приватный' : 'публичный';
+  return connection.private ? "приватный" : "публичный";
 }
 
 export interface RetryInput {
@@ -47,7 +47,7 @@ export interface RetryInput {
 
 // A rate-limited connection must not be synchronized again before GitHub's reset time.
 export function rateLimitedUntil(connection: RetryInput, now = Date.now()): Date | null {
-  if (connection.last_error !== 'rate_limited' || connection.next_attempt === undefined) return null;
+  if (connection.last_error !== "rate_limited" || connection.next_attempt === undefined) return null;
   const next = Date.parse(connection.next_attempt);
   return next > now ? new Date(next) : null;
 }

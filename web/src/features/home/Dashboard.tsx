@@ -14,8 +14,8 @@ export function Dashboard({ v }: { v: View }) {
         {groups.length > 0 && <section className="collections" aria-labelledby="collections-title">
           <h2 id="collections-title">Коллекции знаний</h2>
           <p>Быстрый доступ к разделам базы знаний</p>
-          <div className="collection-grid">{groups.slice(0, 3).map((group, index) => <a className="collection" href={'/?env=' + encodeURIComponent(group.ID)} key={group.ID}>
-            <img src={'/assets/' + covers[index]} alt="" />
+          <div className="collection-grid">{groups.slice(0, 3).map((group, index) => <a className="collection" href={"/?env=" + encodeURIComponent(group.ID)} key={group.ID}>
+            <img src={"/assets/" + covers[index]} alt="" />
             <span className="collection-copy"><I name="folder" /><span><strong>{group.Name}</strong><small>{group.Description || pageCountLabel(group.Count)}</small></span><I name="arrow-right" /></span>
           </a>)}</div>
         </section>}
