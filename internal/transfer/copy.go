@@ -53,7 +53,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	if !ok || a.Deleted {
 		return domain.Revision{}, domain.ErrNotFound
 	}
-	if len(a.Versions) != in.ExpectedRevision {
+	if domain.LatestRevision(a) != in.ExpectedRevision {
 		return domain.Revision{}, domain.ErrConflict
 	}
 	for _, c := range a.Conflicts {
@@ -67,7 +67,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 		if in.ExpectedDestinationRevision == nil ||
 			*in.ExpectedDestinationRevision < 1 ||
 			b.Deleted ||
-			len(b.Versions) != *in.ExpectedDestinationRevision ||
+			domain.LatestRevision(b) != *in.ExpectedDestinationRevision ||
 			domain.MoveDeletionLocks(*db, in.DestinationID, in.DestinationPath) ||
 			domain.ConflictResolutionBlocked(*db, in.DestinationID, in.DestinationPath) {
 			return domain.Revision{}, domain.ErrConflict
@@ -80,7 +80,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	} else if in.ExpectedDestinationRevision != nil && *in.ExpectedDestinationRevision != 0 {
 		return domain.Revision{}, domain.ErrConflict
 	}
-	rev := a.Versions[len(a.Versions)-1]
+	rev, _ := domain.LastRevision(a)
 	dependencies, err := s.ResolveDependencies(db, rev.Text, in.SourcePath, in.DestinationPath, source, destination)
 	if err != nil {
 		return domain.Revision{}, err
@@ -91,7 +91,21 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	if targetPublic && (domain.CredentialLike(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 		return domain.Revision{}, domain.ErrInvalid
 	}
-	copied := domain.Revision{Number: len(b.Versions) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
+	if len(dependencies.Assets) > 0 && destination.ConnectionID == "" {
+		previous := destination.Assets
+		destination.Assets = make(map[string]domain.BlobRef, len(previous)+len(dependencies.Assets))
+		for p, ref := range previous {
+			destination.Assets[p] = ref
+		}
+		for p, ref := range dependencies.Assets {
+			destination.Assets[p] = ref
+		}
+		db.Sources[destination.ID] = destination
+	}
+	// The copy keeps the images of the destination index it will display:
+	// copied images of a local destination, the observed remote index of a
+	// connected one until its queued images are pulled back.
+	copied := domain.Revision{Number: domain.LatestRevision(b) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano), Assets: domain.RevisionAssets(rev.Text, in.DestinationPath, destination)}
 	b.SourceID, b.Path, b.Deleted = in.DestinationID, in.DestinationPath, false
 	b.Versions = append(append([]domain.Revision(nil), b.Versions...), copied)
 	b.CopiedFrom = &domain.CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}
@@ -109,20 +123,6 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	} else {
 		b.PublishedLocal = false
 	}
-	if dependencies.DirectoryLinks && db.Version < 16 {
-		db.Version = 16
-	}
-	if len(dependencies.Assets) > 0 && destination.ConnectionID == "" {
-		previous := destination.Assets
-		destination.Assets = make(map[string]domain.BlobRef, len(previous)+len(dependencies.Assets))
-		for p, ref := range previous {
-			destination.Assets[p] = ref
-		}
-		for p, ref := range dependencies.Assets {
-			destination.Assets[p] = ref
-		}
-		db.Sources[destination.ID] = destination
-	}
 	db.Articles[key] = b
 	// An active move may depend on the previous destination revision.
 	// Reconcile it in the same transaction before queuing the new write.
@@ -130,7 +130,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	if destination.ConnectionID != "" {
 		domain.EnqueueWrite(db, b, copied, time.Now())
 		if len(dependencies.Assets) > 0 || len(dependencies.Links) > 0 {
-			if err := queueDependencies(db, b, copied, dependencies, rev.Text); err != nil {
+			if err := queueDependencies(db, b, copied, dependencies); err != nil {
 				return domain.Revision{}, err
 			}
 		}
@@ -139,21 +139,8 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 }
 
 // queueDependencies adds the copy's images and links to its outbox job.
-func queueDependencies(db *domain.Database, b domain.Article, copied domain.Revision, dependencies Dependencies, text string) error {
-	if err := domain.AddWriteDependencies(db, b, copied, dependencies.Assets, dependencies.Links); err != nil {
-		return err
-	}
-	version := 7
-	if len(dependencies.Links) > 0 {
-		version = 8
-	}
-	if db.Version < version {
-		db.Version = version
-	}
-	if domain.HasRootReference(text) && db.Version < 12 {
-		db.Version = 12
-	}
-	return nil
+func queueDependencies(db *domain.Database, b domain.Article, copied domain.Revision, dependencies Dependencies) error {
+	return domain.AddWriteDependencies(db, b, copied, dependencies.Assets, dependencies.Links)
 }
 
 // Copy copies an article, or its linked graph, in one transaction.

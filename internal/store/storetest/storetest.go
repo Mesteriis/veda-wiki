@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
@@ -37,6 +38,39 @@ func Mutate(t testing.TB, st *store.Store, fn func(db *domain.Database)) {
 	if err := st.Update(func(tx *store.Tx) error { fn(tx.DB()); return nil }); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Renumber commits article key with its revisions numbered consecutively
+// from first, as a history whose older revisions were pruned looks. It
+// remaps only outbox jobs of the article (revision number and ID); moves,
+// reconciliation baselines and copy origins that name its revisions are left
+// unchanged, so callers must not renumber articles they reference.
+func Renumber(t testing.TB, st *store.Store, key string, first int) {
+	t.Helper()
+	Mutate(t, st, func(db *domain.Database) {
+		a, ok := db.Articles[key]
+		if !ok {
+			t.Fatal("no article to renumber")
+		}
+		numbers := map[int]int{}
+		versions := make([]domain.Revision, len(a.Versions))
+		for i, r := range a.Versions {
+			numbers[r.Number] = first + i
+			r.Number = first + i
+			versions[i] = r
+		}
+		a.Versions = versions
+		db.Articles[key] = a
+		for id, j := range db.Outbox {
+			if j.SourceID+"/"+j.Path != key {
+				continue
+			}
+			delete(db.Outbox, id)
+			j.Revision = numbers[j.Revision]
+			j.ID = key + "@" + strconv.Itoa(j.Revision)
+			db.Outbox[j.ID] = j
+		}
+	})
 }
 
 // Read returns a copy of the committed state whose collections the caller may

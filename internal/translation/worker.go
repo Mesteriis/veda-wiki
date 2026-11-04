@@ -88,10 +88,11 @@ func (w *Worker) original(c Candidate) (domain.Revision, bool) {
 	ok := false
 	_ = w.store.View(func(db *domain.Database) error {
 		a, found := db.Articles[c.SourceID+"/"+c.Path]
-		if !found || a.Deleted || len(a.Versions) != c.Revision || c.Revision < 1 {
+		if !found || a.Deleted || domain.LatestRevision(a) != c.Revision || c.Revision < 1 {
 			return nil
 		}
-		rev, ok = a.Versions[c.Revision-1], a.Versions[c.Revision-1].SHA == c.OriginalSHA
+		rev, _ = domain.RevisionByNumber(a, c.Revision)
+		ok = rev.SHA == c.OriginalSHA
 		return nil
 	})
 	return rev, ok
@@ -181,7 +182,7 @@ func (w *Worker) stillNeeded(candidate Candidate) bool {
 			return nil
 		}
 		a, ok := db.Articles[candidate.SourceID+"/"+candidate.Path]
-		if !ok || a.Deleted || candidate.Revision < 1 || len(a.Versions) != candidate.Revision || a.Versions[len(a.Versions)-1].SHA != candidate.OriginalSHA {
+		if !ok || a.Deleted || candidate.Revision < 1 || domain.LatestRevision(a) != candidate.Revision || !domain.LastHasSHA(a, candidate.OriginalSHA) {
 			return nil
 		}
 		if a.Translation != nil && a.Translation.OriginalSHA == candidate.OriginalSHA {

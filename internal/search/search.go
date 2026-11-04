@@ -55,7 +55,7 @@ func Candidates(db domain.Database, sourceID string, public bool, now time.Time)
 		if !ok || (public && !domain.SourcePublicReadable(db, src, now)) {
 			continue
 		}
-		rev := a.Versions[len(a.Versions)-1]
+		rev, _ := domain.LastRevision(a)
 		if public && src.ConnectionID != "" {
 			if a.Published == nil {
 				continue

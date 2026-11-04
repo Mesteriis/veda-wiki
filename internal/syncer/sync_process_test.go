@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/store"
@@ -461,7 +462,7 @@ func TestSQLiteIndexDirectoryMoveRecoversInFreshProcess(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	move, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmMove: true, ConfirmPublication: true})
-	if err != nil || move.State != "waiting_destination" || s.db().Version != 17 {
+	if err != nil || move.State != "waiting_destination" || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("fixture move not queued", err)
 	}
 	f.Modify(func() { f.LoseResponse = true })

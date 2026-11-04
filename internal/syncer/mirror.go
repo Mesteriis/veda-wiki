@@ -119,9 +119,6 @@ func (m *Manager) ConfigureMirror(ctx context.Context, in MirrorRequest) (domain
 			mirror.State = "paused"
 		}
 		db.SourceMirrors[in.DestinationID] = mirror
-		if db.Version < 19 {
-			db.Version = 19
-		}
 		return ctx.Err()
 	})
 	if err != nil {

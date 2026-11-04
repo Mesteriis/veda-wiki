@@ -40,14 +40,14 @@ func (m *Manager) pushPending(ctx context.Context, c domain.GitHubConnection, he
 	jobs := m.Jobs()
 	uncertain := map[string]int{}
 	for _, job := range jobs {
-		if job.SourceID == c.ID && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" {
+		if job.SourceID == c.ID && job.PreparedCommit != "" && !domain.JobTerminal(job.State) {
 			if previous, ok := uncertain[job.Path]; !ok || job.Revision < previous {
 				uncertain[job.Path] = job.Revision
 			}
 		}
 	}
 	for _, job := range jobs {
-		if job.SourceID != c.ID || job.State == "complete" || job.State == "superseded" {
+		if job.SourceID != c.ID || domain.JobTerminal(job.State) {
 			continue
 		}
 		// A later revision must not overtake an unresolved prepared ref update.
@@ -76,10 +76,11 @@ func (m *Manager) pushPending(ctx context.Context, c domain.GitHubConnection, he
 		if !ok || !connected || current.Paused || current.ConfigRevision != c.ConfigRevision {
 			return domain.ErrConflict
 		}
-		if job.Revision > len(a.Versions) || a.Versions[job.Revision-1].SHA != job.SHA {
+		jobRev, found := domain.RevisionByNumber(a, job.Revision)
+		if !found || jobRev.SHA != job.SHA {
 			return domain.ErrInvalid
 		}
-		if domain.CredentialLike(a.Versions[job.Revision-1].Text) {
+		if domain.CredentialLike(jobRev.Text) {
 			if err := m.setJobFor(c, job, "blocked", "credential_like_content", ""); err != nil {
 				return err
 			}
@@ -122,7 +123,7 @@ func (m *Manager) pushPending(ctx context.Context, c domain.GitHubConnection, he
 		var e error
 		directoryIndex := a.CopiedFrom != nil && a.CopiedFrom.DirectoryIndex
 		if len(job.Assets) == 0 && len(job.Links) == 0 && len(job.Bundle) == 0 && !directoryIndex {
-			_, e = m.github.Push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, a.Versions[job.Revision-1].Text, token, prepared)
+			_, e = m.github.Push(ctx, c.Repository, c.Branch, head, treeSHA, job.Path, jobRev.Text, token, prepared)
 		} else {
 			var files map[string][]byte
 			files, e = m.pendingBundle(ctx, c, head, treeSHA, token, job, a)
@@ -169,7 +170,7 @@ func bundleContents(db domain.Database, job domain.SyncJob) (map[string]string, 
 	result := make(map[string]string, len(job.Bundle))
 	for name, sha := range job.Bundle {
 		a, ok := db.Articles[job.SourceID+"/"+name]
-		if !ok || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
+		if !ok || a.Deleted || !domain.LastHasSHA(a, sha) {
 			return nil, domain.ErrConflict
 		}
 		for _, conflict := range a.Conflicts {
@@ -180,7 +181,8 @@ func bundleContents(db domain.Database, job domain.SyncJob) (map[string]string, 
 		if job.Visibility == "public" && (a.Published == nil || a.Published.SHA != sha) {
 			return nil, domain.ErrConflict
 		}
-		result[name] = a.Versions[len(a.Versions)-1].Text
+		last, _ := domain.LastRevision(a)
+		result[name] = last.Text
 	}
 	return result, nil
 }
@@ -233,10 +235,11 @@ func (m *Manager) pendingBundle(ctx context.Context, c domain.GitHubConnection, 
 		count++
 		total += entry.Size
 	}
-	if job.Revision < 1 || job.Revision > len(article.Versions) {
+	jobRev, found := domain.RevisionByNumber(article, job.Revision)
+	if !found {
 		return nil, domain.ErrInvalid
 	}
-	files := map[string][]byte{job.Path: []byte(article.Versions[job.Revision-1].Text)}
+	files := map[string][]byte{job.Path: []byte(jobRev.Text)}
 	var bundle map[string]string
 	var bundleErr error
 	m.read(func(db *domain.Database) { bundle, bundleErr = bundleContents(*db, job) })

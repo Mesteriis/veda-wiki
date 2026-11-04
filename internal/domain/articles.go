@@ -64,7 +64,7 @@ func PutArticle(db *Database, sourceID, p, text string, expected int, now time.T
 		return Revision{}, "", ErrConflict
 	}
 	article := db.Articles[articleKey]
-	if len(article.Versions) != expected {
+	if LatestRevision(article) != expected {
 		return Revision{}, "", ErrConflict
 	}
 	for _, conflict := range article.Conflicts {
@@ -81,16 +81,13 @@ func PutArticle(db *Database, sourceID, p, text string, expected int, now time.T
 	// article; decide that from the moves before reconciliation.
 	key = articleKey
 	for _, move := range db.Moves {
-		switch move.State {
-		case "complete", "cancelled", "source_changed", "destination_changed":
-			continue
-		default:
+		if !MoveTerminal(move.State) {
 			key = ""
+			break
 		}
-		break
 	}
 	sum := sha256.Sum256([]byte(text))
-	rev = Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: now.UTC().Format(time.RFC3339Nano)}
+	rev = Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: now.UTC().Format(time.RFC3339Nano), Assets: RevisionAssets(text, p, src)}
 	versions := append([]Revision(nil), article.Versions...)
 	versions = append(versions, rev)
 	article.SourceID, article.Path, article.Versions, article.Deleted = sourceID, p, versions, false

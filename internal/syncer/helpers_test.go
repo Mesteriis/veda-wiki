@@ -15,7 +15,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
@@ -381,8 +380,6 @@ func jsonResponse(rw http.ResponseWriter, status int, v any) {
 	rw.WriteHeader(status)
 	json.NewEncoder(rw).Encode(v)
 }
-
-func (s *fixtureStore) auth() auth.Service { return auth.Service{Store: s.st} }
 
 func programSource(t testing.TB, s *fixtureStore, id, visibility string) {
 	t.Helper()

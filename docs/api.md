@@ -30,7 +30,7 @@ The field is absent for public readers and for articles without a conflict.
 | POST | `/api/v1/sources` | Create a local source (owner only) |
 | GET | `/api/v1/articles` | Visible article index |
 | GET | `/api/v1/articles?source_id=…&path=…` | Current revision of a visible article |
-| GET | `/api/v1/articles?source_id=…&path=…&history=1` | All revisions (owner only; public callers still receive only current revision) |
+| GET | `/api/v1/articles?source_id=…&path=…&history=1` | Stored revisions: the newest three plus protected ones, so numbers can start above 1 and have gaps (owner only; public callers still receive only the current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
 | GET | `/api/v1/articles/translation-needed` | List program documents needing translation, publication review, or conflict resolution, limited to authorized sources; optional `source_id`, `limit` and `offset` |
@@ -135,6 +135,15 @@ this status in the proposal-base response. New-article proposals use
 Deleted history remains hidden and can still cause a later write conflict.
 The updated adapter requires a server supporting this endpoint.
 Responses include `revision`, `sha256`, `created_at` and the saved `text`.
+A revision (in write responses, `versions` and the public visible version)
+may also include `assets`: the images its text referenced when it was written,
+as repository path → `{sha256, mime}`, limited to images the source had then.
+It is omitted when there are none and for revisions written before images were
+bound. Rendered pages load such an image as `/media/<source>/<path>?v=<sha256>`;
+that URL answers only for a version the reader may see (the owner: any stored
+version; other private readers: the latest revision; the public listener: the
+public version of a publicly readable source) and is otherwise the same 404 as an
+unknown image.
 Creation returns 201; update returns 200. Revision mismatch returns 409;
 unavailable/unauthorized article returns 404; invalid input returns 400;
 unauthorized writes return 403; storage failures return 500. Unknown fields and

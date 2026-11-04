@@ -2,13 +2,7 @@ package syncer
 
 import (
 	"context"
-	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
@@ -27,7 +21,7 @@ func TestCopyLinkedGraphToGitHubOneCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.db().Version != 9 || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
+	if s.db().Version != domain.RevisionsFormat || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
 		t.Fatal("bundle not persisted")
 	}
 	if _, err = s.reopen(); err != nil {
@@ -54,7 +48,7 @@ func TestCopyDirectoryReadmeToGitHubAsOneBundle(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	_ = connectFixture(t, s, f, true)
 	_, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
-	if err != nil || s.db().Version != 16 || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
+	if err != nil || s.db().Version != domain.RevisionsFormat || len(s.jobs()) != 1 || len(s.jobs()[0].Bundle) != 1 {
 		t.Fatal("directory bundle not queued", err)
 	}
 	s, err = s.reopen()
@@ -80,7 +74,7 @@ func TestIndexDirectoryBundleRejectsNewRemoteIndex(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	m := connectFixture(t, s, f, true)
 	_, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "guide.md", IncludeLinked: true, ConfirmPublication: true})
-	if err != nil || s.db().Version != 17 {
+	if err != nil || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("index bundle not queued", err)
 	}
 	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target", "docs/index.md": "# Independent index"})
@@ -148,68 +142,6 @@ func TestIndexDirectoryRootCannotShadowNewRemoteIndex(t *testing.T) {
 	}
 }
 
-func TestOldBinaryRejectsDirectoryLinkStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V16_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	s.put("from", "guide.md", "[Docs](docs/)", 0)
-	s.put("from", "docs/README.md", "# Docs", 0)
-	if _, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: true}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject version 16")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed state")
-	}
-}
-
-func TestOldBinaryRejectsDirectoryIndexStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V17_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	s.put("from", "guide.md", "[Docs](docs/)", 0)
-	s.put("from", "docs/index.md", "# Docs", 0)
-	if _, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "guide.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "guide.md", IncludeLinked: true}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject version 17")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed state")
-	}
-}
-
 func TestLinkedBundleRequiresCompleteObservation(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")
@@ -229,38 +161,6 @@ func TestLinkedBundleRequiresCompleteObservation(t *testing.T) {
 	delete(files, "b.md")
 	if domain.ObservedWrite(&db, "handbook", "a.md", job.SHA, "fixture", nil, files, true) {
 		t.Fatal("missing linked article completed bundle")
-	}
-}
-
-func TestOldBinaryRejectsLinkedBundleStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V9_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	s.put("from", "a.md", "[B](b.md)", 0)
-	s.put("from", "b.md", "# B", 0)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
-	connectFixture(t, s, f, true)
-	if _, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", IncludeLinked: true, ConfirmPublication: true}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject v9")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v9 state")
 	}
 }
 
@@ -360,8 +260,8 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 	if _, err := s.copyArticle(in); err != nil {
 		t.Fatal(err)
 	}
-	if s.db().Version != 12 {
-		t.Fatal("root dependency bundle did not upgrade the store")
+	if s.db().Version != domain.RevisionsFormat {
+		t.Fatal("root dependency bundle changed the store format")
 	}
 	if _, err := s.reopen(); err != nil {
 		t.Fatal("root dependency store did not reopen", err)
@@ -373,40 +273,5 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 	manager.Once(context.Background())
 	if s.jobs()[0].State != "complete" {
 		t.Fatal("root bundle was not observed", s.jobs()[0].State)
-	}
-}
-
-func TestOldBinaryRejectsRootDependencyStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V11_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	fixtureAsset(t, s, "from", "img/icon.png")
-	if _, err := s.put("from", "a.md", "![Icon](/img/icon.png)", 0); err != nil {
-		t.Fatal(err)
-	}
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
-	connectFixture(t, s, f, true)
-	_, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmPublication: true})
-	if err != nil || s.db().Version != 12 {
-		t.Fatal("root dependency store not created", err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject v12")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v12 data")
 	}
 }

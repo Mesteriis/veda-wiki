@@ -64,11 +64,11 @@ func Context(st *store.Store, obs *importer.Observations, sourceID, target strin
 				name = strings.Join(parts[:i], "/") + "/AGENTS.md"
 			}
 			a, exists := db.Articles[sourceID+"/"+name]
-			if !exists || a.Deleted || len(a.Versions) == 0 || (public && src.ConnectionID != "" && a.Published == nil) {
+			if !exists || a.Deleted || domain.LatestRevision(a) == 0 || (public && src.ConnectionID != "" && a.Published == nil) {
 				result.Missing = append(result.Missing, name)
 				continue
 			}
-			rev := a.Versions[len(a.Versions)-1]
+			rev, _ := domain.LastRevision(a)
 			if public && src.ConnectionID != "" {
 				rev = *a.Published
 			}

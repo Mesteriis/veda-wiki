@@ -6,11 +6,13 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -27,6 +29,12 @@ type Store struct {
 	sqlite   bool
 	invalid  bool
 	readOnly bool
+	// blobMu serializes WriteBlobs with a blob collection sweep.
+	blobMu sync.Mutex
+	// blobsCollected is when blob collection last ran; clock replaces
+	// time.Now in tests.
+	blobsCollected time.Time
+	clock          func() time.Time
 }
 
 var errReadOnly = errors.New("read-only store")
@@ -47,41 +55,72 @@ func PrivateDataDir(dir string) error {
 }
 
 // Open loads the store in dir, creating a private empty directory if needed.
+//
+// Open has a side effect: when it loads an existing v21 store, it runs a
+// blob collection, which deletes unreferenced image files (see CollectBlobs).
+// The opened store is writable, so callers must hold the data directory's
+// writer lock (writer.lock, as internal/app and MigrateSQLite do) before
+// calling Open; collection then runs only in the process that owns the
+// directory. Tests open private temporary directories.
+//
+// Open refuses a store below format 21 (domain.RevisionsFormat): such a store
+// is converted offline by "veda migrate-revisions" (MigrateRevisions).
 func Open(dir string) (*Store, error) {
-	if err := PrivateDataDir(dir); err != nil {
-		return nil, err
+	s, found, err := read(dir)
+	if err != nil || !found {
+		return s, err
 	}
-	s := &Store{dir: dir, db: domain.Database{Version: 1, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
-	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
-		return nil, errors.New("store must be a private regular file")
-	}
-	f, err := os.OpenFile(path.Join(dir, "state.json"), os.O_RDONLY, 0)
-	if os.IsNotExist(err) {
-		return s, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxStoreBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(b) > maxStoreBytes {
-		return nil, errors.New("store too large")
-	}
-	if err = json.Unmarshal(b, &s.db); err != nil {
-		return nil, err
-	}
-	if s.db.Version == 14 {
-		if err = s.loadSQLite(b); err != nil {
-			return nil, err
-		}
+	if v := s.db.Version; v >= 1 && v < domain.RevisionsFormat {
+		return nil, fmt.Errorf("store format v%d requires \"veda migrate-revisions\"", v)
 	}
 	if err = Validate(&s.db); err != nil {
 		return nil, err
 	}
+	s.collectBlobsDue()
 	return s, nil
+}
+
+// read loads the store in dir in any supported format without validating it
+// or collecting blobs. Without state.json it returns an empty v21 store and
+// found is false.
+func read(dir string) (s *Store, found bool, err error) {
+	return readStore(dir, false)
+}
+
+// readStore is read; with readOnly it opens SQLite read-only, never writes a
+// store file and returns a store that refuses commits.
+func readStore(dir string, readOnly bool) (s *Store, found bool, err error) {
+	if err = PrivateDataDir(dir); err != nil {
+		return nil, false, err
+	}
+	s = &Store{dir: dir, readOnly: readOnly, db: domain.Database{Version: domain.RevisionsFormat, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
+	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
+		return nil, false, errors.New("store must be a private regular file")
+	}
+	f, err := os.OpenFile(path.Join(dir, "state.json"), os.O_RDONLY, 0)
+	if os.IsNotExist(err) {
+		return s, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxStoreBytes+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(b) > maxStoreBytes {
+		return nil, false, errors.New("store too large")
+	}
+	if err = json.Unmarshal(b, &s.db); err != nil {
+		return nil, false, err
+	}
+	if s.db.Version == 14 {
+		if err = s.loadSQLite(b); err != nil {
+			return nil, false, err
+		}
+	}
+	return s, true, nil
 }
 
 // Dir returns the data directory.

@@ -39,11 +39,11 @@ func DirectoryTransferSource(db *domain.Database, sourceID, articlePath, destina
 	if !ok {
 		return "", false, false
 	}
-	if a, exists := db.Articles[sourceID+"/"+readme]; exists && !a.Deleted && len(a.Versions) > 0 {
+	if a, exists := db.Articles[sourceID+"/"+readme]; exists && !a.Deleted && domain.LatestRevision(a) > 0 {
 		return readme, true, false
 	}
 	index := path.Join(path.Dir(readme), "index.md")
-	if a, exists := db.Articles[sourceID+"/"+index]; exists && !a.Deleted && len(a.Versions) > 0 {
+	if a, exists := db.Articles[sourceID+"/"+index]; exists && !a.Deleted && domain.LatestRevision(a) > 0 {
 		return index, true, true
 	}
 	return readme, true, false
@@ -92,7 +92,7 @@ func BuildPlan(db *domain.Database, in CopyRequest) (Plan, error) {
 	if !ok || root.Deleted {
 		return Plan{}, domain.ErrNotFound
 	}
-	if len(root.Versions) != in.ExpectedRevision {
+	if domain.LatestRevision(root) != in.ExpectedRevision {
 		return Plan{}, domain.ErrConflict
 	}
 	type pair struct {
@@ -122,7 +122,7 @@ func BuildPlan(db *domain.Database, in CopyRequest) (Plan, error) {
 		}
 		mappedFrom[current.from], mappedTo[current.to] = current.to, current.from
 		a, exists := db.Articles[in.SourceID+"/"+current.from]
-		if !exists || a.Deleted || len(a.Versions) == 0 {
+		if !exists || a.Deleted || domain.LatestRevision(a) == 0 {
 			return Plan{}, domain.ErrNotFound
 		}
 		for _, c := range a.Conflicts {
@@ -130,7 +130,7 @@ func BuildPlan(db *domain.Database, in CopyRequest) (Plan, error) {
 				return Plan{}, domain.ErrConflict
 			}
 		}
-		rev := a.Versions[len(a.Versions)-1]
+		rev, _ := domain.LastRevision(a)
 		state := "missing"
 		if _, exists := db.Articles[in.DestinationID+"/"+current.to]; exists {
 			state = "conflict"
@@ -141,7 +141,7 @@ func BuildPlan(db *domain.Database, in CopyRequest) (Plan, error) {
 		result.Articles = append(result.Articles, PlanItem{
 			SourcePath:      current.from,
 			DestinationPath: current.to,
-			Revision:        len(a.Versions),
+			Revision:        domain.LatestRevision(a),
 			SHA:             rev.SHA,
 			Destination:     state,
 			CredentialLike:  domain.CredentialLike(rev.Text),

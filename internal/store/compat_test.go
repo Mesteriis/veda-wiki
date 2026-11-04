@@ -11,11 +11,13 @@ import (
 )
 
 // compatText is the revision scripts/smoke_store_compat.py expects the
-// previous binary to read back.
+// current binary to serve.
 const compatText = "# Synthetic guide\n\nThird revision from the new store."
 
-// Writes a revision through Update into a copy of the fc35bea fixture so that
-// scripts/smoke_store_compat.py can open the result with the deployed binary.
+// Writes a revision through Update into a copy of the fc35bea fixture that
+// "veda migrate-revisions" converted, so that scripts/smoke_store_compat.py
+// can check that the deployed binary refuses it and the current one serves
+// the new revision.
 func TestWriteForPreviousBinary(t *testing.T) {
 	dir := os.Getenv("VEDA_STORE_COMPAT_DIR")
 	if dir == "" {
@@ -23,7 +25,7 @@ func TestWriteForPreviousBinary(t *testing.T) {
 	}
 	st, err := store.Open(dir)
 	if err != nil || !st.IsSQLite() {
-		t.Fatal("cannot open the fixture copy as SQLite", err)
+		t.Fatal("cannot open the converted fixture copy as SQLite", err)
 	}
 	const key = "fixture/guide.md"
 	if err = st.Update(func(tx *store.Tx) error {

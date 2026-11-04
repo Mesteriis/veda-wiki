@@ -201,8 +201,9 @@ func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
 	text := strings.Repeat("x", domain.MaxArticleBytes)
 	sha := domain.Digest([]byte(text))
 	if err = s.Update(func(tx *Tx) error {
+		// The store keeps its format: a v21 store has revision rows, which
+		// an older format would not read.
 		state := tx.DB()
-		state.Version = 13
 		for i := 0; i < 65; i++ {
 			p := fmt.Sprintf("%02d.md", i)
 			state.Articles["local/"+p] = domain.Article{SourceID: "local", Path: p, Versions: []domain.Revision{{Number: 1, Text: text, SHA: sha}}}
@@ -217,5 +218,33 @@ func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
 	}
 	if n := len(reopened.db.Articles); n != 65 {
 		t.Fatal("large SQLite store lost articles", n)
+	}
+}
+
+func TestMigrateSQLiteRefusesSharedOrBusyDataDirectory(t *testing.T) {
+	s := testStore(t)
+	addSource(t, s, "local")
+	lock, err := os.OpenFile(filepath.Join(s.Dir(), "writer.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	if err = MigrateSQLite(s.Dir()); err == nil || err.Error() != "data directory already in use" {
+		t.Fatal("migrated a data directory in use:", err)
+	}
+	lock.Close()
+	if err = os.Chmod(s.Dir(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err = MigrateSQLite(s.Dir()); err == nil || err.Error() != "data directory must be private" {
+		t.Fatal("migrated a shared data directory:", err)
+	}
+	if err = os.Chmod(s.Dir(), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = MigrateSQLite(s.Dir()); err != nil {
+		t.Fatal(err)
 	}
 }

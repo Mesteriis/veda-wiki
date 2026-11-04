@@ -67,6 +67,9 @@ func (s *Store) scopedLocked(scope []string) *Store {
 		// Strings are immutable values; copy every mutable field while the
 		// source lock still protects the coherent authorization snapshot.
 		article.Versions = slices.Clone(article.Versions)
+		for i := range article.Versions {
+			article.Versions[i].Assets = maps.Clone(article.Versions[i].Assets)
+		}
 		article.Conflicts = slices.Clone(article.Conflicts)
 		article.ReconcileBase = nil
 		if article.Translation != nil {
@@ -79,6 +82,7 @@ func (s *Store) scopedLocked(scope []string) *Store {
 		}
 		if article.Published != nil {
 			published := *article.Published
+			published.Assets = maps.Clone(published.Assets)
 			article.Published = &published
 		}
 		db.Articles[key] = article
@@ -86,7 +90,7 @@ func (s *Store) scopedLocked(scope []string) *Store {
 	// Copy only fields needed for source counts and the selected article's
 	// blocking status; no commit IDs, revisions, contents or link hashes.
 	for id, job := range s.db.Outbox {
-		if selected[job.SourceID] && job.State != "complete" && job.State != "superseded" {
+		if selected[job.SourceID] && !domain.JobTerminal(job.State) {
 			paths := map[string]bool{}
 			if len(job.Bundle) != 0 || job.ScopeBundle {
 				for p := range job.Bundle {

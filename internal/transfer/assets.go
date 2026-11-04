@@ -84,7 +84,7 @@ func (s Service) ResolveDependencies(db *domain.Database, value, sourcePath, tar
 				return ast.WalkStop, nil
 			}
 			original, ok := db.Articles[src.ID+"/"+from]
-			if !ok || original.Deleted || len(original.Versions) == 0 {
+			if !ok || original.Deleted || domain.LatestRevision(original) == 0 {
 				failure = domain.ErrInvalid
 				return ast.WalkStop, nil
 			}
@@ -94,7 +94,8 @@ func (s Service) ResolveDependencies(db *domain.Database, value, sourcePath, tar
 					return ast.WalkStop, nil
 				}
 			}
-			sha := original.Versions[len(original.Versions)-1].SHA
+			last, _ := domain.LastRevision(original)
+			sha := last.SHA
 			if !domain.LinksPresent(*db, target.ID, map[string]string{to: sha}) {
 				failure = domain.ErrConflict
 				return ast.WalkStop, nil

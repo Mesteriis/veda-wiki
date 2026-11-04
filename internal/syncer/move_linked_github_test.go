@@ -2,13 +2,7 @@ package syncer
 
 import (
 	"context"
-	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
@@ -36,40 +30,6 @@ func TestMoveLinkedGraphToGitHubWaitsForFullObservation(t *testing.T) {
 	}
 }
 
-func TestOldBinaryRejectsConnectedGraphMoveStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V10_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	s.put("from", "a.md", "[B](b.md)", 0)
-	s.put("from", "b.md", "# B", 0)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
-	connectFixture(t, s, f, true)
-	if _, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true}); err != nil {
-		t.Fatal(err)
-	}
-	if s.db().Version != 10 {
-		t.Fatal("graph move did not upgrade store")
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject v10")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v10 state")
-	}
-}
 func TestCancelledLinkedBundleKeepsSource(t *testing.T) {
 	s := testStore(t)
 	source(t, s, "from", "private")

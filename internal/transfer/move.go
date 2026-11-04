@@ -56,12 +56,13 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 	if !ok || a.Deleted {
 		return domain.Move{}, domain.ErrNotFound
 	}
-	if in.ExpectedRevision != len(a.Versions) || in.ExpectedRevision < 1 {
+	if in.ExpectedRevision != domain.LatestRevision(a) || in.ExpectedRevision < 1 {
 		return domain.Move{}, domain.ErrConflict
 	}
 	if src.ConnectionID != "" {
 		c, connected := db.Connections[src.ConnectionID]
-		if !connected || !c.Write || c.Paused || a.UpstreamHash != a.Versions[in.ExpectedRevision-1].SHA {
+		expectedRev, _ := domain.RevisionByNumber(a, in.ExpectedRevision)
+		if !connected || !c.Write || c.Paused || a.UpstreamHash != expectedRev.SHA {
 			return domain.Move{}, domain.ErrConflict
 		}
 		// Different source IDs may point at the very same GitHub branch. A
@@ -97,7 +98,8 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 	if in.IncludeLinked {
 		rev, dependencies, e = s.PrepareLinkedCopy(db, copyIn)
 	} else {
-		dependencies, e = s.ResolveDependencies(db, a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, destinationSource)
+		current, _ := domain.LastRevision(a)
+		dependencies, e = s.ResolveDependencies(db, current.Text, in.SourcePath, in.DestinationPath, src, destinationSource)
 		if e == nil {
 			rev, e = s.PrepareCopy(db, copyIn)
 		}
@@ -105,7 +107,6 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 	if e != nil {
 		return domain.Move{}, e
 	}
-	setMoveVersion(db, in, destinationSource, a, dependencies)
 	id, e := store.RandomID()
 	if e != nil {
 		return domain.Move{}, e
@@ -141,43 +142,9 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 		m.DestinationRepositoryID = conn.RepositoryID
 		m.DestinationBranch = conn.Branch
 	}
-	// Never downgrade a store with newer features to an older format.
-	if src.ConnectionID != "" && db.Version < 3 {
-		db.Version = 3
-	} else if db.Version < 2 {
-		db.Version = 2
-	}
 	db.Moves[id] = m
 	domain.ReconcileMoves(db)
 	return db.Moves[id], nil
-}
-
-// setMoveVersion raises the store version so that old binaries refuse
-// stores containing the move's new invariants. destination is the
-// destination source as it was before the copy.
-func setMoveVersion(db *domain.Database, in MoveRequest, destination domain.Source, a domain.Article, dependencies Dependencies) {
-	if a.Translation != nil && db.Version < 5 {
-		db.Version = 5
-	}
-	if len(dependencies.Assets) > 0 {
-		version := 6
-		if destination.ConnectionID != "" {
-			version = 7
-		}
-		if db.Version < version {
-			db.Version = version
-		}
-	}
-	if len(dependencies.Links) > 0 && db.Version < 8 {
-		db.Version = 8
-	}
-	if dependencies.DirectoryLinks && db.Version < 16 {
-		db.Version = 16
-	}
-	if in.IncludeLinked && db.Sources[in.DestinationID].ConnectionID != "" && db.Version < 10 {
-		// Previous binaries do not understand graph moves awaiting a bundle.
-		db.Version = 10
-	}
 }
 
 // Moves lists all moves, oldest first.
@@ -231,7 +198,8 @@ func (s Service) LinkContents(sourceID string, expected map[string]string) (map[
 		texts = make(map[string]string, len(expected))
 		for name := range expected {
 			a := db.Articles[sourceID+"/"+name]
-			texts[name] = a.Versions[len(a.Versions)-1].Text
+			current, _ := domain.LastRevision(a)
+			texts[name] = current.Text
 		}
 		return nil
 	})

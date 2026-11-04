@@ -15,7 +15,7 @@ import (
 // Validate checks a whole database before it is opened or committed. It fills
 // absent collections and defaults the publication scope of legacy outbox jobs.
 func Validate(db *domain.Database) error {
-	if (db.Version < 1 || db.Version > 20) || db.Version == 14 || db.Sources == nil || db.Articles == nil {
+	if (db.Version < 1 || db.Version > domain.RevisionsFormat) || db.Version == 14 || db.Sources == nil || db.Articles == nil {
 		return errors.New("unsupported store")
 	}
 	if db.Accounts == nil {
@@ -104,18 +104,8 @@ func Validate(db *domain.Database) error {
 				return errors.New("invalid stored metadata")
 			}
 		}
-		for name, ref := range src.Assets {
-			if !domain.SafeRelative(name) {
-				return errors.New("invalid stored asset")
-			}
-			if _, e := domain.HexKey(ref.SHA); e != nil {
-				return errors.New("invalid stored asset digest")
-			}
-			switch ref.MIME {
-			case "image/png", "image/jpeg", "image/webp", "image/gif":
-			default:
-				return errors.New("invalid stored asset type")
-			}
+		if e := validateAssets(src.Assets); e != nil {
+			return e
 		}
 	}
 	for key, article := range db.Articles {
@@ -125,18 +115,23 @@ func Validate(db *domain.Database) error {
 		}
 		if b := article.ReconcileBase; b != nil {
 			origin, found := db.Articles[b.SourceID+"/"+b.Path]
-			if db.Version < 18 || b.SourceID == article.SourceID || !found || b.Revision < 1 || b.Revision > len(origin.Versions) || origin.Versions[b.Revision-1].SHA != b.SHA {
+			if db.Version < 18 || b.SourceID == article.SourceID || !found || b.Revision < 1 || !revisionHasSHA(origin, b.Revision, b.SHA) {
 				return errors.New("invalid reconciliation baseline")
 			}
 		}
-		for i, revision := range article.Versions {
+		previous := 0
+		for _, revision := range article.Versions {
 			sum := sha256.Sum256([]byte(revision.Text))
-			if revision.Number != i+1 ||
+			if revision.Number < 1 || revision.Number <= previous ||
 				len(revision.Text) > domain.MaxArticleBytes ||
 				(len(revision.Text) > domain.LegacyArticleBytes && db.Version < 13) ||
 				!utf8.ValidString(revision.Text) ||
 				revision.SHA != hex.EncodeToString(sum[:]) {
 				return errors.New("invalid stored revision")
+			}
+			previous = revision.Number
+			if e := validateAssets(revision.Assets); e != nil {
+				return e
 			}
 		}
 		if article.Translation != nil {
@@ -176,6 +171,9 @@ func Validate(db *domain.Database) error {
 			if len(p.Text) > domain.MaxArticleBytes || (len(p.Text) > domain.LegacyArticleBytes && db.Version < 13) || !utf8.ValidString(p.Text) || domain.Digest([]byte(p.Text)) != p.SHA {
 				return errors.New("invalid publication snapshot")
 			}
+			if e := validateAssets(p.Assets); e != nil {
+				return e
+			}
 		}
 		for _, c := range article.Conflicts {
 			if !domain.ValidCommitID(c.Commit) ||
@@ -193,11 +191,16 @@ func Validate(db *domain.Database) error {
 			m.SourceID == m.DestinationID ||
 			!srcOK ||
 			!dstOK ||
-			m.SourceRevision < 1 ||
-			m.SourceRevision > len(source.Versions) ||
-			len(target.Versions) < 1 ||
-			source.Versions[m.SourceRevision-1].SHA != m.SHA ||
-			target.Versions[0].SHA != m.SHA {
+			m.SourceRevision < 1 {
+			return errors.New("invalid stored move")
+		}
+		// A final move is a journal record: pruning may have removed the
+		// revisions it names. ProtectedRevisions keeps them for active moves.
+		if domain.MoveTerminal(m.State) {
+			if !storedOrPruned(source, m.SourceRevision, m.SHA) || !storedOrPruned(target, 1, m.SHA) {
+				return errors.New("invalid stored move")
+			}
+		} else if !revisionHasSHA(source, m.SourceRevision, m.SHA) || len(target.Versions) < 1 || target.Versions[0].SHA != m.SHA {
 			return errors.New("invalid stored move")
 		}
 		if m.TranslationFingerprint != "" {
@@ -278,7 +281,17 @@ func Validate(db *domain.Database) error {
 		}
 		for p, sha := range j.Bundle {
 			a, exists := db.Articles[j.SourceID+"/"+p]
-			if p == j.Path || !domain.ArticlePath(p, db.Sources[j.SourceID].Kind) || len(sha) != 64 || !exists || len(a.Versions) == 0 || a.Versions[0].SHA != sha {
+			if p == j.Path || !domain.ArticlePath(p, db.Sources[j.SourceID].Kind) || len(sha) != 64 || !exists || len(a.Versions) == 0 {
+				return errors.New("invalid queued bundle article")
+			}
+			// A linked copy creates each bundle article as revision 1, and the
+			// bundle SHA is that revision's. An active job protects revision 1
+			// (domain.ProtectedRevisions); a final one does not, so it may be pruned.
+			if domain.JobTerminal(j.State) {
+				if !storedOrPruned(a, 1, sha) {
+					return errors.New("invalid queued bundle article")
+				}
+			} else if !revisionHasSHA(a, 1, sha) {
 				return errors.New("invalid queued bundle article")
 			}
 			if _, e := hex.DecodeString(sha); e != nil {
@@ -323,13 +336,54 @@ func Validate(db *domain.Database) error {
 			return errors.New("invalid queued publication scope")
 		}
 		a, ok := db.Articles[j.SourceID+"/"+j.Path]
-		if !ok || j.ID != id || j.Revision < 1 || j.Revision > len(a.Versions) || a.Versions[j.Revision-1].SHA != j.SHA {
+		if !ok || j.ID != id || j.Revision < 1 {
+			return errors.New("invalid outbox revision")
+		}
+		if domain.JobTerminal(j.State) {
+			if !storedOrPruned(a, j.Revision, j.SHA) {
+				return errors.New("invalid outbox revision")
+			}
+		} else if !revisionHasSHA(a, j.Revision, j.SHA) {
 			return errors.New("invalid outbox revision")
 		}
 		switch j.State {
 		case "pending", "prepared", "retry", "blocked", "conflict", "complete", "superseded":
 		default:
 			return errors.New("invalid outbox state")
+		}
+	}
+	return nil
+}
+
+// revisionHasSHA reports whether the article stores revision n with this SHA.
+func revisionHasSHA(a domain.Article, n int, sha string) bool {
+	r, ok := domain.RevisionByNumber(a, n)
+	return ok && r.SHA == sha
+}
+
+// storedOrPruned reports whether revision n of the article has this SHA or,
+// being older than the newest revision, may have been pruned.
+func storedOrPruned(a domain.Article, n int, sha string) bool {
+	if r, ok := domain.RevisionByNumber(a, n); ok {
+		return r.SHA == sha
+	}
+	return n >= 1 && n < domain.LatestRevision(a)
+}
+
+// validateAssets checks an image index of a source, revision or publication
+// copy: the media handler serves these references with their stored type.
+func validateAssets(assets map[string]domain.BlobRef) error {
+	for name, ref := range assets {
+		if !domain.SafeRelative(name) {
+			return errors.New("invalid stored asset")
+		}
+		if _, e := domain.HexKey(ref.SHA); e != nil {
+			return errors.New("invalid stored asset digest")
+		}
+		switch ref.MIME {
+		case "image/png", "image/jpeg", "image/webp", "image/gif":
+		default:
+			return errors.New("invalid stored asset type")
 		}
 	}
 	return nil

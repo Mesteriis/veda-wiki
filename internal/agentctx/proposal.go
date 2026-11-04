@@ -21,7 +21,7 @@ func ProposalBase(st *store.Store, obs *importer.Observations, sourceID, path st
 			return domain.ErrInvalid
 		}
 		a, ok := db.Articles[sourceID+"/"+path]
-		if !ok || a.Deleted || len(a.Versions) == 0 {
+		if !ok || a.Deleted || domain.LatestRevision(a) == 0 {
 			return domain.ErrNotFound
 		}
 		unresolved := false
@@ -32,7 +32,7 @@ func ProposalBase(st *store.Store, obs *importer.Observations, sourceID, path st
 			}
 		}
 		blocked := domain.ConflictResolutionBlocked(*db, sourceID, path)
-		rev := a.Versions[len(a.Versions)-1]
+		rev, _ := domain.LastRevision(a)
 		out = map[string]any{
 			"revision":                             rev.Number,
 			"sha256":                               rev.SHA,
@@ -62,7 +62,7 @@ func NewProposalBase(st *store.Store, obs *importer.Observations, sourceID, path
 		if !domain.ArticlePath(path, src.Kind) {
 			return domain.ErrInvalid
 		}
-		if a, exists := db.Articles[sourceID+"/"+path]; exists && !a.Deleted && len(a.Versions) > 0 {
+		if a, exists := db.Articles[sourceID+"/"+path]; exists && !a.Deleted && domain.LatestRevision(a) > 0 {
 			return domain.ErrConflict
 		}
 		out = map[string]any{"source_status": Status(*db, obs, sourceID, src, time.Now())}

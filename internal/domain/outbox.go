@@ -3,7 +3,6 @@ package domain
 import (
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/yuin/goldmark/ast"
@@ -21,7 +20,7 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 	retainedLinks := map[string]string{}
 	privateDependencies := false
 	for id, job := range db.Outbox {
-		if job.SourceID == a.SourceID && job.Path == a.Path && job.State != "complete" && job.State != "superseded" {
+		if job.SourceID == a.SourceID && job.Path == a.Path && !JobTerminal(job.State) {
 			inherited := RetainedPendingAssets(rev.Text, a.Path, job.Assets)
 			inheritedLinks := RetainedPendingLinks(rev.Text, a.Path, job.Links)
 			if (len(inherited) > 0 || len(inheritedLinks) > 0) && job.Visibility != "public" {
@@ -47,9 +46,6 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 	visibility := "private"
 	if !privateDependencies && SourcePublic(*db, db.Sources[a.SourceID], now) {
 		visibility = "public"
-	}
-	if (len(retained) > 0 || len(retainedLinks) > 0) && HasRootReference(rev.Text) && db.Version < 12 {
-		db.Version = 12
 	}
 	db.Outbox[id] = SyncJob{
 		ID:         id,
@@ -113,7 +109,7 @@ func EnqueueBundle(db *Database, a Article, root Revision, assets map[string]Blo
 // writes or depends on article p.
 func BundleLocks(db Database, sourceID, p string) bool {
 	for _, job := range db.Outbox {
-		if (len(job.Bundle) == 0 && !job.ScopeBundle) || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
+		if (len(job.Bundle) == 0 && !job.ScopeBundle) || job.SourceID != sourceID || JobTerminal(job.State) {
 			continue
 		}
 		if job.Path == p {
@@ -135,7 +131,7 @@ func BundleLocks(db Database, sourceID, p string) bool {
 // Caller holds the store lock or uses a scoped snapshot.
 func ConflictResolutionBlocked(db Database, sourceID, p string) bool {
 	for _, job := range db.Outbox {
-		if job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
+		if job.SourceID != sourceID || JobTerminal(job.State) {
 			continue
 		}
 		if job.Path == p && (job.PreparedCommit != "" || job.ScopePrepared || len(job.Bundle) != 0 || job.ScopeBundle) {
@@ -208,34 +204,6 @@ func RetainedPendingLinks(value, articlePath string, candidates map[string]strin
 		return ast.WalkContinue, nil
 	})
 	return refs
-}
-
-// Earlier binaries do not retain repository-root references in pending work.
-// Such work requires a version gate before it is committed to disk.
-func HasRootReference(value string) bool {
-	root := Markdown.Parser().Parse(text.NewReader([]byte(value)))
-	found := false
-	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		var destination []byte
-		switch n := node.(type) {
-		case *ast.Link:
-			destination = n.Destination
-		case *ast.Image:
-			destination = n.Destination
-		default:
-			return ast.WalkContinue, nil
-		}
-		u, err := url.Parse(string(destination))
-		if err == nil && u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") {
-			found = true
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	return found
 }
 
 // SupersedePendingWrites marks every unfinished queued write of path p

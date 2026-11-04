@@ -53,7 +53,7 @@ func TestMoveCopiesRelativeImageToLocalDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.state(t).Version != 6 || reopened.moves()[0].Assets["nested/img/icon.png"] != ref {
+	if err != nil || reopened.state(t).Version != domain.RevisionsFormat || reopened.moves()[0].Assets["nested/img/icon.png"] != ref {
 		t.Fatal("move did not survive restart", err)
 	}
 	w := Wiki{Store: reopened, Token: "test-owner"}
@@ -96,7 +96,7 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	manager := connectFixture(t, s, f, true)
 	m, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, ConfirmPublication: true})
-	if err != nil || m.State != "waiting_destination" || s.state(t).Version != 7 {
+	if err != nil || m.State != "waiting_destination" || s.state(t).Version != domain.RevisionsFormat {
 		t.Fatal("move not queued", err, m)
 	}
 	if r := request(Wiki{Store: s}, "GET", "/media/handbook/img/icon.png", "", false); r.Code != 404 {
@@ -114,7 +114,7 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.state(t).Version != 7 {
+	if err != nil || reopened.state(t).Version != domain.RevisionsFormat {
 		t.Fatal("queued assets did not persist", err)
 	}
 }
@@ -140,8 +140,8 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := openStore(s.Dir())
-	if err != nil || reopened.state(t).Version != 6 {
-		t.Fatal("v6 restart failed", err)
+	if err != nil || reopened.state(t).Version != domain.RevisionsFormat {
+		t.Fatal("restart failed or changed the store format", err)
 	}
 	page, err := reopened.page("to/docs/sub/b.md", false)
 	if err != nil || !page.Translated || reopened.state(t).Sources["to"].Assets["docs/sub/img/icon.png"] != ref {

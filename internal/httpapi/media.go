@@ -14,8 +14,12 @@ import (
 const maxMediaBytes = 4 << 20
 
 // media serves a source's image after checking its digest. The public
-// listener serves only images of publicly readable sources.
-func (h handler) media(rw http.ResponseWriter, r *http.Request) {
+// listener serves only images of publicly readable sources. With ?v=<sha256>
+// it serves that digest only when it is the image of the path in a version of
+// an article the reader may see (domain.RevisionImage): any stored version for
+// the owner, the latest one for other private readers. Every refusal is the
+// same 404, so a request cannot learn whether an image it may not see exists.
+func (h handler) media(rw http.ResponseWriter, r *http.Request, owner bool) {
 	rw.Header().Set("Cache-Control", "no-store")
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
 	if r.Method != "GET" {
@@ -32,7 +36,13 @@ func (h handler) media(rw http.ResponseWriter, r *http.Request) {
 		ref                  domain.BlobRef
 		ok, present, visible bool
 	)
+	query := r.URL.Query()
 	_ = h.Store.View(func(db *domain.Database) error {
+		if query.Has("v") {
+			ref, present = domain.RevisionImage(*db, parts[0], parts[1], query.Get("v"), h.Public, owner && !h.Public, time.Now())
+			ok, visible = present, present
+			return nil
+		}
 		var src domain.Source
 		src, ok = db.Sources[parts[0]]
 		ref, present = src.Assets[parts[1]]

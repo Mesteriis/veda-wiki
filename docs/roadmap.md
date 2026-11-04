@@ -13,7 +13,7 @@
 - [ ] Program docs/ import and provenance-preserving Russian translation.
 - [ ] Stable cross-source article moves and publication review.
 - [ ] User/team permissions and private browser reading sessions.
-- [ ] SQLite migration and retention: opt-in backend deployed; isolated production snapshot boot and local socket read passed, credential-based restore acceptance, indexing and retention remain pending.
+- [ ] SQLite migration and retention: opt-in backend deployed; per-revision rows, indexes, retention and blob collection implemented and tested locally; `veda migrate-revisions` has not been run on a production store; credential-based restore acceptance remains pending.
 - [ ] Packaging, deployment hardening and independent restore acceptance.
 
 Full-scope status is tracked in [implementation ledger](implementation.md).

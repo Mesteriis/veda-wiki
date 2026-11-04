@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -21,7 +17,7 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 	enabled := true
 	expected := 0
 	conf, err := s.configureMirror(context.Background(), MirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &enabled, ExpectedRevision: &expected})
-	if err != nil || conf.Revision != 1 || s.db().Version != 19 {
+	if err != nil || conf.Revision != 1 || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("enable failed", err)
 	}
 	m.Once(context.Background())
@@ -53,7 +49,7 @@ func TestMirrorBackgroundUpdatesAndPause(t *testing.T) {
 		t.Fatal("paused mirror continued")
 	}
 	r, err := s.reopen()
-	if err != nil || r.db().Version != 19 || len(r.mirrors()) != 1 || r.mirrors()[0].Enabled {
+	if err != nil || r.db().Version != domain.RevisionsFormat || len(r.mirrors()) != 1 || r.mirrors()[0].Enabled {
 		t.Fatal("configuration did not survive reopen", err)
 	}
 }
@@ -175,53 +171,6 @@ func TestMirrorMultipleBatchesEventuallyConverge(t *testing.T) {
 		if job.State != "complete" {
 			t.Fatal("unfinished job", job.State)
 		}
-	}
-}
-
-func TestOldBinaryRejectsMirrorStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V19_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	for _, sqlite := range []bool{false, true} {
-		t.Run(map[bool]string{false: "json", true: "sqlite"}[sqlite], func(t *testing.T) {
-			s, _, _ := mirrorFixture(t)
-			if sqlite {
-				if err := store.MigrateSQLite(s.Dir()); err != nil {
-					t.Fatal(err)
-				}
-				var err error
-				s, err = s.reopen()
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			yes := true
-			revision := 0
-			if _, err := s.configureMirror(context.Background(), MirrorRequest{SourceID: "local", DestinationID: "handbook", Enabled: &yes, ExpectedRevision: &revision}); err != nil {
-				t.Fatal(err)
-			}
-			name := "state.json"
-			if sqlite {
-				name = "state.sqlite"
-			}
-			file := filepath.Join(s.Dir(), name)
-			before, err := os.ReadFile(file)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-			var exit *exec.ExitError
-			if !errors.As(err, &exit) || ctx.Err() != nil || (!strings.Contains(string(out), "unsupported store") && !strings.Contains(string(out), "unknown SQLite record category")) {
-				t.Fatalf("old binary did not reject mirror store: %s", out)
-			}
-			after, err := os.ReadFile(file)
-			if err != nil || string(after) != string(before) {
-				t.Fatal("old binary changed mirror store")
-			}
-		})
 	}
 }
 

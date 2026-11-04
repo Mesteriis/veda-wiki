@@ -29,24 +29,35 @@ type sqliteMeta struct {
 }
 
 func sqliteDB(dir string) (*sql.DB, error) {
-	p := filepath.Join(dir, SQLiteFile)
+	return openSQLiteFile(filepath.Join(dir, SQLiteFile), false)
+}
+
+// openSQLiteFile opens the private SQLite file p for writing, or read-only
+// without changing journal settings.
+func openSQLiteFile(p string, readOnly bool) (*sql.DB, error) {
 	info, err := os.Lstat(p)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("SQLite store must be a private regular file")
 	}
-	u := url.URL{Scheme: "file", Path: p, RawQuery: "mode=rw"}
+	mode, pragmas := "mode=rw", "PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA; PRAGMA busy_timeout=5000; PRAGMA temp_store=MEMORY"
+	if readOnly {
+		mode, pragmas = "mode=ro", "PRAGMA busy_timeout=5000; PRAGMA temp_store=MEMORY"
+	}
+	u := url.URL{Scheme: "file", Path: p, RawQuery: mode}
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec("PRAGMA journal_mode=DELETE; PRAGMA synchronous=EXTRA; PRAGMA busy_timeout=5000; PRAGMA temp_store=MEMORY"); err != nil {
+	if _, err = db.Exec(pragmas); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return db, nil
 }
 
+// initSQLite creates the SQLite file of a format 21 store with its record
+// and revision tables (see sqlite_revisions.go).
 func initSQLite(dir string) error {
 	f, err := os.OpenFile(filepath.Join(dir, SQLiteFile), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
@@ -60,36 +71,54 @@ func initSQLite(dir string) error {
 		return err
 	}
 	defer db.Close()
-	_, err = db.Exec(`CREATE TABLE records (category TEXT NOT NULL, id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (category,id)) WITHOUT ROWID`)
-	return err
+	for _, table := range []string{`CREATE TABLE records (category TEXT NOT NULL, id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (category,id)) WITHOUT ROWID`, revisionsTable, revisionAssetsTable} {
+		if _, err = db.Exec(table); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) loadSQLite(marker []byte) error {
-	var m sqliteMarker
-	decoder := json.NewDecoder(bytes.NewReader(marker))
-	decoder.DisallowUnknownFields()
-	err := decoder.Decode(&m)
-	if err == nil {
-		var trailing any
-		if decoder.Decode(&trailing) != io.EOF {
-			err = errors.New("trailing marker data")
-		}
-	}
-	if err != nil || m.Version != 14 || m.Backend != "sqlite" {
+	if !sqliteMarkerValid(marker) {
 		return errors.New("unsupported store marker")
 	}
-	db, err := sqliteDB(s.dir)
+	result, err := readSQLite(filepath.Join(s.dir, SQLiteFile), s.readOnly)
 	if err != nil {
 		return err
+	}
+	s.db = result
+	s.sqlite = true
+	return nil
+}
+
+// sqliteMarkerValid reports whether b is exactly the SQLite backend marker.
+func sqliteMarkerValid(b []byte) bool {
+	var m sqliteMarker
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&m) != nil {
+		return false
+	}
+	var trailing any
+	return decoder.Decode(&trailing) == io.EOF && m.Version == 14 && m.Backend == "sqlite"
+}
+
+// readSQLite loads the database in the SQLite file p, in either layout.
+func readSQLite(p string, readOnly bool) (domain.Database, error) {
+	var none domain.Database
+	db, err := openSQLiteFile(p, readOnly)
+	if err != nil {
+		return none, err
 	}
 	defer db.Close()
 	var integrity string
 	if err = db.QueryRow("PRAGMA quick_check").Scan(&integrity); err != nil || integrity != "ok" {
-		return errors.New("SQLite integrity check failed")
+		return none, errors.New("SQLite integrity check failed")
 	}
 	rows, err := db.Query(`SELECT category,id,data FROM records`)
 	if err != nil {
-		return err
+		return none, err
 	}
 	defer rows.Close()
 	result := domain.Database{
@@ -109,13 +138,13 @@ func (s *Store) loadSQLite(marker []byte) error {
 		var category, id string
 		var data []byte
 		if err = rows.Scan(&category, &id, &data); err != nil {
-			return err
+			return none, err
 		}
 		switch category {
 		case "meta":
 			var v sqliteMeta
 			if id != "state" || metaFound {
-				return errors.New("invalid SQLite metadata")
+				return none, errors.New("invalid SQLite metadata")
 			}
 			err = json.Unmarshal(data, &v)
 			result.Version, result.Updated = v.Version, v.Updated
@@ -161,21 +190,28 @@ func (s *Store) loadSQLite(marker []byte) error {
 			err = json.Unmarshal(data, &v)
 			result.Teams[id] = v
 		default:
-			return errors.New("unknown SQLite record category")
+			return none, errors.New("unknown SQLite record category")
 		}
 		if err != nil {
-			return errors.New("invalid SQLite record")
+			return none, errors.New("invalid SQLite record")
 		}
 	}
 	if err = rows.Err(); err != nil {
-		return err
+		return none, err
 	}
 	if !metaFound {
-		return errors.New("missing SQLite metadata")
+		return none, errors.New("missing SQLite metadata")
 	}
-	s.db = result
-	s.sqlite = true
-	return nil
+	rowsLayout, err := revisionRowsLayout(db, result.Version)
+	if err != nil {
+		return none, err
+	}
+	if rowsLayout {
+		if err = attachRevisions(db, result.Articles); err != nil {
+			return none, err
+		}
+	}
+	return result, nil
 }
 
 // Commit errors can be ambiguous. Reload the authoritative database; if

@@ -97,7 +97,7 @@ func (h handler) excerpt(rw http.ResponseWriter, r *http.Request, public bool) {
 		apiError(rw, err)
 		return
 	}
-	revision := a.Versions[len(a.Versions)-1]
+	revision, _ := domain.LastRevision(a)
 	if expected != "" && revision.SHA != expected {
 		apiError(rw, domain.ErrConflict)
 		return

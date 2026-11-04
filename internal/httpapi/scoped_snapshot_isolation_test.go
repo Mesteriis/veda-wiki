@@ -35,7 +35,8 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 		a.Translation = &domain.Translation{Text: "original translation"}
 		a.CopiedFrom = &domain.CopyOrigin{Path: "original path"}
 		a.ReconcileBase = &domain.ReconcileBase{SourceID: "beta", Path: "secret.md"}
-		a.Published = &domain.Revision{Text: "original published"}
+		a.Published = &domain.Revision{Text: "original published", Assets: map[string]domain.BlobRef{"image.png": {SHA: "original"}}}
+		a.Versions[0].Assets = map[string]domain.BlobRef{"image.png": {SHA: "original"}}
 		db.Articles["alpha/guide.md"] = a
 	})
 	s.observations.MarkObserved("alpha", observed)
@@ -61,6 +62,8 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 		a.Translation.Text = "changed translation"
 		a.CopiedFrom.Path = "changed path"
 		a.Published.Text = "changed published"
+		a.Versions[0].Assets["image.png"] = domain.BlobRef{SHA: "changed"}
+		a.Published.Assets["image.png"] = domain.BlobRef{SHA: "changed"}
 	})
 	s.observations.MarkObserved("alpha", observed.Add(time.Hour))
 	snapshot = view.state(t)
@@ -68,6 +71,9 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	va := snapshot.Articles["alpha/guide.md"]
 	if va.ReconcileBase != nil {
 		t.Fatal("snapshot included reconciliation baseline from another source")
+	}
+	if va.Versions[0].Assets["image.png"].SHA != "original" || va.Published.Assets["image.png"].SHA != "original" {
+		t.Fatal("snapshot shared revision images")
 	}
 	if vs.Metadata.Title != "Original source" || vs.Assets["image.png"].SHA != "original" || va.Versions[0].Text != "# Original" || va.Conflicts[0].Incoming != "original conflict" || va.Translation.Text != "original translation" || va.CopiedFrom.Path != "original path" || va.Published.Text != "original published" || !observedAt(view, "alpha").Equal(observed) {
 		t.Fatal("snapshot shared mutable state")
@@ -131,7 +137,7 @@ func TestScopedSnapshotMutableFieldInventory(t *testing.T) {
 	}{
 		{domain.Source{}, []string{"Metadata", "Assets"}},
 		{domain.Article{}, []string{"Translation", "CopiedFrom", "ReconcileBase", "Versions", "Conflicts", "Published"}},
-		{domain.WikiMetadata{}, nil}, {domain.BlobRef{}, nil}, {domain.Revision{}, nil},
+		{domain.WikiMetadata{}, nil}, {domain.BlobRef{}, nil}, {domain.Revision{}, []string{"Assets"}},
 		{domain.ImportConflict{}, nil}, {domain.Translation{}, nil}, {domain.CopyOrigin{}, nil}, {domain.GitHubConnection{}, nil},
 	}
 	for _, tc := range cases {

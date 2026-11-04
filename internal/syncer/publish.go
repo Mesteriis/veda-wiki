@@ -21,15 +21,16 @@ func (m *Manager) PublishJob(id string, expected int, confirm bool) error {
 		}
 		a, ok := db.Articles[job.SourceID+"/"+job.Path]
 		src := db.Sources[job.SourceID]
-		if !ok || a.Deleted || expected != len(a.Versions) || job.Revision != expected || job.State == "complete" || job.State == "superseded" || !domain.SourcePublic(*db, src, time.Now()) {
+		if !ok || a.Deleted || expected != domain.LatestRevision(a) || job.Revision != expected || domain.JobTerminal(job.State) || !domain.SourcePublic(*db, src, time.Now()) {
 			return domain.ErrConflict
 		}
-		if domain.CredentialLike(a.Versions[expected-1].Text) {
+		current, _ := domain.RevisionByNumber(a, expected)
+		if domain.CredentialLike(current.Text) {
 			return domain.ErrInvalid
 		}
 		for name, sha := range job.Bundle {
 			linked, ok := db.Articles[job.SourceID+"/"+name]
-			if !ok || linked.Deleted || len(linked.Versions) == 0 || linked.Versions[len(linked.Versions)-1].SHA != sha || domain.CredentialLike(linked.Versions[len(linked.Versions)-1].Text) {
+			if !ok || linked.Deleted || !domain.LastHasSHA(linked, sha) || domain.CredentialLike(domain.LastText(linked)) {
 				return domain.ErrInvalid
 			}
 		}
@@ -37,7 +38,7 @@ func (m *Manager) PublishJob(id string, expected int, confirm bool) error {
 		job.State = "pending"
 		job.LastError = ""
 		job.NextAttempt = ""
-		published := a.Versions[expected-1]
+		published := current
 		published.Number = 0
 		published.Created = time.Now().UTC().Format(time.RFC3339Nano)
 		a.Published = &published
@@ -46,7 +47,7 @@ func (m *Manager) PublishJob(id string, expected int, confirm bool) error {
 		for name := range job.Bundle {
 			key := job.SourceID + "/" + name
 			linked := db.Articles[key]
-			published := linked.Versions[len(linked.Versions)-1]
+			published, _ := domain.LastRevision(linked)
 			published.Number = 0
 			published.Created = time.Now().UTC().Format(time.RFC3339Nano)
 			linked.Published, linked.PublishedLocal = &published, true
@@ -75,7 +76,7 @@ func (m *Manager) CancelBundle(id string, confirm bool) error {
 		if !ok {
 			return domain.ErrNotFound
 		}
-		if len(job.Bundle) == 0 || job.PreparedCommit != "" || job.State == "complete" || job.State == "superseded" {
+		if len(job.Bundle) == 0 || job.PreparedCommit != "" || domain.JobTerminal(job.State) {
 			return domain.ErrConflict
 		}
 		job.State = "superseded"

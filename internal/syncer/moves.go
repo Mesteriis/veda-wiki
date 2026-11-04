@@ -181,7 +181,8 @@ func (m *Manager) deleteSource(ctx context.Context, ex *store.Exclusive, c domai
 		prepared = true
 		return nil
 	}
-	_, err = m.github.Remove(ctx, c.Repository, c.Branch, head, tree, move.SourcePath, original.Versions[move.SourceRevision-1].Text, token, prepare)
+	sourceRev, _ := domain.RevisionByNumber(original, move.SourceRevision)
+	_, err = m.github.Remove(ctx, c.Repository, c.Branch, head, tree, move.SourcePath, sourceRev.Text, token, prepare)
 	var remote *github.RemoteError
 	// A definitive rejection of the first ref update cannot have changed the
 	// branch. Do not clear an earlier uncertain attempt on a later rejection.

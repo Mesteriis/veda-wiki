@@ -273,7 +273,8 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 		}
 		latest := ""
 		if found {
-			latest = a.Versions[len(a.Versions)-1].SHA
+			last, _ := domain.LastRevision(a)
+			latest = last.SHA
 		}
 		if found && !a.Deleted && latest != a.UpstreamHash && (latest != hash || (proof != nil && domain.PreparedWriteDiffers(*db, batch.SourceID, p, hash))) {
 			if hasImportConflict(a, hash, false) {
@@ -295,7 +296,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 		}
 		a = supersedeImportConflicts(a)
 		a.SourceID, a.Path, a.Deleted, a.UpstreamHash = batch.SourceID, p, false, hash
-		a.Versions = append(append([]domain.Revision(nil), a.Versions...), domain.Revision{Number: len(a.Versions) + 1, Text: text, SHA: hash, Created: now})
+		a.Versions = append(append([]domain.Revision(nil), a.Versions...), domain.Revision{Number: domain.LatestRevision(a) + 1, Text: text, SHA: hash, Created: now})
 		db.Articles[key] = a
 		if found {
 			result.Updated++
@@ -317,6 +318,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 			return Result{}, false, ErrAssetUnavailable
 		}
 	}
+	bindImportedAssets(db, batch, refs, proof != nil && proof.Visibility == "public")
 	src.Metadata = batch.Metadata
 	src.Assets = refs
 	src.ImportCommit = batch.Commit
@@ -357,7 +359,8 @@ func applyDeletions(db *domain.Database, batch Batch, proof *RemoteProof, now st
 			a.Published = nil
 			db.Articles[key] = a
 		}
-		latest := a.Versions[len(a.Versions)-1].SHA
+		last, _ := domain.LastRevision(a)
+		latest := last.SHA
 		if latest != a.UpstreamHash {
 			if hasImportConflict(a, "", true) {
 				result.Conflicts++
@@ -389,21 +392,47 @@ func retainPrivateAssets(db *domain.Database, batch Batch, previous, refs map[st
 		}
 	}
 	for _, article := range db.Articles {
-		if article.SourceID != batch.SourceID || article.Deleted || len(article.Versions) == 0 {
+		if article.SourceID != batch.SourceID || article.Deleted || domain.LatestRevision(article) == 0 {
 			continue
 		}
-		latest := article.Versions[len(article.Versions)-1]
+		latest, _ := domain.LastRevision(article)
 		if article.UpstreamHash != "" && latest.SHA == article.UpstreamHash {
 			continue
 		}
 		retained := domain.RetainedPendingAssets(latest.Text, article.Path, previous)
-		if len(retained) > 0 && domain.HasRootReference(latest.Text) && db.Version < 12 {
-			db.Version = 12
-		}
 		for name, ref := range retained {
 			if _, present := refs[name]; !present {
 				refs[name] = ref
 			}
 		}
+	}
+}
+
+// bindImportedAssets gives every revision this import created or observed
+// unchanged, and every publication copy it made, the images the imported
+// text references in the final index refs. A revision whose text equals the
+// imported file mirrors the observed commit, so it follows that commit's
+// images even when only an image changed. Locally changed revisions and
+// local publications keep the images they were written with.
+func bindImportedAssets(db *domain.Database, batch Batch, refs map[string]domain.BlobRef, publicProof bool) {
+	index := domain.Source{Assets: refs}
+	for p, text := range batch.Files {
+		key := batch.SourceID + "/" + p
+		a, found := db.Articles[key]
+		if !found || a.Deleted {
+			continue
+		}
+		hash := domain.Digest([]byte(text))
+		assets := domain.RevisionAssets(text, p, index)
+		if n := len(a.Versions); n > 0 && a.Versions[n-1].SHA == hash {
+			a.Versions = append([]domain.Revision(nil), a.Versions...)
+			a.Versions[n-1].Assets = assets
+		}
+		if publicProof && !a.PublishedLocal && a.Published != nil && a.Published.SHA == hash {
+			published := *a.Published
+			published.Assets = assets
+			a.Published = &published
+		}
+		db.Articles[key] = a
 	}
 }

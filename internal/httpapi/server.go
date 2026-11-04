@@ -97,8 +97,10 @@ func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		h.browserAccessAPI(rw, r)
 		return
 	}
+	owner := false
 	if h.Store != nil {
-		owner, reader, ok := h.resolveRole(rw, r)
+		var reader, ok bool
+		owner, reader, ok = h.resolveRole(rw, r)
 		if !ok {
 			return
 		}
@@ -111,7 +113,7 @@ func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if strings.HasPrefix(r.URL.Path, "/media/") {
-		h.media(rw, r)
+		h.media(rw, r, owner)
 		return
 	}
 	rw.Header().Set("Content-Security-Policy", "default-src 'none'; connect-src 'self'; style-src 'self'; font-src 'self'; script-src 'self'; "+

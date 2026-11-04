@@ -273,8 +273,7 @@ func (m *Manager) setJobFor(expected domain.GitHubConnection, original domain.Sy
 			j.Revision != original.Revision ||
 			j.SHA != original.SHA ||
 			j.Visibility != original.Visibility ||
-			j.State == "complete" ||
-			j.State == "superseded" ||
+			domain.JobTerminal(j.State) ||
 			(j.State == "conflict" && state != "conflict") ||
 			(j.State != original.State && j.State != "prepared") {
 			return domain.ErrConflict
@@ -310,14 +309,13 @@ func (m *Manager) prepareJob(id, commit string, expected domain.GitHubConnection
 			connection.RepositoryID != expected.RepositoryID ||
 			connection.Branch != expected.Branch ||
 			job.SourceID != expected.ID ||
-			job.State == "complete" ||
-			job.State == "superseded" ||
+			domain.JobTerminal(job.State) ||
 			job.State == "conflict" {
 			return domain.ErrConflict
 		}
 		if len(job.Bundle) > 0 {
 			a, ok := db.Articles[job.SourceID+"/"+job.Path]
-			if !ok || a.Deleted || len(a.Versions) != job.Revision || a.Versions[job.Revision-1].SHA != job.SHA {
+			if !ok || a.Deleted || domain.LatestRevision(a) != job.Revision || !domain.LastHasSHA(a, job.SHA) {
 				return domain.ErrConflict
 			}
 			for _, conflict := range a.Conflicts {

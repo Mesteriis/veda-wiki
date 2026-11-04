@@ -1,15 +1,10 @@
 package translation
 
 import (
-	"context"
 	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/store"
@@ -106,39 +101,6 @@ func TestTranslationPreservesHeadingAndListStructure(t *testing.T) {
 	}
 	if _, err = s.Submit(in); err != nil {
 		t.Fatal("valid translation not stored", err)
-	}
-}
-
-func TestOldBinaryRejectsTranslationOriginStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V11_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := newFixture(t)
-	programSource(t, s, "program", "private")
-	rev, err := s.put("program", "docs/a.md", "# Original", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = s.SaveDraft(Request{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject version 11")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed state")
 	}
 }
 

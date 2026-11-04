@@ -3,12 +3,7 @@ package syncer
 import (
 	"context"
 	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
@@ -31,7 +26,7 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 	if err != nil || r.Baselines != 1 || r.Created != 1 || r.Updated != 0 || len(r.Blocked) != 1 || r.Blocked[0] != "different.md" {
 		t.Fatalf("unexpected initial result %+v %v", r, err)
 	}
-	if s.db().Version != 18 || s.db().Articles["handbook/remote-only.md"].Deleted || f.WriteCount() != 0 {
+	if s.db().Version != domain.RevisionsFormat || s.db().Articles["handbook/remote-only.md"].Deleted || f.WriteCount() != 0 {
 		t.Fatal("unsafe initial reconciliation")
 	}
 	m.Once(context.Background())
@@ -63,7 +58,7 @@ func TestReconcileSourcesPreservesIndependentChanges(t *testing.T) {
 		t.Fatal("divergence overwritten", r, err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 18 || reopened.db().Articles["handbook/same.md"].ReconcileBase == nil {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || reopened.db().Articles["handbook/same.md"].ReconcileBase == nil {
 		t.Fatal("baseline lost after reopen", err)
 	}
 }
@@ -116,7 +111,7 @@ func TestReconcileSQLiteSurvivesReopen(t *testing.T) {
 		t.Fatal("baseline failed", r, err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 18 || reopened.db().Articles["handbook/a.md"].ReconcileBase == nil {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || reopened.db().Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("sqlite baseline lost", err)
 	}
 }
@@ -132,38 +127,6 @@ func TestReconcileSkipsSecretLikeAndMissingDependencies(t *testing.T) {
 	r, err := s.reconcileSources(context.Background(), ReconcileRequest{SourceID: "local", DestinationID: "handbook"})
 	if err != nil || len(r.Blocked) != 2 || len(s.jobs()) != 0 || len(s.db().Articles) != 2 {
 		t.Fatal("unsafe data queued", r, err)
-	}
-}
-
-func TestOldBinaryRejectsReconciliationStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V18_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "local", "private")
-	s.put("local", "a.md", "# Same", 0)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.Modify(func() { f.Private = true })
-	connectFixture(t, s, f, true)
-	if _, err := s.reconcileSources(context.Background(), ReconcileRequest{SourceID: "local", DestinationID: "handbook"}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject v18")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed v18 state")
 	}
 }
 
@@ -213,50 +176,10 @@ func TestReconcileRejectsInvalidStoredBaseline(t *testing.T) {
 	b := s.db().Articles["target/a.md"]
 	b.ReconcileBase = &domain.ReconcileBase{SourceID: "local", Path: "a.md", Revision: 1, SHA: "invalid"}
 	s.mutate(func(db *domain.Database) {
-		db.Version = 18
 		db.Articles["target/a.md"] = b
 	})
 	if _, err := s.reopen(); err == nil {
 		t.Fatal("invalid baseline accepted on reopen")
-	}
-}
-
-func TestOldBinaryRejectsReconciliationSQLite(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V18_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "local", "private")
-	s.put("local", "a.md", "# Same", 0)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.Modify(func() { f.Private = true })
-	connectFixture(t, s, f, true)
-	if err := store.MigrateSQLite(s.Dir()); err != nil {
-		t.Fatal(err)
-	}
-	s, err := s.reopen()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.reconcileSources(context.Background(), ReconcileRequest{SourceID: "local", DestinationID: "handbook"}); err != nil {
-		t.Fatal(err)
-	}
-	file := filepath.Join(s.Dir(), "state.sqlite")
-	before, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject SQLite v18")
-	}
-	after, err := os.ReadFile(file)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed SQLite v18 state")
 	}
 }
 

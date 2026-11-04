@@ -1,17 +1,11 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestLargeArticlesPersistWithVersionGateAndAPI(t *testing.T) {
@@ -24,8 +18,8 @@ func TestLargeArticlesPersistWithVersionGateAndAPI(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer test-owner")
 	out := httptest.NewRecorder()
 	w.ServeHTTP(out, req)
-	if out.Code != 201 || s.state(t).Version != 13 {
-		t.Fatal("large article not written with version gate", out.Code, s.state(t).Version)
+	if out.Code != 201 || s.state(t).Version != domain.RevisionsFormat {
+		t.Fatal("large article not written at the current store format", out.Code, s.state(t).Version)
 	}
 	reopened, err := openStore(s.Dir())
 	if err != nil {
@@ -37,33 +31,5 @@ func TestLargeArticlesPersistWithVersionGateAndAPI(t *testing.T) {
 	}
 	if _, err = reopened.put("fixture", "too-large.md", strings.Repeat("x", domain.MaxArticleBytes+1), 0); err != domain.ErrInvalid {
 		t.Fatal("oversize write accepted", err)
-	}
-}
-
-func TestPreviousBinaryRefusesLargeArticleStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V12_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "fixture", "private")
-	if _, err := s.put("fixture", "large.md", strings.Repeat("x", domain.LegacyArticleBytes+1), 0); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject v13")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed the store")
 	}
 }

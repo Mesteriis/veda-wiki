@@ -53,7 +53,7 @@ func TestConnectedSourceMoveWaitsForRemoteDeletion(t *testing.T) {
 		t.Fatal("source was deleted before remote deletion", err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 3 || reopened.moves()[0].SourceRepositoryID != f.RepoID {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || reopened.moves()[0].SourceRepositoryID != f.RepoID {
 		t.Fatal("move state was not durable", err)
 	}
 	f.Advance(map[string]string{"veda.yaml": metadataFixture, "README.md": "# Edited externally"})

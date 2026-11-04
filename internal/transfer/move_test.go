@@ -31,7 +31,7 @@ func TestMoveLocalAtomicAndRetainsHistory(t *testing.T) {
 		t.Fatal("destination missing", e)
 	}
 	reopened, e := s.reopen()
-	if e != nil || reopened.db().Version != 2 || !reopened.db().Articles["from/a.md"].Deleted || len(reopened.db().Articles["from/a.md"].Versions) != 1 || reopened.Moves()[0].State != "complete" {
+	if e != nil || reopened.db().Version != domain.RevisionsFormat || !reopened.db().Articles["from/a.md"].Deleted || len(reopened.db().Articles["from/a.md"].Versions) != 1 || reopened.Moves()[0].State != "complete" {
 		t.Fatal("move history not durable", e)
 	}
 }
@@ -68,7 +68,7 @@ func TestMoveLinkedGraphToLocalIsAtomic(t *testing.T) {
 		t.Fatal(move, err)
 	}
 	reopened, err := s.reopen()
-	if err != nil || reopened.db().Version != 8 || len(reopened.Moves()[0].Links) != 1 {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || len(reopened.Moves()[0].Links) != 1 {
 		t.Fatal("move not durable", err)
 	}
 }
@@ -92,11 +92,11 @@ func TestMoveDirectoryReadmeRequiresMatchingDestinationAndPersistsSQLite(t *test
 		t.Fatal(err)
 	}
 	move, err := s.Move(in)
-	if err != nil || move.State != "complete" || move.Links["docs/README.md"] != rev.SHA || s.db().Version != 16 {
+	if err != nil || move.State != "complete" || move.Links["docs/README.md"] != rev.SHA || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("move lost directory dependency", err)
 	}
 	s, err = s.reopen()
-	if err != nil || s.db().Version != 16 || s.Moves()[0].Links["docs/README.md"] != rev.SHA {
+	if err != nil || s.db().Version != domain.RevisionsFormat || s.Moves()[0].Links["docs/README.md"] != rev.SHA {
 		t.Fatal("directory dependency lost after SQLite reopen", err)
 	}
 }

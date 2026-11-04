@@ -51,9 +51,6 @@ func (a Service) SetUserAdmin(id string, admin bool, expected int) error {
 		u.Revision++
 		u.AuthVersion++
 		db.Users[id] = u
-		if db.Version < 20 {
-			db.Version = 20
-		}
 		return nil
 	})
 	if errors.Is(err, errUnchanged) {
@@ -108,9 +105,6 @@ func (a Service) CreateSuperuser(id, password string) error {
 			u.AuthVersion = previous.AuthVersion + 1
 		}
 		db.Users[id] = u
-		if db.Version < 20 {
-			db.Version = 20
-		}
 		return nil
 	})
 }
@@ -172,9 +166,6 @@ func (a Service) SaveTeam(id string, sourceIDs []string, expected *int) (domain.
 			team.Revision = current.Revision + 1
 		}
 		db.Teams[id] = team
-		if db.Version < 15 {
-			db.Version = 15
-		}
 		return nil
 	})
 	if err != nil {
@@ -251,9 +242,6 @@ func (a Service) SaveUser(id string, teams *[]string, password *string, disabled
 			user.Revision++
 		}
 		db.Users[id] = user
-		if db.Version < 15 {
-			db.Version = 15
-		}
 		return nil
 	})
 	if err != nil {
@@ -351,9 +339,6 @@ func (a Service) BootstrapAdmin(id string) (string, error) {
 			u.AuthVersion = previous.AuthVersion + 1
 		}
 		db.Users[id] = u
-		if db.Version < 20 {
-			db.Version = 20
-		}
 		return nil
 	})
 	if err != nil {

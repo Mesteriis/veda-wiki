@@ -17,8 +17,8 @@ func ReconcileMoves(db *Database) {
 			!srcOK ||
 			source.Deleted ||
 			TranslationFingerprint(source.Translation) != m.TranslationFingerprint ||
-			len(source.Versions) != m.SourceRevision ||
-			source.Versions[m.SourceRevision-1].SHA != m.SHA ||
+			LatestRevision(source) != m.SourceRevision ||
+			!LastHasSHA(source, m.SHA) ||
 			src.ConnectionID != m.SourceConnectionID ||
 			(m.SourceConnectionID == "" && src.ImportGeneration != "") {
 			m.State = "source_changed"
@@ -191,7 +191,7 @@ func LinksPresent(db Database, sourceID string, expected map[string]string) bool
 	}
 	for name, sha := range expected {
 		a, exists := db.Articles[sourceID+"/"+name]
-		if !exists || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
+		if !exists || a.Deleted || !LastHasSHA(a, sha) {
 			return false
 		}
 		if src.ConnectionID != "" && a.UpstreamHash != sha {
@@ -217,7 +217,7 @@ func LocalLinksPresent(db Database, sourceID string, expected map[string]string)
 	}
 	for name, sha := range expected {
 		a, ok := db.Articles[sourceID+"/"+name]
-		if !ok || a.Deleted || len(a.Versions) == 0 || a.Versions[len(a.Versions)-1].SHA != sha {
+		if !ok || a.Deleted || !LastHasSHA(a, sha) {
 			return false
 		}
 		for _, conflict := range a.Conflicts {
