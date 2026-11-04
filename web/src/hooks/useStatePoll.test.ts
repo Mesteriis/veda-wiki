@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { knowledgeGeneration } from "../api/knowledge";
 import type { StatePayload } from "../api/types";
 import { useStatePoll, type StatePoll } from "./useStatePoll";
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
-function payload(generated: string): StatePayload {
+function payload(generated: string, sources: string[] = []): StatePayload {
   return {
     view: {
-      GraphEdges: null, Cards: null, SourceWarnings: null, Public: false, Groups: null, Pages: null, Page: null,
+      GraphEdges: null, Cards: null, SourceWarnings: null, Public: false, Groups: sources.length ? sources.map((id) => ({ Name: id, ID: id, Count: 0, Pages: null })) : null, Pages: null, Page: null,
       Query: "", Selected: "", Generated: generated, Withheld: 0, Count: 0, GitHubCount: 0, TOC: "",
     },
     html: "",
@@ -113,5 +114,30 @@ describe("useStatePoll", () => {
     expect(signal?.aborted).toBe(true);
     await advance(60000);
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets knowledge when the readable scope changes between polls (session lost elsewhere)", async () => {
+    fetcher
+      .mockResolvedValueOnce(ok(payload("one", ["pub", "private"]), '"a"'))
+      .mockResolvedValueOnce(ok(payload("two", ["private", "pub"]), '"b"'))
+      .mockResolvedValueOnce(ok(payload("three", ["pub"]), '"c"'));
+    renderHook(() => useStatePoll(null));
+    await flush();
+    const start = knowledgeGeneration();
+    await advance(10000);
+    // Same sources, other content: knowledge stays.
+    expect(knowledgeGeneration()).toBe(start);
+    await advance(10000);
+    // The private source vanished, as after a sign-out in another tab.
+    expect(knowledgeGeneration()).toBe(start + 1);
+  });
+
+  it("resets knowledge when the page leaves the readable scope (404)", async () => {
+    fetcher.mockResolvedValueOnce(ok(payload("one"), '"a"')).mockResolvedValueOnce(status(404));
+    renderHook(() => useStatePoll(null));
+    await flush();
+    const start = knowledgeGeneration();
+    await advance(10000);
+    expect(knowledgeGeneration()).toBe(start + 1);
   });
 });

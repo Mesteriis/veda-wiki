@@ -2,11 +2,13 @@ import { useEffect } from "react";
 import type { Page, StatePayload } from "../../api/types";
 import { readVisits, recordVisit, saveVisits } from "../../lib/recent";
 import { conflictWarning } from "../../lib/sourceWarnings";
+import { ArticleKnowledge } from "../knowledge/ArticleKnowledge";
 import { Toc } from "./Toc";
 
 export function Reading({ data, page }: { data: StatePayload; page: Page }) {
   const v = data.view;
   const warning = conflictWarning(page);
+  const titleOf = (path: string) => v.Groups?.flatMap((group) => group.Pages ?? []).find((candidate) => candidate.path === path)?.title;
   // Jump to the heading named in the address once the article is shown.
   useEffect(() => {
     if (!window.location.hash) return;
@@ -36,6 +38,7 @@ export function Reading({ data, page }: { data: StatePayload; page: Page }) {
           className="markdown"
           dangerouslySetInnerHTML={{ __html: data.html }}
         />
+        <ArticleKnowledge page={page} titleOf={titleOf} />
         <footer>
           Версия: {v.Generated || "пустая база"}. Проверяйте дату и происхождение документации перед её использованием.
         </footer>

@@ -12,6 +12,7 @@ import "./features/catalog/catalog.css";
 import "./features/home/home.css";
 import "./features/session/session.css";
 import "./features/graph/graph.css";
+import "./features/knowledge/knowledge.css";
 import "./features/recent/recent.css";
 import "./features/github/github.css";
 import "./features/access/access.css";

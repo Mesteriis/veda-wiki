@@ -9,4 +9,23 @@
   --muted: #94bbce;
   --panel: #001018;
   --violet: #d778ff;
+  /* Shared by the knowledge graph (features/knowledge); values match the graph screen. */
+  --text-soft: #abc8d6;
+  --text-strong: #edf8fc;
+  --text-body: #bad1dc;
+  --link-soft: #69d8ef;
+  --caution: #e0c27a;
+  --control-text: #dceef5;
+  --control-fill: #08212d;
+  --control-border: #16556b;
+  --control-border-strong: #1e6078;
+  --surface-sunken: #031a26;
+  --graph-canvas: #00131e;
+  --graph-node-fill: #0a3041;
+  --graph-node-border: #4683a0;
+  --graph-node-text: #eefbff;
+  --graph-document-fill: #232d4d;
+  --graph-document-border: #687cae;
+  --graph-edge: #70bbd4;
+  --graph-mention: #4d7486;
 }
