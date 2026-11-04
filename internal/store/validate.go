@@ -195,10 +195,16 @@ func Validate(db *domain.Database) error {
 			m.SourceID == m.DestinationID ||
 			!srcOK ||
 			!dstOK ||
-			m.SourceRevision < 1 ||
-			!revisionHasSHA(source, m.SourceRevision, m.SHA) ||
-			len(target.Versions) < 1 ||
-			target.Versions[0].SHA != m.SHA {
+			m.SourceRevision < 1 {
+			return errors.New("invalid stored move")
+		}
+		// A final move is a journal record: pruning may have removed the
+		// revisions it names. ProtectedRevisions keeps them for active moves.
+		if domain.MoveTerminal(m.State) {
+			if !storedOrPruned(source, m.SourceRevision, m.SHA) || !storedOrPruned(target, 1, m.SHA) {
+				return errors.New("invalid stored move")
+			}
+		} else if !revisionHasSHA(source, m.SourceRevision, m.SHA) || len(target.Versions) < 1 || target.Versions[0].SHA != m.SHA {
 			return errors.New("invalid stored move")
 		}
 		if m.TranslationFingerprint != "" {
@@ -279,7 +285,16 @@ func Validate(db *domain.Database) error {
 		}
 		for p, sha := range j.Bundle {
 			a, exists := db.Articles[j.SourceID+"/"+p]
-			if p == j.Path || !domain.ArticlePath(p, db.Sources[j.SourceID].Kind) || len(sha) != 64 || !exists || len(a.Versions) == 0 || a.Versions[0].SHA != sha {
+			if p == j.Path || !domain.ArticlePath(p, db.Sources[j.SourceID].Kind) || len(sha) != 64 || !exists || len(a.Versions) == 0 {
+				return errors.New("invalid queued bundle article")
+			}
+			// Bundles create their articles as revision 1, which a final job no
+			// longer protects from pruning.
+			if domain.JobTerminal(j.State) {
+				if !storedOrPruned(a, 1, sha) {
+					return errors.New("invalid queued bundle article")
+				}
+			} else if a.Versions[0].SHA != sha {
 				return errors.New("invalid queued bundle article")
 			}
 			if _, e := hex.DecodeString(sha); e != nil {
@@ -324,7 +339,14 @@ func Validate(db *domain.Database) error {
 			return errors.New("invalid queued publication scope")
 		}
 		a, ok := db.Articles[j.SourceID+"/"+j.Path]
-		if !ok || j.ID != id || !revisionHasSHA(a, j.Revision, j.SHA) {
+		if !ok || j.ID != id || j.Revision < 1 {
+			return errors.New("invalid outbox revision")
+		}
+		if domain.JobTerminal(j.State) {
+			if !storedOrPruned(a, j.Revision, j.SHA) {
+				return errors.New("invalid outbox revision")
+			}
+		} else if !revisionHasSHA(a, j.Revision, j.SHA) {
 			return errors.New("invalid outbox revision")
 		}
 		switch j.State {
@@ -340,4 +362,13 @@ func Validate(db *domain.Database) error {
 func revisionHasSHA(a domain.Article, n int, sha string) bool {
 	r, ok := domain.RevisionByNumber(a, n)
 	return ok && r.SHA == sha
+}
+
+// storedOrPruned reports whether revision n of the article has this SHA or,
+// being older than the newest revision, may have been pruned.
+func storedOrPruned(a domain.Article, n int, sha string) bool {
+	if r, ok := domain.RevisionByNumber(a, n); ok {
+		return r.SHA == sha
+	}
+	return n >= 1 && n < domain.LatestRevision(a)
 }
