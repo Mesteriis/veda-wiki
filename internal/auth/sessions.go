@@ -194,20 +194,26 @@ func (s *Sessions) forget(hash [32]byte) {
 	delete(s.users, hash)
 }
 
-// Issue runs one login attempt under the session lock: the per-identity
-// limit, the credential check, pruning of expired or no longer valid
-// sessions, the session limit and issuance. It returns the new cookie value,
-// valid for eight hours from l.Now.
+// Issue runs one login attempt: the per-identity limit under the session
+// lock, then the credential check without it, so slow password checks run
+// concurrently up to the password workers and do not delay cookie checks,
+// then, under the lock again, pruning of expired or no longer valid sessions,
+// the session limit and issuance. The attempt is counted before the check.
+// It returns the new cookie value, valid for eight hours from issuance:
+// l.Now plus the time the credential check took, so waiting for a password
+// worker does not shorten the session.
 func (s *Sessions) Issue(l Login) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if l.Limited && !s.allowAttempt(l.Kind, l.Identity, l.Now) {
+	started := time.Now()
+	if l.Limited && !s.AllowAttempt(l.Kind, l.Identity, l.Now) {
 		return "", ErrRateLimited
 	}
 	grant, ok := l.Authenticate()
 	if !ok {
 		return "", ErrDenied
 	}
+	now := l.Now.Add(time.Since(started))
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	current := l.Current
 	if current == nil {
 		current = func(Grant) bool { return false }
@@ -215,7 +221,7 @@ func (s *Sessions) Issue(l Login) (string, error) {
 	for h, expiry := range s.active {
 		scope, restricted := s.scoped[h]
 		user, isUser := s.users[h]
-		if !expiry.After(l.Now) || (restricted && !current(Grant{Scoped: true, Scope: scope})) || (isUser && !current(Grant{Named: true, User: user})) {
+		if !expiry.After(now) || (restricted && !current(Grant{Scoped: true, Scope: scope})) || (isUser && !current(Grant{Named: true, User: user})) {
 			s.forget(h)
 		}
 	}
@@ -231,7 +237,7 @@ func (s *Sessions) Issue(l Login) (string, error) {
 	if s.active == nil {
 		s.active = map[[32]byte]time.Time{}
 	}
-	s.active[hash] = l.Now.Add(sessionLifetime)
+	s.active[hash] = now.Add(sessionLifetime)
 	if grant.Scoped {
 		if s.scoped == nil {
 			s.scoped = map[[32]byte][32]byte{}

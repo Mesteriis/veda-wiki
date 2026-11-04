@@ -91,7 +91,7 @@ func (h handler) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 			http.NotFound(rw, r)
 			return
 		}
-		if err := h.Store.auth().FinishAdminSetup(in.Username, in.Token, in.Password); err != nil {
+		if err := h.Store.auth().FinishAdminSetupContext(r.Context(), in.Username, in.Token, in.Password); err != nil {
 			apiError(rw, err)
 			return
 		}
@@ -133,7 +133,7 @@ func (h handler) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 			jsonResponse(rw, 429, map[string]string{"error": "try again later"})
 			return
 		}
-		version, valid := h.Store.auth().AuthenticateUser(user.ID, in.Current)
+		version, valid := h.Store.auth().AuthenticateUserContext(r.Context(), user.ID, in.Current)
 		if !valid || version != user.AuthVersion {
 			jsonResponse(rw, 403, map[string]string{"error": "access denied"})
 			return
@@ -174,7 +174,7 @@ func (h handler) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 		if in.Key == "" && h.Store != nil {
 			person := auth.SessionUser{ID: in.Username}
 			var userAccess bool
-			person.AuthVersion, userAccess = h.Store.auth().AuthenticateUser(in.Username, in.Password)
+			person.AuthVersion, userAccess = h.Store.auth().AuthenticateUserContext(r.Context(), in.Username, in.Password)
 			if userAccess && prefix != "/api/session/" {
 				userAccess = h.Store.auth().AdminSessionValid(person.ID, person.AuthVersion)
 			}

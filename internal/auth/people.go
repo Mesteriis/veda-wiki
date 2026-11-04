@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -268,11 +269,17 @@ func (a Service) ChangePassword(id string, authVersion int, password string) err
 	return err
 }
 
-// AuthenticateUser always performs Argon2 for valid-size input, including
-// unknown users. The password mutex bounds simultaneous memory use. It
+// AuthenticateUser is AuthenticateUserContext without a request context.
+func (a Service) AuthenticateUser(id, password string) (int, bool) {
+	return a.AuthenticateUserContext(context.Background(), id, password)
+}
+
+// AuthenticateUserContext always performs Argon2 for valid-size input,
+// including unknown users. The bounded password workers limit simultaneous
+// memory use; a request whose ctx ends while it waits for one fails. It
 // rechecks after hashing so a concurrent disable or password rotation cannot
 // authenticate a stale secret. It returns the user's AuthVersion.
-func (a Service) AuthenticateUser(id, password string) (int, bool) {
+func (a Service) AuthenticateUserContext(ctx context.Context, id, password string) (int, bool) {
 	if !PasswordValid(password) {
 		return 0, false
 	}
@@ -287,8 +294,8 @@ func (a Service) AuthenticateUser(id, password string) (int, bool) {
 			copy(expected, b)
 		}
 	}
-	derived := derive(password, salt)
-	if !exists || user.Disabled || user.SetupExpires != "" || subtle.ConstantTimeCompare(derived, expected) != 1 {
+	derived, err := derive(ctx, password, salt)
+	if err != nil || !exists || user.Disabled || user.SetupExpires != "" || subtle.ConstantTimeCompare(derived, expected) != 1 {
 		return 0, false
 	}
 	current, ok := a.user(id)
@@ -347,9 +354,15 @@ func (a Service) BootstrapAdmin(id string) (string, error) {
 	return token, nil
 }
 
-// FinishAdminSetup replaces a pending administrator's setup token with a
-// password before the token expires.
+// FinishAdminSetup is FinishAdminSetupContext without a request context.
 func (a Service) FinishAdminSetup(id, token, password string) error {
+	return a.FinishAdminSetupContext(context.Background(), id, token, password)
+}
+
+// FinishAdminSetupContext replaces a pending administrator's setup token with
+// a password before the token expires. A request whose ctx ends while it
+// waits for a password worker fails with ErrConflict, as a wrong token does.
+func (a Service) FinishAdminSetupContext(ctx context.Context, id, token, password string) error {
 	if !domain.ValidID(id) || !PasswordValid(token) || !PasswordValid(password) {
 		return domain.ErrInvalid
 	}
@@ -366,8 +379,8 @@ func (a Service) FinishAdminSetup(id, token, password string) error {
 	if err != nil {
 		return domain.ErrConflict
 	}
-	derived := derive(token, salt)
-	if subtle.ConstantTimeCompare(derived, expected) != 1 {
+	derived, err := derive(ctx, token, salt)
+	if err != nil || subtle.ConstantTimeCompare(derived, expected) != 1 {
 		return domain.ErrConflict
 	}
 	newSalt, newHash, err := passwordHash(password)
