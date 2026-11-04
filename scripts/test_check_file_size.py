@@ -29,6 +29,17 @@ class FileSizeCheckTests(unittest.TestCase):
             found = find_violations(root, ['**/*.json', '**/*.js', 'web/dist/**', 'go.sum'], 500)
             self.assertEqual(found, [])
 
+    def test_python_service_build_dirs_are_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            svc = root / 'services' / 'knowledge-extractor'
+            write_lines(svc / '.venv' / 'lib' / 'site.py', 900)
+            write_lines(svc / 'build' / 'lib' / 'mod.py', 900)
+            write_lines(svc / 'src' / 'pkg' / '__pycache__' / 'x.py', 900)
+            write_lines(svc / 'src' / 'pkg' / 'big.py', 501)
+            found = find_violations(root, ['services/**/*.py'], 500)
+            self.assertEqual(found, [('services/knowledge-extractor/src/pkg/big.py', 501)])
+
     def test_main_exit_code_and_output(self):
         import io
         import contextlib

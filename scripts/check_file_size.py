@@ -7,7 +7,7 @@ import sys
 EXCLUDED_NAMES = {'package-lock.json', 'go.sum'}
 EXCLUDED_SUFFIXES = ('.lock',)
 EXCLUDED_PREFIXES = ('web/dist/',)
-EXCLUDED_DIRS = {'node_modules'}
+EXCLUDED_DIRS = {'node_modules', '.venv', 'venv', '__pycache__', 'build', 'dist', '.pytest_cache'}
 
 
 def is_excluded(rel):
