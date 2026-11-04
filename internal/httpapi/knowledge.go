@@ -22,7 +22,7 @@ const knowledgeReindexBodyBytes = 4096
 // owner-only routes (a non-owner POST is refused earlier by the shared
 // guard, and so is every browser POST). With the module off, status tells
 // the owner so and every other route answers 503 knowledge_disabled.
-// Errors are {"error":{"code":"..."}} with fixed codes; an unknown and an
+// Errors are {"error":"<code>"} with fixed codes, as on other API routes; an unknown and an
 // unreadable entity or article are the same 404 not_found.
 func (h handler) knowledgeAPI(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 	public := !owner && !reader
@@ -152,7 +152,7 @@ func (h handler) knowledgeStatus(rw http.ResponseWriter, r *http.Request) {
 		knowledgeError(rw, 400, "invalid_request")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), knowledge.DefaultReadTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), h.Knowledge.ReadTimeout())
 	defer cancel()
 	jsonResponse(rw, 200, h.Knowledge.Status(ctx))
 }
@@ -190,7 +190,9 @@ func (h handler) knowledgeReindex(rw http.ResponseWriter, r *http.Request) {
 		knowledgeError(rw, 404, "not_found")
 		return
 	}
-	op, err := h.Knowledge.Reindex(r.Context(), knowledge.ReindexScope{SourceID: in.SourceID, Path: in.Path, Force: in.Force})
+	ctx, cancel := context.WithTimeout(r.Context(), h.Knowledge.ReadTimeout())
+	defer cancel()
+	op, err := h.Knowledge.Reindex(ctx, knowledge.ReindexScope{SourceID: in.SourceID, Path: in.Path, Force: in.Force})
 	switch {
 	case errors.Is(err, knowledge.ErrReindexBusy):
 		knowledgeError(rw, 409, "reindex_busy")
@@ -237,7 +239,7 @@ func knowledgeAnswer(rw http.ResponseWriter, v any, err error) {
 }
 
 func knowledgeError(rw http.ResponseWriter, status int, code string) {
-	jsonResponse(rw, status, map[string]map[string]string{"error": {"code": code}})
+	jsonResponse(rw, status, map[string]string{"error": code})
 }
 
 // strictQuery parses the query and refuses unknown or repeated parameters.

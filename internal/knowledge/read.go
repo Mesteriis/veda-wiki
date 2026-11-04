@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"time"
@@ -28,8 +29,10 @@ const (
 	MaxOffset = 10000
 	// MaxQueryRunes bounds a search or context query text.
 	MaxQueryRunes = 200
-	// MaxContextLimitBytes caps the JSON size of the selected context items;
+	// MinContextLimitBytes..MaxContextLimitBytes bound the exact JSON size
+	// of the selected items array ("[]" is 2 bytes);
 	// DefaultContextLimitBytes applies when the caller sets none.
+	MinContextLimitBytes     = 2
 	MaxContextLimitBytes     = 16000
 	DefaultContextLimitBytes = 8000
 	// MaxContextItems bounds the selected context items.
@@ -120,7 +123,9 @@ func (rs ReadScope) pick(ref ArticleRef, sha string) (SnapshotKey, AllowedSet, e
 		if !withCopy.Has(copyKey) {
 			return ErrNotFound
 		}
-		key, set = copyKey, withCopy
+		// The owner's current revisions with this one article swapped for
+		// its publication copy: no other copy, no article twice.
+		key, set = copyKey, a.allowed.replace(k, copyKey)
 		return nil
 	})
 	return key, set, err
@@ -131,6 +136,9 @@ func (rs ReadScope) allowed() (AllowedSet, error) {
 	err := rs.access(func(a readAccess) error { set = a.allowed; return nil })
 	return set, err
 }
+
+// ReadTimeout is the deadline of one index query.
+func (s *Service) ReadTimeout() time.Duration { return s.cfg.ReadTimeout }
 
 // readContext applies the read timeout and the active fingerprint.
 func (s *Service) readContext(ctx context.Context) (context.Context, context.CancelFunc, Fingerprint, error) {
@@ -298,7 +306,7 @@ type ContextAnswer struct {
 // LimitBytes of JSON items.
 func (s *Service) Context(ctx context.Context, rs ReadScope, q ContextRequest) (ContextAnswer, error) {
 	limits := s.cfg.Schema.Limits
-	if !validText(q.Text, true) || q.Depth < 0 || q.Depth > limits.DepthMax || q.LimitBytes < 0 || q.LimitBytes > MaxContextLimitBytes {
+	if !validText(q.Text, true) || q.Depth < 0 || q.Depth > limits.DepthMax || (q.LimitBytes != 0 && q.LimitBytes < MinContextLimitBytes) || q.LimitBytes < 0 || q.LimitBytes > MaxContextLimitBytes {
 		return ContextAnswer{}, ErrInvalidRequest
 	}
 	if q.Depth == 0 {
@@ -330,5 +338,28 @@ func (s *Service) Context(ctx context.Context, rs ReadScope, q ContextRequest) (
 	if err = indexError(ctx, err); err != nil {
 		return ContextAnswer{}, err
 	}
+	if res, err = fitContext(res, q.LimitBytes); err != nil {
+		return ContextAnswer{}, ErrReadUnavailable
+	}
 	return ContextAnswer{ContextResult: res, Query: q.Text, Depth: q.Depth, LimitBytes: q.LimitBytes}, nil
+}
+
+// fitContext holds every index to the same contract: Bytes is the exact
+// size of the JSON items array, and items are dropped from the end until it
+// is at most limit (Truncated then).
+func fitContext(res ContextResult, limit int) (ContextResult, error) {
+	if res.Items == nil {
+		res.Items = []ContextItem{}
+	}
+	for {
+		data, err := json.Marshal(res.Items)
+		if err != nil {
+			return ContextResult{}, err
+		}
+		if len(data) <= limit {
+			res.Bytes = len(data)
+			return res, nil
+		}
+		res.Items, res.Truncated = res.Items[:len(res.Items)-1], true
+	}
 }

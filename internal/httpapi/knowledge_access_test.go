@@ -63,6 +63,29 @@ func TestKnowledgePublishedAndCurrentRevisionsDiffer(t *testing.T) {
 	if v := kgDecode[knowledge.ArticleKnowledge](t, kgGet(h.wiki(), copyURL, "test-owner")); v.Key.SHA != publishedSHA || !strings.Contains(names(v), "billing") {
 		t.Fatalf("owner publication copy: %+v", v)
 	}
+	// That read sees the owner's current revisions with only this article
+	// swapped for its copy: the draft never appears beside it.
+	copyView := kgDecode[knowledge.ArticleKnowledge](t, kgGet(h.wiki(), copyURL, "test-owner"))
+	for _, rel := range copyView.Knowledge.Related {
+		if rel.Key.SourceID == "gh" && rel.Key.Path == "page.md" {
+			t.Fatalf("publication copy related to its own draft: %+v", rel.Key)
+		}
+	}
+	copyGraph := kgDecode[knowledge.Subgraph](t, kgGet(h.wiki(), graphURL+"&depth=2&sha256="+publishedSHA, "test-owner"))
+	seen := map[string]bool{}
+	for _, n := range copyGraph.Nodes {
+		if n.Key == nil {
+			continue
+		}
+		article := n.Key.SourceID + "/" + n.Key.Path
+		if seen[article] || n.Key.SHA == draftSHA {
+			t.Fatalf("article twice or draft in the copy graph: %+v", copyGraph.Nodes)
+		}
+		seen[article] = true
+	}
+	if !seen["gh/page.md"] || !seen["pub/billing.md"] {
+		t.Fatalf("copy graph lost the owner's current revisions: %v", seen)
+	}
 	unknown := kgGet(h.wiki(), articleURL+"&sha256="+strings.Repeat("0", 64), "test-owner")
 	for name, out := range map[string]*httptest.ResponseRecorder{
 		"reader": kgGet(h.wiki(), copyURL, "test-reader"),

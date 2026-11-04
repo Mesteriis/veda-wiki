@@ -274,12 +274,10 @@ func kgEntityID(t *testing.T, w Wiki, bearer, name, sourceID string) string {
 func kgErrorCode(t *testing.T, out *httptest.ResponseRecorder) string {
 	t.Helper()
 	var body struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
+		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(out.Body.Bytes(), &body); err != nil {
-		t.Fatalf("not a knowledge error: %d %q", out.Code, out.Body.String())
+	if err := json.Unmarshal(out.Body.Bytes(), &body); err != nil || out.Body.String() != "{\"error\":\""+body.Error+"\"}\n" {
+		t.Fatalf("not a flat knowledge error: %d %q", out.Code, out.Body.String())
 	}
-	return body.Error.Code
+	return body.Error
 }

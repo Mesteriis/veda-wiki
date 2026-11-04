@@ -28,6 +28,18 @@ func (s AllowedSet) Has(k SnapshotKey) bool {
 	return ok
 }
 
+// replace is a copy of s without drop and with add.
+func (s AllowedSet) replace(drop, add SnapshotKey) AllowedSet {
+	out := AllowedSet{keys: make(map[SnapshotKey]struct{}, len(s.keys)+1)}
+	for k := range s.keys {
+		if k != drop {
+			out.keys[k] = struct{}{}
+		}
+	}
+	out.keys[add] = struct{}{}
+	return out
+}
+
 // Len is the number of allowed snapshots.
 func (s AllowedSet) Len() int { return len(s.keys) }
 

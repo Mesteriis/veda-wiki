@@ -480,7 +480,7 @@ does not infer semantic relationships or parse unsupported wiki-link syntax.
 
 The `/api/v1/knowledge/` routes serve data only when VEDA runs with
 `--knowledge`. Without it every read and `reindex` answer
-`503 {"error":{"code":"knowledge_disabled"}}`, `status` answers the owner
+`503 {"error":"knowledge_disabled"}`, `status` answers the owner
 `{"enabled":false,"state":"disabled"}`, and every other route is unchanged.
 `/api/state` never carries knowledge data.
 
@@ -488,9 +488,9 @@ The `/api/v1/knowledge/` routes serve data only when VEDA runs with
 | --- | --- | --- | --- |
 | GET | `/api/v1/knowledge/entities` | public, reader, owner | `q` (≤200 code points), `source_id`, `type` (schema entity type), `limit` 1–100 (default 50), `offset` 0–10000 |
 | GET | `/api/v1/knowledge/entity` | public, reader, owner | `id` (`ent-` + 20 hex), `limit` 1–100 |
-| GET | `/api/v1/knowledge/article` | public, reader, owner | `source_id`, `path`, `sha256` (owner only: the publication copy), `limit` 1–100 |
+| GET | `/api/v1/knowledge/article` | public, reader, owner | `source_id`, `path`, `sha256` (owner only: the publication copy, read beside the owner's current revisions of all other articles), `limit` 1–100 |
 | GET | `/api/v1/knowledge/graph` | public, reader, owner | `entity_id` or `source_id`+`path` (+ owner `sha256`), `depth` 1–2 (default 1), `max_nodes` ≤200, `max_edges` ≤400, `sources` and `relations` (comma lists, ≤20 each) |
-| GET | `/api/v1/knowledge/context` | public, reader, owner | `q` (1–200 code points), `depth` 1–2, `limit_bytes` 1–16000 (default 8000) |
+| GET | `/api/v1/knowledge/context` | public, reader, owner | `q` (1–200 code points), `depth` 1–2, `limit_bytes` 2–16000 (default 8000): the exact JSON size of the returned `items` array, reported as `bytes` |
 | GET | `/api/v1/knowledge/status` | owner | none |
 | POST | `/api/v1/knowledge/reindex` | owner, not from a browser | JSON body: `scope` (`all`, `source` or `article`), `source_id`, `path`, `force` |
 
@@ -505,12 +505,13 @@ and scoped keys and browser sessions never reach `status` or `reindex`.
 There is no route for Cypher or other free-form queries.
 
 Query strings are strict: an unknown or repeated parameter is
-`400 invalid_request`. Errors are `{"error":{"code":"..."}}` with
+`400 invalid_request`. Errors use the API's flat form `{"error":"<code>"}` with
 `invalid_request` (400), `not_found` (404, the same for an unknown and an
 unreadable entity, article or SHA), `method_not_allowed` (405),
 `reindex_busy` (409), `knowledge_unavailable` (503: the index cannot answer
 or the extractor settings are not known yet) and `timeout` (504: an index
-query exceeded 10 seconds). A truncated graph or context sets
+query exceeded the read timeout, 10 seconds). `status` and `reindex` are
+bounded by the same timeout. A truncated graph or context sets
 `truncated: true`; entity pages return `total` and `next`.
 
 `article` returns `status` for the snapshot read: `ready` (with

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -232,7 +233,7 @@ func TestKnowledgeLimitsAndPagination(t *testing.T) {
 		"/api/v1/knowledge/graph?source_id=pub&path=billing.md&max_nodes=201", "/api/v1/knowledge/graph?source_id=pub&path=billing.md&max_edges=401",
 		"/api/v1/knowledge/graph?source_id=pub&path=billing.md&relations=knows", "/api/v1/knowledge/graph?source_id=pub&path=billing.md&sources=a,,b",
 		"/api/v1/knowledge/graph?source_id=pub&path=billing.md&sources=" + strings.Repeat("a,", 20) + "a",
-		"/api/v1/knowledge/context", "/api/v1/knowledge/context?q=%20", "/api/v1/knowledge/context?q=x&limit_bytes=16001",
+		"/api/v1/knowledge/context", "/api/v1/knowledge/context?q=%20", "/api/v1/knowledge/context?q=x&limit_bytes=16001", "/api/v1/knowledge/context?q=x&limit_bytes=1", "/api/v1/knowledge/context?q=x&limit_bytes=0",
 		"/api/v1/knowledge/context?q=x&depth=3", "/api/v1/knowledge/context?q=" + strings.Repeat("x", 201),
 		"/api/v1/knowledge/status?verbose=1",
 	}
@@ -255,11 +256,8 @@ func TestKnowledgeLimitsAndPagination(t *testing.T) {
 	if full.Truncated || len(full.Nodes) < 3 || len(full.Nodes) > 200 || len(full.Edges) > 400 {
 		t.Fatalf("graph: %+v", full)
 	}
-	c := kgDecode[knowledge.ContextAnswer](t, kgGet(w, "/api/v1/knowledge/context?q=billing+db1+Redis&limit_bytes=600", "test-owner"))
-	if c.LimitBytes != 600 || c.Bytes > 600 || !c.Truncated || len(c.Items) == 0 {
-		t.Fatalf("context cap: %+v", c)
-	}
-	c = kgDecode[knowledge.ContextAnswer](t, kgGet(w, "/api/v1/knowledge/context?q=billing", "test-owner"))
+	kgContextBytes(t, w)
+	c := kgDecode[knowledge.ContextAnswer](t, kgGet(w, "/api/v1/knowledge/context?q=billing", "test-owner"))
 	reasons := map[string]bool{}
 	for _, item := range c.Items {
 		reasons[item.Reason] = true
@@ -348,4 +346,46 @@ func TestKnowledgeArticleStatuses(t *testing.T) {
 	if a := status("billing.md", "test-reader"); a.Status != knowledge.ArticleReady || a.Knowledge.Entities[0].Name == "billing" {
 		t.Fatalf("new revision: %+v", a)
 	}
+}
+
+// kgContextBytes: bytes is exactly the JSON size of the items array, never
+// above limit_bytes, including the minimum 2 ("[]") and the boundary.
+func kgContextBytes(t *testing.T, w Wiki) {
+	t.Helper()
+	get := func(limit int) knowledge.ContextAnswer {
+		c := kgDecode[knowledge.ContextAnswer](t, kgGet(w, fmt.Sprintf("/api/v1/knowledge/context?q=billing+db1+Redis&depth=2&limit_bytes=%d", limit), "test-owner"))
+		items, err := json.Marshal(c.Items)
+		if err != nil || c.Bytes != len(items) || c.Bytes > limit || c.LimitBytes != limit {
+			t.Fatalf("limit %d: bytes %d, items array %d bytes: %+v", limit, c.Bytes, len(items), c)
+		}
+		return c
+	}
+	if c := get(2); len(c.Items) != 0 || c.Bytes != 2 || !c.Truncated {
+		t.Fatalf("limit 2: %+v", c)
+	}
+	full := get(knowledge.MaxContextLimitBytes)
+	if len(full.Items) < 3 || full.Truncated {
+		t.Fatalf("full context: %+v", full)
+	}
+	two, err := json.Marshal(full.Items[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := get(len(two)); len(c.Items) != 2 || c.Bytes != len(two) || !c.Truncated {
+		t.Fatalf("exact boundary %d: %+v", len(two), c)
+	}
+	// One byte less: the first two no longer fit together (a later,
+	// smaller item may still be selected).
+	if c := get(len(two) - 1); len(c.Items) >= len(full.Items) || !c.Truncated || (len(c.Items) >= 2 && c.Items[1].Reason == full.Items[1].Reason && c.Items[0].Reason == full.Items[0].Reason && sameItem(c.Items[1], full.Items[1])) {
+		t.Fatalf("one byte under the boundary: %+v", c)
+	}
+	if c := get(full.Bytes); len(c.Items) != len(full.Items) || c.Truncated {
+		t.Fatalf("limit equal to the full size: %+v", c)
+	}
+}
+
+func sameItem(a, b knowledge.ContextItem) bool {
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+	return string(x) == string(y)
 }
