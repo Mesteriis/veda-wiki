@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -84,13 +85,19 @@ var syncDir = func(dir string) error {
 }
 
 // writeBlob writes, fsyncs and renames one image into directory unless a
-// valid blob with the same digest exists. It does not sync the directory.
+// valid blob with the same digest exists; an existing blob's modification
+// time is set to now so that blob collection keeps it for the grace period
+// until the commit that references it. It does not sync the directory.
 func (s *Store) writeBlob(directory string, data []byte) (domain.BlobRef, bool, error) {
 	ref, err := domain.ImageRef(data)
 	if err != nil {
 		return domain.BlobRef{}, false, err
 	}
 	if s.VerifyBlob(ref) == nil {
+		now := time.Now()
+		if err = os.Chtimes(s.BlobPath(ref.SHA), now, now); err != nil {
+			return domain.BlobRef{}, false, err
+		}
 		return ref, false, nil
 	}
 	f, err := os.CreateTemp(directory, ".blob-")
@@ -115,14 +122,18 @@ func (s *Store) writeBlob(directory string, data []byte) (domain.BlobRef, bool, 
 }
 
 // WriteBlobs stores images durably and returns their references by the same
-// keys. Existing valid blobs are kept; the blobs directory is synced once,
-// only if something was written. A blob may remain unreferenced if a later
-// commit fails, but a referenced digest never holds a partial file.
+// keys. Existing valid blobs are kept and their modification time refreshed;
+// the blobs directory is synced once, only if something was written. A blob
+// may remain unreferenced if a later commit fails, but a referenced digest
+// never holds a partial file. The caller must commit the references within
+// 24 hours (blobGrace), or blob collection may remove the files.
 func (s *Store) WriteBlobs(blobs map[string][]byte) (map[string]domain.BlobRef, error) {
 	refs := make(map[string]domain.BlobRef, len(blobs))
 	if len(blobs) == 0 {
 		return refs, nil
 	}
+	s.blobMu.Lock()
+	defer s.blobMu.Unlock()
 	directory := path.Join(s.dir, "blobs")
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err

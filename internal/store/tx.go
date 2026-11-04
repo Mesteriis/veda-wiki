@@ -104,6 +104,7 @@ func (s *Store) update(fn func(tx *Tx) error) error {
 	for _, after := range tx.afterCommit {
 		after()
 	}
+	s.collectBlobsDue()
 	return nil
 }
 

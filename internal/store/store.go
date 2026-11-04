@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -27,6 +28,12 @@ type Store struct {
 	sqlite   bool
 	invalid  bool
 	readOnly bool
+	// blobMu serializes WriteBlobs with a blob collection sweep.
+	blobMu sync.Mutex
+	// blobsCollected is when blob collection last ran; clock replaces
+	// time.Now in tests.
+	blobsCollected time.Time
+	clock          func() time.Time
 }
 
 var errReadOnly = errors.New("read-only store")
@@ -81,6 +88,7 @@ func Open(dir string) (*Store, error) {
 	if err = Validate(&s.db); err != nil {
 		return nil, err
 	}
+	s.collectBlobsDue()
 	return s, nil
 }
 
