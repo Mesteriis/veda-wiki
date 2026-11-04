@@ -1,0 +1,358 @@
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 248px;
+  padding: 18px 17px 16px 19px;
+  border-right: 1px solid #00b5d7;
+  background: #000a0fe8;
+  display: flex;
+  flex-direction: column;
+  z-index: 3;
+  box-shadow: 3px 0 18px #008fb119;
+}
+.sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 175px 0 100px;
+  z-index: -1;
+  background: url("/assets/veda-header.png") no-repeat right center;
+  background-size: auto 950px;
+  opacity: 0.26;
+  pointer-events: none;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  height: 66px;
+  margin-bottom: 18px;
+}
+.brand-mark {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 9px #00c6ff55);
+}
+.brand strong {
+  display: block;
+  letter-spacing: 6px;
+  font-family: Arial, sans-serif;
+  font-size: 25px;
+  color: white;
+  line-height: 1.3;
+}
+.brand small {
+  display: block;
+  font-family: Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+}
+.mobile-menu-toggle {
+  display: none;
+}
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-item {
+  display: flex;
+  width: 100%;
+  height: 43px;
+  align-items: center;
+  gap: 24px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #d1e4eb;
+  font-size: 16px;
+}
+.nav-item .icon {
+  width: 26px;
+  height: 26px;
+}
+.nav-item.selected {
+  background: #003348a8;
+  border-color: #087a9e;
+  box-shadow:
+    -2px 0 0 #00d9ff,
+    0 0 16px #00b8f22b,
+    inset 0 0 20px #0084ac22;
+  color: #f0f9ff;
+}
+.sidebar-bottom {
+  margin-top: 17px;
+  display: grid;
+  gap: 14px;
+}
+.storage {
+  padding: 10px 16px;
+  height: 87px;
+}
+.storage > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  color: #edf6fb;
+  font-size: 14px;
+}
+.storage .icon {
+  width: 17px;
+  height: 17px;
+}
+.storage p {
+  margin: 6px 0 8px;
+  color: #dbe9f4;
+  font-size: 16px;
+}
+.storage p b {
+  font-weight: 400;
+  color: var(--cyan);
+}
+.storage p span {
+  float: right;
+  color: var(--muted);
+  font-size: 13px;
+}
+.meter {
+  height: 10px;
+  background: #082c3b;
+  border: 1px solid #124354;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.meter i {
+  display: block;
+  width: 18%;
+  height: 100%;
+  background: #00d4ec;
+  box-shadow: 0 0 12px #00eaff;
+  border-radius: 8px;
+}
+.system {
+  padding: 12px 16px;
+  height: 175px;
+}
+.system-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #f0f5fa;
+  font-size: 16px;
+}
+.system-brand > img {
+  width: 25px;
+  height: 30px;
+  object-fit: contain;
+}
+.system-brand > div {
+  line-height: 1.2;
+}
+.system-brand small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+.system-brand > .icon {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+}
+.system dl {
+  margin: 13px 0 0;
+}
+.system dl > div {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.system dt {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.system dt .icon {
+  width: 15px;
+  height: 15px;
+}
+.system dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #00eec9;
+}
+.system dd i {
+  width: 9px;
+  height: 9px;
+  background: #00e6bd;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #00edbf44;
+}
+.system dd.muted {
+  color: #94a7b7;
+  font-size: 11px;
+}
+@media (max-width: 1450px) {
+  .sidebar {
+    width: 218px;
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+  .brand {
+    gap: 9px;
+  }
+  .brand strong {
+    font-size: 23px;
+  }
+  .brand-mark {
+    width: 60px;
+    height: 60px;
+  }
+  .brand small {
+    font-size: 9px;
+  }
+  .nav-item {
+    gap: 19px;
+  }
+}
+@media (max-width: 900px) {
+  .sidebar {
+    width: 180px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .brand-mark {
+    width: 42px;
+    height: 50px;
+  }
+  .brand strong {
+    font-size: 20px;
+    letter-spacing: 4px;
+  }
+  .brand small {
+    font-size: 8px;
+  }
+  .nav-item {
+    gap: 12px;
+    padding-left: 10px;
+    font-size: 14px;
+  }
+  .nav-item .icon {
+    width: 23px;
+    height: 23px;
+  }
+  .storage {
+    padding: 10px;
+  }
+  .storage > div:first-child {
+    font-size: 12px;
+  }
+  .system {
+    padding: 12px 10px;
+  }
+  .system dt {
+    gap: 7px;
+  }
+  .system dl > div {
+    font-size: 12px;
+  }
+  .system dd.muted {
+    font-size: 10px;
+  }
+}
+@media (max-width: 600px) {
+  .sidebar {
+    position: relative;
+    width: 100%;
+    height: auto;
+    padding: 10px 16px;
+    flex-direction: row;
+    align-items: center;
+    border-right: 0;
+    border-bottom: 1px solid #026985;
+    justify-content: space-between;
+  }
+  .brand {
+    height: 45px;
+    margin: 0;
+    gap: 10px;
+  }
+  .brand-mark {
+    height: 43px;
+    width: 43px;
+  }
+  .brand strong {
+    font-size: 20px;
+    letter-spacing: 5px;
+  }
+  .brand small {
+    font-size: 8px;
+  }
+  .sidebar nav {
+    flex-direction: row;
+    gap: 6px;
+  }
+  .sidebar nav .nav-item {
+    display: none;
+  }
+  .sidebar nav .nav-item[href="/?env=all"] {
+    display: flex;
+    width: 37px;
+    height: 37px;
+    padding: 7px;
+    border: 1px solid #104b60;
+  }
+  .sidebar nav span {
+    display: none;
+  }
+  .mobile-menu-toggle {
+    display: grid;
+    place-items: center;
+    width: 37px;
+    height: 37px;
+    border: 1px solid #104b60;
+    border-radius: 6px;
+    flex: none;
+  }
+  .sidebar nav.mobile-open {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 4;
+    flex-direction: column;
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+    padding: 8px 12px;
+    border: 1px solid #026985;
+    background: #001017;
+  }
+  .sidebar nav.mobile-open .nav-item {
+    display: flex;
+    width: 100%;
+    height: 43px;
+    padding: 0 14px;
+    border: 0;
+  }
+  .sidebar nav.mobile-open span {
+    display: inline;
+  }
+  .sidebar-bottom {
+    display: none;
+  }
+  .storage {
+    display: none;
+  }
+}
+.sidebar::before {
+  background-position: -450px -10px;
+  opacity: 0.22;
+}
+.nav-item {
+  font-size: 17px;
+  letter-spacing: 0.2px;
+}

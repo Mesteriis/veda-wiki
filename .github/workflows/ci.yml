@@ -13,7 +13,7 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.22'
           cache: npm
           cache-dependency-path: web/package-lock.json
       - uses: actions/setup-python@v5
@@ -27,7 +27,7 @@ jobs:
       - run: go build -o veda ./cmd/veda
       - run: python scripts/smoke_superuser.py
       - run: python scripts/smoke_dual_listener.py
-      - run: node --test scripts/ui_poll.test.mjs
+      - run: node --test scripts/ui_poll.test.mjs scripts/ui_compare.test.mjs
       - run: VEDA_TEST_CHROME="$(command -v google-chrome)" python scripts/smoke_ui.py
       - run: python -m pip install -r scripts/requirements-checks.txt
       - run: python -m unittest discover -s scripts -p test_check_agent_readers.py -v

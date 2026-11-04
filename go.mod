@@ -2,6 +2,8 @@ module github.com/Mesteriis/veda-wiki
 
 go 1.26.0
 
+ignore ./web/node_modules
+
 require github.com/yuin/goldmark v1.7.16
 
 require (

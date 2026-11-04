@@ -17,8 +17,9 @@ credentials, production configuration or deployment history.
 
 ## Run
 
-Requires Go 1.26, Node 20.19+ (or 22.12+) and npm. Runtime is a single Go
-binary; Node is only needed to build the interface. Linux/macOS are supported.
+Requires Go 1.26, Node 22.22.2+ (24.15+ on Node 24) and npm. Runtime is a
+single Go binary; Node is only needed to build the interface. Linux/macOS are
+supported.
 
 ```sh
 make build
@@ -117,7 +118,7 @@ the path; deleted history or a concurrent write can still prevent creation.
 The Go backend is one module with the dispatcher in `cmd/veda` and the code in
 `internal/` (`domain`, `store`, the areas `auth`, `importer`, `transfer`,
 `translation`, `syncer`, `agentctx`, and the adapters `httpapi` and `app`).
-[Backend architecture](docs/architecture.md) lists the packages, allowed
+[Architecture](docs/architecture.md) lists the packages, allowed
 dependencies, collection ownership and the transaction model. `make lint`
 enforces a 500-line limit for Go and script files and runs
 `scripts/check_architecture.py`, which fails on forbidden package imports and
@@ -159,6 +160,30 @@ VEDA_TEST_CHROME=/absolute/path/to/chrome python3 scripts/smoke_ui.py
 ```
 For frontend development run the Go server and `npm run dev` in `web/`; Vite
 proxies API requests to the default loopback endpoint.
+
+Frontend checks, run in `web/`:
+
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+`make test` runs them together with the Go tests; `make lint` also limits every
+`.ts`, `.tsx` and `.css` file in `web/src` to 500 lines. The layout is described
+in [Architecture](docs/architecture.md#frontend).
+
+Visual regression check: after `make build`, capture screens and compare them
+with the baseline (0.1% of pixels per screen):
+
+```sh
+VEDA_TEST_CHROME=/absolute/path/to/chrome python3 scripts/screens.py --out DIR
+node scripts/ui_compare.mjs web/screens/baseline DIR --threshold 0.001
+```
+
+The baseline in `web/screens/baseline` is machine-local and git-ignored; capture
+it with `scripts/screens.py` from a known-good build before changing the UI.
 
 The default store uses an atomic, fsynced JSON transaction file, bounded to
 64 MiB including revision history. An opt-in SQLite backend removes that
