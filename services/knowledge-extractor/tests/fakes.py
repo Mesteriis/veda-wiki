@@ -7,9 +7,15 @@ import threading
 from typing import Callable
 
 from knowledge_extractor.model import RawEntity, RawRelation, RawResult
-from knowledge_extractor.schemas import ExtractionSchema, ModelInfo
+from knowledge_extractor.schemas import DecoderSettings, ExtractionSchema, ModelIdentity
 
 WORD = re.compile(r"[\ẁ-ͯ‌‍]+(?:[-_][\ẁ-ͯ]+)*|\S")
+
+
+FAKE_DECODER = DecoderSettings(optimizer="beam", beam_size=32, top_k_entities=32,
+                               max_edges_per_type=256, candidate_threshold=0.05,
+                               relation_role_threshold=0.05, top_k_roles=12, count_top_k=2,
+                               relation_pair_cap=128, entity_threshold=None, library="fake")
 
 
 def tokens_for(word: str) -> int:
@@ -27,7 +33,9 @@ class FakeModel:
     delay: float = 0.0
     release: threading.Event | None = None
     calls: list[str] = field(default_factory=list)
-    info: ModelInfo = field(default_factory=lambda: ModelInfo(id="fake", revision="0", device="cpu"))
+    info: ModelIdentity = field(default_factory=lambda: ModelIdentity(id="fake", revision="0",
+                                                                     device="cpu"))
+    decoder: DecoderSettings = field(default_factory=lambda: FAKE_DECODER)
 
     def prepare(self, schema: ExtractionSchema) -> ExtractionSchema:
         return schema

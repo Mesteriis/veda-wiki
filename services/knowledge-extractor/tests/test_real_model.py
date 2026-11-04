@@ -139,9 +139,14 @@ def test_http_round_trip(model):
     body = {"schema_version": 1, "request_id": "real-1", "schema": SCHEMA,
             "blocks": [{"id": "en", "text": EN}, {"id": "ru", "text": RU}]}
     with TestClient(app) as client:
-        assert client.get("/ready").json()["model"]["revision"].startswith("cf5593a5")
+        ready = client.get("/ready").json()["model"]
+        assert ready["revision"].startswith("cf5593a5")
+        assert ready["pipeline"]["decoder"]["library"] == "gliner2==2.1.0"
+        assert ready["pipeline"]["decoder"]["optimizer"] == "beam"
         response = client.post("/v1/extract", json=body, headers={"X-Veda-Extractor-Key": key.decode()})
     assert response.status_code == 200
+    assert response.json()["model"] == ready
+    assert model._engine._compiled_schemas == {}  # only our bounded cache holds schemas
     blocks = response.json()["blocks"]
     assert [b["id"] for b in blocks] == ["en", "ru"]
     for block, text in zip(blocks, (EN, RU)):

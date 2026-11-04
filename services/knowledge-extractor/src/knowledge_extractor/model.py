@@ -6,13 +6,15 @@ deterministic fake with the same protocol, so no torch import is needed there.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
+import hashlib
 import logging
 import threading
 import time
 from typing import Any, Callable, Protocol, Sequence
 
-from .schemas import ExtractionSchema, ModelInfo
+from .schemas import DecoderSettings, ExtractionSchema, ModelIdentity
 
 log = logging.getLogger("knowledge_extractor.model")
 
@@ -45,7 +47,8 @@ class RawResult:
 
 
 class ExtractionModel(Protocol):
-    info: ModelInfo
+    info: ModelIdentity
+    decoder: DecoderSettings
 
     def prepare(self, schema: ExtractionSchema) -> Any:
         """Compile the request schema once per distinct schema."""
@@ -61,6 +64,44 @@ class ExtractionModel(Protocol):
 
     def extract(self, text: str, prepared: Any) -> RawResult:
         """Run joint entity/relation extraction on one chunk."""
+
+
+class SchemaCache:
+    """Bounded LRU of compiled schemas keyed by a SHA-256 digest of the schema.
+
+    Evicted entries are dropped entirely; the caller must not keep any other
+    reference (the GLiNER2 engine's own unbounded cache is bypassed).
+    """
+
+    def __init__(self, compile: Callable[[ExtractionSchema], Any], size: int = 16) -> None:
+        if size <= 0:
+            raise ValueError("cache size must be positive")
+        self._compile = compile
+        self._size = size
+        self._items: OrderedDict[str, Any] = OrderedDict()
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def digest(schema: ExtractionSchema) -> str:
+        return hashlib.sha256(schema.cache_key().encode("utf-8")).hexdigest()
+
+    def get(self, schema: ExtractionSchema) -> Any:
+        key = self.digest(schema)
+        with self._lock:
+            if key in self._items:
+                self._items.move_to_end(key)
+                return self._items[key]
+        compiled = self._compile(schema)
+        with self._lock:
+            self._items[key] = compiled
+            self._items.move_to_end(key)
+            while len(self._items) > self._size:
+                self._items.popitem(last=False)
+        return compiled
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._items)
 
 
 class ModelUnavailable(Exception):

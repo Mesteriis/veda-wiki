@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import dataclasses
 
+import pytest
+
 from fakes import FakeModel
 from knowledge_extractor.adapter import extract_block, extract_request
 from knowledge_extractor.limits import Limits
+from knowledge_extractor.model import RawEntity, RawRelation, RawResult
 from knowledge_extractor.schemas import ExtractRequest
-from conftest import request_body
+from conftest import EXPECTED_MODEL, request_body
 
 GAZETTEER = {"billing": "service", "db-01": "host", "PostgreSQL": "technology",
              "Иван Петров": "person", "Сервис🚀": "service"}
@@ -125,8 +128,92 @@ def test_request_echoes_id_model_and_blocks():
     response = extract_request(model, request, Limits(), no_deadline)
     dumped = response.model_dump(mode="json")
     assert dumped["schema_version"] == 1 and dumped["request_id"] == "req-1"
-    assert dumped["model"] == {"id": "fake", "revision": "0", "device": "cpu"}
+    assert dumped["model"] == EXPECTED_MODEL
     assert [b["id"] for b in dumped["blocks"]] == ["a", "b"]
     assert dumped["blocks"][1] == {"id": "b", "chunks": [], "entities": [], "relations": [],
-                                   "dropped": {"invalid_spans": 0, "invalid_relations": 0,
-                                               "over_limit": 0}}
+                                   "dropped": {"invalid_spans": 0, "partial_spans": 0,
+                                               "invalid_relations": 0, "over_limit": 0}}
+
+
+def test_pipeline_reports_output_relevant_settings():
+    model = FakeModel(GAZETTEER, RELATIONS)
+    limits = Limits(window_tokens=300, window_margin=10, overlap_tokens=20,
+                    max_entities_per_block=50)
+    request = ExtractRequest.model_validate(request_body([("a", "billing on db-01.")]))
+    pipeline = extract_request(model, request, limits, no_deadline).model.pipeline
+    assert (pipeline.window_tokens, pipeline.window_margin, pipeline.overlap_tokens) == (300, 10, 20)
+    assert pipeline.max_entities_per_block == 50 and pipeline.chunker_version == 1
+    assert pipeline.decoder.optimizer == "beam" and pipeline.decoder.beam_size == 32
+
+
+def split_at(monkeypatch, text, cuts):
+    """Force chunk plans [(start, end), ...] for extract_block."""
+    from knowledge_extractor import adapter
+    from knowledge_extractor.chunking import ChunkPlan
+
+    plans = [ChunkPlan(start, end, "truncated_prevented") for start, end in cuts]
+    monkeypatch.setattr(adapter, "plan_chunks", lambda *a, **k: plans)
+
+
+def edge_fragments(entities, text):
+    """Simulate the model tagging the visible half of a name cut by a chunk edge."""
+    extra = []
+    if text.endswith("Иван"):
+        extra.append(RawEntity("x1", "person", "Иван", len(text) - 4, len(text), 0.95))
+    if text.startswith("Петров"):
+        extra.append(RawEntity("x2", "person", "Петров", 0, 6, 0.95))
+    return entities + extra
+
+
+def test_chunk_edge_partial_names_are_dropped(schema, monkeypatch):
+    text = "Встреча. Ответственный Иван Петров ведёт billing. Потом Петров ушёл."
+    ivan = text.index("Иван")
+    petrov_end = text.index("Петров") + len("Петров")
+    later = text.index("Петров ушёл")
+    # chunk 1 ends inside the name, chunk 2 overlaps and holds it whole,
+    # chunk 3 starts at the second "Петров" (a real mention, but only at an edge)
+    split_at(monkeypatch, text, [(0, ivan + 4), (ivan, petrov_end + 7), (later, len(text))])
+    model = FakeModel({"Иван Петров": "person", "billing": "service"}, corrupt=edge_fragments)
+    result = run(model, schema, text)
+    persons = [(e.text, e.start) for e in result.entities if e.type == "person"]
+    assert ("Иван Петров", ivan) in persons
+    assert ("Иван", ivan) not in persons
+    assert ("Петров", later) in persons  # touches an edge but nothing contains it
+    assert result.dropped.partial_spans == 1
+    assert_quotes(text, result)
+
+
+def test_block_edges_never_count_as_chunk_edges(schema, monkeypatch):
+    text = "Иван Петров и Иван"
+    split_at(monkeypatch, text, [(0, len(text))])
+    model = FakeModel({"Иван Петров": "person"}, corrupt=edge_fragments)
+    result = run(model, schema, text)
+    assert result.dropped.partial_spans == 0
+    assert {(e.text, e.start) for e in result.entities} >= {("Иван", 14)}
+
+
+def test_relations_with_partial_endpoint_are_dropped(schema, monkeypatch):
+    text = "Сервис billing работает на db-01-replica."
+    cut = text.index("db-01") + len("db-01")
+    split_at(monkeypatch, text, [(0, cut), (text.index("billing"), len(text))])
+
+    class Scripted(FakeModel):
+        def extract(self, chunk, prepared):
+            host = "db-01" if chunk.endswith("db-01") else "db-01-replica"
+            b, h = chunk.index("billing"), chunk.index(host)
+            return RawResult(True, (RawEntity("e1", "service", "billing", b, b + 7, 0.9),
+                                    RawEntity("e2", "host", host, h, h + len(host), 0.8)),
+                             (RawRelation("runs_on", "e1", "e2", 0.7),))
+
+    result = run(Scripted(), schema, text)
+    assert {e.text for e in result.entities} == {"billing", "db-01-replica"}
+    assert result.dropped.partial_spans == 1 and result.dropped.invalid_relations == 1
+    [relation] = result.relations
+    ids = {e.local_id: e.text for e in result.entities}
+    assert (ids[relation.head], ids[relation.tail]) == ("billing", "db-01-replica")
+
+
+@pytest.mark.parametrize("concurrency", [0, 2, 4])
+def test_inference_concurrency_must_be_one(concurrency):
+    with pytest.raises(ValueError):
+        Limits(inference_concurrency=concurrency)

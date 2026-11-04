@@ -26,6 +26,10 @@ class Limits:
         for name in positive:
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
+        if self.inference_concurrency != 1:
+            # GLiNER2's processor mutates shared state per call (mode flag, token caches,
+            # collator) and thread safety of concurrent JointIE calls is unproven.
+            raise ValueError("inference_concurrency must be 1")
         if self.request_timeout <= 0:
             raise ValueError("request_timeout must be positive")
         if self.max_relations_per_block < 0 or self.window_margin < 0 or self.overlap_tokens < 0:

@@ -31,7 +31,9 @@ no paths or secrets, for example:
 - `device mps unavailable: torch.backends.mps.is_available() is False` — no fallback to CPU;
 - `model fastino/gliner2.5-multi-v1@cf5593a5… is not in the local Hugging Face cache; fetch it with: uv run --project services/knowledge-extractor python scripts/fetch_knowledge_model.py`.
 
-The checkpoint is always resolved with `local_files_only=True` and loaded from the
+Before gliner2, transformers or huggingface_hub are imported, the backend sets
+`HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` with `os.environ.setdefault` (an explicit
+operator value is kept). The checkpoint is always resolved with `local_files_only=True` and loaded from the
 snapshot directory of the pinned revision (`AutoExtractor.from_pretrained(<snapshot>,
 map_location=<device>)`). Loading from the directory matters: GLiNER2 loads the tokenizer
 with `AutoTokenizer.from_pretrained(repo_or_dir)` without a revision, so a repo id would
@@ -64,16 +66,27 @@ Response (shape as returned; scores rounded, only part of the entities shown):
 
 ```json
 {"schema_version": 1, "request_id": "job-42",
- "model": {"id": "fastino/gliner2.5-multi-v1", "revision": "cf5593a5d45e3bbf204b9df621b13b1c0cf25ee3", "device": "cpu"},
+ "model": {"id": "fastino/gliner2.5-multi-v1", "revision": "cf5593a5d45e3bbf204b9df621b13b1c0cf25ee3", "device": "cpu",
+           "pipeline": {"model_id": "fastino/gliner2.5-multi-v1", "model_revision": "cf5593a5d45e3bbf204b9df621b13b1c0cf25ee3",
+                        "chunker_version": 1, "window_tokens": 512, "window_margin": 16, "overlap_tokens": 64,
+                        "max_entities_per_block": 512, "max_relations_per_block": 1024,
+                        "decoder": {"optimizer": "beam", "beam_size": 32, "top_k_entities": 32, "max_edges_per_type": 256,
+                                    "candidate_threshold": 0.05, "relation_role_threshold": 0.05, "top_k_roles": 12,
+                                    "count_top_k": 2, "relation_pair_cap": 128, "entity_threshold": null,
+                                    "library": "gliner2==2.1.0"}}},
  "blocks": [{"id": "p1",
    "chunks": [{"start": 0, "end": 65, "feasible": true, "status": "ok"}],
    "entities": [{"local_id": "e1", "type": "service", "start": 7, "end": 14, "text": "billing", "confidence": 0.97},
                 {"local_id": "e2", "type": "host", "start": 35, "end": 40, "text": "db-01", "confidence": 0.99}],
    "relations": [{"type": "runs_on", "head": "e1", "tail": "e2", "confidence": 0.90,
                   "head_confidence": 0.97, "tail_confidence": 0.99}],
-   "dropped": {"invalid_spans": 0, "invalid_relations": 0, "over_limit": 0}}]}
+   "dropped": {"invalid_spans": 0, "partial_spans": 0, "invalid_relations": 0, "over_limit": 0}}]}
 ```
 
+- `model.pipeline` (also in `/ready`) lists every extractor setting that changes output:
+  model id/revision, chunker version, window/margin/overlap, per-block caps and the JointIE
+  decoder controls (pinned to the gliner2 2.1.0 defaults). VEDA folds it into the pipeline
+  fingerprint; `chunker_version` is bumped whenever chunk plans can change.
 - `local_id` is valid only inside its block result; relations reference these ids.
 - `confidence` values are raw model scores in [0, 1], not probabilities of truth.
   `head_confidence`/`tail_confidence` are the endpoint scores from the chunk that
@@ -85,7 +98,9 @@ Response (shape as returned; scores rounded, only part of the entities shown):
   chunk contributes no output).
 - `dropped` counts model output removed by validation: spans out of bounds, with a quote
   that differs from `block[start:end]`, unknown types or invalid scores; relations with
-  unknown/invalid endpoints or endpoint types outside the schema; and items over the caps.
+  unknown/invalid endpoints or endpoint types outside the schema (including relations whose
+  endpoint was a dropped chunk-edge partial); `partial_spans` are chunk-edge fragments (see
+  Chunking); and items over the caps.
 
 Errors are `{"error": {"code", "message"}}`: 401 `unauthorized`, 413 `body_too_large` /
 `too_many_blocks` / `block_too_long`, 415, 422 `invalid_request` (field locations and error
@@ -99,11 +114,20 @@ kinds only, never input text) / `schema_too_large`, 503 `not_ready` / `busy`, 50
 | `--max-blocks` | 256 | blocks per request |
 | `--max-block-chars` | 20000 | code points per block |
 | `--request-timeout` | 120 s | checked between chunks; the slot is freed by the worker |
-| `--inference-concurrency` | 1 | semaphore around inference |
+| `--inference-concurrency` | 1 | semaphore around inference; values other than 1 are refused |
 | `--window-tokens` / `--window-margin` | 512 / 16 | encoder input budget = 496 tokens, schema prompt included |
 | `--overlap-tokens` | 64 | overlap between consecutive chunks |
 
 Per-block caps are 512 entities and 1024 relations (highest scores kept).
+
+Inference is serialized: GLiNER2's processor mutates shared per-call state (inference mode
+flag, token caches, collators) and concurrent JointIE calls on one model have not been
+shown to be thread-safe, so `--inference-concurrency` must stay 1 and uvicorn runs one worker.
+
+Compiled schemas live in the service's own LRU (16 entries, keyed by the SHA-256 of the
+canonical schema JSON). Schemas are compiled with `gliner2.joint_ie.compile_schema` and
+passed to `JointIE.extract` already compiled, so the engine's own unbounded
+`_compiled_schemas` dict is never filled; evicted entries are released.
 
 ## Chunking
 
@@ -127,6 +151,11 @@ here, below the encoder's 512 absolute positions.
 5. Chunk offsets are shifted to block offsets; each span is re-checked against the block,
    duplicates from overlaps are merged by `(type, start, end)` keeping the highest score,
    relations are merged by `(type, head span, tail span)`.
+
+Chunk-edge partials: a span that, in every chunk producing it, touches an interior chunk
+edge (start at the chunk start or end at the chunk end; block edges excluded) is dropped
+when another chunk produced a same-type span containing it that continues past that edge —
+e.g. `Иван` at the end of one chunk versus `Иван Петров` in the overlapping next one.
 
 Relations are only taken from one chunk, so both endpoints come from the same context;
 cross-chunk and cross-document links are built by Go from confirmed mentions.
@@ -159,6 +188,9 @@ is accepted, but on Linux the lock installs the CPU-only torch build, so `/ready
 `device cuda unavailable` unless the torch source is changed — there is no silent fallback.
 
 ## Tests
+
+`make test` does not run these tests: `uv sync` needs network access, while `make test`
+must work offline. CI runs `make extractor-test` as its own step after `make test`.
 
 ```sh
 make extractor-test   # unit tests, fake model, HF_HUB_OFFLINE=1, no network

@@ -6,7 +6,7 @@ import threading
 import pytest
 from starlette.testclient import TestClient
 
-from conftest import request_body
+from conftest import EXPECTED_MODEL, request_body
 from fakes import FakeModel
 from knowledge_extractor.app import create_app
 from knowledge_extractor.limits import Limits
@@ -62,7 +62,7 @@ def test_ready_reports_loading_then_ready():
         holder.join(5)
         ready = client.get("/ready")
         assert ready.status_code == 200
-        assert ready.json()["model"] == {"id": "fake", "revision": "0", "device": "cpu"}
+        assert ready.json()["model"] == EXPECTED_MODEL
 
 
 def test_ready_fails_when_self_test_finds_nothing():
@@ -89,6 +89,7 @@ def test_successful_extract_matches_contract():
         assert response.status_code == 200
         data = response.json()
         assert set(data) == {"schema_version", "request_id", "model", "blocks"}
+        assert data["model"] == EXPECTED_MODEL == client.get("/ready").json()["model"]
         block = data["blocks"][0]
         assert set(block) == {"id", "chunks", "entities", "relations", "dropped"}
         assert block["chunks"] == [{"start": 0, "end": 22, "feasible": True, "status": "ok"}]
@@ -107,6 +108,8 @@ def test_successful_extract_matches_contract():
     (lambda b: b["blocks"][0].update(text=""), "invalid_request"),
     (lambda b: b["blocks"][0].update(id="has space"), "invalid_request"),
     (lambda b: b.update(limits={"max_entities_per_block": 0}), "invalid_request"),
+    (lambda b: b.update(schema_=b.pop("schema")), "invalid_request"),
+    (lambda b: b.update(schema_=b["schema"]), "invalid_request"),
 ])
 def test_invalid_requests_are_422_without_echoing_text(mutate, code):
     with client_for() as client:

@@ -22,7 +22,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from .adapter import DeadlineExceeded, extract_request
+from .adapter import DeadlineExceeded, extract_request, model_info
 from .chunking import SchemaTooLarge
 from .limits import Limits, LimitError, check_request
 from .model import ModelHolder
@@ -81,7 +81,8 @@ class Service:
     async def ready(self, request: Request) -> JSONResponse:
         state, reason, model = self.holder.status()
         if state == "ready" and model is not None:
-            return JSONResponse({"status": "ready", "model": model.info.model_dump(),
+            info = model_info(model, self.limits).model_dump(mode="json")
+            return JSONResponse({"status": "ready", "model": info,
                                  "load_seconds": self.holder.load_seconds})
         return JSONResponse({"status": state, "reason": reason}, status_code=503)
 

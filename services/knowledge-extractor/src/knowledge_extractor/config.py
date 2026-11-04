@@ -75,7 +75,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-blocks", type=int, default=defaults.max_blocks)
     parser.add_argument("--max-block-chars", type=int, default=defaults.max_block_chars)
     parser.add_argument("--request-timeout", type=float, default=defaults.request_timeout)
-    parser.add_argument("--inference-concurrency", type=int, default=defaults.inference_concurrency)
+    parser.add_argument("--inference-concurrency", type=int, default=defaults.inference_concurrency,
+                        help="must be 1: concurrent GLiNER2 inference is not proven thread-safe")
     parser.add_argument("--window-tokens", type=int, default=defaults.window_tokens)
     parser.add_argument("--window-margin", type=int, default=defaults.window_margin)
     parser.add_argument("--overlap-tokens", type=int, default=defaults.overlap_tokens)

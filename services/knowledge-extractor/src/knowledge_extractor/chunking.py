@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Literal, Sequence
 
+# Bump whenever the chunk plan for the same text and budget can change.
+CHUNKER_VERSION = 1
 SENTENCE_END = (".", "!", "?", "…", "。", "！", "？")
 MIN_ROOM = 8
 

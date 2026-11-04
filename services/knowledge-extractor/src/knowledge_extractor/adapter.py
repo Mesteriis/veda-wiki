@@ -4,6 +4,14 @@ Chunk offsets are shifted to block code points, every span is checked against
 the block text, overlap duplicates are merged by ``(type, start, end)`` and
 relations are rewritten to block-local entity ids. Relations are only taken
 from a single chunk, so both endpoints always come from the same context.
+
+Chunk-edge partials: a span is dropped when, in every chunk that produced it,
+it touched an interior chunk edge (start at the chunk start or end at the chunk
+end; block edges excluded) and another chunk produced a same-type span that
+contains it and continues past that edge — the cut chunk could not see the
+whole mention ("Иван" at a chunk end vs "Иван Петров" from the overlapping
+next chunk).
+Relations using a dropped partial endpoint are dropped as invalid relations.
 """
 from __future__ import annotations
 
@@ -11,11 +19,11 @@ from dataclasses import dataclass, field
 import math
 from typing import Any, Callable
 
-from .chunking import plan_chunks
+from .chunking import CHUNKER_VERSION, plan_chunks
 from .limits import Limits, effective_caps
 from .model import ExtractionModel, RawEntity, RawResult
 from .schemas import (BlockResult, Chunk, Dropped, Entity, ExtractionSchema, ExtractRequest,
-                      ExtractResponse, Relation)
+                      ExtractResponse, ModelInfo, Pipeline, Relation)
 
 SpanKey = tuple[str, int, int]
 
@@ -41,7 +49,10 @@ class _Edge:
 class _Block:
     entities: dict[SpanKey, _Found] = field(default_factory=dict)
     edges: dict[tuple[str, SpanKey, SpanKey], _Edge] = field(default_factory=dict)
+    # per span: for every chunk occurrence, the interior chunk edges it touched
+    touches: dict[SpanKey, list[list[tuple[str, int]]]] = field(default_factory=dict)
     invalid_spans: int = 0
+    partial_spans: int = 0
     invalid_relations: int = 0
 
 
@@ -56,7 +67,7 @@ def _valid_entity(e: RawEntity, chunk: str, schema: ExtractionSchema) -> bool:
 
 
 def _merge_chunk(acc: _Block, raw: RawResult, block_text: str, offset: int, end: int,
-                 schema: ExtractionSchema) -> None:
+                 schema: ExtractionSchema, first: bool, last: bool) -> None:
     chunk = block_text[offset:end]
     local: dict[str, tuple[SpanKey, float]] = {}
     for e in raw.entities:
@@ -69,6 +80,12 @@ def _merge_chunk(acc: _Block, raw: RawResult, block_text: str, offset: int, end:
             continue
         confidence = float(e.confidence)
         local[e.id] = (key, confidence)
+        edges = []
+        if e.start == 0 and not first:
+            edges.append(("start", offset))
+        if e.end == len(chunk) and not last:
+            edges.append(("end", end))
+        acc.touches.setdefault(key, []).append(edges)
         found = acc.entities.get(key)
         if found is None or confidence > found.confidence:
             acc.entities[key] = _Found(e.text, confidence)
@@ -85,6 +102,30 @@ def _merge_chunk(acc: _Block, raw: RawResult, block_text: str, offset: int, end:
         best = acc.edges.get(key)
         if best is None or (edge.confidence or 0.0) > (best.confidence or 0.0):
             acc.edges[key] = edge
+
+
+def _crosses(other: SpanKey, key: SpanKey, edge: tuple[str, int]) -> bool:
+    """``other`` is a same-type span containing ``key`` that continues past ``edge``."""
+    if other == key or other[0] != key[0] or other[1] > key[1] or other[2] < key[2]:
+        return False
+    side, position = edge
+    return other[2] > position if side == "end" else other[1] < position
+
+
+def _drop_partials(acc: _Block) -> None:
+    partial = []
+    for key, occurrences in acc.touches.items():
+        if all(edges and any(_crosses(other, key, edge) for edge in edges for other in acc.entities)
+               for edges in occurrences):
+            partial.append(key)
+    for key in partial:
+        del acc.entities[key]
+    acc.partial_spans += len(partial)
+    gone = set(partial)
+    stale = [k for k in acc.edges if k[1] in gone or k[2] in gone]
+    for k in stale:
+        del acc.edges[k]
+    acc.invalid_relations += len(stale)
 
 
 def _finish(block_id: str, chunks: list[Chunk], acc: _Block,
@@ -107,8 +148,8 @@ def _finish(block_id: str, chunks: list[Chunk], acc: _Block,
     relations = [Relation(type=key[0], head=ids[key[1]], tail=ids[key[2]], confidence=edge.confidence,
                           head_confidence=edge.head_confidence, tail_confidence=edge.tail_confidence)
                  for key, edge in edges]
-    dropped = Dropped(invalid_spans=acc.invalid_spans, invalid_relations=acc.invalid_relations,
-                      over_limit=over)
+    dropped = Dropped(invalid_spans=acc.invalid_spans, partial_spans=acc.partial_spans,
+                      invalid_relations=acc.invalid_relations, over_limit=over)
     return BlockResult(id=block_id, chunks=chunks, entities=entities, relations=relations,
                        dropped=dropped)
 
@@ -121,7 +162,7 @@ def extract_block(model: ExtractionModel, prepared: Any, schema: ExtractionSchem
                         budget=limits.token_budget, overlap=limits.overlap_tokens)
     acc = _Block()
     chunks: list[Chunk] = []
-    for plan in plans:
+    for index, plan in enumerate(plans):
         check_deadline()
         raw = model.extract(text[plan.start:plan.end], prepared)
         if not raw.feasible:
@@ -129,7 +170,9 @@ def extract_block(model: ExtractionModel, prepared: Any, schema: ExtractionSchem
             chunks.append(Chunk(start=plan.start, end=plan.end, feasible=False, status="infeasible"))
             continue
         chunks.append(Chunk(start=plan.start, end=plan.end, feasible=True, status=plan.status))
-        _merge_chunk(acc, raw, text, plan.start, plan.end, schema)
+        _merge_chunk(acc, raw, text, plan.start, plan.end, schema,
+                     first=index == 0, last=index == len(plans) - 1)
+    _drop_partials(acc)
     return _finish(block_id, chunks, acc, *caps)
 
 
@@ -141,4 +184,20 @@ def extract_request(model: ExtractionModel, request: ExtractRequest, limits: Lim
     blocks = [extract_block(model, prepared, schema, block.id, block.text, limits, caps,
                             check_deadline)
               for block in request.blocks]
-    return ExtractResponse(request_id=request.request_id, model=model.info, blocks=blocks)
+    return ExtractResponse(request_id=request.request_id, model=model_info(model, limits),
+                           blocks=blocks)
+
+
+def pipeline_for(model: ExtractionModel, limits: Limits) -> Pipeline:
+    """Every extractor setting that changes output, for the Go pipeline fingerprint."""
+    return Pipeline(model_id=model.info.id, model_revision=model.info.revision,
+                    chunker_version=CHUNKER_VERSION, window_tokens=limits.window_tokens,
+                    window_margin=limits.window_margin, overlap_tokens=limits.overlap_tokens,
+                    max_entities_per_block=limits.max_entities_per_block,
+                    max_relations_per_block=limits.max_relations_per_block,
+                    decoder=model.decoder)
+
+
+def model_info(model: ExtractionModel, limits: Limits) -> ModelInfo:
+    return ModelInfo(id=model.info.id, revision=model.info.revision, device=model.info.device,
+                     pipeline=pipeline_for(model, limits))

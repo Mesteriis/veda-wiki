@@ -74,7 +74,8 @@ class ExtractRequest(Strict):
     blocks: list[Block] = Field(min_length=1)
     limits: RequestLimits = Field(default_factory=RequestLimits)
 
-    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+    # No populate_by_name: only the wire name "schema" is accepted, "schema_" is an extra field.
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     @model_validator(mode="after")
     def _unique_blocks(self) -> "ExtractRequest":
@@ -84,10 +85,47 @@ class ExtractRequest(Strict):
         return self
 
 
+class ModelIdentity(Strict):
+    id: str
+    revision: str
+    device: str
+
+
+class DecoderSettings(Strict):
+    """JointIE decoding controls; every field changes model output."""
+
+    optimizer: str
+    beam_size: int
+    top_k_entities: int
+    max_edges_per_type: int
+    candidate_threshold: float
+    relation_role_threshold: float
+    top_k_roles: int
+    count_top_k: int
+    relation_pair_cap: int
+    entity_threshold: float | None
+    library: str
+
+
+class Pipeline(Strict):
+    """Everything in the extractor that changes output; Go folds it into the fingerprint."""
+
+    model_id: str
+    model_revision: str
+    chunker_version: int
+    window_tokens: int
+    window_margin: int
+    overlap_tokens: int
+    max_entities_per_block: int
+    max_relations_per_block: int
+    decoder: DecoderSettings
+
+
 class ModelInfo(Strict):
     id: str
     revision: str
     device: str
+    pipeline: Pipeline
 
 
 class Chunk(Strict):
@@ -119,6 +157,7 @@ class Dropped(Strict):
     """Counters for model output removed by validation (never the raw text)."""
 
     invalid_spans: int = 0
+    partial_spans: int = 0
     invalid_relations: int = 0
     over_limit: int = 0
 

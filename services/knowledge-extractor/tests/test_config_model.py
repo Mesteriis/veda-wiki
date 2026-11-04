@@ -102,3 +102,42 @@ def test_unexpected_loader_error_hides_details():
     holder.join(5)
     state, reason, _ = holder.status()
     assert state == "error" and "RuntimeError" in reason and "/private" not in reason
+
+
+def test_inference_concurrency_above_one_is_refused(tmp_path):
+    with pytest.raises(ConfigError):
+        parse_settings(["--key-file", key_file(tmp_path), "--inference-concurrency", "2"])
+
+
+def test_gliner_module_forces_offline_before_hf_imports():
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")}
+    code = ("import os, sys; import knowledge_extractor.gliner; "
+            "assert 'gliner2' not in sys.modules and 'huggingface_hub' not in sys.modules; "
+            "import huggingface_hub.constants as c; "
+            "print(os.environ['HF_HUB_OFFLINE'], os.environ['TRANSFORMERS_OFFLINE'], c.HF_HUB_OFFLINE)")
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                         check=True)
+    assert out.stdout.split() == ["1", "1", "True"]
+
+
+def test_schema_cache_is_bounded_by_digest(schema):
+    from knowledge_extractor.model import SchemaCache
+    from knowledge_extractor.schemas import ExtractionSchema
+
+    compiled = []
+
+    def compile_schema(s):
+        compiled.append(s)
+        return object()
+
+    cache = SchemaCache(compile_schema, size=2)
+    first = cache.get(schema)
+    assert cache.get(ExtractionSchema.model_validate(schema.model_dump())) is first
+    for i in range(3):
+        cache.get(ExtractionSchema.model_validate({"entities": {f"t{i}": ""}}))
+    assert len(cache) == 2 and len(compiled) == 4
+    assert cache.get(schema) is not first  # evicted, compiled again

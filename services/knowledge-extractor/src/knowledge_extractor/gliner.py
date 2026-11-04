@@ -6,13 +6,17 @@ Hugging Face cache (``local_files_only=True``); the service never downloads.
 """
 from __future__ import annotations
 
-from collections import OrderedDict
 import os
-import threading
-from typing import Any
 
-from .model import ModelUnavailable, RawEntity, RawRelation, RawResult
-from .schemas import ExtractionSchema, ModelInfo
+# The service never downloads: force the Hugging Face libraries offline before
+# gliner2/transformers/huggingface_hub are imported (they read these at import).
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+from typing import Any  # noqa: E402
+
+from .model import ModelUnavailable, RawEntity, RawRelation, RawResult, SchemaCache  # noqa: E402
+from .schemas import DecoderSettings, ExtractionSchema, ModelIdentity  # noqa: E402
 
 MODEL_ID = "fastino/gliner2.5-multi-v1"
 MODEL_REVISION = "cf5593a5d45e3bbf204b9df621b13b1c0cf25ee3"
@@ -21,6 +25,11 @@ FETCH_HINT = ("fetch it with: uv run --project services/knowledge-extractor "
 REQUIRED_FILES = ("config.json", "encoder_config/config.json", "model.safetensors",
                   "tokenizer.json", "tokenizer_config.json")
 DEVICES = ("cpu", "mps", "cuda")
+# JointIEConfig values pinned explicitly (they equal gliner2 2.1.0 defaults) so that
+# they can be reported in the pipeline description; changing any of them changes output.
+DECODER = dict(optimizer="beam", beam_size=32, top_k_entities=32, max_edges_per_type=256,
+               candidate_threshold=0.05, relation_role_threshold=0.05, top_k_roles=12,
+               count_top_k=2, relation_pair_cap=128, entity_threshold=None)
 
 
 def check_device(device: str) -> None:
@@ -62,15 +71,18 @@ class GlinerModel:
     """``ExtractionModel`` over GLiNER2 ``JointIE`` with the boundary checkpoint."""
 
     def __init__(self, extractor: Any, device: str) -> None:
+        import gliner2
         from gliner2.joint_ie import JointIE, JointIEConfig
 
         self._extractor = extractor
         self._processor = extractor.processor
         self._engine = JointIE(extractor)
-        self._config = JointIEConfig(include_confidence=True, include_spans=True)
-        self._compiled: OrderedDict[str, Any] = OrderedDict()
-        self._lock = threading.Lock()
-        self.info = ModelInfo(id=MODEL_ID, revision=MODEL_REVISION, device=device)
+        self._config = JointIEConfig(include_confidence=True, include_spans=True, **DECODER)
+        # Own bounded cache; compile_schema() is called directly so the engine's
+        # unbounded _compiled_schemas dict is never populated.
+        self._schemas = SchemaCache(self._compile, size=16)
+        self.info = ModelIdentity(id=MODEL_ID, revision=MODEL_REVISION, device=device)
+        self.decoder = DecoderSettings(library=f"gliner2=={gliner2.__version__}", **DECODER)
 
     @classmethod
     def load(cls, device: str, cache_dir: str | None) -> "GlinerModel":
@@ -84,25 +96,19 @@ class GlinerModel:
         extractor.eval()
         return cls(extractor, device)
 
-    def prepare(self, schema: ExtractionSchema) -> Any:
-        from gliner2.joint_ie import JointSchema
+    @staticmethod
+    def _compile(schema: ExtractionSchema) -> Any:
+        from gliner2.joint_ie import JointSchema, compile_schema
 
-        key = schema.cache_key()
-        with self._lock:
-            if key in self._compiled:
-                self._compiled.move_to_end(key)
-                return self._compiled[key]
         joint = JointSchema()
         for name, desc in schema.entities.items():
             joint.entity(name, desc or None)
         for name, rel in schema.relations.items():
             joint.relation(name, rel.head, rel.tail, rel.desc or None)
-        compiled = self._engine.compile_schema(joint)
-        with self._lock:
-            self._compiled[key] = compiled
-            while len(self._compiled) > 16:
-                self._compiled.popitem(last=False)
-        return compiled
+        return compile_schema(joint)
+
+    def prepare(self, schema: ExtractionSchema) -> Any:
+        return self._schemas.get(schema)
 
     def words(self, text: str) -> list[tuple[int, int]]:
         return [(start, end) for _, start, end in self._processor.word_splitter(text, lower=True)]
