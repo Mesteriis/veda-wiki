@@ -48,7 +48,11 @@ func Run(ctx context.Context, args []string) (err error) {
 	tlsCert := flags.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flags.String("tls-key", "", "TLS private key for the private listener")
 	interval := flags.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
+	knowledgeOptions := addKnowledgeFlags(flags)
 	_ = flags.Parse(args)
+	if !knowledgeOptions.enabled && knowledgeFlagsSet(flags) {
+		return errors.New("knowledge flags need --knowledge")
+	}
 	if *readerKeyRequired && *readerSocket == "" {
 		return errors.New("reader socket key requirement needs a reader socket")
 	}
@@ -86,6 +90,14 @@ func Run(ctx context.Context, args []string) (err error) {
 	st, err := store.Open(*data)
 	if err != nil {
 		return err
+	}
+	// Nothing knowledge-related is opened or started without --knowledge.
+	var kmod *knowledgeModule
+	if knowledgeOptions.enabled {
+		if kmod, err = openKnowledge(*data, st, knowledgeOptions); err != nil {
+			return err
+		}
+		defer kmod.close()
 	}
 	// One set of import observations serves every listener and the syncer.
 	observations := &importer.Observations{}
@@ -143,6 +155,12 @@ func Run(ctx context.Context, args []string) (err error) {
 	accessSessions := &auth.Sessions{}
 	workers.Add(1)
 	go func() { defer workers.Done(); manager.Run(ctx, *interval) }()
+	if kmod != nil {
+		// The store only signals after commits; it never waits for indexing.
+		st.OnCommit(kmod.service.Signal)
+		workers.Add(1)
+		go func() { defer workers.Done(); _ = kmod.service.Run(ctx) }()
+	}
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
 		cfg := httpapi.Config{OwnerToken: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList}
 		deps := httpapi.Deps{Store: st, Observations: observations, Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Sync: manager}

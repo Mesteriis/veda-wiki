@@ -98,20 +98,40 @@ type ActiveSnapshot struct {
 func ActiveSnapshots(db domain.Database) []ActiveSnapshot {
 	var out []ActiveSnapshot
 	for _, a := range db.Articles {
-		if a.Deleted {
-			continue
-		}
-		current, ok := domain.LastRevision(a)
-		if !ok || current.SHA == "" {
-			continue
-		}
-		published, hasPublished := domain.PublicRevision(a, db.Sources[a.SourceID])
-		same := hasPublished && published.SHA == current.SHA
-		out = append(out, ActiveSnapshot{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: current.SHA}, Text: current.Text, Current: true, PublicationCopy: same})
-		if hasPublished && !same && published.SHA != "" {
-			out = append(out, ActiveSnapshot{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: published.SHA}, Text: published.Text, PublicationCopy: true})
-		}
+		out = append(out, articleSnapshots(db, a)...)
 	}
 	sort.Slice(out, func(i, j int) bool { return keyLess(out[i].Key, out[j].Key) })
+	return out
+}
+
+// ActiveSnapshotOf is the active snapshot with key k, if k is still one of
+// ActiveSnapshots(db).
+func ActiveSnapshotOf(db domain.Database, k SnapshotKey) (ActiveSnapshot, bool) {
+	a, ok := db.Articles[k.Article()]
+	if !ok || a.SourceID != k.SourceID || a.Path != k.Path {
+		return ActiveSnapshot{}, false
+	}
+	for _, s := range articleSnapshots(db, a) {
+		if s.Key == k {
+			return s, true
+		}
+	}
+	return ActiveSnapshot{}, false
+}
+
+func articleSnapshots(db domain.Database, a domain.Article) []ActiveSnapshot {
+	if a.Deleted {
+		return nil
+	}
+	current, ok := domain.LastRevision(a)
+	if !ok || current.SHA == "" {
+		return nil
+	}
+	published, hasPublished := domain.PublicRevision(a, db.Sources[a.SourceID])
+	same := hasPublished && published.SHA == current.SHA
+	out := []ActiveSnapshot{{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: current.SHA}, Text: current.Text, Current: true, PublicationCopy: same}}
+	if hasPublished && !same && published.SHA != "" {
+		out = append(out, ActiveSnapshot{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: published.SHA}, Text: published.Text, PublicationCopy: true})
+	}
 	return out
 }

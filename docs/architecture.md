@@ -26,7 +26,10 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/render` | Markdown rendering, cross-source links, table of contents and the link graph. |
 | `internal/search` | Lexical search. |
 | `internal/webui` | The built reading interface, embedded with `embed`. |
-| `internal/knowledge` | Contracts of the derived knowledge graph: text preparation with source maps, the per-request access rule over `domain` read rules, the extraction schema (`schema/v1.json`), pipeline fingerprints, entity normalization and uncertainty markers. Pure: imports only `domain`. |
+| `internal/knowledge` | Contracts of the derived knowledge graph: text preparation with source maps, the per-request access rule over `domain` read rules, the extraction schema (`schema/v1.json`), pipeline fingerprints, entity normalization and uncertainty markers. Also the background indexing service (reconciliation, bounded queue, workers, publication) over narrow `Snapshots`, `Manifest`, `Extractor` and `Index` interfaces, and the `Index` read contract. Imports only `domain`; all I/O goes through those interfaces. |
+| `internal/knowledge/jobs` | `<data>/knowledge.sqlite` (0600, own migrations): the snapshot manifest (one row per snapshot and fingerprint, which is also the job), immutable extraction results and the last extractor settings; reads the optional `knowledge-aliases.json`. |
+| `internal/knowledge/extractorclient` | HTTP client of the Python extractor (`/v1/extract`, `/ready`): service key header, time and size bounds, response validation. |
+| `internal/knowledge/memindex` | Deterministic in-memory `knowledge.Index`, the reference behaviour for other indexes; used by tests and the non-persistent `--knowledge-index=memory` mode. |
 
 Test helpers are separate packages: `internal/store/storetest` builds stores
 with data and `internal/github/githubtest` is an in-memory GitHub server.
@@ -69,6 +72,17 @@ text and autolink labels (URLs, hosts, e-mail addresses as written) are.
 Removed inline content leaves a gap in the source map, so quotes around it
 map exactly. Offsets are half-open Unicode code point ranges. Markdown over
 the schema's `request_bytes_max` is rejected.
+
+Background indexing runs only with `--knowledge`. The store calls
+`Store.OnCommit` hooks under its write lock; knowledge registers a
+non-blocking signal there and does everything else after `View`. The
+manifest is reconciled with `knowledge.ActiveSnapshots` on start, every
+`--knowledge-reconcile-interval` and after signals; workers copy the text
+under `View`, call the extractor with no lock held, store the immutable
+result and publish only after re-checking that the snapshot is still active
+under the active pipeline fingerprint. The fingerprint covers the schema,
+preparation, resolution and alias rules, the model checkpoint and the
+extractor's reported settings; reads use only the active fingerprint.
 
 ## Collection ownership
 

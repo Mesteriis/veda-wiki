@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "request_id": "kg-96bbe10d90ae35d1bd7a44b7-0",
+  "model": {
+    "id": "fastino/gliner2.5-multi-v1",
+    "revision": "cf5593a5d45e3bbf204b9df621b13b1c0cf25ee3",
+    "device": "cpu",
+    "pipeline": {
+      "model_id": "fastino/gliner2.5-multi-v1",
+      "model_revision": "cf5593a5d45e3bbf204b9df621b13b1c0cf25ee3",
+      "chunker_version": 1,
+      "window_tokens": 512,
+      "window_margin": 16,
+      "overlap_tokens": 64,
+      "max_entities_per_block": 512,
+      "max_relations_per_block": 1024,
+      "decoder": {
+        "optimizer": "beam",
+        "beam_size": 32,
+        "top_k_entities": 32,
+        "max_edges_per_type": 256,
+        "candidate_threshold": 0.05,
+        "relation_role_threshold": 0.05,
+        "top_k_roles": 12,
+        "count_top_k": 2,
+        "relation_pair_cap": 128,
+        "entity_threshold": null,
+        "library": "gliner2==2.1.0"
+      }
+    }
+  },
+  "blocks": [
+    {
+      "id": "b1-9dd1b1e7",
+      "chunks": [
+        {
+          "start": 0,
+          "end": 16,
+          "feasible": true,
+          "status": "ok"
+        }
+      ],
+      "entities": [
+        {
+          "local_id": "e1",
+          "type": "service",
+          "start": 7,
+          "end": 14,
+          "text": "billing",
+          "confidence": 0.91
+        }
+      ],
+      "relations": [],
+      "dropped": {
+        "invalid_spans": 0,
+        "partial_spans": 0,
+        "invalid_relations": 0,
+        "over_limit": 0
+      }
+    },
+    {
+      "id": "b2-45f9983b",
+      "chunks": [
+        {
+          "start": 0,
+          "end": 35,
+          "feasible": true,
+          "status": "ok"
+        }
+      ],
+      "entities": [
+        {
+          "local_id": "e1",
+          "type": "service",
+          "start": 0,
+          "end": 7,
+          "text": "billing",
+          "confidence": 0.93
+        },
+        {
+          "local_id": "e2",
+          "type": "host",
+          "start": 16,
+          "end": 19,
+          "text": "db1",
+          "confidence": 0.88
+        },
+        {
+          "local_id": "e3",
+          "type": "technology",
+          "start": 29,
+          "end": 34,
+          "text": "Redis",
+          "confidence": 0.95
+        }
+      ],
+      "relations": [
+        {
+          "type": "runs_on",
+          "head": "e1",
+          "tail": "e2",
+          "confidence": 0.71,
+          "head_confidence": 0.93,
+          "tail_confidence": 0.88
+        },
+        {
+          "type": "uses",
+          "head": "e1",
+          "tail": "e3",
+          "confidence": null,
+          "head_confidence": 0.93,
+          "tail_confidence": 0.95
+        }
+      ],
+      "dropped": {
+        "invalid_spans": 0,
+        "partial_spans": 0,
+        "invalid_relations": 0,
+        "over_limit": 1
+      }
+    }
+  ]
+}

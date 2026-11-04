@@ -1,7 +1,11 @@
 // Package knowledge holds the contracts of the derived knowledge graph: text
 // preparation with source maps, the per-request access rule over VEDA's own
 // read rules, the extraction schema, pipeline fingerprints, entity
-// normalization and uncertainty markers. It is pure: no I/O, no clock reads.
+// normalization and uncertainty markers. These contracts are pure: no I/O,
+// no clock reads. The package also holds the background indexing Service
+// (reconcile.go, worker.go, publish.go), which reaches the store, the job
+// database, the extractor and the index only through the Snapshots,
+// Manifest, Extractor and Index interfaces and takes its clock from Config.
 //
 // Every coordinate is a half-open range [start, end) of Unicode code points,
 // in the block text (Start, End) or in the original Markdown (SourceStart,

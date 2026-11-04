@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "request_id": "kg-96bbe10d90ae35d1bd7a44b7-0",
+  "schema": {
+    "entities": {
+      "document": "A named document such as a runbook, specification or guide.",
+      "host": "A machine, virtual machine, container host or domain name that runs software.",
+      "organization": "A company, team, community or other named group.",
+      "person": "A named human being.",
+      "project": "A named undertaking, product or initiative.",
+      "repository": "A source code or documentation repository.",
+      "service": "A running software service, API or daemon.",
+      "technology": "A programming language, database, framework, protocol or tool."
+    },
+    "relations": {
+      "depends_on": {
+        "head": [
+          "service",
+          "project"
+        ],
+        "tail": [
+          "service",
+          "technology",
+          "repository"
+        ],
+        "desc": "The head needs the tail to work."
+      },
+      "documents": {
+        "head": [
+          "document"
+        ],
+        "tail": [
+          "project",
+          "service",
+          "host",
+          "repository",
+          "technology"
+        ],
+        "desc": "The head document describes the tail."
+      },
+      "maintained_by": {
+        "head": [
+          "project",
+          "service",
+          "repository"
+        ],
+        "tail": [
+          "person",
+          "organization"
+        ],
+        "desc": "The tail is responsible for the head."
+      },
+      "part_of": {
+        "head": [
+          "service",
+          "project",
+          "host",
+          "repository"
+        ],
+        "tail": [
+          "project",
+          "organization"
+        ],
+        "desc": "The head is a component or member of the tail."
+      },
+      "runs_on": {
+        "head": [
+          "service"
+        ],
+        "tail": [
+          "host"
+        ],
+        "desc": "The head service is deployed on the tail host."
+      },
+      "uses": {
+        "head": [
+          "project",
+          "service",
+          "person"
+        ],
+        "tail": [
+          "technology",
+          "service"
+        ],
+        "desc": "The head uses the tail."
+      }
+    }
+  },
+  "blocks": [
+    {
+      "id": "b1-9dd1b1e7",
+      "text": "Сервис billing 🚀"
+    },
+    {
+      "id": "b2-45f9983b",
+      "text": "billing runs on db1 and uses Redis."
+    }
+  ],
+  "limits": {}
+}
