@@ -6,7 +6,6 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/shell.css";
 import "./styles/dashboard.css";
-import "./styles/dashboard-side.css";
 import "./styles/reading.css";
 import "./styles/responsive-wide.css";
 import "./styles/responsive-narrow.css";

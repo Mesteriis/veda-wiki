@@ -97,30 +97,6 @@
     margin-top: 9px;
     height: 35px;
   }
-  .browse-cards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    height: auto;
-    gap: 7px;
-  }
-  .browse-card {
-    min-height: 90px;
-    padding: 10px;
-  }
-  .browse-card:nth-child(4),
-  .browse-card:nth-child(5) {
-    min-height: 80px;
-  }
-  .browse-card strong {
-    font-size: 14px;
-  }
-  .browse-card .tile {
-    width: 30px;
-    height: 30px;
-  }
-  .browse-card .tile .icon {
-    width: 23px;
-    height: 23px;
-  }
   .section-heading h2 {
     font-size: 18px;
   }
@@ -128,84 +104,9 @@
     font-size: 13px;
     gap: 6px;
   }
-  .page-cover {
-    height: 82px;
-  }
-  .page-card-copy > strong {
-    font-size: 14px;
-  }
-  .page-card-copy p {
-    font-size: 12px;
-    line-height: 16px;
-    height: 32px;
-  }
-  .page-card {
-    height: 234px;
-  }
-  .card-meta {
-    font-size: 9px;
-  }
-  .tags {
-    gap: 4px;
-  }
-  .tags span {
-    font-size: 10px;
-    padding: 0 4px;
-  }
-  .recent-grid {
-    gap: 8px;
-  }
-  .popular .section-heading h2 {
-    font-size: 16px;
-  }
   .tabs button {
     font-size: 11px;
     padding: 3px 7px;
-  }
-  .activity .section-heading h2 {
-    font-size: 15px;
-  }
-  .activity-tabs button {
-    padding: 2px 4px;
-    font-size: 10px;
-  }
-  .activity-time {
-    display: none;
-  }
-  .right-column {
-    grid-template-columns: 1fr;
-  }
-  .integrations,
-  .statistics,
-  .shortcuts {
-    grid-column: auto;
-  }
-  .statistics {
-    height: 189px;
-    min-height: 189px;
-  }
-  .shortcuts {
-    height: 235px;
-    min-height: 235px;
-  }
-  .stat-grid .icon {
-    width: 31px;
-  }
-  .stat-grid small {
-    font-size: 13px;
-  }
-  .integration-row small {
-    font-size: 13px;
-    max-width: 200px;
-  }
-  .integration-row p {
-    font-size: 12px;
-  }
-  .integration-row strong {
-    font-size: 16px;
-  }
-  .integration-icon {
-    width: 49px;
   }
   .storage {
     display: none;
@@ -221,9 +122,6 @@
   }
   .document-list strong {
     font-size: 16px;
-  }
-  .popularity-track {
-    display: none;
   }
 }
 

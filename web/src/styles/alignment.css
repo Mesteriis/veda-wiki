@@ -47,35 +47,9 @@
     right: -12px;
   }
 }
-.browse-card:last-child {
-  padding-left: 12px;
-  padding-right: 8px;
-}
-.browse-card:last-child small {
-  font-size: 13px;
-}
-@media (max-width: 600px) {
-  .popular,
-  .activity {
-    height: auto;
-    min-height: 101px;
-  }
-  .popular .section-heading,
-  .activity .section-heading {
-    height: auto;
-    min-height: 40px;
-    flex-wrap: wrap;
-    padding: 5px 0;
-  }
-  .popular {
-    min-height: 247px;
-  }
-}
 
 /* VEDA is a reading surface; authors use external content channels. */
 .reading-mode { display:flex; align-items:center; gap:7px; color:var(--cyan); border:1px solid var(--line); background:#001319c2; border-radius:5px; padding:9px 12px; white-space:nowrap; font-size:14px; }
 .reading-mode .icon { width:18px; height:18px; }
-.browse-card { text-decoration:none; }
-.browse-card:focus-visible, .browse-card:hover { border-color:var(--cyan); background:#00202b; }
 #knowledge-tree { scroll-margin-top:16px; }
 
