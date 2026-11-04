@@ -9,7 +9,6 @@ import (
 	"maps"
 	"math"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,8 +30,6 @@ type propertySchema struct {
 	Maximum     *int64          `json:"maximum"`
 	Const       json.RawMessage `json:"const"`
 	Enum        []string        `json:"enum"`
-	Pattern     string          `json:"pattern"`
-	pattern     *regexp.Regexp
 }
 
 type inputSchema struct {
@@ -66,13 +63,6 @@ func compileSchema(raw json.RawMessage) (*inputSchema, error) {
 		}
 		if property.Const != nil && string(property.Const) != "true" {
 			return nil, fmt.Errorf("property %s has unsupported const", name)
-		}
-		if property.Pattern != "" {
-			pattern, err := regexp.Compile(property.Pattern)
-			if err != nil {
-				return nil, err
-			}
-			property.pattern = pattern
 		}
 	}
 	for _, name := range schema.Required {
@@ -171,8 +161,6 @@ func (p *propertySchema) check(name string, value any) (any, error) {
 			return nil, invalidArguments("property " + property + " is too short")
 		case p.MaxLength != nil && length > *p.MaxLength:
 			return nil, invalidArguments("property " + property + " is too long")
-		case p.pattern != nil && !p.pattern.MatchString(s):
-			return nil, invalidArguments("property " + property + " does not match the required pattern")
 		}
 		checked = s
 	case "integer":

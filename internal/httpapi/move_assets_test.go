@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,16 +118,12 @@ func TestImageTransferToConnectedDestination(t *testing.T) {
 	}
 }
 
-func TestMoveImageAndTranslationTogether(t *testing.T) {
+func TestMovedImageSurvivesRestart(t *testing.T) {
 	s := testStore(t)
 	programSource(t, s, "from", "private")
 	programSource(t, s, "to", "private")
 	ref := fixtureAsset(t, s, "from", "docs/img/icon.png")
-	rev, err := s.put("from", "docs/a.md", "# Original\n\n![icon](img/icon.png)", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = s.translation().Submit(translation.Request{SourceID: "from", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод\n\n![значок](img/icon.png)"})
+	_, err := s.put("from", "docs/a.md", "# Original\n\n![icon](img/icon.png)", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,8 +138,8 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 	if err != nil || reopened.state(t).Version != domain.RevisionsFormat {
 		t.Fatal("restart failed or changed the store format", err)
 	}
-	page, err := reopened.page("to/docs/sub/b.md", false)
-	if err != nil || !page.Translated || reopened.state(t).Sources["to"].Assets["docs/sub/img/icon.png"] != ref {
-		t.Fatal("translation or image lost", err)
+	_, err = reopened.page("to/docs/sub/b.md", false)
+	if err != nil || reopened.state(t).Sources["to"].Assets["docs/sub/img/icon.png"] != ref {
+		t.Fatal("article or image lost", err)
 	}
 }

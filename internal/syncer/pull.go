@@ -297,8 +297,8 @@ func (m *Manager) syncSource(ctx context.Context, c domain.GitHubConnection) {
 		return
 	}
 	if exists && source.Kind != batch.Kind {
-		// Reclassifying a source would invalidate stored article paths and
-		// translations. Keep its local history and require explicit recovery.
+		// Reclassifying a source would invalidate stored article paths.
+		// Keep its local history and require explicit recovery.
 		fail(&github.RemoteError{Code: "repository_type_changed"})
 		return
 	}

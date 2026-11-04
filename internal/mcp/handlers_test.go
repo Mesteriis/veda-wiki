@@ -94,44 +94,6 @@ func TestPrepareNewArticle(t *testing.T) {
 	}
 }
 
-func TestPrepareTranslationRequiresProgramDocs(t *testing.T) {
-	sources := `[{"id":"w","kind":"wiki"},{"id":"p","kind":"program"}]`
-	for _, args := range []string{
-		`{"source_id":"w","path":"docs/a.md","expected_revision":1,"text":"Т"}`,
-		`{"source_id":"p","path":"a.md","expected_revision":1,"text":"Т"}`,
-		`{"source_id":"missing","path":"docs/a.md","expected_revision":1,"text":"Т"}`,
-	} {
-		fake, base := startREST(t, map[string]string{"GET /api/v1/sources": sources})
-		got := refusal(t, call(t, connect(t, base, true), "veda_prepare_translation", args))
-		if requests := fake.all(); got != genericRefusal || len(requests) != 1 || requests[0].URI != "/api/v1/sources" {
-			t.Fatalf("%s: %q %+v", args, got, requests)
-		}
-	}
-}
-
-func TestPrepareTranslationValidatesCurrentRevision(t *testing.T) {
-	fake, base := startREST(t, map[string]string{
-		"GET /api/v1/sources":                        `[{"id":"p","kind":"program"}]`,
-		"GET /api/v1/articles":                       `{"source_id":"p","path":"docs/a.md","versions":[{"revision":1},{"revision":2,"sha256":"orig"}]}`,
-		"POST /api/v1/articles/translation-validate": `{"translation_fingerprint":"fp","source_status":{"s":1},"valid":true}`,
-	})
-	got := success(t, call(t, connect(t, base, true), "veda_prepare_translation",
-		`{"source_id":"p","path":"docs/a.md","expected_revision":2,"text":"Т <b>"}`))
-	requests := fake.all()
-	wantBody := `{"source_id":"p","path":"docs/a.md","expected_revision":2,"original_sha256":"orig","text":"Т <b>"}`
-	if len(requests) != 3 || requests[2].Body != wantBody {
-		t.Fatalf("%+v", requests)
-	}
-	if got["expected_translation_fingerprint"] != "fp" || got["original_sha256"] != "orig" || got["saved"] != false {
-		t.Fatalf("%v", got)
-	}
-	empty := refusal(t, call(t, connect(t, base, true), "veda_prepare_translation",
-		`{"source_id":"p","path":"docs/a.md","expected_revision":2,"text":""}`))
-	if empty != genericRefusal {
-		t.Fatal(empty)
-	}
-}
-
 func TestReadMergesLatestVersion(t *testing.T) {
 	article := `{"source_id":"a","path":"b.md","versions":[{"revision":1,"text":"old"},{"revision":2,"text":"new","path":"p"}]}`
 	fake, base := startREST(t, map[string]string{"GET /api/v1/articles": article})
@@ -214,24 +176,19 @@ func TestForwardingRoutes(t *testing.T) {
 	for _, route := range []string{
 		"POST /api/v1/sources", "POST /api/v1/articles/copy", "POST /api/v1/sources/reconcile",
 		"POST /api/v1/sources/mirrors", "POST /api/v1/articles/transfer-plan", "GET /api/v1/moves",
-		"POST /api/v1/moves/cancel", "POST /api/v1/moves", "GET /api/v1/articles/translation-needed",
-		"POST /api/v1/articles/translation", "GET /api/v1/conflicts", "POST /api/v1/conflicts/resolve",
+		"POST /api/v1/moves/cancel", "POST /api/v1/moves", "GET /api/v1/conflicts", "POST /api/v1/conflicts/resolve",
 		"POST /api/v1/github/connections", "POST /api/v1/github/sync", "POST /api/v1/github/publish-job",
-		"POST /api/v1/github/cancel-bundle", "GET /api/v1/articles/display", "GET /api/v1/articles/display-excerpt",
+		"POST /api/v1/github/cancel-bundle",
 		"GET /api/v1/articles/excerpt", "GET /api/v1/context", "GET /api/v1/search",
 	} {
 		routes[route] = `{"ok":true}`
 	}
 	fake, base := startREST(t, routes)
 	session := connect(t, base, false)
-	sha := strings.Repeat("a", 64)
 	for _, tc := range []struct{ tool, args, method, uri, body string }{
 		{"veda_create_source", `{"id":"s","title":"T","kind":"wiki","visibility":"private"}`, "POST", "/api/v1/sources",
 			`{"id":"s","kind":"wiki","title":"T","visibility":"private"}`},
 		{"veda_find", `{"query":"q","source_id":"s","limit":2.0,"offset":0}`, "GET", "/api/v1/search?limit=2&offset=0&q=q&source_id=s", ""},
-		{"veda_read_display", `{"source_id":"s","path":"p"}`, "GET", "/api/v1/articles/display?path=p&source_id=s", ""},
-		{"veda_read_display_excerpt", `{"source_id":"s","path":"p","expected_sha256":"` + sha + `","expected_original_sha256":"` + sha + `"}`,
-			"GET", "/api/v1/articles/display-excerpt?expected_original_sha256=" + sha + "&expected_sha256=" + sha + "&path=p&source_id=s", ""},
 		{"veda_read_excerpt", `{"source_id":"s","path":"p","offset":3,"limit":16000}`, "GET", "/api/v1/articles/excerpt?limit=16000&offset=3&path=p&source_id=s", ""},
 		{"veda_context", `{"source_id":"s","path":"p"}`, "GET", "/api/v1/context?path=p&source_id=s", ""},
 		{"veda_copy_article", `{"source_id":"s","source_path":"p","expected_revision":1,"destination_id":"d","destination_path":"q","include_linked":true}`,
@@ -249,10 +206,6 @@ func TestForwardingRoutes(t *testing.T) {
 		{"veda_move_article", `{"source_id":"s","source_path":"p","expected_revision":1,"destination_id":"d","destination_path":"q","confirm_move":true}`,
 			"POST", "/api/v1/moves",
 			`{"confirm_move":true,"destination_id":"d","destination_path":"q","expected_revision":1,"source_id":"s","source_path":"p"}`},
-		{"veda_translation_needed", `{"source_id":"s","limit":100,"offset":1}`, "GET", "/api/v1/articles/translation-needed?limit=100&offset=1&source_id=s", ""},
-		{"veda_translate_article", `{"source_id":"s","path":"p","expected_revision":1,"original_sha256":"o","text":"Т","expected_translation_fingerprint":""}`,
-			"POST", "/api/v1/articles/translation",
-			`{"expected_revision":1,"expected_translation_fingerprint":"","original_sha256":"o","path":"p","source_id":"s","text":"Т"}`},
 		{"veda_conflicts", `{"source_id":"s","path":"p","index":0}`, "GET", "/api/v1/conflicts?index=0&path=p&source_id=s", ""},
 		{"veda_resolve_conflict", `{"source_id":"s","path":"p","index":0,"expected_revision":2,"resolution":"upstream"}`, "POST",
 			"/api/v1/conflicts/resolve", `{"expected_revision":2,"index":0,"path":"p","resolution":"upstream","source_id":"s"}`},

@@ -14,7 +14,7 @@ import (
 // accept; larger text raises the store version so older binaries refuse it.
 const LegacyArticleBytes = 256000
 
-// MaxArticleBytes bounds a stored revision, translation or conflict text.
+// MaxArticleBytes bounds a stored revision or conflict text.
 const MaxArticleBytes = 1 << 20
 
 // ImportablePath reports whether a repository path may enter a source of the

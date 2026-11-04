@@ -64,8 +64,8 @@ func shownRevisions(a Article, src Source, public, owner bool) []Revision {
 	return append(append([]Revision(nil), a.Versions...), *a.Published)
 }
 
-// PublicRevision is the version of a that a public reader sees, before any
-// translation: the publication copy of a connected source, or the latest
+// PublicRevision is the version of a that a public reader sees: the
+// publication copy of a connected source, or the latest
 // revision of a local one. It reports false when a connected source's article
 // has no publication copy. The caller checks SourcePublicReadable.
 func PublicRevision(a Article, src Source) (Revision, bool) {

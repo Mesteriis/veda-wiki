@@ -109,12 +109,6 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	b.SourceID, b.Path, b.Deleted = in.DestinationID, in.DestinationPath, false
 	b.Versions = append(append([]domain.Revision(nil), b.Versions...), copied)
 	b.CopiedFrom = &domain.CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}
-	if a.Translation != nil {
-		if destination.Kind != "program" {
-			return domain.Revision{}, domain.ErrInvalid
-		}
-		b.Translation = domain.MovedTranslation(a.Translation)
-	}
 	if targetPublic {
 		published := copied
 		published.Number = 0

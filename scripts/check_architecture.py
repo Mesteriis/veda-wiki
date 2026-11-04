@@ -20,7 +20,7 @@ MODULE_INTERNAL = '/internal/'
 
 DOMAIN_FORBIDDEN_IMPORTS = {'os', 'net', 'net/http', 'database/sql', 'os/exec'}
 
-AREAS = {'auth', 'importer', 'transfer', 'translation', 'syncer', 'agentctx'}
+AREAS = {'auth', 'importer', 'transfer', 'syncer', 'agentctx'}
 # Adapter and assembly packages: may import anything.
 ASSEMBLY = {'httpapi', 'app', 'mcp'}
 # Leaf packages: may not import areas. Subpackages (store/storetest,

@@ -6,7 +6,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/store"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -55,30 +54,6 @@ func TestProposalReportsPreparedWriteOnlyForSelectedArticle(t *testing.T) {
 		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &body) != nil || body["conflict_resolution_blocked_by_write"] != true || body["write_blocked_by_bundle"] != true || strings.Contains(out.Body.String(), "linked.md") || strings.Contains(out.Body.String(), "dependency.md") {
 			t.Fatal("linked bundle status missing or leaked", path, out.Code)
 		}
-	}
-}
-
-func TestScopedBundleLocksLinkedTranslationValidation(t *testing.T) {
-	s := testStore(t)
-	programSource(t, s, "program", "private")
-	rev, err := s.put("program", "docs/linked.md", "# Original", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key, err := s.auth().CreateAccessKey("reader", []string{"program"}, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.mutate(t, func(db *domain.Database) {
-		db.Outbox = map[string]domain.SyncJob{"bundle": {SourceID: "program", Path: "docs/root.md", State: "pending", Bundle: map[string]string{"docs/linked.md": rev.SHA}}}
-	})
-	view, valid, err := scopedView(s, key, time.Now())
-	if err != nil || !valid {
-		t.Fatal("scoped snapshot unavailable", err)
-	}
-	_, err = view.translation().Validate(translation.Request{SourceID: "program", Path: "docs/linked.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
-	if err != domain.ErrConflict {
-		t.Fatal("scoped validation missed the bundle lock", err)
 	}
 }
 

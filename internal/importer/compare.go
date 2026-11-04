@@ -15,7 +15,7 @@ import (
 
 // PreviewComparison counts checkout articles and assets against a running
 // VEDA by state: same, different, checkout_only and veda_only. Only wiki
-// originals are compared: program listing hashes can describe translations.
+// sources are compared.
 // This is aggregate read-only evidence, not an import, deletion or conflict plan.
 type PreviewComparison struct {
 	Articles map[string]int

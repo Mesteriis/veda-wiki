@@ -7,7 +7,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 func TestMoveBetweenConnectedRepositoriesWaitsForObservation(t *testing.T) {
@@ -221,29 +220,14 @@ func TestMoveReadOnlyDestinationRetainsSource(t *testing.T) {
 	}
 }
 
-func TestMoveRejectsTranslationsAndDestinationIdentityChange(t *testing.T) {
+func TestMoveRejectsDestinationIdentityChange(t *testing.T) {
 	s := testStore(t)
-	if e := s.addSource(domain.Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
-		t.Fatal(e)
-	}
-	source(t, s, "target", "private")
-	rev, e := s.put("program", "docs/a.md", "# Original", 0)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = s.translation().Submit(translation.Request{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); e != nil {
-		t.Fatal(e)
-	}
-	req := transfer.MoveRequest{SourceID: "program", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "target", DestinationPath: "a.md", ConfirmMove: true}
-	if _, e = s.moveArticle(req); e != domain.ErrInvalid {
-		t.Fatal("translated article moved without translation", e)
-	}
 	source(t, s, "local", "private")
 	s.put("local", "a.md", "# Local", 0)
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
 	connectFixture(t, s, f, true)
-	req = transfer.MoveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
-	if _, e = s.moveArticle(req); e != nil {
+	req := transfer.MoveRequest{SourceID: "local", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
+	if _, e := s.moveArticle(req); e != nil {
 		t.Fatal(e)
 	}
 	db := s.db()
@@ -320,31 +304,5 @@ func TestCancelWaitingMoveRetainsBothCopies(t *testing.T) {
 	reopened, e := s.reopen()
 	if e != nil || reopened.moves()[0].State != "cancelled" {
 		t.Fatal("cancel not durable", e)
-	}
-}
-
-func TestMoveKeepsSourceWhenTranslationIsAddedWhileWaiting(t *testing.T) {
-	s := testStore(t)
-	if e := s.addSource(domain.Source{ID: "program", Title: "Program", Kind: "program", Visibility: "private"}); e != nil {
-		t.Fatal(e)
-	}
-	rev, e := s.put("program", "docs/a.md", "# Original", 0)
-	if e != nil {
-		t.Fatal(e)
-	}
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Existing"})
-	manager := connectFixture(t, s, f, true)
-	req := transfer.MoveRequest{SourceID: "program", SourcePath: "docs/a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "moved.md", ConfirmMove: true, ConfirmPublication: true}
-	if _, e = s.moveArticle(req); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = s.translation().Submit(translation.Request{SourceID: "program", Path: "docs/a.md", ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"}); e != nil {
-		t.Fatal(e)
-	}
-	manager.Once(context.Background())
-	manager.Once(context.Background())
-	a, e := s.article("program", "docs/a.md", false)
-	if e != nil || a.Translation == nil || s.moves()[0].State != "source_changed" {
-		t.Fatal("translation was lost", e, s.moves())
 	}
 }

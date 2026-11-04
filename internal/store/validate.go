@@ -134,25 +134,6 @@ func Validate(db *domain.Database) error {
 				return e
 			}
 		}
-		if article.Translation != nil {
-			tr := article.Translation
-			if tr.Origin != "" && (tr.Origin != "local_model" || db.Version < 11) {
-				return errors.New("invalid translation origin")
-			}
-			if src.Kind != "program" ||
-				tr.Language != "ru" ||
-				len(tr.Text) == 0 ||
-				len(tr.Text) > domain.MaxArticleBytes ||
-				(len(tr.Text) > domain.LegacyArticleBytes && db.Version < 13) ||
-				!utf8.ValidString(tr.Text) ||
-				domain.Digest([]byte(tr.Text)) != tr.SHA ||
-				len(tr.OriginalSHA) != 64 {
-				return errors.New("invalid stored translation")
-			}
-			if _, e := hex.DecodeString(tr.OriginalSHA); e != nil {
-				return errors.New("invalid translation provenance")
-			}
-		}
 		if article.CopiedFrom != nil {
 			origin := article.CopiedFrom
 			if origin.DirectoryIndex && (db.Version < 17 || path.Base(origin.Path) != "index.md" || path.Base(article.Path) != "README.md") {
@@ -202,14 +183,6 @@ func Validate(db *domain.Database) error {
 			}
 		} else if !revisionHasSHA(source, m.SourceRevision, m.SHA) || len(target.Versions) < 1 || target.Versions[0].SHA != m.SHA {
 			return errors.New("invalid stored move")
-		}
-		if m.TranslationFingerprint != "" {
-			if db.Version < 5 || len(m.TranslationFingerprint) != 64 {
-				return errors.New("invalid move translation fingerprint")
-			}
-			if _, e := hex.DecodeString(m.TranslationFingerprint); e != nil {
-				return errors.New("invalid move translation fingerprint")
-			}
 		}
 		if len(m.Assets) > 2000 {
 			return errors.New("too many move assets")

@@ -25,7 +25,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 // serve is the serving loop Run ends in; tests replace it to drive the
@@ -49,23 +48,9 @@ func Run(ctx context.Context, args []string) (err error) {
 	tlsCert := flags.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flags.String("tls-key", "", "TLS private key for the private listener")
 	interval := flags.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
-	translationURL := flags.String("translation-local-url", "", "Optional numeric loopback translation service URL")
-	translationModel := flags.String("translation-model", "", "Local model for Russian documentation drafts")
-	translationTokenFile := flags.String("translation-token-file", "", "Optional private file containing the local translation service bearer")
-	translationProtocol := flags.String("translation-protocol", "ollama", "Local translation protocol: ollama, mlx or openai")
-	translationInterval := flags.Duration("translation-interval", time.Minute, "Local translation check interval (5s to 1h)")
 	_ = flags.Parse(args)
 	if *readerKeyRequired && *readerSocket == "" {
 		return errors.New("reader socket key requirement needs a reader socket")
-	}
-	if *translationTokenFile != "" && (*translationURL == "" || !filepath.IsAbs(*translationTokenFile) || filepath.Clean(*translationTokenFile) != *translationTokenFile) {
-		return errors.New("invalid local translation credential configuration")
-	}
-	if (*translationURL == "") != (*translationModel == "") ||
-		(*translationProtocol != "ollama" && *translationProtocol != "mlx" && *translationProtocol != "openai") ||
-		*translationInterval < 5*time.Second ||
-		*translationInterval > time.Hour {
-		return errors.New("invalid local translation configuration")
 	}
 	if *localImportSource != "" && (*readerSocket == "" || !domain.ValidID(*localImportSource)) {
 		return errors.New("invalid local import source")
@@ -153,15 +138,6 @@ func Run(ctx context.Context, args []string) (err error) {
 	imp := importer.Service{Store: st, Observations: observations}
 	manager := syncer.New(st, github.New(), &imp)
 	manager.LocalImportSource = *localImportSource
-	if *translationURL != "" {
-		worker, err := translation.NewWorker(st, *translationURL, *translationModel, *translationProtocol)
-		if err != nil {
-			return err
-		}
-		worker.TokenFile = *translationTokenFile
-		workers.Add(1)
-		go func() { defer workers.Done(); worker.Run(ctx, *translationInterval) }()
-	}
 	sessions := &auth.Sessions{}
 	adminSessions := &auth.Sessions{}
 	accessSessions := &auth.Sessions{}

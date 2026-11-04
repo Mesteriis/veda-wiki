@@ -75,10 +75,6 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 		}
 	}
 	destinationSource := db.Sources[in.DestinationID]
-	// Translations belong to program documents; never discard one when moving.
-	if a.Translation != nil && destinationSource.Kind != "program" {
-		return domain.Move{}, domain.ErrInvalid
-	}
 	for _, m := range db.Moves {
 		if (m.State == "waiting_destination" || m.State == "waiting_source_delete" || m.State == "deleting_source") && m.SourceID == in.SourceID && m.SourcePath == in.SourcePath {
 			return domain.Move{}, domain.ErrConflict
@@ -115,18 +111,17 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 		db.Moves = map[string]domain.Move{}
 	}
 	m := domain.Move{
-		ID:                     id,
-		SourceID:               in.SourceID,
-		SourcePath:             in.SourcePath,
-		SourceRevision:         in.ExpectedRevision,
-		DestinationID:          in.DestinationID,
-		DestinationPath:        in.DestinationPath,
-		SHA:                    rev.SHA,
-		TranslationFingerprint: domain.TranslationFingerprint(a.Translation),
-		Assets:                 dependencies.Assets,
-		Links:                  dependencies.Links,
-		State:                  "waiting_destination",
-		Created:                time.Now().UTC().Format(time.RFC3339Nano),
+		ID:              id,
+		SourceID:        in.SourceID,
+		SourcePath:      in.SourcePath,
+		SourceRevision:  in.ExpectedRevision,
+		DestinationID:   in.DestinationID,
+		DestinationPath: in.DestinationPath,
+		SHA:             rev.SHA,
+		Assets:          dependencies.Assets,
+		Links:           dependencies.Links,
+		State:           "waiting_destination",
+		Created:         time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if src.ConnectionID != "" {
 		conn := db.Connections[src.ConnectionID]

@@ -9,7 +9,7 @@ import (
 
 // articles lists the visible pages, reads one article or writes a revision.
 // Only the owner receives history and conflicts; a reader never receives
-// translation, copy, reconciliation or publication bookkeeping.
+// copy, reconciliation or publication bookkeeping.
 func (h handler) articles(rw http.ResponseWriter, r *http.Request, owner, reader bool) {
 	switch r.Method {
 	case "GET":
@@ -30,7 +30,6 @@ func (h handler) articles(rw http.ResponseWriter, r *http.Request, owner, reader
 			a.Conflicts = nil
 		}
 		if reader && !owner {
-			a.Translation = nil
 			a.CopiedFrom = nil
 			a.ReconcileBase = nil
 			a.Published = nil
@@ -69,31 +68,6 @@ func (h handler) articles(rw http.ResponseWriter, r *http.Request, owner, reader
 	default:
 		rw.WriteHeader(405)
 	}
-}
-
-// display returns the displayed text of one article: the approved
-// translation where one applies.
-func (h handler) display(rw http.ResponseWriter, r *http.Request, public bool) {
-	if r.Method != "GET" {
-		rw.WriteHeader(405)
-		return
-	}
-	sourceID, p := r.URL.Query().Get("source_id"), r.URL.Query().Get("path")
-	if !domain.ValidID(sourceID) || !domain.SafeArticlePath(p) {
-		apiError(rw, domain.ErrInvalid)
-		return
-	}
-	page, err := h.Store.page(sourceID+"/"+p, public)
-	if err != nil {
-		apiError(rw, err)
-		return
-	}
-	jsonResponse(rw, 200, map[string]any{
-		"source_id": sourceID, "path": p, "title": page.Title,
-		"text": page.Text, "sha256": page.SHA, "original_sha256": page.OriginalSHA,
-		"translated": page.Translated, "translation_state": page.TranslationState,
-		"translation_origin": page.TranslationOrigin, "program_documentation": page.ProgramDocumentation,
-	})
 }
 
 func (h handler) search(rw http.ResponseWriter, r *http.Request, public bool) {

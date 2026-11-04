@@ -40,7 +40,7 @@ func TestCompareWikiPreviewIsReadOnlyAndScoped(t *testing.T) {
 	}
 	batch.Kind = "program"
 	if _, err = ComparePreview(batch, server.URL); err == nil {
-		t.Fatal("program translation hashes compared as originals")
+		t.Fatal("program source compared")
 	}
 }
 

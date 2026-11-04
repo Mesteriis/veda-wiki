@@ -11,22 +11,18 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 	s := newScopeFixture(t)
-	revisions := map[string]domain.Revision{}
 	for _, id := range []string{"source", "destination"} {
 		storetest.Mutate(t, s.st, func(db *domain.Database) {
 			db.Sources[id] = domain.Source{ID: id, Title: id, Kind: "program", Visibility: "private"}
 		})
 		for _, p := range []string{"docs/item.md", "docs/dependency.md", "docs/unrelated.md"} {
-			rev, err := s.put(id, p, "# Original", 0)
-			if err != nil {
+			if _, err := s.put(id, p, "# Original", 0); err != nil {
 				t.Fatal(err)
 			}
-			revisions[id+"/"+p] = rev
 		}
 	}
 	keys := map[string]string{}
@@ -70,11 +66,6 @@ func TestScopedMoveLocksMatchOwnerWithoutRevealingOtherSource(t *testing.T) {
 		}
 		if strings.Contains(string(encoded), `"`+other+`"`) {
 			t.Fatal("other source exposed")
-		}
-		rev := revisions[tc.source+"/"+tc.path]
-		_, err = view.translation().Validate(translation.Request{SourceID: tc.source, Path: tc.path, ExpectedRevision: 1, OriginalSHA: rev.SHA, Text: "# Перевод"})
-		if tc.blocked && err != domain.ErrConflict || !tc.blocked && err != nil {
-			t.Fatal("scoped translation lock mismatch", tc.source, tc.path, err)
 		}
 	}
 }
@@ -124,10 +115,4 @@ func (s *scopeFixture) scopedView(token string, now time.Time) (*scopeFixture, b
 
 func (s *scopeFixture) proposalBase(sourceID, path string) (map[string]any, error) {
 	return ProposalBase(s.st, s.obs, sourceID, path)
-}
-
-func (s *scopeFixture) translation() translation.Service {
-	return translation.Service{Store: s.st, Status: func(db domain.Database, sourceID string, src domain.Source) domain.SourceStatus {
-		return Status(db, s.obs, sourceID, src, time.Now())
-	}}
 }

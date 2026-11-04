@@ -19,8 +19,8 @@ func TestEdgeJSONKeys(t *testing.T) {
 
 func TestGraphEdgesVisibleLinksOnly(t *testing.T) {
 	pages := []domain.Page{
-		{Path: "public/guide.md", SearchDisplayed: "[T](docs/) [again](docs/) [out](https://example.com) [escape](../private/secret.md) [self](guide.md)"},
-		{Path: "public/docs/README.md", SearchDisplayed: "# Docs"},
+		{Path: "public/guide.md", SearchText: "[T](docs/) [again](docs/) [out](https://example.com) [escape](../private/secret.md) [self](guide.md)"},
+		{Path: "public/docs/README.md", SearchText: "# Docs"},
 	}
 	edges := GraphEdges(pages)
 	if len(edges) != 1 || edges[0] != (Edge{From: "public/guide.md", To: "public/docs/README.md"}) {
