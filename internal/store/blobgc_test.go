@@ -294,3 +294,42 @@ func TestCollectBlobsRefusesUnsafeStores(t *testing.T) {
 		})
 	}
 }
+
+// WriteBlobs outside the store lock must not lose a blob to a concurrent
+// sweep that saw its old modification time before WriteBlobs refreshed it.
+func TestWriteBlobsAndCollectBlobsConcurrently(t *testing.T) {
+	s := testStore(t)
+	addSource(t, s, "local")
+	data := testPNG(t, 1)
+	ref := agedBlob(t, s, 1, time.Now(), 48*time.Hour)
+	done := make(chan struct{})
+	collected := make(chan struct{})
+	go func() {
+		defer close(collected)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				s.CollectBlobs(time.Now())
+			}
+		}
+	}()
+	var lost int
+	for range 500 {
+		// Make the blob old and unreferenced again, as a sweep may find it.
+		os.Chtimes(s.BlobPath(ref.SHA), time.Now().Add(-48*time.Hour), time.Now().Add(-48*time.Hour))
+		if _, err := s.WriteBlobs(map[string][]byte{"images/a.png": data}); err != nil {
+			continue
+		}
+		// The refreshed blob is young, so no later sweep may remove it.
+		if s.VerifyBlob(ref) != nil {
+			lost++
+		}
+	}
+	close(done)
+	<-collected
+	if lost > 0 || s.VerifyBlob(ref) != nil {
+		t.Fatal("blobs lost after WriteBlobs returned", lost)
+	}
+}

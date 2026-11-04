@@ -60,6 +60,8 @@ func (s *Store) collectBlobsDue() {
 	if s.collectable() != nil {
 		return
 	}
+	// collectBlobs logs failures as counts; the error is intentionally not
+	// returned, because the commit or Open that triggered it has succeeded.
 	s.collectBlobs(now)
 }
 

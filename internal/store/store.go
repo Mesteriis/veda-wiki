@@ -54,6 +54,13 @@ func PrivateDataDir(dir string) error {
 }
 
 // Open loads the store in dir, creating a private empty directory if needed.
+//
+// Open has a side effect: when it loads an existing v21 store, it runs a
+// blob collection, which deletes unreferenced image files (see CollectBlobs).
+// The opened store is writable, so callers must hold the data directory's
+// writer lock (writer.lock, as internal/app and MigrateSQLite do) before
+// calling Open; collection then runs only in the process that owns the
+// directory. Tests open private temporary directories.
 func Open(dir string) (*Store, error) {
 	if err := PrivateDataDir(dir); err != nil {
 		return nil, err
