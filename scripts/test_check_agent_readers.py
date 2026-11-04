@@ -56,5 +56,14 @@ class AgentReaderMetadataTests(unittest.TestCase):
             module.validate_key_metadata(self.root)
 
 
+class AdapterLaunchTests(unittest.TestCase):
+    def test_launches_veda_mcp_as_https_reader(self):
+        params = module.adapter_parameters(Path('/keys/codex.key'), 'https://veda.example', {'PATH': '/bin'})
+        self.assertEqual(params.command, str(module.BINARY))
+        self.assertEqual(params.args, ['mcp', '--url', 'https://veda.example', '--reader-key-file',
+                                       '/keys/codex.key', '--allow-remote-reader-https'])
+        self.assertEqual(params.env, {'PATH': '/bin'})
+
+
 if __name__ == '__main__':
     unittest.main()

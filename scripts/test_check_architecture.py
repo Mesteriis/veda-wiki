@@ -90,6 +90,11 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn('internal/importer', found[0])
 
+    def test_flags_area_importing_mcp_client(self):
+        found = check_imports([pkg('importer', [internal('mcp/client')])], '/repo')
+        self.assertEqual(len(found), 1)
+        self.assertIn('internal/importer', found[0])
+
     def test_allows_listed_area_imports(self):
         packages = [
             pkg('syncer', [internal('importer'), internal('transfer'), internal('store')]),

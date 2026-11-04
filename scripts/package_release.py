@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a source-free Linux release from an explicit set of project files."""
+"""Build a source-free release from an explicit set of project files."""
 import argparse
 import gzip
 import hashlib
@@ -12,20 +12,23 @@ import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def package(archive: Path, binary: Path, version: str, arch: str) -> None:
-    prefix = f"veda-{version}-linux-{arch}"
-    files = [Path("README.md"), Path("LICENSE"), Path("mcp/server.py"),
-             Path("mcp/requirements.txt"), Path("mcp/keyed_stdio_launcher.py"),
-             Path("deploy/systemd/veda.service"),
-             Path("web/public/assets/fonts/LICENSE"),
-             Path("web/public/assets/icons/LICENSE")]
-    files.extend(Path("docs") / name for name in (
-        "agent-workflow.md", "api.md", "assets.md", "browser-access.md",
+TARGETS = ("linux-amd64", "linux-arm64", "darwin-arm64")
+DOCS = ("agent-workflow.md", "api.md", "assets.md", "browser-access.md",
         "content-model.md", "github.md", "implementation.md", "import.md",
         "linux-service.md", "roadmap.md", "scoped-access-design.md",
-        "storage.md", "translation.md"))
+        "storage.md", "translation.md")
+
+
+def package(archive: Path, binary: Path, version: str, target: str) -> None:
+    if target not in TARGETS:
+        raise ValueError(f"unknown release target: {target}")
+    prefix = f"veda-{version}-{target}"
+    files = [Path("README.md"), Path("LICENSE"),
+             Path("web/public/assets/fonts/LICENSE"),
+             Path("web/public/assets/icons/LICENSE")]
+    if target.startswith("linux-"):
+        files.append(Path("deploy/systemd/veda.service"))
+    files.extend(Path("docs") / name for name in DOCS)
     with tempfile.NamedTemporaryFile(dir=archive.parent, prefix=".veda-release-", delete=False) as tmp:
         temporary = Path(tmp.name)
         try:
@@ -55,7 +58,7 @@ def package(archive: Path, binary: Path, version: str, arch: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="Release label, e.g. 0.1.0 or dev")
-    parser.add_argument("--arch", choices=("amd64", "arm64"), required=True)
+    parser.add_argument("--target", choices=TARGETS, required=True, help="GOOS-GOARCH of the archive")
     parser.add_argument("--output", type=Path, default=ROOT / "dist")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", args.version):
@@ -64,11 +67,12 @@ def main() -> None:
     subprocess.run(["make", "frontend"], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix="veda-build-") as tmp:
         binary = Path(tmp) / "veda"
-        env = dict(os.environ, GOOS="linux", GOARCH=args.arch, CGO_ENABLED="0")
+        goos, goarch = args.target.split("-")
+        env = dict(os.environ, GOOS=goos, GOARCH=goarch, CGO_ENABLED="0")
         subprocess.run(["go", "build", "-trimpath", "-o", str(binary), "./cmd/veda"],
                        cwd=ROOT, env=env, check=True)
-        archive = args.output / f"veda-{args.version}-linux-{args.arch}.tar.gz"
-        package(archive, binary, args.version, args.arch)
+        archive = args.output / f"veda-{args.version}-{args.target}.tar.gz"
+        package(archive, binary, args.version, args.target)
     with archive.open("rb") as f:
         digest = hashlib.file_digest(f, "sha256").hexdigest()
     print(f"{digest}  {archive}")

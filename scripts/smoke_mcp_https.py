@@ -33,7 +33,7 @@ def parse(result):
 
 
 async def check_tls(base, key, cert, revoke):
-    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / 'mcp/server.py'),
+    params = StdioServerParameters(command=BINARY, args=['mcp',
         '--url', base, '--reader-key-file', str(key), '--allow-remote-reader-https'],
         env={**os.environ, 'SSL_CERT_FILE': str(cert)})
     async with stdio_client(params) as (read, write):
@@ -63,7 +63,7 @@ async def check_tls(base, key, cert, revoke):
 
 async def check_independent_revocation(base, key_dir, cert):
     for name in ('codex', 'claude', 'opencode', 'hermes'):
-        params = StdioServerParameters(command=sys.executable, args=[str(ROOT / 'mcp/server.py'),
+        params = StdioServerParameters(command=BINARY, args=['mcp',
             '--url', base, '--reader-key-file', str(key_dir / (name + '.key')), '--allow-remote-reader-https'],
             env={**os.environ, 'SSL_CERT_FILE': str(cert)})
         async with stdio_client(params) as (read, write):

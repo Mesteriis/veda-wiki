@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 
@@ -27,8 +28,16 @@ func main() {
 		err = commands.AccessKey(os.Args[2:], os.Stdout)
 	case "import":
 		err = commands.Import(os.Args[2:])
+	case "mcp":
+		err = commands.MCP(os.Args[2:], os.Stdin, os.Stdout)
+	case "mcp-relay":
+		err = commands.MCPRelay(os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 	default:
 		err = app.Run(context.Background(), os.Args[1:])
+	}
+	var exit *commands.ExitError
+	if errors.As(err, &exit) {
+		os.Exit(exit.Code)
 	}
 	if err != nil {
 		log.Fatal(err)

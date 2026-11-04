@@ -61,9 +61,9 @@ source-scoped read, unsaved proposal, out-of-scope denial and key revocation.
 It does not establish that a real deployed agent has been provisioned or that
 its TLS endpoint and credentials are configured correctly.
 
-For an SSH-based stdio transport, `mcp/keyed_stdio_launcher.py --key-file KEY --
+For an SSH-based stdio transport, `veda mcp-relay --key-file KEY --
 COMMAND...` sends the 64-byte key as a preamble to the trusted child and then
-relays MCP input; the remote adapter uses `--reader-key-preamble` together with
+relays MCP input; the remote `veda mcp` uses `--reader-key-preamble` together with
 `--reader-socket`. The key is not put in argv or environment. The child command
 must be trusted and the local key file must be owner-only. This does not isolate
 agents that can read each other's files under the same local OS account. An

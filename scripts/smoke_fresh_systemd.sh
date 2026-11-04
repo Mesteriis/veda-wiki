@@ -61,12 +61,13 @@ PY
 check_service
 mcp_dir="$(mktemp -d /tmp/veda-ci-mcp-XXXXXXXX)"
 chmod 0755 "$mcp_dir"
+# The venv only provides the official MCP SDK client that drives the installed
+# /usr/local/bin/veda; the server under test is `veda mcp`, run as the service user.
 python3 -m venv "$mcp_dir/venv"
-"$mcp_dir/venv/bin/pip" install -r mcp/requirements.txt
-cp mcp/server.py "$mcp_dir/server.py"
+"$mcp_dir/venv/bin/pip" install -r "$GITHUB_WORKSPACE/scripts/requirements-checks.txt"
 cp "$GITHUB_WORKSPACE/scripts/smoke_installed_mcp.py" "$mcp_dir/smoke_installed_mcp.py"
-sudo -u veda "$mcp_dir/venv/bin/python" "$mcp_dir/smoke_installed_mcp.py" --adapter "$mcp_dir/server.py" --data /var/lib/veda --create
+sudo -u veda "$mcp_dir/venv/bin/python" "$mcp_dir/smoke_installed_mcp.py" --veda /usr/local/bin/veda --data /var/lib/veda --create
 sudo systemctl restart veda.service
 check_service
-sudo -u veda "$mcp_dir/venv/bin/python" "$mcp_dir/smoke_installed_mcp.py" --adapter "$mcp_dir/server.py" --data /var/lib/veda
-echo 'PASS: archive installed on fresh systemd runner; MCP, private isolation and restart verified.'
+sudo -u veda "$mcp_dir/venv/bin/python" "$mcp_dir/smoke_installed_mcp.py" --veda /usr/local/bin/veda --data /var/lib/veda
+echo 'PASS: archive installed on fresh systemd runner; `veda mcp` as the service user, private isolation and restart verified.'

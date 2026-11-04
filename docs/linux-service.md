@@ -10,11 +10,13 @@ For a Debian-family host with systemd, build the binary on a trusted build host
 for the target architecture, or build an archive on a trusted build host:
 
 ```sh
-python3 scripts/package_release.py --version dev --arch amd64
+python3 scripts/package_release.py --version dev --target linux-amd64
 ```
 
-Choose `arm64` for Linux ARM64. The archive contains the embedded-interface
-binary, MCP adapter and SSH launcher, pinned Python requirements, documentation,
+Use `--target linux-arm64` for Linux ARM64 or `--target darwin-arm64` for macOS
+on Apple silicon (no systemd unit in that archive); all are built with
+`CGO_ENABLED=0`. The archive contains the embedded-interface binary (which also
+serves MCP as `veda mcp` and `veda mcp-relay`), documentation,
 example unit, and the font and icon license files referenced in [assets](assets.md);
 it contains no application data or credentials. Verify the printed SHA-256
 when transferring the archive. Extract it on the destination and run the
@@ -54,18 +56,20 @@ starting or retrying; do not remove migration artifacts blindly.
 Set up and test backups before relying on the service. Keep the executable and
 state versions compatible during restore; the example unit is not an automated
 backup or recovery mechanism. Successful CI runs also provide temporary
-`veda-linux-ci` artifacts for amd64 and arm64, with a SHA-256 manifest. These
+`veda-ci` artifacts for linux-amd64, linux-arm64 and darwin-arm64, with a
+SHA-256 manifest. These
 are CI builds, not signed releases, and expire under GitHub Actions retention.
 Verify the manifest before installing. A locally built ARM64 archive passed a
 synthetic Linux ARM64 container check for health, REST, isolation, embedded UI,
 SQLite restore and the local translation protocol. It did not use a real model.
 The amd64 archive was also installed on a fresh GitHub-hosted
 Ubuntu runner using the commands above; the service, empty public index, UI,
-state/key permissions and restart passed. A Python environment created from the
-archive's requirements also ran its MCP adapter as the service user: a
-synthetic private article was written, read and used for an unsaved reader
-proposal before and after restart, while the public index remained empty. This
-does not cover other distributions, remote access or independent agent identities.
+state/key permissions and restart passed. With the former Python adapter, a
+synthetic private article was also written, read and used for an unsaved reader
+proposal as the service user before and after restart, while the public index
+remained empty. `scripts/smoke_fresh_systemd.sh` now runs the same check
+through the installed `veda mcp`; that updated script has not yet been run on a
+fresh runner. This does not cover other distributions, remote access or independent agent identities.
 To repeat the ARM64 check on an already running
 ARM64 Docker host with the selected Python image already present:
 

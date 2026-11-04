@@ -55,8 +55,8 @@ async def main():
         private_port, public_port = free_port(), free_port()
         process = start(data, private_port, public_port)
         try:
-            parameters = StdioServerParameters(command=sys.executable, args=[
-                str(ROOT / "mcp/server.py"), "--url", f"http://127.0.0.1:{private_port}",
+            parameters = StdioServerParameters(command=str(ROOT / "veda"), args=[
+                "mcp", "--url", f"http://127.0.0.1:{private_port}",
                 "--key-file", str(data / "owner.key")])
             async with stdio_client(parameters) as (read, write):
                 async with ClientSession(read, write) as session:
@@ -257,8 +257,8 @@ async def main():
                             raise AssertionError("private article disclosed")
                         except HTTPError as error:
                             assert error.code == 404
-                    reader_params = StdioServerParameters(command=sys.executable, args=[
-                        str(ROOT / "mcp/server.py"), "--url", f"http://127.0.0.1:{private_port}",
+                    reader_params = StdioServerParameters(command=str(ROOT / "veda"), args=[
+                        "mcp", "--url", f"http://127.0.0.1:{private_port}",
                         "--reader-key-file", str(data / "reader.key")])
                     async with stdio_client(reader_params) as (reader_in, reader_out):
                         async with ClientSession(reader_in, reader_out) as reader:
@@ -279,8 +279,8 @@ async def main():
                     fd = os.open(scoped_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                     with os.fdopen(fd, "w") as stream:
                         stream.write(issued["key"])
-                    scoped_params = StdioServerParameters(command=sys.executable, args=[
-                        str(ROOT / "mcp/server.py"), "--url", f"http://127.0.0.1:{private_port}",
+                    scoped_params = StdioServerParameters(command=str(ROOT / "veda"), args=[
+                        "mcp", "--url", f"http://127.0.0.1:{private_port}",
                         "--reader-key-file", str(scoped_path)])
                     async with stdio_client(scoped_params) as (scoped_in, scoped_out):
                         async with ClientSession(scoped_in, scoped_out) as scoped:
@@ -358,8 +358,8 @@ async def main():
                             assert not ctx.isError
                             forbidden_context = await scoped.call_tool("veda_context", {"source_id": "copy", "path": "copied.md"})
                             assert forbidden_context.isError
-                            scoped_socket_params = StdioServerParameters(command=sys.executable, args=[
-                                str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock"),
+                            scoped_socket_params = StdioServerParameters(command=str(ROOT / "veda"), args=[
+                                "mcp", "--reader-socket", str(data / "reader.sock"),
                                 "--reader-key-file", str(scoped_path)])
                             async with stdio_client(scoped_socket_params) as (key_in, key_out):
                                 async with ClientSession(key_in, key_out) as keyed_socket:
@@ -377,8 +377,8 @@ async def main():
                                     assert revoked_socket.isError
                             revoked = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert revoked.isError
-                    socket_params = StdioServerParameters(command=sys.executable, args=[
-                        str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock")])
+                    socket_params = StdioServerParameters(command=str(ROOT / "veda"), args=[
+                        "mcp", "--reader-socket", str(data / "reader.sock")])
                     async with stdio_client(socket_params) as (socket_in, socket_out):
                         async with ClientSession(socket_in, socket_out) as socket_reader:
                             await socket_reader.initialize()
@@ -418,14 +418,14 @@ async def main():
                     with os.fdopen(fd, "w") as stream:
                         stream.write(issued["key"])
                     os.chmod(required_path, 0o644)
-                    invalid = subprocess.run([sys.executable, str(ROOT / "mcp/keyed_stdio_launcher.py"),
+                    invalid = subprocess.run([str(ROOT / "veda"), "mcp-relay",
                         "--key-file", str(required_path), "--", sys.executable, "-c", "pass"],
                         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
                     assert invalid.returncode != 0 and issued["key"].encode() not in invalid.stdout + invalid.stderr
                     os.chmod(required_path, 0o600)
-                    required_params = StdioServerParameters(command=sys.executable, args=[
-                        str(ROOT / "mcp/keyed_stdio_launcher.py"), "--key-file", str(required_path), "--",
-                        sys.executable, str(ROOT / "mcp/server.py"), "--reader-socket", str(data / "reader.sock"),
+                    required_params = StdioServerParameters(command=str(ROOT / "veda"), args=[
+                        "mcp-relay", "--key-file", str(required_path), "--",
+                        str(ROOT / "veda"), "mcp", "--reader-socket", str(data / "reader.sock"),
                         "--reader-key-preamble"])
                     async with stdio_client(required_params) as (key_in, key_out):
                         async with ClientSession(key_in, key_out) as keyed_socket:

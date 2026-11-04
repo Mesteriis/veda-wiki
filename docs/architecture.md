@@ -11,8 +11,10 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | --- | --- |
 | `cmd/veda` | Entry point: picks the subcommand and calls `internal/app`. |
 | `internal/app` | Assembly: server flags, listeners, the reader socket, workers, bounded shutdown and the writer lock. |
-| `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `import`, `github`. |
+| `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `import`, `github`, `mcp`, `mcp-relay`. |
 | `internal/httpapi` | REST handlers, browser sessions, role checks and the embedded reading interface. Adapter only: it parses input, checks the role, calls an area and serializes the result. |
+| `internal/mcp` | MCP server behind `veda mcp`: the tool table (13 read-only tools for reader keys and the socket), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
+| `internal/mcp/client` | REST client of the MCP adapter. Adapter only: loopback HTTP or explicitly allowed reader-only HTTPS, private key and socket files, no proxy or redirects, 24 MiB response limit, sanitized refusal messages. |
 | `internal/auth` | Access keys, named users and teams, password hashing and the login limiter, browser sessions. |
 | `internal/importer` | `veda.yaml` metadata, bounded local checkout observations, batch decoding, asset storage, import conflicts and the process-local observations. |
 | `internal/transfer` | Copies and moves between sources, linked graphs and images, and the transfer plan. |
@@ -112,7 +114,7 @@ prints `path: reason` and exits 1 when:
 
 - `internal/domain` imports `os`, `net`, `net/http`, `database/sql` or `os/exec`;
 - an area imports another area outside the table above, a leaf imports an area,
-  or an area imports `httpapi` or `app`;
+  or an area imports `httpapi`, `app` or `mcp`;
 - an `internal/<pkg>` is in none of the area, leaf or adapter sets, so it would
   otherwise escape the checks (subpackages such as `store/storetest` and
   `github/githubtest` count with their parent);

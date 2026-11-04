@@ -1,16 +1,16 @@
 # Agent setup and update workflow
 
-VEDA provides a stdio MCP adapter for Codex, Claude Code, OpenCode and Hermes.
+VEDA provides a stdio MCP server, `veda mcp`, for Codex, Claude Code, OpenCode and Hermes.
 The examples below use a source-scoped **read-only** key: agents can find and
 read permitted sources and prepare unsaved proposals, but cannot write articles
-or administer the server. They require a running VEDA instance on loopback, a
-Python environment with `mcp/requirements.txt`, and a separate key file for
-each agent. See [scoped access](scoped-access-design.md) for creating, expiring
+or administer the server. They require a running VEDA instance on loopback, the
+`veda` binary on the client machine, and a separate key file for each agent.
+No Python is needed to run the server. See [scoped access](scoped-access-design.md) for creating, expiring
 and revoking keys. Choose scopes explicitly; do not put bearer values in client
 configuration, arguments, environment variables, logs or repository files.
 
 Replace the absolute paths and key names in these examples with paths owned by
-the relevant client process. The adapter defaults to `http://127.0.0.1:8080`;
+the relevant client process. `veda mcp` defaults to `http://127.0.0.1:8080`;
 add `--url http://127.0.0.1:PORT` when the server uses another loopback port.
 Check the client's existing MCP configuration and use a distinct name if
 `veda` is already registered. These command shapes were checked against the
@@ -18,16 +18,16 @@ installed clients' help; client versions and configuration scopes can differ.
 
 ```sh
 # Codex
-codex mcp add veda -- /absolute/venv/bin/python /absolute/veda/mcp/server.py --reader-key-file /private/codex.key
+codex mcp add veda -- /absolute/path/to/veda mcp --reader-key-file /private/codex.key
 
 # Claude Code (user scope)
-claude mcp add --scope user --transport stdio veda -- /absolute/venv/bin/python /absolute/veda/mcp/server.py --reader-key-file /private/claude.key
+claude mcp add --scope user --transport stdio veda -- /absolute/path/to/veda mcp --reader-key-file /private/claude.key
 
 # OpenCode (global scope)
-opencode mcp add --global veda -- /absolute/venv/bin/python /absolute/veda/mcp/server.py --reader-key-file /private/opencode.key
+opencode mcp add --global veda -- /absolute/path/to/veda mcp --reader-key-file /private/opencode.key
 
 # Hermes; --args must be last
-hermes mcp add veda --command /absolute/venv/bin/python --args /absolute/veda/mcp/server.py --reader-key-file /private/hermes.key
+hermes mcp add veda --command /absolute/path/to/veda --args mcp --reader-key-file /private/hermes.key
 ```
 
 ### Saving a reader key on the client
@@ -49,8 +49,10 @@ confirmed, inspect the file metadata before retrying; a partial file may exist.
 Do not paste credentials into chat. A file can be read by other processes with
 the same operating-system identity, so separate files are not process isolation.
 
-Before changing client registrations, use the MCP virtual environment to run
-`scripts/check_agent_readers.py --url https://VEDA-HOST --source SOURCE_ID
+Before changing client registrations, run this check with a Python environment that
+has `scripts/requirements-checks.txt` installed (it uses the official MCP SDK) and a
+built `veda` binary (`VEDA_TEST_BINARY` selects another one):
+`python scripts/check_agent_readers.py --url https://VEDA-HOST --source SOURCE_ID
 --article AGENTS.md --key-dir /absolute/private/agent-keys`. It checks all four
 files and requires access to exactly the chosen private source; public sources
 may also be visible. It reads a bounded excerpt and source context, then prepares
@@ -61,10 +63,10 @@ adapter and checks that the files contain four distinct keys. It does not prove
 that each agent's model can discover or invoke the tools; verify each client
 after its configuration changes. The check rejects unknown MCP tools as well
 as write tools; when adding a new read-only tool, review and update its
-allowlist before using the check with the newer adapter.
+allowlist before using the check with the newer `veda mcp`.
 
 To check the local key-file helpers without using credentials or contacting a
-server, install `mcp/requirements.txt` in the MCP virtual environment and run
+server, install `scripts/requirements-checks.txt` in a Python virtual environment and run
 `/absolute/venv/bin/python -m unittest scripts/test_check_agent_readers.py
 scripts/test_save_reader_key.py` from the repository root. These tests use
 synthetic files and do not validate deployed keys or agent configurations.
@@ -72,15 +74,46 @@ synthetic files and do not validate deployed keys or agent configurations.
 These examples are for a server on the same machine. Loopback addresses inside
 another host or container are not reachable from the client machine. For a
 trusted directly reachable HTTPS VEDA instance, pass `--url https://VEDA-HOST
---reader-key-file /private/agent.key --allow-remote-reader-https` to the
-adapter. Certificate and hostname verification stay enabled and redirects are
-refused; use a distinct source-scoped key for each agent. A remote HTTPS
-connection must be explicitly enabled and cannot use the owner-key adapter. For a
-trusted SSH transport and scoped Unix socket, use the keyed launcher described
+--reader-key-file /private/agent.key --allow-remote-reader-https` to
+`veda mcp`. Certificate and hostname verification stay enabled and redirects are
+refused; when `SSL_CERT_FILE` or `SSL_CERT_DIR` is set, only the certificates they
+name are trusted, otherwise the system roots are; use a distinct source-scoped key for each agent. A remote HTTPS
+connection must be explicitly enabled and cannot use the owner key. For a
+trusted SSH transport and scoped Unix socket, use `veda mcp-relay` described
 in [scoped access](scoped-access-design.md). Separate keys do not isolate agents
 that share an operating-system identity and can read each other's files; an
 unrestricted administrative SSH route also remains administrative access.
 Restart or reconnect a client as required for it to discover updated tools.
+
+## Switching the deployed LXC161
+
+The deployed server on LXC 161 currently serves MCP through the Python
+`server.py` that was installed there. To switch a client to the Go server, put
+the same `veda` binary release on the container (for example
+`/opt/veda-next/veda`) and change the client's launcher from the old
+`server.py` command to:
+
+```sh
+ssh pve 'pct exec 161 -- runuser -u infra-wiki -- /opt/veda-next/veda mcp --reader-socket /run/veda-next/reader.sock'
+```
+
+Tool names, schemas, server instructions and the reader tool set are the same,
+so client prompts and allow-lists need no change. Restart or reconnect the
+client and check its tool list. The old `server.py` is not deleted on the
+server: it stays there as the rollback, and pointing the client's launcher back
+at it restores the previous behavior. Remove it only after the new launcher has
+been used successfully for as long as you consider necessary. This describes
+the steps; the switch of the deployed container has not been performed or
+verified by this repository's tests.
+
+When a key must be sent by the local machine instead of stored on the server,
+run the same remote command with `--reader-key-preamble` under
+`veda mcp-relay --key-file /private/agent.key -- ssh pve '...'`. This `ssh pve`
+example has not been exercised end to end.
+
+A call whose arguments fail validation returns an error result reading `Input
+validation error: <reason>`; the reason names only the property, never an
+argument value.
 
 ## Project instructions
 

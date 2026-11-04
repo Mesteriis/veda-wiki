@@ -22,7 +22,7 @@ DOMAIN_FORBIDDEN_IMPORTS = {'os', 'net', 'net/http', 'database/sql', 'os/exec'}
 
 AREAS = {'auth', 'importer', 'transfer', 'translation', 'syncer', 'agentctx'}
 # Adapter and assembly packages: may import anything.
-ASSEMBLY = {'httpapi', 'app'}
+ASSEMBLY = {'httpapi', 'app', 'mcp'}
 # Leaf packages: may not import areas. Subpackages (store/storetest,
 # github/githubtest, app/commands) are classified with their parent.
 LEAVES = {'domain', 'render', 'search', 'github', 'store', 'webui'}

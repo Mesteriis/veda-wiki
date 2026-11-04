@@ -14,7 +14,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import get_default_environment, stdio_client
 
 AGENTS = ('codex', 'claude', 'opencode', 'hermes')
-ADAPTER = Path(__file__).resolve().parents[1] / 'mcp' / 'server.py'
+BINARY = Path(os.environ.get('VEDA_TEST_BINARY', Path(__file__).resolve().parents[1] / 'veda'))
 READER_TOOLS = frozenset(('veda_sources', 'veda_search', 'veda_find', 'veda_read',
     'veda_read_display', 'veda_read_display_excerpt', 'veda_read_excerpt', 'veda_context',
     'veda_prepare_update', 'veda_prepare_new_article', 'veda_prepare_translation',
@@ -61,13 +61,18 @@ def response_json(result):
     return json.loads(next(item.text for item in result.content if item.type == 'text'))
 
 
+def adapter_parameters(key, base, env):
+    """Launch `veda mcp` as a reader for one agent key over verified HTTPS."""
+    return StdioServerParameters(command=str(BINARY), args=['mcp', '--url', base,
+        '--reader-key-file', str(key), '--allow-remote-reader-https'], env=env)
+
+
 async def verify_agent(agent, key, base, source, article):
     env = get_default_environment()
     for name in ('SSL_CERT_FILE', 'SSL_CERT_DIR'):
         if name in os.environ:
             env[name] = os.environ[name]
-    params = StdioServerParameters(command=sys.executable, args=[str(ADAPTER), '--url', base,
-        '--reader-key-file', str(key), '--allow-remote-reader-https'], env=env)
+    params = adapter_parameters(key, base, env)
     with open(os.devnull, 'w') as errlog:
         async with stdio_client(params, errlog=errlog) as (read, write):
             async with ClientSession(read, write) as session:

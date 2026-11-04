@@ -1,7 +1,6 @@
 """Exercise a synthetic large article through the official MCP SDK."""
 import asyncio
 import json
-import sys
 import tempfile
 from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
@@ -14,8 +13,8 @@ async def main():
         private,public=free_port(),free_port()
         proc=start(data,private,public)
         try:
-            args=[str(ROOT/'mcp/server.py'),'--url',f'http://127.0.0.1:{private}','--key-file',str(data/'owner.key')]
-            async with stdio_client(StdioServerParameters(command=sys.executable,args=args)) as (reader,writer):
+            args=['mcp','--url',f'http://127.0.0.1:{private}','--key-file',str(data/'owner.key')]
+            async with stdio_client(StdioServerParameters(command=str(ROOT/'veda'),args=args)) as (reader,writer):
                 async with ClientSession(reader,writer) as session:
                     await session.initialize()
                     async def call(name,values):
