@@ -24,6 +24,8 @@ func Run(t *testing.T, newIndex Factory) {
 		{"ContextSelectsWithReasonsWithinBytes", contextSelects},
 		{"PublishReplacesAndRetireKeepsSharedEntities", publishAndRetire},
 		{"PagingAndLimits", paging},
+		{"ClaimEndWithoutMentionsAddsNoNode", claimEndWithoutMentions},
+		{"HiddenClaimDoesNotBridgePublicEntities", hiddenBridge},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { c.run(t, newIndex) })
@@ -34,22 +36,41 @@ func Run(t *testing.T, newIndex Factory) {
 // be identical for the public, reader and owner allowed sets.
 func Parity(t *testing.T, ref, ix knowledge.Index) {
 	t.Helper()
-	docs := []Doc{PubA, PubB, Hidden}
+	docs := []Doc{PubA, PubB, Hidden, OrderA, OrderB}
 	docs = append(docs, genericDocs()...)
 	db := Database(docs...)
 	Publish(t, ref, docs...)
 	Publish(t, ix, docs...)
+	for _, d := range []Doc{OrderA, OrderB} {
+		for _, index := range []knowledge.Index{ref, ix} {
+			if err := index.Publish(ctx, knowledge.Snapshot{Key: Key(d), Fingerprint: FP}, orderedGraph(d)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	sets := map[string]knowledge.AllowedSet{
 		"public": Public(db),
 		"reader": knowledge.Allowed(db, false, knowledge.Scope{}, now),
 		"owner":  Owner(db),
 	}
-	extra := []knowledge.SnapshotKey{Key(Hidden), Key(genericDocs()[0]), Key(genericDocs()[6])}
+	extra := []knowledge.SnapshotKey{Key(Hidden), Key(genericDocs()[0]), Key(genericDocs()[6]), Key(OrderA), Key(OrderB)}
 	for name, allowed := range sets {
 		want, got := Reads(ref, allowed, extra...), Reads(ix, allowed, extra...)
 		for i := range want {
 			if !reflect.DeepEqual(want[i], got[i]) {
 				t.Errorf("%s read %d differs:\nwant %+v\ngot  %+v", name, i, want[i], got[i])
+			}
+		}
+	}
+	for name, allowed := range sets {
+		for _, limit := range []int{1, 2} {
+			want, werr := ref.Entity(ctx, allowed, FP, OrderedID, limit)
+			got, gerr := ix.Entity(ctx, allowed, FP, OrderedID, limit)
+			if werr != nil || want.Documents != 2 {
+				t.Fatalf("%s: ordering fixture not readable: %v %+v", name, werr, want)
+			}
+			if !reflect.DeepEqual(want, got) || !errors.Is(gerr, werr) {
+				t.Errorf("%s ordered entity (limit %d) differs:\nwant %+v %v\ngot  %+v %v", name, limit, want, werr, got, gerr)
 			}
 		}
 	}

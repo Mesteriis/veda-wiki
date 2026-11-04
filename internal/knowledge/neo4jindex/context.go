@@ -144,13 +144,19 @@ func (b *contextBuilder) add(id string, item knowledge.ContextItem) {
 		return
 	}
 	data, err := json.Marshal(item)
-	if err != nil || len(b.out.Items) == b.maxItems || b.out.Bytes+len(data)+1 > b.limit {
+	// Bytes is the exact size of the JSON array: "[]", the items and a
+	// comma before every item but the first (as memindex).
+	size := len(data)
+	if len(b.out.Items) > 0 {
+		size++
+	}
+	if err != nil || len(b.out.Items) == b.maxItems || b.out.Bytes+size > b.limit {
 		b.out.Truncated = true
 		return
 	}
 	b.seen[id] = true
 	b.out.Items = append(b.out.Items, item)
-	b.out.Bytes += len(data) + 1
+	b.out.Bytes += size
 }
 
 // containsWord reports whether name occurs in text at word boundaries.

@@ -48,6 +48,9 @@ class KnowledgeStackTests(unittest.TestCase):
         self.assertEqual(len(ports), 2)
         for line in ports:
             self.assertTrue(line.startswith('- "127.0.0.1:'), line)
+        # Neo4j and the extractor sit only on the internal backend network.
+        self.assertIn('  backend:\n    internal: true', compose)
+        self.assertEqual(compose.count('networks: [backend]\n'), 2)
 
 
 if __name__ == '__main__':

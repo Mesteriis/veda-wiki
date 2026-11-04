@@ -128,6 +128,31 @@ var (
 	Hidden = Doc{"priv", "h.md", "h", []string{"service:Billing", "service:BILLING", "host:db1", "host:db1", "technology:SecretDB"}, [][3]string{{"Billing", "depends_on", "SecretDB"}, {"Billing", "runs_on", "db1"}}}
 )
 
+// Ordering fixtures. Go orders strings by code point, Neo4j by UTF-16 code
+// unit: a supplementary character (emoji) sorts after U+FF21 in Go but
+// before it in Neo4j. The paths and block IDs below make every "first" or
+// "top N" choice depend on that order, so an index that orders strings in
+// Cypher fails Parity.
+var (
+	OrderA    = Doc{"pub", "\uFF21.md", "ordered fullwidth", []string{"service:ordered", "service:ordered"}, nil}
+	OrderB    = Doc{"pub", "\U0001F680.md", "ordered emoji", []string{"service:ordered"}, nil}
+	OrderedID = knowledge.EntityID("service:ordered")
+)
+
+// orderedGraph is Graph(d) with block IDs and resolution bases that differ
+// per mention, so the first mention (the entity's resolution) and the
+// mentions kept by a limit are visible in the answers.
+func orderedGraph(d Doc) knowledge.Graph {
+	g := Graph(d, FP)
+	blocks := []string{"b\U0001F680", "b\uFF21"}
+	for i := range g.Mentions {
+		g.Mentions[i].Evidence.BlockID = blocks[i%len(blocks)]
+		g.Mentions[i].Evidence.Start, g.Mentions[i].Evidence.End = 0, 7
+		g.Mentions[i].Resolution.Basis = d.Path + "#" + blocks[i%len(blocks)]
+	}
+	return g
+}
+
 // Reads runs every query a reader can make around the fixtures and returns
 // the answers (values and errors) in order.
 func Reads(ix knowledge.Index, allowed knowledge.AllowedSet, extra ...knowledge.SnapshotKey) []any {

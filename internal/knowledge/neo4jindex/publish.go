@@ -174,29 +174,74 @@ func (ix *Index) validate(snap knowledge.Snapshot, g knowledge.Graph) error {
 	return nil
 }
 
-func evidenceProps(ev knowledge.Evidence) map[string]any {
+func evidenceProps(ev knowledge.Evidence, rank int) map[string]any {
 	return map[string]any{"block_id": ev.BlockID, "quote": ev.Quote, "start": ev.Start, "end": ev.End,
-		"src_start": ev.SourceStart, "src_end": ev.SourceEnd, "exact": ev.Exact}
+		"src_start": ev.SourceStart, "src_end": ev.SourceEnd, "exact": ev.Exact, "rank": rank}
+}
+
+// ranks is the position of each item in Go's read order within one
+// snapshot: evidence block, start and end compared as Go strings and
+// integers, then tie (the graph position for mentions, the claim ID for
+// claims). Reads order by snapshot position in the Go-sorted $docs list and
+// by this rank, never by strings in Cypher, whose collation is not Go's.
+func ranks(n int, ev func(int) knowledge.Evidence, tie func(i, j int) bool) []int {
+	order := make([]int, n)
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		x, y := ev(order[a]), ev(order[b])
+		if x.BlockID != y.BlockID {
+			return x.BlockID < y.BlockID
+		}
+		if x.Start != y.Start {
+			return x.Start < y.Start
+		}
+		if x.End != y.End {
+			return x.End < y.End
+		}
+		return tie(order[a], order[b])
+	})
+	out := make([]int, n)
+	for rank, i := range order {
+		out[i] = rank
+	}
+	return out
 }
 
 // rows converts the graph into publish parameters. Node IDs derive from the
-// snapshot ID and the position in the graph.
+// snapshot ID and the position in the graph. Entities that no mention or
+// claim refers to are left out, so they never become orphans.
 func rows(sid string, g knowledge.Graph) (entities, mentions, claims []any) {
+	used := map[string]bool{}
+	for _, m := range g.Mentions {
+		used[m.EntityID] = true
+	}
+	for _, c := range g.Claims {
+		used[c.HeadID], used[c.TailID] = true, true
+	}
 	seen := map[string]bool{}
 	for _, e := range g.Entities {
-		if !seen[e.ID] {
+		if used[e.ID] && !seen[e.ID] {
 			seen[e.ID] = true
 			entities = append(entities, map[string]any{"id": e.ID, "type": e.Type, "key": e.Key})
 		}
 	}
+	mentionRank := ranks(len(g.Mentions), func(i int) knowledge.Evidence { return g.Mentions[i].Evidence }, func(i, j int) bool { return i < j })
 	for i, m := range g.Mentions {
 		pos := strconv.Itoa(i)
 		mentions = append(mentions, map[string]any{
-			"id": sid + ":m:" + pos, "ev_id": sid + ":me:" + pos, "entity": m.EntityID, "ev": evidenceProps(m.Evidence),
+			"id": sid + ":m:" + pos, "ev_id": sid + ":me:" + pos, "entity": m.EntityID, "ev": evidenceProps(m.Evidence, mentionRank[i]),
 			"props": map[string]any{"seq": i, "type": m.Type, "text": m.Text, "surface": surface(m.Text), "score": m.Score,
 				"res_method": string(m.Resolution.Method), "res_basis": m.Resolution.Basis},
 		})
 	}
+	claimRank := ranks(len(g.Claims), func(i int) knowledge.Evidence { return g.Claims[i].Evidence }, func(i, j int) bool {
+		if g.Claims[i].ID != g.Claims[j].ID {
+			return g.Claims[i].ID < g.Claims[j].ID
+		}
+		return i < j
+	})
 	for i, c := range g.Claims {
 		pos := strconv.Itoa(i)
 		props := map[string]any{"seq": i, "claim_id": c.ID, "type": c.Relation, "status": string(c.Status),
@@ -205,7 +250,7 @@ func rows(sid string, g knowledge.Graph) (entities, mentions, claims []any) {
 			props["score"] = *c.Score
 		}
 		claims = append(claims, map[string]any{"id": sid + ":c:" + pos, "ev_id": sid + ":ce:" + pos,
-			"head": c.HeadID, "tail": c.TailID, "ev": evidenceProps(c.Evidence), "props": props})
+			"head": c.HeadID, "tail": c.TailID, "ev": evidenceProps(c.Evidence, claimRank[i]), "props": props})
 	}
 	return entities, mentions, claims
 }

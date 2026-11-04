@@ -75,7 +75,9 @@ func (v *view) graph(ctx context.Context, tx neo4j.ManagedTransaction, q knowled
 				if other == id {
 					other = edges[i].From
 				}
-				if included[other] {
+				// A claim end without allowed mentions is not a node of
+				// this view: it is neither included nor traversed.
+				if _, doc := docs[other]; !doc && v.entities[other] == nil || included[other] {
 					continue
 				}
 				if len(included) == maxNodes {
@@ -95,11 +97,8 @@ func (v *view) graph(ctx context.Context, tx neo4j.ManagedTransaction, q knowled
 			out.Nodes = append(out.Nodes, knowledge.Node{ID: id, Kind: knowledge.NodeDocument, Label: k.Path, Key: &key})
 			continue
 		}
-		if e := v.entities[id]; e != nil {
-			out.Nodes = append(out.Nodes, knowledge.Node{ID: id, Kind: knowledge.NodeEntity, Type: e.typ, Label: e.name()})
-		} else {
-			out.Nodes = append(out.Nodes, knowledge.Node{}) // as memindex: a claim end without allowed mentions
-		}
+		e := v.entities[id]
+		out.Nodes = append(out.Nodes, knowledge.Node{ID: id, Kind: knowledge.NodeEntity, Type: e.typ, Label: e.name()})
 	}
 	edges, err := v.between(ctx, tx, q, docs, srcDocs, included)
 	if err != nil {

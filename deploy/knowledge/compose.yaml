@@ -5,7 +5,16 @@
 # the invoking user's UID/GID.
 #
 # Data never lives in the repository: Neo4j data and logs and the model cache
-# are named Docker volumes. Ports are published on 127.0.0.1 only.
+# are named Docker volumes.
+#
+# Networks: Neo4j and the extractor are only on "backend", an internal
+# network without egress. Docker does not publish ports of containers on an
+# internal network, so two socat forwarders (neo4j-port, extractor-port)
+# join "backend" and "edge" and publish one port each on 127.0.0.1 only.
+# fetch-model, the only service that needs the internet, uses "fetch" and
+# never runs together with the extractor's model load.
+#
+# One writer process per Neo4j database: run one VEDA per stack.
 name: veda-knowledge
 
 services:
@@ -28,17 +37,16 @@ services:
     depends_on:
       neo4j-secret:
         condition: service_completed_successfully
+    networks: [backend]
     environment:
       # "neo4j/<password>": sets the initial password on first start.
       NEO4J_AUTH_FILE: /secrets/neo4j_auth
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1g
       NEO4J_server_memory_pagecache_size: 512m
-      # Only Bolt is published; the HTTP browser endpoint stays inside.
+      # Only Bolt is forwarded; the HTTP browser endpoint stays inside.
       NEO4J_server_bolt_listen__address: 0.0.0.0:7687
       NEO4J_dbms_usage__report_enabled: "false"
-    ports:
-      - "127.0.0.1:${KNOWLEDGE_NEO4J_PORT:-7687}:7687"
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
@@ -49,6 +57,18 @@ services:
       timeout: 3s
       retries: 30
       start_period: 10s
+
+  neo4j-port:
+    image: alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
+    restart: unless-stopped
+    command: ["TCP-LISTEN:7687,fork,reuseaddr,nodelay", "TCP:neo4j:7687,nodelay"]
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    networks: [backend, edge]
+    ports:
+      - "127.0.0.1:${KNOWLEDGE_NEO4J_PORT:-7687}:7687"
+    depends_on: [neo4j]
 
   extractor:
     profiles: ["extractor"]
@@ -67,15 +87,27 @@ services:
       - --allowed-host=extractor
       - --key-file=/run/secrets/extractor_key
       - --device=cpu
+    networks: [backend]
     environment:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
     secrets:
       - extractor_key
-    ports:
-      - "127.0.0.1:${KNOWLEDGE_EXTRACTOR_PORT:-8790}:8790"
     volumes:
       - model-cache:/models
+
+  extractor-port:
+    profiles: ["extractor"]
+    image: alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
+    restart: unless-stopped
+    command: ["TCP-LISTEN:8790,fork,reuseaddr,nodelay", "TCP:extractor:8790,nodelay"]
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    networks: [backend, edge]
+    ports:
+      - "127.0.0.1:${KNOWLEDGE_EXTRACTOR_PORT:-8790}:8790"
+    depends_on: [extractor]
 
   # One-shot: download the pinned checkpoint into the model cache volume.
   # The only service with network access to Hugging Face.
@@ -84,11 +116,18 @@ services:
     image: veda-knowledge-extractor:dev
     user: "${KNOWLEDGE_UID:-10001}:${KNOWLEDGE_GID:-10001}"
     entrypoint: ["python", "/app/fetch_knowledge_model.py"]
+    networks: [fetch]
     environment:
       HF_HUB_OFFLINE: "0"
       TRANSFORMERS_OFFLINE: "0"
     volumes:
       - model-cache:/models
+
+networks:
+  backend:
+    internal: true
+  edge: {}
+  fetch: {}
 
 secrets:
   neo4j_auth:
