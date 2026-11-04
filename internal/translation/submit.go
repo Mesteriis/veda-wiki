@@ -44,10 +44,10 @@ func (s Service) save(in Request, privateDraft bool) (domain.Translation, error)
 		if !ok || a.Deleted {
 			return domain.ErrNotFound
 		}
-		if len(a.Versions) != in.ExpectedRevision {
+		if domain.LatestRevision(a) != in.ExpectedRevision {
 			return domain.ErrConflict
 		}
-		rev := a.Versions[len(a.Versions)-1]
+		rev, _ := domain.LastRevision(a)
 		if in.OriginalSHA != rev.SHA {
 			return domain.ErrConflict
 		}
@@ -127,7 +127,7 @@ func (s Service) Candidates() []Candidate {
 					break
 				}
 			}
-			r := a.Versions[len(a.Versions)-1]
+			r, _ := domain.LastRevision(a)
 			visibility := "private"
 			if domain.SourcePublic(*db, src, time.Now()) {
 				visibility = "public"

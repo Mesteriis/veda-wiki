@@ -125,19 +125,21 @@ func Validate(db *domain.Database) error {
 		}
 		if b := article.ReconcileBase; b != nil {
 			origin, found := db.Articles[b.SourceID+"/"+b.Path]
-			if db.Version < 18 || b.SourceID == article.SourceID || !found || b.Revision < 1 || b.Revision > len(origin.Versions) || origin.Versions[b.Revision-1].SHA != b.SHA {
+			if db.Version < 18 || b.SourceID == article.SourceID || !found || b.Revision < 1 || !revisionHasSHA(origin, b.Revision, b.SHA) {
 				return errors.New("invalid reconciliation baseline")
 			}
 		}
-		for i, revision := range article.Versions {
+		previous := 0
+		for _, revision := range article.Versions {
 			sum := sha256.Sum256([]byte(revision.Text))
-			if revision.Number != i+1 ||
+			if revision.Number < 1 || revision.Number <= previous ||
 				len(revision.Text) > domain.MaxArticleBytes ||
 				(len(revision.Text) > domain.LegacyArticleBytes && db.Version < 13) ||
 				!utf8.ValidString(revision.Text) ||
 				revision.SHA != hex.EncodeToString(sum[:]) {
 				return errors.New("invalid stored revision")
 			}
+			previous = revision.Number
 		}
 		if article.Translation != nil {
 			tr := article.Translation
@@ -194,9 +196,8 @@ func Validate(db *domain.Database) error {
 			!srcOK ||
 			!dstOK ||
 			m.SourceRevision < 1 ||
-			m.SourceRevision > len(source.Versions) ||
+			!revisionHasSHA(source, m.SourceRevision, m.SHA) ||
 			len(target.Versions) < 1 ||
-			source.Versions[m.SourceRevision-1].SHA != m.SHA ||
 			target.Versions[0].SHA != m.SHA {
 			return errors.New("invalid stored move")
 		}
@@ -323,7 +324,7 @@ func Validate(db *domain.Database) error {
 			return errors.New("invalid queued publication scope")
 		}
 		a, ok := db.Articles[j.SourceID+"/"+j.Path]
-		if !ok || j.ID != id || j.Revision < 1 || j.Revision > len(a.Versions) || a.Versions[j.Revision-1].SHA != j.SHA {
+		if !ok || j.ID != id || !revisionHasSHA(a, j.Revision, j.SHA) {
 			return errors.New("invalid outbox revision")
 		}
 		switch j.State {
@@ -333,4 +334,10 @@ func Validate(db *domain.Database) error {
 		}
 	}
 	return nil
+}
+
+// revisionHasSHA reports whether the article stores revision n with this SHA.
+func revisionHasSHA(a domain.Article, n int, sha string) bool {
+	r, ok := domain.RevisionByNumber(a, n)
+	return ok && r.SHA == sha
 }

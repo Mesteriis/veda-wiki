@@ -43,7 +43,7 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 			}
 		}
 		a := db.Articles[in.SourceID+"/"+item.SourcePath]
-		rev := a.Versions[item.Revision-1]
+		rev, _ := domain.RevisionByNumber(a, item.Revision)
 		sourcePublicRevision := domain.SourcePublicReadable(*db, src, now) && (src.ConnectionID == "" || (a.Published != nil && a.Published.SHA == rev.SHA))
 		if public && (domain.CredentialLike(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 			return domain.Revision{}, Dependencies{}, domain.ErrInvalid
@@ -97,8 +97,9 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 	var total int64
 	for _, item := range plan.Articles {
 		a := db.Articles[in.SourceID+"/"+item.SourcePath]
-		rootReferences = rootReferences || domain.HasRootReference(a.Versions[item.Revision-1].Text)
-		deps, e := s.ResolveDependencies(db, a.Versions[item.Revision-1].Text, item.SourcePath, item.DestinationPath, src, dst)
+		itemRev, _ := domain.RevisionByNumber(a, item.Revision)
+		rootReferences = rootReferences || domain.HasRootReference(itemRev.Text)
+		deps, e := s.ResolveDependencies(db, itemRev.Text, item.SourcePath, item.DestinationPath, src, dst)
 		if e != nil {
 			return domain.Revision{}, Dependencies{}, e
 		}

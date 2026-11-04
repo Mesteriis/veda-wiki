@@ -68,10 +68,10 @@ func (s Service) Validate(in Request) (map[string]any, error) {
 		if !ok || a.Deleted {
 			return domain.ErrNotFound
 		}
-		if len(a.Versions) != in.ExpectedRevision {
+		if domain.LatestRevision(a) != in.ExpectedRevision {
 			return domain.ErrConflict
 		}
-		rev := a.Versions[len(a.Versions)-1]
+		rev, _ := domain.LastRevision(a)
 		if in.OriginalSHA != rev.SHA {
 			return domain.ErrConflict
 		}

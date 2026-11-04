@@ -24,7 +24,9 @@ func (h handler) articles(rw http.ResponseWriter, r *http.Request, owner, reader
 			return
 		}
 		if r.URL.Query().Get("history") != "1" || !owner {
-			a.Versions = a.Versions[len(a.Versions)-1:]
+			if last, ok := domain.LastRevision(a); ok {
+				a.Versions = []domain.Revision{last}
+			}
 			a.Conflicts = nil
 		}
 		if reader && !owner {

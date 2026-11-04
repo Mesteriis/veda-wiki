@@ -440,7 +440,7 @@ func TestImageBundleHonorsRepositoryFileLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = manager.pendingBundle(context.Background(), domain.GitHubConnection{ID: "handbook", Repository: f.Name, Branch: "main"}, head, tree.SHA, "", domain.SyncJob{Path: "new.md", Revision: 1, Assets: map[string]domain.BlobRef{"img/icon.png": ref}}, domain.Article{Versions: []domain.Revision{{Text: "![icon](img/icon.png)"}}})
+	_, err = manager.pendingBundle(context.Background(), domain.GitHubConnection{ID: "handbook", Repository: f.Name, Branch: "main"}, head, tree.SHA, "", domain.SyncJob{Path: "new.md", Revision: 1, Assets: map[string]domain.BlobRef{"img/icon.png": ref}}, domain.Article{Versions: []domain.Revision{{Number: 1, Text: "![icon](img/icon.png)"}}})
 	var remote *github.RemoteError
 	if !errors.As(err, &remote) || remote.Code != "repository_limit" || f.WriteCount() != 0 {
 		t.Fatal("repository limit not enforced", err)

@@ -56,12 +56,13 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 	if !ok || a.Deleted {
 		return domain.Move{}, domain.ErrNotFound
 	}
-	if in.ExpectedRevision != len(a.Versions) || in.ExpectedRevision < 1 {
+	if in.ExpectedRevision != domain.LatestRevision(a) || in.ExpectedRevision < 1 {
 		return domain.Move{}, domain.ErrConflict
 	}
 	if src.ConnectionID != "" {
 		c, connected := db.Connections[src.ConnectionID]
-		if !connected || !c.Write || c.Paused || a.UpstreamHash != a.Versions[in.ExpectedRevision-1].SHA {
+		expectedRev, _ := domain.RevisionByNumber(a, in.ExpectedRevision)
+		if !connected || !c.Write || c.Paused || a.UpstreamHash != expectedRev.SHA {
 			return domain.Move{}, domain.ErrConflict
 		}
 		// Different source IDs may point at the very same GitHub branch. A
@@ -97,7 +98,8 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 	if in.IncludeLinked {
 		rev, dependencies, e = s.PrepareLinkedCopy(db, copyIn)
 	} else {
-		dependencies, e = s.ResolveDependencies(db, a.Versions[len(a.Versions)-1].Text, in.SourcePath, in.DestinationPath, src, destinationSource)
+		current, _ := domain.LastRevision(a)
+		dependencies, e = s.ResolveDependencies(db, current.Text, in.SourcePath, in.DestinationPath, src, destinationSource)
 		if e == nil {
 			rev, e = s.PrepareCopy(db, copyIn)
 		}
@@ -231,7 +233,8 @@ func (s Service) LinkContents(sourceID string, expected map[string]string) (map[
 		texts = make(map[string]string, len(expected))
 		for name := range expected {
 			a := db.Articles[sourceID+"/"+name]
-			texts[name] = a.Versions[len(a.Versions)-1].Text
+			current, _ := domain.LastRevision(a)
+			texts[name] = current.Text
 		}
 		return nil
 	})

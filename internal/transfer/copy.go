@@ -53,7 +53,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	if !ok || a.Deleted {
 		return domain.Revision{}, domain.ErrNotFound
 	}
-	if len(a.Versions) != in.ExpectedRevision {
+	if domain.LatestRevision(a) != in.ExpectedRevision {
 		return domain.Revision{}, domain.ErrConflict
 	}
 	for _, c := range a.Conflicts {
@@ -67,7 +67,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 		if in.ExpectedDestinationRevision == nil ||
 			*in.ExpectedDestinationRevision < 1 ||
 			b.Deleted ||
-			len(b.Versions) != *in.ExpectedDestinationRevision ||
+			domain.LatestRevision(b) != *in.ExpectedDestinationRevision ||
 			domain.MoveDeletionLocks(*db, in.DestinationID, in.DestinationPath) ||
 			domain.ConflictResolutionBlocked(*db, in.DestinationID, in.DestinationPath) {
 			return domain.Revision{}, domain.ErrConflict
@@ -80,7 +80,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	} else if in.ExpectedDestinationRevision != nil && *in.ExpectedDestinationRevision != 0 {
 		return domain.Revision{}, domain.ErrConflict
 	}
-	rev := a.Versions[len(a.Versions)-1]
+	rev, _ := domain.LastRevision(a)
 	dependencies, err := s.ResolveDependencies(db, rev.Text, in.SourcePath, in.DestinationPath, source, destination)
 	if err != nil {
 		return domain.Revision{}, err
@@ -91,7 +91,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	if targetPublic && (domain.CredentialLike(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 		return domain.Revision{}, domain.ErrInvalid
 	}
-	copied := domain.Revision{Number: len(b.Versions) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
+	copied := domain.Revision{Number: domain.LatestRevision(b) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
 	b.SourceID, b.Path, b.Deleted = in.DestinationID, in.DestinationPath, false
 	b.Versions = append(append([]domain.Revision(nil), b.Versions...), copied)
 	b.CopiedFrom = &domain.CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}

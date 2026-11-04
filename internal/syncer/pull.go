@@ -43,8 +43,8 @@ func (m *Manager) cachedBlob(ctx context.Context, c domain.GitHubConnection, ent
 				if src.Visibility != "private" || src.ConnectionID != "" {
 					continue
 				}
-				if a, ok := db.Articles[id+"/"+entry.Path]; ok && !a.Deleted && len(a.Versions) > 0 {
-					articles = append(articles, a.Versions[len(a.Versions)-1].Text)
+				if a, ok := db.Articles[id+"/"+entry.Path]; ok && !a.Deleted && domain.LatestRevision(a) > 0 {
+					articles = append(articles, lastText(a))
 				}
 				if ref, ok := src.Assets[entry.Path]; ok {
 					images = append(images, ref)

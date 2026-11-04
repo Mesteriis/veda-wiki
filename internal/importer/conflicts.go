@@ -44,7 +44,7 @@ func (s Service) Conflicts() []ConflictRecord {
 		for _, a := range db.Articles {
 			for i, c := range a.Conflicts {
 				if c.Resolution == "" {
-					out = append(out, ConflictRecord{SourceID: a.SourceID, Path: a.Path, Index: i, Revision: len(a.Versions), Conflict: c})
+					out = append(out, ConflictRecord{SourceID: a.SourceID, Path: a.Path, Index: i, Revision: domain.LatestRevision(a), Conflict: c})
 				}
 			}
 		}
@@ -78,7 +78,7 @@ func (s Service) ResolveConflict(sourceID, p string, index, expected int, resolu
 		if !ok {
 			return domain.ErrNotFound
 		}
-		if expected != len(a.Versions) || index >= len(a.Conflicts) || a.Conflicts[index].Resolution != "" {
+		if expected != domain.LatestRevision(a) || index >= len(a.Conflicts) || a.Conflicts[index].Resolution != "" {
 			return domain.ErrConflict
 		}
 		if domain.ConflictResolutionBlocked(*db, sourceID, p) {
@@ -103,7 +103,7 @@ func (s Service) ResolveConflict(sourceID, p string, index, expected int, resolu
 			a.Deleted = incoming.Deleted
 			if !incoming.Deleted {
 				a.Versions = append(append([]domain.Revision(nil), a.Versions...), domain.Revision{
-					Number:  len(a.Versions) + 1,
+					Number:  domain.LatestRevision(a) + 1,
 					Text:    incoming.Incoming,
 					SHA:     incoming.IncomingSHA,
 					Created: time.Now().UTC().Format(time.RFC3339Nano),
@@ -113,7 +113,8 @@ func (s Service) ResolveConflict(sourceID, p string, index, expected int, resolu
 		db.Articles[key] = a
 		if db.Sources[sourceID].ConnectionID != "" {
 			if resolution == "local" {
-				domain.EnqueueWrite(db, a, a.Versions[len(a.Versions)-1], time.Now())
+				last, _ := domain.LastRevision(a)
+				domain.EnqueueWrite(db, a, last, time.Now())
 			} else {
 				domain.SupersedePendingWrites(db, sourceID, p)
 			}

@@ -317,7 +317,7 @@ func (m *Manager) prepareJob(id, commit string, expected domain.GitHubConnection
 		}
 		if len(job.Bundle) > 0 {
 			a, ok := db.Articles[job.SourceID+"/"+job.Path]
-			if !ok || a.Deleted || len(a.Versions) != job.Revision || a.Versions[job.Revision-1].SHA != job.SHA {
+			if !ok || a.Deleted || domain.LatestRevision(a) != job.Revision || !lastHasSHA(a, job.SHA) {
 				return domain.ErrConflict
 			}
 			for _, conflict := range a.Conflicts {

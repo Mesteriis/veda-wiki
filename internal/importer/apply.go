@@ -273,7 +273,8 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 		}
 		latest := ""
 		if found {
-			latest = a.Versions[len(a.Versions)-1].SHA
+			last, _ := domain.LastRevision(a)
+			latest = last.SHA
 		}
 		if found && !a.Deleted && latest != a.UpstreamHash && (latest != hash || (proof != nil && domain.PreparedWriteDiffers(*db, batch.SourceID, p, hash))) {
 			if hasImportConflict(a, hash, false) {
@@ -295,7 +296,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 		}
 		a = supersedeImportConflicts(a)
 		a.SourceID, a.Path, a.Deleted, a.UpstreamHash = batch.SourceID, p, false, hash
-		a.Versions = append(append([]domain.Revision(nil), a.Versions...), domain.Revision{Number: len(a.Versions) + 1, Text: text, SHA: hash, Created: now})
+		a.Versions = append(append([]domain.Revision(nil), a.Versions...), domain.Revision{Number: domain.LatestRevision(a) + 1, Text: text, SHA: hash, Created: now})
 		db.Articles[key] = a
 		if found {
 			result.Updated++
@@ -357,7 +358,8 @@ func applyDeletions(db *domain.Database, batch Batch, proof *RemoteProof, now st
 			a.Published = nil
 			db.Articles[key] = a
 		}
-		latest := a.Versions[len(a.Versions)-1].SHA
+		last, _ := domain.LastRevision(a)
+		latest := last.SHA
 		if latest != a.UpstreamHash {
 			if hasImportConflict(a, "", true) {
 				result.Conflicts++
@@ -389,10 +391,10 @@ func retainPrivateAssets(db *domain.Database, batch Batch, previous, refs map[st
 		}
 	}
 	for _, article := range db.Articles {
-		if article.SourceID != batch.SourceID || article.Deleted || len(article.Versions) == 0 {
+		if article.SourceID != batch.SourceID || article.Deleted || domain.LatestRevision(article) == 0 {
 			continue
 		}
-		latest := article.Versions[len(article.Versions)-1]
+		latest, _ := domain.LastRevision(article)
 		if article.UpstreamHash != "" && latest.SHA == article.UpstreamHash {
 			continue
 		}

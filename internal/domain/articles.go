@@ -64,7 +64,7 @@ func PutArticle(db *Database, sourceID, p, text string, expected int, now time.T
 		return Revision{}, "", ErrConflict
 	}
 	article := db.Articles[articleKey]
-	if len(article.Versions) != expected {
+	if LatestRevision(article) != expected {
 		return Revision{}, "", ErrConflict
 	}
 	for _, conflict := range article.Conflicts {

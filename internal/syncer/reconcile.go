@@ -171,11 +171,11 @@ func (r *reconciliation) path(p string) (bool, error) {
 	src, dst := r.src, r.dst
 	db := r.ex.DB()
 	a := db.Articles[src.ID+"/"+p]
-	if a.Deleted || len(a.Versions) == 0 {
+	if a.Deleted || domain.LatestRevision(a) == 0 {
 		r.block(p)
 		return false, nil
 	}
-	rev := a.Versions[len(a.Versions)-1]
+	rev, _ := domain.LastRevision(a)
 	unsafe := domain.CredentialLike(rev.Text)
 	for _, c := range a.Conflicts {
 		if c.Resolution == "" {
@@ -188,7 +188,7 @@ func (r *reconciliation) path(p string) (bool, error) {
 	}
 	target, exists := db.Articles[dst.ID+"/"+p]
 	if exists {
-		if target.Deleted || len(target.Versions) == 0 {
+		if target.Deleted || domain.LatestRevision(target) == 0 {
 			r.block(p)
 			return false, nil
 		}
@@ -197,7 +197,7 @@ func (r *reconciliation) path(p string) (bool, error) {
 				unsafe = true
 			}
 		}
-		latest := target.Versions[len(target.Versions)-1]
+		latest, _ := domain.LastRevision(target)
 		if unsafe || target.UpstreamHash != latest.SHA {
 			r.block(p)
 			return false, nil
@@ -220,7 +220,7 @@ func (r *reconciliation) path(p string) (bool, error) {
 	}
 	expected := 0
 	if exists {
-		expected = len(target.Versions)
+		expected = domain.LatestRevision(target)
 	}
 	req := transfer.CopyRequest{SourceID: src.ID, SourcePath: p, ExpectedRevision: rev.Number, DestinationID: dst.ID, DestinationPath: p, ExpectedDestinationRevision: &expected}
 	refused, err := r.stage(func(db *domain.Database) error { return r.copy(db, req, rev) })
@@ -309,7 +309,7 @@ func (r *reconciliation) equal(p string, rev domain.Revision, target domain.Arti
 		if r.changes >= r.limit {
 			return true, nil
 		}
-		expected := len(target.Versions)
+		expected := domain.LatestRevision(target)
 		req := transfer.CopyRequest{SourceID: src.ID, SourcePath: p, ExpectedRevision: rev.Number, DestinationID: dst.ID, DestinationPath: p, ExpectedDestinationRevision: &expected}
 		refused, err := r.stage(func(db *domain.Database) error { return r.copy(db, req, rev) })
 		if err != nil {

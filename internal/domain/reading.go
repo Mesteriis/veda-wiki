@@ -29,7 +29,7 @@ func ReadSnapshot(db Database, public bool, now time.Time) Snapshot {
 		if public && !SourcePublicReadable(db, src, now) {
 			continue
 		}
-		rev := a.Versions[len(a.Versions)-1]
+		rev, _ := LastRevision(a)
 		if public && src.ConnectionID != "" {
 			if a.Published == nil {
 				continue
@@ -68,7 +68,7 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 	if public && !SourcePublicReadable(db, src, now) {
 		return Page{}, ErrNotFound
 	}
-	r := a.Versions[len(a.Versions)-1]
+	r, _ := LastRevision(a)
 	if public && src.ConnectionID != "" {
 		if a.Published == nil {
 			return Page{}, ErrNotFound
