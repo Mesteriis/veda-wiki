@@ -4,7 +4,7 @@
 // - time is frozen: API timestamps are rewritten to one instant, the client Date is pinned, timezone is UTC,
 //   so real date-handling regressions are not visible (the formatting itself still renders);
 // - Chrome runs with --hide-scrollbars (see screens.py) and prefers-reduced-motion, animations and caret blink are off;
-// - pages are captured at full content height (up to MAX_HEIGHT) at the given width;
+// - pages are captured at full content height (a page taller than MAX_HEIGHT fails the run) at the given width;
 // - the baseline depends on this machine's Chrome version and fonts: recapture it when either changes.
 // usage: node ui_screens.mjs PORT PUBLIC_URL PRIVATE_URL KEY_FILE OUT_DIR
 import fs from 'node:fs';
@@ -110,7 +110,7 @@ const guest = [
       .map((visitedPath, index) => ({ path: visitedPath, visitedAt: Date.parse('2026-01-15T11:00:00Z') - index * 3600000 }));
     await evaluate(`sessionStorage.setItem('veda.recent.v1', ${JSON.stringify(JSON.stringify(visits))})`);
     await go(publicUrl + '?recent=1', "!!document.querySelector('.recent-history-row')");
-  }],
+  }, () => evaluate("sessionStorage.removeItem('veda.recent.v1')")],
   ['login', async () => {
     await go(privateUrl, HOME);
     await evaluate("document.querySelector('button[aria-label=Войти]').click()");
@@ -134,16 +134,19 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `document.addEvent
 const capture = async (name, width) => {
   await settle();
   const { cssContentSize } = await send('Page.getLayoutMetrics');
-  const height = Math.min(MAX_HEIGHT, Math.max(HEIGHT, Math.ceil(cssContentSize.height)));
+  const contentHeight = Math.ceil(cssContentSize.height);
+  if (contentHeight > MAX_HEIGHT) throw new Error(`${name}-${width}: page height ${contentHeight} exceeds MAX_HEIGHT ${MAX_HEIGHT}`);
+  const height = Math.max(HEIGHT, contentHeight);
   const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width, height, scale: 1 } });
   fs.writeFileSync(path.join(outDir, `${name}-${width}.png`), Buffer.from(data, 'base64'));
 };
 
 for (const width of WIDTHS) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: HEIGHT, deviceScaleFactor: 1, mobile: width <= 390 });
-  for (const [name, prepare] of guest) {
+  for (const [name, prepare, cleanup] of guest) {
     try { await prepare(); } catch (error) { throw Error(`${name}-${width}: ${error.message}`); }
     await capture(name, width);
+    if (cleanup) await cleanup();
   }
   // Administration views need a reader session first, exactly as the smoke test signs in.
   await send('Page.navigate', { url: privateUrl + '?key=' + encodeURIComponent(readerKey) });
