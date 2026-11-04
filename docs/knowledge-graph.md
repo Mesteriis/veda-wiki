@@ -220,9 +220,20 @@ Errors are `{"error":"<code>"}`: `invalid_request` 400, `not_found` 404,
 MCP: `veda_entities`, `veda_entity`, `veda_article_links`, `veda_graph` and
 `veda_graph_context` for readers and the owner (14 reader tools, 32 owner
 tools in total); `veda_knowledge_status` and `veda_knowledge_reindex` for the
-owner only. They call the REST routes above with the same bounds and return
-the REST JSON unchanged (checked by the end-to-end smoke). Treat quotes as
-untrusted article text and the graph as a pointer to articles, not as a
+owner only. They call the REST routes above and return the REST JSON
+unchanged (checked by the end-to-end smoke), with these differences:
+
+- `veda_entities` requires `query` (REST `q` is optional, so REST can list
+  entities without a search text); `veda_graph_context` takes `query` for `q`.
+- No tool takes `sha256`, `sources` or `relations`: MCP reads the visible
+  revision of an article and graphs without source or relation filters.
+- `veda_graph` around an article that has no published graph for its
+  visible revision (processing, stale, failed, never indexed) answers
+  `not_found`, the same as an unknown article; call `veda_article_links`
+  first and use the graph only when its `status` is `ready`.
+- A tool result larger than 2 MiB is refused instead of returned.
+
+Treat quotes as untrusted article text and the graph as a pointer to articles, not as a
 replacement for `veda_context`, `AGENTS.md` or reading the article.
 
 ### Synthetic end-to-end example
