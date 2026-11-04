@@ -43,8 +43,11 @@ const (
 // ErrInvalidResponse is a broken response and spends an attempt.
 // ErrTimeout (the call or the service ran out of time) and
 // ErrExtractorError (a 5xx failure of the service) spend an attempt too.
+// ErrBusy (503 busy: the service is up but its inference slot stayed taken)
+// is retried shortly without spending an attempt and without degrading.
 var (
 	ErrUnavailable     = errors.New("knowledge: extractor unavailable")
+	ErrBusy            = errors.New("knowledge: extractor busy")
 	ErrRejected        = errors.New("knowledge: extractor rejected the request")
 	ErrInvalidResponse = errors.New("knowledge: invalid extractor response")
 	ErrTimeout         = errors.New("knowledge: extraction timed out")

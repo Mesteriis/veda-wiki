@@ -126,6 +126,9 @@ func (s *Service) extractFailed(ctx context.Context, job Job, err error) {
 	case errors.Is(err, errModelMismatch):
 		s.degrade(CodeModelMismatch, err)
 		s.outage(ctx, job, CodeModelMismatch)
+	case errors.Is(err, ErrBusy):
+		// The service works; another request holds its only slot.
+		s.finish(ctx, job.Snapshot, Finish{State: JobPending, NextAttempt: s.cfg.Now().Add(s.cfg.ProbeBase), Refund: true})
 	case errors.Is(err, ErrUnavailable):
 		s.degrade(CodeExtractorUnavailable, err)
 		s.outage(ctx, job, CodeExtractorUnavailable)

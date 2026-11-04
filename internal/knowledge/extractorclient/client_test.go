@@ -156,6 +156,14 @@ func TestStatusCodesMapToKnowledgeErrors(t *testing.T) {
 			t.Errorf("400 %q: %v", body, err)
 		}
 	}
+	// 503 busy: the service works but its inference slot stayed taken.
+	busy := server(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"error":{"code":"busy","message":"no inference slot became free in time"}}`)
+	})
+	if _, err := busy.Extract(context.Background(), req); !errors.Is(err, knowledge.ErrBusy) || errors.Is(err, knowledge.ErrUnavailable) {
+		t.Errorf("503 busy: %v", err)
+	}
 	c := server(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(bytes.Repeat([]byte(" "), extractorclient.MaxResponseBytes+1))
 	})

@@ -103,7 +103,10 @@ Failure codes in the manifest and `status.reasons`: `too_large`,
 `index_unavailable`, `manifest_unavailable`, `extractor_reconfigured`.
 Retries use exponential backoff from 30 s up to 30 min, at most 6 attempts;
 outages (extractor or index down, reconfiguration, shutdown) refund the
-attempt instead of spending it.
+attempt instead of spending it. An extractor answer `503 busy` (its single
+inference slot stayed taken for the whole request time) is not an outage:
+the job is retried after 5 s with the attempt refunded, no failure code and
+no `degraded` state.
 
 ## Access and SHA selection
 
@@ -314,7 +317,7 @@ prints the VEDA flags with file paths only:
 | `--knowledge-index` | `neo4j` | `memory`: development only, not persistent (rebuilt from stored results on start) |
 | `--knowledge-neo4j-uri` | | `bolt`/`neo4j` on a numeric loopback address with a port, or `bolt+s`/`neo4j+s` |
 | `--knowledge-neo4j-user`, `--knowledge-neo4j-password-file` | | same file rules as the key |
-| `--knowledge-workers` | 1 | 1–4 |
+| `--knowledge-workers` | 1 | 1–4; the extractor runs one inference at a time (`inference_concurrency` must be 1), so more than 1 worker adds no extraction throughput: extra requests wait for the slot or come back `503 busy` and are retried |
 | `--knowledge-reconcile-interval` | 5m | 30s–24h |
 
 Schema and limits are versioned in the repository, not flags. The owner

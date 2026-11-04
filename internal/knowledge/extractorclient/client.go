@@ -89,6 +89,7 @@ type errorBody struct {
 
 // Extract implements knowledge.Extractor. Status codes map to the
 // knowledge errors:
+//   - 503 with the code "busy" is ErrBusy;
 //   - 401/403/429/502/503, transport failures, and a 400 without a JSON
 //     error code (a proxy or a host check, not the service) are
 //     ErrUnavailable;
@@ -180,6 +181,9 @@ func statusError(status int, code string) error {
 	code = safeCode(code)
 	if status == http.StatusBadRequest && code == "" {
 		return fmt.Errorf("%w: status 400 without a service error", knowledge.ErrUnavailable)
+	}
+	if status == http.StatusServiceUnavailable && code == "busy" {
+		return fmt.Errorf("%w: status 503 busy", knowledge.ErrBusy)
 	}
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable:

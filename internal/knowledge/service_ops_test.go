@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,6 +112,32 @@ func TestFailureCodes(t *testing.T) {
 			t.Fatalf("%v: %+v", tc.err, j)
 		}
 		h.stop()
+	}
+}
+
+// A busy extractor (its one inference slot taken) is retried without
+// spending attempts and without degrading the module.
+func TestBusyExtractorRetriesWithoutDegrading(t *testing.T) {
+	h := newHarness(t, 2)
+	h.ex.busy = 3
+	key := h.write("pub", "a.md", "billing uses Redis.\n")
+	h.start()
+	if st := h.settle(); st.State != knowledge.StateReady || len(st.Reasons) != 0 {
+		t.Fatalf("status %+v", st)
+	}
+	if _, err := h.article(key); err != nil {
+		t.Fatal(err)
+	}
+	j := h.jobsOf(key)
+	if len(j) != 1 || j[0].Attempts != 1 || j[0].LastError != "" || h.ex.callCount() != 4 {
+		t.Fatalf("jobs %+v calls %d", j, h.ex.callCount())
+	}
+	h.logMu.Lock()
+	defer h.logMu.Unlock()
+	for _, line := range h.logs {
+		if strings.Contains(line, "degraded") {
+			t.Fatalf("busy degraded the module: %q", line)
+		}
 	}
 }
 

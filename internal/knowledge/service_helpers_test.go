@@ -34,6 +34,8 @@ type fakeExtractor struct {
 	settings json.RawMessage
 	// failWith, when set, is returned by Extract.
 	failWith error
+	// busy calls answer ErrBusy before Extract works.
+	busy int
 }
 
 func newFake() *fakeExtractor {
@@ -77,6 +79,10 @@ func (f *fakeExtractor) Extract(ctx context.Context, req knowledge.ExtractReques
 	f.mu.Lock()
 	f.calls++
 	down, failWith := f.down, f.failWith
+	if f.busy > 0 {
+		f.busy--
+		failWith = fmt.Errorf("%w: status 503 busy", knowledge.ErrBusy)
+	}
 	var wait chan struct{}
 	for marker, ch := range f.gates {
 		for _, b := range req.Blocks {
