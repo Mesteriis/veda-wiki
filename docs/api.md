@@ -522,3 +522,11 @@ lost by the index; being rebuilt, nothing old is shown), `unavailable`,
 job counts appear only in the owner's `status`. `reindex` answers
 `202` with `operation_id`; `force` re-extracts instead of rebuilding from
 stored results.
+
+MCP exposes these routes through the REST client with the same bounds:
+`veda_entities` (`query` → `q`), `veda_entity`, `veda_article_links`
+(`article`), `veda_graph` (`entity_id` or `source_id`+`path`, `depth`,
+`max_nodes`, `max_edges`) and `veda_graph_context` (`query` → `q`, `depth`,
+`limit_bytes`) for readers and the owner; `veda_knowledge_status` and
+`veda_knowledge_reindex` for the owner only. MCP does not pass `sha256`,
+`sources` or `relations`. A tool answer above 2 MiB is refused.

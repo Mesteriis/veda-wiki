@@ -61,8 +61,9 @@ func closedObject(requiredNames []string, properties ...property) json.RawMessag
 	return json.RawMessage(b.String())
 }
 
-// Tools lists every tool in the order the Python adapter declared them.
-var Tools = []ToolSpec{
+// Tools lists every tool: those of the former Python adapter in the order it
+// declared them, then the knowledge tools.
+var Tools = append([]ToolSpec{
 	{
 		Name:        "veda_sources",
 		Description: "List sources visible to this client.",
@@ -333,4 +334,4 @@ var Tools = []ToolSpec{
 			prop("confirm_cancel", confirmed)),
 		ReadOnly: false,
 	},
-}
+}, knowledgeTools...)

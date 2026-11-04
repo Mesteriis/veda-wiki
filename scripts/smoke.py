@@ -15,7 +15,17 @@ from datetime import datetime, timedelta, timezone
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from smoke_mcp_knowledge import knowledge_smoke
+
 ROOT = Path(__file__).resolve().parents[1]
+KNOWLEDGE_READ_TOOLS = {"veda_entities", "veda_entity", "veda_article_links", "veda_graph", "veda_graph_context"}
+READER_TOOLS = {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context",
+                "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"} | KNOWLEDGE_READ_TOOLS
+OWNER_TOOLS = READER_TOOLS | {
+    "veda_create_source", "veda_write_article", "veda_copy_article", "veda_reconcile_sources", "veda_source_mirrors",
+    "veda_configure_source_mirror", "veda_moves", "veda_cancel_move", "veda_move_article", "veda_conflicts",
+    "veda_resolve_conflict", "veda_github_status", "veda_github_connect", "veda_sync", "veda_publish_job",
+    "veda_cancel_bundle", "veda_knowledge_status", "veda_knowledge_reindex"}
 
 
 def free_port():
@@ -24,12 +34,13 @@ def free_port():
         return s.getsockname()[1]
 
 
-def start(data, private_port, public_port, require_socket_key=False):
+def start(data, private_port, public_port, require_socket_key=False, extra=()):
     args = [
         str(ROOT / "veda"), "--data", str(data), "--listen", f"127.0.0.1:{private_port}",
         "--public-listen", f"127.0.0.1:{public_port}", "--reader-socket", str(data / "reader.sock")]
     if require_socket_key:
         args.append("--reader-socket-require-key")
+    args.extend(extra)
     process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(100):
         if process.poll() is not None:
@@ -62,12 +73,7 @@ async def main():
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tools = await session.list_tools()
-                    assert {tool.name for tool in tools.tools} == {
-                        "veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_prepare_update", "veda_prepare_new_article", "veda_create_source",
-                        "veda_write_article", "veda_copy_article", "veda_transfer_plan", "veda_reconcile_sources", "veda_source_mirrors", "veda_configure_source_mirror", "veda_moves", "veda_cancel_move",
-                        "veda_move_article", "veda_context",
-                        "veda_conflicts", "veda_resolve_conflict", "veda_github_status", "veda_github_connect",
-                        "veda_sync", "veda_publish_job", "veda_cancel_bundle"}
+                    assert {tool.name for tool in tools.tools} == OWNER_TOOLS
                     connect_schema = next(tool.inputSchema for tool in tools.tools if tool.name == "veda_github_connect")
                     assert connect_schema["properties"]["adopt_existing"]["type"] == "boolean"
 
@@ -78,6 +84,9 @@ async def main():
 
                     status=await call("veda_github_status",{})
                     assert status["connections"]==[] and status["outbox"]["total"]==0
+                    disabled = await session.call_tool("veda_entities", {"query": "db1"})
+                    assert disabled.isError and "knowledge_disabled" in disabled.content[0].text
+                    assert (await call("veda_knowledge_status", {})) == {"enabled": False, "state": "disabled"}
 
                     for source, visibility in [("open", "public"), ("closed", "private")]:
                         await call("veda_create_source", {"id": source, "title": source,
@@ -242,7 +251,7 @@ async def main():
                             result = await reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not result.isError and json.loads(result.content[0].text)["text"] == "# Private updated"
                             names = {tool.name for tool in (await reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"}
+                            assert names == READER_TOOLS
                     def owner_post(route, value):
                         req = Request(f"http://127.0.0.1:{private_port}" + route,
                             data=json.dumps(value).encode(), method="POST",
@@ -262,7 +271,7 @@ async def main():
                         async with ClientSession(scoped_in, scoped_out) as scoped:
                             await scoped.initialize()
                             names = {tool.name for tool in (await scoped.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"}
+                            assert names == READER_TOOLS
                             visible = await scoped.call_tool("veda_sources", {})
                             assert {item["id"] for item in json.loads(visible.content[0].text)["sources"]} == {"closed", "program"}
                             found = await scoped.call_tool("veda_find", {"query": "Private updated", "limit": 1})
@@ -332,7 +341,7 @@ async def main():
                         async with ClientSession(socket_in, socket_out) as socket_reader:
                             await socket_reader.initialize()
                             names = {tool.name for tool in (await socket_reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"}
+                            assert names == READER_TOOLS
                             socket_plan = await socket_reader.call_tool("veda_transfer_plan", {"source_id": "closed", "source_path": "unsafe.md", "expected_revision": 1,
                                 "destination_id": "open", "destination_path": "unsafe.md"})
                             assert not socket_plan.isError and json.loads(socket_plan.content[0].text)["articles"][0]["credential_like"] is True
@@ -390,3 +399,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    asyncio.run(knowledge_smoke(start, free_port, ROOT, READER_TOOLS, OWNER_TOOLS))

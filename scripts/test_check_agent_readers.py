@@ -31,6 +31,14 @@ class AgentReaderMetadataTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.validate_reader_tools(set(module.READER_TOOLS) - {'veda_read_excerpt'})
 
+    def test_knowledge_reads_allowed_owner_tools_refused(self):
+        knowledge = {'veda_entities', 'veda_entity', 'veda_article_links', 'veda_graph', 'veda_graph_context'}
+        self.assertTrue(knowledge.issubset(module.READER_TOOLS))
+        module.validate_reader_tools(set(module.REQUIRED_TOOLS) | knowledge)
+        for owner in ('veda_knowledge_status', 'veda_knowledge_reindex'):
+            with self.assertRaises(ValueError):
+                module.validate_reader_tools(set(module.READER_TOOLS) | {owner})
+
     def test_rejects_duplicates_and_bad_format(self):
         duplicate = self.root / 'hermes.key'
         duplicate.write_text('a' * 64)

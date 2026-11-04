@@ -13,7 +13,7 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/app` | Assembly: server flags, listeners, the reader socket, workers, bounded shutdown and the writer lock. |
 | `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `migrate-revisions`, `import`, `github`, `mcp`, `mcp-relay`. |
 | `internal/httpapi` | REST handlers, browser sessions, role checks and the embedded reading interface. Adapter only: it parses input, checks the role, calls an area and serializes the result. |
-| `internal/mcp` | MCP server behind `veda mcp`: the tool table (9 read-only tools for reader keys and the socket), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
+| `internal/mcp` | MCP server behind `veda mcp`: the tool table (14 read-only tools for reader keys and the socket, five of them knowledge-graph reads; 32 for the owner), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
 | `internal/mcp/client` | REST client of the MCP adapter. Adapter only: loopback HTTP or explicitly allowed reader-only HTTPS, private key and socket files, no proxy or redirects, 24 MiB response limit, sanitized refusal messages. |
 | `internal/auth` | Access keys, named users and teams, password hashing and the login limiter, browser sessions. |
 | `internal/importer` | `veda.yaml` metadata, bounded local checkout observations, batch decoding, asset storage, import conflicts and the process-local observations. |

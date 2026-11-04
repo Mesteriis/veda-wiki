@@ -19,6 +19,15 @@ var refusalReasons = map[int]string{
 	503: "VEDA or upstream temporarily unavailable; retry later",
 }
 
+// codeReasons replace the status reason for error codes whose meaning the
+// status alone does not convey.
+var codeReasons = map[string]string{
+	"knowledge_disabled":    "the knowledge graph module is disabled on this VEDA server",
+	"knowledge_unavailable": "the knowledge index is temporarily unavailable; retry later",
+	"reindex_busy":          "a knowledge reindex is already running; retry later",
+	"timeout":               "VEDA did not answer in time; retry with smaller limits",
+}
+
 // safeErrorCode matches the fixed identifiers the REST service uses as error
 // codes. Anything else is free-form text and is never echoed.
 var safeErrorCode = regexp.MustCompile(`^[a-z][a-z_ ]{0,63}$`)
@@ -49,7 +58,10 @@ func (r Refused) Error() string {
 
 // Message is the sentence returned to the agent.
 func (r Refused) Message() string {
-	reason, ok := refusalReasons[r.Status]
+	reason, ok := codeReasons[r.Code]
+	if !ok {
+		reason, ok = refusalReasons[r.Status]
+	}
 	if !ok {
 		reason = "request failed"
 	}
