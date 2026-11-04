@@ -32,6 +32,9 @@ sudo systemctl enable --now veda.service
 sudo systemctl status veda.service
 ```
 
+The `--translation-*` flags were removed; a unit that still passes any of them
+fails to start, so delete them from `ExecStart` before upgrading.
+
 Use an existing dedicated service account instead of creating a duplicate.
 Do not reuse another service's data directory or run multiple writers against
 it. The generated keys and application state belong to the service account;

@@ -10,6 +10,7 @@
 - [x] Confined, visibility-checked local image import and serving.
 - [ ] GitHub connection, repository visibility and credential management: implemented; live authenticated acceptance pending.
 - [ ] Durable background import/push outbox: implemented and mock-tested; live acceptance pending.
+- [ ] Program docs/ import.
 - [ ] Stable cross-source article moves and publication review.
 - [ ] User/team permissions and private browser reading sessions.
 - [ ] SQLite migration and retention: opt-in backend deployed; per-revision rows, indexes, retention and blob collection implemented and tested locally; `veda migrate-revisions` has not been run on a production store; credential-based restore acceptance remains pending.

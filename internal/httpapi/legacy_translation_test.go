@@ -52,6 +52,10 @@ func testLegacyTranslationKeys(t *testing.T, sqlite bool) {
 			t.Fatal(err)
 		}
 	}
+	moveStates := map[string]string{}
+	for _, m := range s.moves() {
+		moveStates[m.ID] = m.State
+	}
 	injectLegacyTranslation(t, s.Dir(), sqlite)
 	for key, data := range storedRecords(t, s.Dir(), sqlite) {
 		if !strings.Contains(data, `"translation`) {
@@ -61,6 +65,14 @@ func testLegacyTranslationKeys(t *testing.T, sqlite bool) {
 	s, err := openStore(s.Dir())
 	if err != nil || s.IsSQLite() != sqlite {
 		t.Fatal("store with legacy translation keys did not open", err)
+	}
+	for _, m := range s.moves() {
+		if want, ok := moveStates[m.ID]; !ok || m.State != want {
+			t.Fatalf("move %s is %q after reopen, was %q", m.ID, m.State, want)
+		}
+	}
+	if len(moveStates) != 1 {
+		t.Fatal("fixture lacks the waiting move", moveStates)
 	}
 	page, err := s.page("from/docs/edit.md", false)
 	if err != nil || page.Text != "# Original docs/edit.md" {

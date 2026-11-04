@@ -210,3 +210,11 @@ Take a PBS snapshot of the stopped service before running `migrate-revisions`.
 That snapshot, or the `state.before-revisions.*` copy described above, is the
 only way back: binaries before format 21 refuse a converted store. Restoring
 either discards every change made after the snapshot or the migration.
+
+Rolling back to the build before translation was removed (commit `81dfeb2`) has
+two effects on a store written since the upgrade. Translations held by SQLite
+articles that were not rewritten since the upgrade reappear: as current if the
+original is unchanged, and publicly if they had been approved. A waiting move of
+a program article may switch to `source_changed` under that build, because the
+moves were rewritten without the translation fingerprint. Roll back only when
+no program article has a waiting move, or accept that outcome.

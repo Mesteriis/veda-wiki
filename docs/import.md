@@ -51,7 +51,8 @@ and the two systems can change during the comparison. Withheld and untracked
 files are excluded, so `veda_only` does not imply deletion and `different` does
 not establish a conflict. Image counts compare stored source hashes, not blob
 availability or historical image bindings. Metadata is not compared. Only wiki sources
-are compared; program sources are refused. The endpoint
+are compared; program sources are refused because the comparison supports wiki
+sources only. The endpoint
 must be independently authorized and trusted; the comparison does not read or
 send a key, use a proxy, or follow redirects.
 

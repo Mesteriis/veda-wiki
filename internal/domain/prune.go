@@ -55,8 +55,9 @@ func MoveTerminal(state string) bool {
 // copy kept on the article), CopyOrigin (provenance number and SHA only),
 // ImportConflict.BaseSHA (compared as a SHA only), final jobs and moves.
 // Every other UpstreamHash reader (importer, moves, reconciliation, transfer)
-// compares it with a SHA and reads no text. Publishing a job, transfers and conflict resolution likewise act only on
-// the newest revision, which is always kept.
+// compares it with a SHA and reads no text. Publishing a job, transfers and
+// conflict resolution likewise act only on the newest revision, which is
+// always kept.
 func ProtectedRevisions(db Database, key string) map[int]bool {
 	protected := map[int]bool{}
 	for _, r := range revisionReferences(db) {
