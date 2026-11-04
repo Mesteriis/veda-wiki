@@ -1,4 +1,4 @@
-# Backend architecture
+# Architecture
 
 The Go backend is one module (`github.com/Mesteriis/veda-wiki`, `go.mod` in the
 repository root). `cmd/veda` is the dispatcher; everything else lives under
