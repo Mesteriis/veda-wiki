@@ -1,6 +1,8 @@
 package store
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +130,35 @@ var referenceSetters = map[string]func(db *domain.Database, ref domain.BlobRef){
 		id := strings.Repeat("e", 32)
 		db.Moves[id] = domain.Move{ID: id, SourceID: "local", SourcePath: "a.md", SourceRevision: 1, DestinationID: "other", DestinationPath: "b.md", SHA: r.SHA, State: "waiting_destination", Assets: map[string]domain.BlobRef{"images/a.png": ref}}
 	},
+}
+
+func TestBlobCollectionLogsOnlyRemovalsAndFailures(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	stray := filepath.Join(s.Dir(), "blobs", "notes.txt")
+	if err := os.MkdirAll(filepath.Dir(stray), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stray, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	setAge(t, stray, now, 48*time.Hour)
+	var out bytes.Buffer
+	log.SetOutput(&out)
+	defer log.SetOutput(os.Stderr)
+	if removed, err := s.CollectBlobs(now); err != nil || removed != 0 {
+		t.Fatal("removed", removed, err)
+	}
+	if out.Len() != 0 {
+		t.Fatal("skipped entries alone were logged:", out.String())
+	}
+	agedBlob(t, s, 1, now, 48*time.Hour)
+	if removed, err := s.CollectBlobs(now); err != nil || removed != 1 {
+		t.Fatal("removed", removed, err)
+	}
+	if got := out.String(); strings.Count(got, "\n") != 1 || !strings.Contains(got, "blob collection: removed 1 blobs and 0 temporary files; skipped 1 entries; 0 failures") {
+		t.Fatal("unexpected collection log:", got)
+	}
 }
 
 func TestCollectBlobsKeepsEveryReferenceCategory(t *testing.T) {

@@ -107,7 +107,8 @@ func (s *Store) collectBlobs(now time.Time) (int, error) {
 	s.blobMu.Lock()
 	sweep := sweepBlobs(filepath.Join(s.dir, "blobs"), domain.ReferencedBlobs(check), now)
 	s.blobMu.Unlock()
-	if sweep != (blobSweep{}) {
+	// Skipped entries alone are routine (any non-digest name) and not logged.
+	if sweep.blobs+sweep.temporary+sweep.failed > 0 {
 		log.Printf("blob collection: removed %d blobs and %d temporary files; skipped %d entries; %d failures", sweep.blobs, sweep.temporary, sweep.skipped, sweep.failed)
 	}
 	removed := sweep.blobs + sweep.temporary
