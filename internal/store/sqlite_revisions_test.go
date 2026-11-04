@@ -318,3 +318,136 @@ func TestSQLiteLegacyLayoutLoadsAndWrites(t *testing.T) {
 		})
 	}
 }
+
+// rebind replaces the images of retained revision 2 of local/guide.md, as an
+// import refresh rebinding a revision's images does.
+func rebind(tx *Tx, narrow bool) {
+	a := tx.DB().Articles["local/guide.md"]
+	a.Versions = slices.Clone(a.Versions)
+	for i, r := range a.Versions {
+		if r.Number == 2 {
+			r.Assets = map[string]domain.BlobRef{"a.png": asset("rebound"), "b.png": asset("second")}
+			a.Versions[i] = r
+		}
+	}
+	tx.DB().Articles["local/guide.md"] = a
+	if narrow {
+		tx.OnlyArticle("local/guide.md")
+	}
+}
+
+func digestsOf(t *testing.T, s *Store, number int) []string {
+	t.Helper()
+	db, err := sqliteDB(s.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT sha256 FROM revision_assets WHERE source_id='local' AND path='guide.md' AND number=? ORDER BY sha256`, number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var sha string
+		if err = rows.Scan(&sha); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, sha)
+	}
+	return out
+}
+
+func TestSQLiteCommitUpdatesChangedRevisionRow(t *testing.T) {
+	for name, narrow := range map[string]bool{"whole state": false, "article": true} {
+		t.Run(name, func(t *testing.T) {
+			s := sqliteStore(t)
+			for range 3 {
+				writeNext(t, s, "guide.md")
+			}
+			auditRevisions(t, s.Dir())
+			if err := s.Update(func(tx *Tx) error { rebind(tx, narrow); return nil }); err != nil {
+				t.Fatal(err)
+			}
+			if got := audits(t, s); got != "update 2" {
+				t.Fatal("rebinding images wrote revision rows", got)
+			}
+			want := []string{asset("rebound").SHA, asset("second").SHA}
+			slices.Sort(want)
+			if got := digestsOf(t, s, 2); !slices.Equal(got, want) {
+				t.Fatal("image rows of revision 2", got)
+			}
+			reopened, err := Open(s.Dir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := reopened.db.Articles["local/guide.md"].Versions[1].Assets["a.png"]; got != asset("rebound") {
+				t.Fatal("rebound image lost", got)
+			}
+		})
+	}
+}
+
+// A revision or image row missing behind the open store makes the update or
+// delete change no row; the commit fails and recovery rejects the damage
+// instead of the commit hiding it.
+func TestSQLiteCommitRequiresStoredRevisionRows(t *testing.T) {
+	for name, tc := range map[string]struct {
+		damage string
+		change func(tx *Tx)
+	}{
+		"updated row":   {`DELETE FROM revisions WHERE number=2`, func(tx *Tx) { rebind(tx, true) }},
+		"updated image": {`DELETE FROM revision_assets WHERE number=2`, func(tx *Tx) { rebind(tx, true) }},
+		"pruned row": {`DELETE FROM revisions WHERE number=1`, func(tx *Tx) {
+			a := tx.DB().Articles["local/guide.md"]
+			a.Versions = append(slices.Clone(a.Versions), numbered(4, nil))
+			tx.DB().Articles["local/guide.md"] = a
+			tx.OnlyArticle("local/guide.md")
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := sqliteStore(t)
+			for range 3 {
+				writeNext(t, s, "guide.md")
+			}
+			execSQL(t, s.Dir(), tc.damage)
+			if err := s.Update(func(tx *Tx) error { tc.change(tx); return nil }); err != errRevisionDrift {
+				t.Fatal("commit over a missing row", err)
+			}
+			if !s.Invalid() {
+				t.Fatal("recovery accepted the damaged rows")
+			}
+		})
+	}
+}
+
+func TestSQLiteLegacyFileRejectsRowFormatCommit(t *testing.T) {
+	s, err := Open(legacySQLite(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	update(t, s, func(db *domain.Database) { appendRevision(db, "local", "guide.md", "# Legacy") })
+	for name, narrow := range map[string]bool{"whole state": false, "article": true} {
+		t.Run(name, func(t *testing.T) {
+			err := s.Update(func(tx *Tx) error {
+				tx.DB().Version = domain.RevisionsFormat
+				appendRevision(tx.DB(), "local", "guide.md", "# Raised")
+				if narrow {
+					tx.OnlyArticle("local/guide.md")
+				}
+				return nil
+			})
+			if err != errSQLiteLayout {
+				t.Fatal("legacy file accepted a format 21 commit", err)
+			}
+			if s.Invalid() || s.db.Version != 20 || latest(t, s, "local/guide.md") != "# Legacy" {
+				t.Fatal("failed commit changed memory or closed the store", s.db.Version)
+			}
+			reopened, err := Open(s.Dir())
+			if err != nil || reopened.db.Version != 20 || latest(t, reopened, "local/guide.md") != "# Legacy" {
+				t.Fatal("failed commit changed disk", err)
+			}
+		})
+	}
+}

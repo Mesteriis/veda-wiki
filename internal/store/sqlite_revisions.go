@@ -270,7 +270,7 @@ func (w *revisionWriter) sync(old, article *domain.Article) error {
 				if err = w.dropImages(old.SourceID, old.Path, previous); err != nil {
 					return err
 				}
-				_, err = w.update.Exec(data, article.SourceID, article.Path, r.Number)
+				err = one(w.update.Exec(data, article.SourceID, article.Path, r.Number))
 			} else {
 				_, err = w.insert.Exec(article.SourceID, article.Path, r.Number, data)
 			}
@@ -285,7 +285,7 @@ func (w *revisionWriter) sync(old, article *domain.Article) error {
 		}
 	}
 	for number, r := range stored {
-		if _, err := w.remove.Exec(old.SourceID, old.Path, number); err != nil {
+		if err := one(w.remove.Exec(old.SourceID, old.Path, number)); err != nil {
 			return err
 		}
 		if err := w.dropImages(old.SourceID, old.Path, r); err != nil {
@@ -297,9 +297,28 @@ func (w *revisionWriter) sync(old, article *domain.Article) error {
 
 func (w *revisionWriter) dropImages(source, path string, r domain.Revision) error {
 	for sha := range assetDigests(r) {
-		if _, err := w.dropImg.Exec(sha, source, path, r.Number); err != nil {
+		if err := one(w.dropImg.Exec(sha, source, path, r.Number)); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+var errRevisionDrift = errors.New("SQLite revision rows do not match the stored article")
+
+// one requires a statement to change exactly one row: an update or delete of
+// a row the stored header lists. A row missing on disk fails the commit, so
+// recovery reloads instead of a commit leaving a store Open rejects.
+func one(result sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return errRevisionDrift
 	}
 	return nil
 }
