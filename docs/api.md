@@ -135,6 +135,14 @@ this status in the proposal-base response. New-article proposals use
 Deleted history remains hidden and can still cause a later write conflict.
 The updated adapter requires a server supporting this endpoint.
 Responses include `revision`, `sha256`, `created_at` and the saved `text`.
+A revision (in write responses, `versions` and the public visible version)
+may also include `assets`: the images its text referenced when it was written,
+as repository path → `{sha256, mime}`, limited to images the source had then.
+It is omitted when there are none and for revisions written before images were
+bound. Rendered pages load such an image as `/media/<source>/<path>?v=<sha256>`;
+that URL answers only for a version the reader may see (the public listener: the
+public version of a publicly readable source) and is otherwise the same 404 as an
+unknown image.
 Creation returns 201; update returns 200. Revision mismatch returns 409;
 unavailable/unauthorized article returns 404; invalid input returns 400;
 unauthorized writes return 403; storage failures return 500. Unknown fields and

@@ -5,8 +5,10 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
@@ -176,5 +178,80 @@ func TestRevisionWritersBindImages(t *testing.T) {
 		if rev.Assets["docs/i.png"].SHA != domain.Digest(smallPNG(t)) {
 			t.Error("revision lacks its image", n)
 		}
+	}
+}
+
+func TestScopedKeyCannotLoadRevisionImagesOutsideItsSources(t *testing.T) {
+	s := testStore(t)
+	images := map[string][]byte{"alpha": colorPNG(t, color.RGBA{R: 255, A: 255}), "beta": colorPNG(t, color.RGBA{B: 255, A: 255})}
+	for _, id := range []string{"alpha", "beta"} {
+		b := testBatch()
+		b.SourceID, b.Metadata.Title = id, id
+		b.Files = map[string]string{"docs/guide.md": "# Guide\n\n![Icon](img/icon.png)"}
+		b.Assets = map[string][]byte{"docs/img/icon.png": images[id]}
+		if _, err := s.importBatch(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key, err := s.auth().CreateAccessKey("agent", []string{"alpha"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(url string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", url, nil)
+		r.Header.Set("Authorization", "Bearer "+key)
+		out := httptest.NewRecorder()
+		(Wiki{Store: s, Token: "test-owner"}).ServeHTTP(out, r)
+		return out
+	}
+	granted := get("/media/alpha/docs/img/icon.png?v=" + domain.Digest(images["alpha"]))
+	if granted.Code != 200 || !bytes.Equal(granted.Body.Bytes(), images["alpha"]) {
+		t.Fatal("granted revision image unavailable", granted.Code)
+	}
+	unknown := get("/media/alpha/docs/img/icon.png?v=" + strings.Repeat("0", 64))
+	denied := get("/media/beta/docs/img/icon.png?v=" + domain.Digest(images["beta"]))
+	if unknown.Code != 404 || denied.Code != 404 || denied.Body.String() != unknown.Body.String() {
+		t.Fatal("scoped key reached another source's revision image", denied.Code)
+	}
+}
+
+func TestImportKeepsImagesOfLocallyChangedRevision(t *testing.T) {
+	s := testStore(t)
+	oldImage, newImage := colorPNG(t, color.RGBA{R: 255, A: 255}), colorPNG(t, color.RGBA{B: 255, A: 255})
+	b := testBatch()
+	b.Files = map[string]string{"docs/guide.md": "# Guide\n\n![Icon](img/icon.png)"}
+	b.Assets = map[string][]byte{"docs/img/icon.png": oldImage}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.put("handbook", "docs/guide.md", "# Local\n\n![Icon](img/icon.png)", 1); err != nil {
+		t.Fatal(err)
+	}
+	b = applyAgain(s, b)
+	b.Assets = map[string][]byte{"docs/img/icon.png": newImage}
+	b.Commit = strings.Repeat("b", 40)
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	a := s.state(t).Articles["handbook/docs/guide.md"]
+	last, _ := domain.LastRevision(a)
+	if domain.LatestRevision(a) != 2 || last.Assets["docs/img/icon.png"].SHA != domain.Digest(oldImage) {
+		t.Fatal("import rebound the images of a local revision", last.Assets)
+	}
+}
+
+func TestPublicListenerServesLocalPublicLatestRevisionImage(t *testing.T) {
+	s := testStore(t)
+	image := colorPNG(t, color.RGBA{G: 255, A: 255})
+	b := testBatch()
+	b.Visibility = "public"
+	b.Files = map[string]string{"docs/guide.md": "# Guide\n\n![Icon](img/icon.png)"}
+	b.Assets = map[string][]byte{"docs/img/icon.png": image}
+	if _, err := s.importBatch(b); err != nil {
+		t.Fatal(err)
+	}
+	r := request(Wiki{Store: s, Public: true}, "GET", "/media/handbook/docs/img/icon.png?v="+domain.Digest(image), "", false)
+	if r.Code != 200 || !bytes.Equal(r.Body.Bytes(), image) {
+		t.Fatal("public local revision image unavailable", r.Code)
 	}
 }

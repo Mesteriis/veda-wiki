@@ -30,11 +30,11 @@ func ReadSnapshot(db Database, public bool, now time.Time) Snapshot {
 			continue
 		}
 		rev, _ := LastRevision(a)
-		if public && src.ConnectionID != "" {
-			if a.Published == nil {
+		if public {
+			var visible bool
+			if rev, visible = PublicRevision(a, src); !visible {
 				continue
 			}
-			rev = *a.Published
 		}
 		original := rev.Text
 		rev, _ = DisplayedRevision(a, rev, public)
@@ -69,11 +69,11 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 		return Page{}, ErrNotFound
 	}
 	r, _ := LastRevision(a)
-	if public && src.ConnectionID != "" {
-		if a.Published == nil {
+	if public {
+		var visible bool
+		if r, visible = PublicRevision(a, src); !visible {
 			return Page{}, ErrNotFound
 		}
-		r = *a.Published
 	}
 	originalSHA := r.SHA
 	r, translated := DisplayedRevision(a, r, public)
@@ -129,19 +129,17 @@ func ReadArticle(db Database, sourceID, p string, public bool, now time.Time) (A
 		return Article{}, ErrNotFound
 	}
 	a.Versions = append([]Revision(nil), a.Versions...)
-	if public && src.ConnectionID != "" {
-		if a.Published == nil {
+	if public {
+		rev, visible := PublicRevision(a, src)
+		if !visible {
 			return Article{}, ErrNotFound
 		}
-		a.Versions = []Revision{*a.Published}
-	}
-	if public {
+		a.Versions = []Revision{rev}
 		a.Translation = nil
 		a.CopiedFrom = nil
 		a.ReconcileBase = nil
 		a.Conflicts = nil
 		a.UpstreamHash = ""
-		a.Versions = a.Versions[len(a.Versions)-1:]
 		a.Versions[0].Number = 0
 		// The visible revision is already in Versions; do not expose internal
 		// publication bookkeeping or a different stored publication snapshot.

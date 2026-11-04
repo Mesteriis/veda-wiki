@@ -45,20 +45,28 @@ func RevisionImage(db Database, sourceID, name, sha string, public bool, now tim
 // shownRevisions lists the versions of a whose images a reader may load.
 func shownRevisions(a Article, src Source, public bool) []Revision {
 	if public {
-		if src.ConnectionID != "" {
-			if a.Published == nil {
-				return nil
-			}
-			return []Revision{*a.Published}
+		if rev, visible := PublicRevision(a, src); visible {
+			return []Revision{rev}
 		}
-		last, ok := LastRevision(a)
-		if !ok {
-			return nil
-		}
-		return []Revision{last}
+		return nil
 	}
 	if a.Published == nil {
 		return a.Versions
 	}
 	return append(append([]Revision(nil), a.Versions...), *a.Published)
+}
+
+// PublicRevision is the version of a that a public reader sees, before any
+// translation: the publication copy of a connected source, or the latest
+// revision of a local one. It reports false when a connected source's article
+// has no publication copy. The caller checks SourcePublicReadable.
+func PublicRevision(a Article, src Source) (Revision, bool) {
+	if src.ConnectionID != "" {
+		if a.Published == nil {
+			return Revision{}, false
+		}
+		return *a.Published, true
+	}
+	rev, _ := LastRevision(a)
+	return rev, true
 }
