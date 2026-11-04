@@ -27,7 +27,7 @@ const (
 var revisionBackups = []string{backupSQLite, backupJSON}
 
 // revisionBackupPresent reports whether dir holds any part of a backup,
-// including an interrupted copy; an entry that cannot be checked counts as
+// including an interrupted copy and the completion record; an entry that cannot be checked counts as
 // present. Blob collection pauses while it does.
 func revisionBackupPresent(dir string) bool {
 	for _, name := range revisionBackups {
@@ -37,7 +37,7 @@ func revisionBackupPresent(dir string) bool {
 			}
 		}
 	}
-	return false
+	return completionPresent(dir)
 }
 
 // backupPresent reports whether a final backup file exists or cannot be

@@ -84,10 +84,16 @@ func Open(dir string) (*Store, error) {
 // or collecting blobs. Without state.json it returns an empty v21 store and
 // found is false.
 func read(dir string) (s *Store, found bool, err error) {
+	return readStore(dir, false)
+}
+
+// readStore is read; with readOnly it opens SQLite read-only, never writes a
+// store file and returns a store that refuses commits.
+func readStore(dir string, readOnly bool) (s *Store, found bool, err error) {
 	if err = PrivateDataDir(dir); err != nil {
 		return nil, false, err
 	}
-	s = &Store{dir: dir, db: domain.Database{Version: domain.RevisionsFormat, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
+	s = &Store{dir: dir, readOnly: readOnly, db: domain.Database{Version: domain.RevisionsFormat, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
 	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
 		return nil, false, errors.New("store must be a private regular file")
 	}

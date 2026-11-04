@@ -83,7 +83,7 @@ func (s *Store) loadSQLite(marker []byte) error {
 	if !sqliteMarkerValid(marker) {
 		return errors.New("unsupported store marker")
 	}
-	result, err := readSQLite(filepath.Join(s.dir, SQLiteFile), false)
+	result, err := readSQLite(filepath.Join(s.dir, SQLiteFile), s.readOnly)
 	if err != nil {
 		return err
 	}

@@ -288,24 +288,25 @@ func TestMigrateRevisionsRefusals(t *testing.T) {
 			dir := copyFixture(t, v20Fixture)
 			writeFile(t, filepath.Join(dir, backupSQLite), "x")
 			return dir
-		}, text: "the original store was not modified: delete the state.before-revisions.* files"},
+		}, text: "the store was not converted (still format v20): delete the state.before-revisions.* files"},
 		"damaged backup pair": {prepare: func(t *testing.T) string {
 			dir := copyFixture(t, v20Fixture)
 			writeFile(t, filepath.Join(dir, backupSQLite), "x")
 			writeFile(t, filepath.Join(dir, backupJSON), `{"version":14,"backend":"sqlite"}`)
 			return dir
-		}, text: "the original store was not modified"},
-		"complete backup": {prepare: func(t *testing.T) string {
+		}, text: "the store was not converted (still format v20): delete the state.before-revisions.* files"},
+		"obsolete backup": {prepare: func(t *testing.T) string {
 			dir := copyFixture(t, v20Fixture)
-			for from, to := range map[string]string{SQLiteFile: backupSQLite, "state.json": backupJSON} {
-				data, err := os.ReadFile(filepath.Join(dir, from))
-				if err != nil {
-					t.Fatal(err)
-				}
-				writeFile(t, filepath.Join(dir, to), string(data))
-			}
+			copyBackup(t, dir)
+			execSQL(t, dir, `UPDATE records SET data='{"version":20,"updated_at":"2026-10-10T12:00:00Z"}' WHERE category='meta'`)
 			return dir
-		}, text: `run "veda migrate-revisions --verify --data DIR"`},
+		}, text: "was written after state.before-revisions.* was taken, so that backup is obsolete: delete the state.before-revisions.* files"},
+		"journal next to a complete backup": {prepare: func(t *testing.T) string {
+			dir := copyFixture(t, v20Fixture)
+			copyBackup(t, dir)
+			hotJournal(t, dir)
+			return dir
+		}, want: errBackupJournal},
 		"already v21": {prepare: func(t *testing.T) string {
 			s := sqliteStore(t)
 			writeNext(t, s, "guide.md")
@@ -429,4 +430,30 @@ func hotJournal(t *testing.T, dir string) {
 	if _, err = conn.ExecContext(context.Background(), "ROLLBACK"); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// copyBackup writes a complete backup of the store in dir, as an interrupted
+// migrate-revisions leaves it.
+func copyBackup(t *testing.T, dir string) {
+	t.Helper()
+	for _, pair := range [][2]string{{SQLiteFile, backupSQLite}, {"state.json", backupJSON}} {
+		data, err := os.ReadFile(filepath.Join(dir, pair[0]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(dir, pair[1]), string(data))
+	}
+}
+
+// An interrupted run that left a complete backup identical to the
+// unconverted store is resumed with that backup.
+func TestMigrateRevisionsReusesIdenticalBackup(t *testing.T) {
+	dir := copyFixture(t, v20Fixture)
+	original, before := legacyState(t, dir), snapshot(t, dir)
+	copyBackup(t, dir)
+	if report, err := MigrateRevisions(dir); err != nil || report != v20Report {
+		t.Fatal(report, err)
+	}
+	backupsHold(t, dir, before)
+	checkMigrated(t, dir, original, v20Kept)
 }

@@ -130,8 +130,8 @@ func checkRevisionBlobs(s *Store, db domain.Database) blobProblems {
 // equal the plan: SQLite integrity, Validate, the kept revision numbers, each
 // kept text byte for byte against the original and its SHA, and every image a
 // revision references.
-func verifyMigration(dir string, sqlite bool, original domain.Database, plan revisionPlan) error {
-	check, found, err := read(dir)
+func verifyMigration(dir string, sqlite, readOnly bool, original domain.Database, plan revisionPlan) error {
+	check, found, err := readStore(dir, readOnly)
 	if err != nil {
 		return errors.New("converted store cannot be read: " + scrub(err))
 	}
@@ -139,7 +139,7 @@ func verifyMigration(dir string, sqlite bool, original domain.Database, plan rev
 		return errors.New("converted store has the wrong format")
 	}
 	if sqlite {
-		if err = integrityCheckFile(filepath.Join(dir, SQLiteFile), false); err != nil {
+		if err = integrityCheckFile(filepath.Join(dir, SQLiteFile), readOnly); err != nil {
 			return err
 		}
 	}

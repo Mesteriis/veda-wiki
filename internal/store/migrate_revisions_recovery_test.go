@@ -56,36 +56,96 @@ func failAt(t *testing.T, step string) {
 	t.Cleanup(func() { migrateRevisionsFault = previous })
 }
 
-func TestMigrateRevisionsRerunAfterSuccessIsRefused(t *testing.T) {
-	dir := copyFixture(t, v20Fixture)
-	before := snapshot(t, dir)
-	if _, err := MigrateRevisions(dir); err != nil {
-		t.Fatal(err)
+// noRestoreAdvice requires err to say the store changed since a completed
+// migration and never to advise restoring.
+func noRestoreAdvice(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, errChangedSinceMigration) || strings.Contains(err.Error(), "copy state.before-revisions") || strings.Contains(err.Error(), "PBS") {
+		t.Fatal("changed store got restore advice", err)
 	}
-	after := snapshot(t, dir)
-	if _, err := MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), `run "veda migrate-revisions --verify --data DIR"`) || strings.Contains(err.Error(), "service starts") {
-		t.Fatal("rerun was not refused by the backup", err)
-	}
-	backupsHold(t, dir, before)
-	sameFiles(t, dir, after)
-	if report, err := VerifyRevisions(dir); err != nil || report != v20Report {
-		t.Fatal("verify after success", report, err)
-	}
-	sameFiles(t, dir, after)
-	// Without the backup the converted store is refused as already v21.
-	for _, b := range revisionBackups {
-		os.Remove(filepath.Join(dir, b))
-	}
-	if _, err := MigrateRevisions(dir); !errors.Is(err, errMigrationDone) {
-		t.Fatal("rerun of a converted store", err)
-	}
-	sameFiles(t, dir, after)
 }
 
-// A failure after the backup leaves a complete backup and tells the operator
-// to verify; verify passes only for a committed conversion. Restoring the
-// backup and deleting it gives back the original store, which a new
-// migration converts.
+// After a completed migration the service writes; a rerun or verify must
+// then never advise restoring the backup, which would discard those writes.
+func TestCompletedMigrationThenWritesNeverAdvisesRestore(t *testing.T) {
+	for _, backend := range []string{"sqlite", "json"} {
+		t.Run(backend, func(t *testing.T) {
+			dir := copyFixture(t, v20Fixture)
+			if backend == "json" {
+				toJSON(t, dir)
+			}
+			before := snapshot(t, dir)
+			if _, err := MigrateRevisions(dir); err != nil {
+				t.Fatal(err)
+			}
+			if !present(filepath.Join(dir, backupDone)) {
+				t.Fatal("no completion record")
+			}
+			record, err := os.ReadFile(filepath.Join(dir, backupDone))
+			if err != nil || strings.Contains(string(record), "notes") || strings.Contains(string(record), "Synthetic") {
+				t.Fatal("completion record", string(record), err)
+			}
+			after := snapshot(t, dir)
+			if _, err = MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), "completed and the store is unchanged since: nothing to do") {
+				t.Fatal("rerun after success", err)
+			}
+			if report, err := VerifyRevisions(dir); err != nil || report != v20Report {
+				t.Fatal("verify after success", report, err)
+			}
+			backupsHold(t, dir, before)
+			sameFiles(t, dir, after)
+			s, err := Open(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			update(t, s, func(db *domain.Database) { appendRevision(db, "notes", "short.md", "# Written after the migration") })
+			changed := snapshot(t, dir)
+			_, err = MigrateRevisions(dir)
+			noRestoreAdvice(t, err)
+			report, err := VerifyRevisions(dir)
+			noRestoreAdvice(t, err)
+			if report != v20Report {
+				t.Fatal("verify report", report)
+			}
+			sameFiles(t, dir, changed)
+			// Without any backup file the converted store is refused as v21.
+			for _, b := range append(revisionBackups, backupDone) {
+				os.Remove(filepath.Join(dir, b))
+			}
+			if _, err := MigrateRevisions(dir); !errors.Is(err, errMigrationDone) {
+				t.Fatal("rerun of a converted store", err)
+			}
+		})
+	}
+}
+
+// Without a completion record, a failed verify advises restoring and warns
+// that restoring discards every change since the migration.
+func TestVerifyFailureWithoutCompletionAdvisesRestore(t *testing.T) {
+	dir := copyFixture(t, v20Fixture)
+	failAt(t, "verify")
+	if _, err := MigrateRevisions(dir); err == nil {
+		t.Fatal("injected failure ignored")
+	}
+	if present(filepath.Join(dir, backupDone)) {
+		t.Fatal("completion record after a failure")
+	}
+	s, _, err := read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(s.BlobPath(s.db.Sources["notes"].Assets["img/c.png"].SHA)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = VerifyRevisions(dir)
+	if err == nil || !strings.Contains(err.Error(), "restore: stop VEDA and all clients, copy state.before-revisions.sqlite over state.sqlite") || !strings.Contains(err.Error(), "restoring discards every change made to the store since the migration") {
+		t.Fatal("verify failure advice", err)
+	}
+}
+
+// A failure after the backup leaves a complete backup. Before the store is
+// converted, a rerun reuses the identical backup; after it, verify decides.
+// Restoring the backup and deleting it gives back the original store.
 func TestMigrateRevisionsFailureKeepsBackupForRestore(t *testing.T) {
 	for _, tc := range []struct {
 		step, backend string
@@ -103,20 +163,38 @@ func TestMigrateRevisionsFailureKeepsBackupForRestore(t *testing.T) {
 			original, before := legacyState(t, dir), snapshot(t, dir)
 			failAt(t, tc.step)
 			_, err := MigrateRevisions(dir)
-			if err == nil || !strings.Contains(err.Error(), "failed after the backup was written: injected failure. Do not start the service") || !strings.Contains(err.Error(), "--verify") {
+			want := "the store was not converted (still format v20) and the backup matches it: run migrate-revisions again"
+			if tc.converted {
+				want = "failed after converting the store: injected failure. Do not start the service; run \"veda migrate-revisions --verify"
+			}
+			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatal("failure message", err)
 			}
 			backupsHold(t, dir, before)
 			if _, _, err = loadBackup(dir); err != nil {
 				t.Fatal("backup incomplete", err)
 			}
-			if !tc.converted {
-				sameFiles(t, dir, before)
+			if present(filepath.Join(dir, backupDone)) {
+				t.Fatal("completion record after a failure")
 			}
-			if report, err := VerifyRevisions(dir); (err == nil) != tc.converted || tc.converted && report != v20Report {
+			report, err := VerifyRevisions(dir)
+			if (err == nil) != tc.converted || tc.converted && report != v20Report {
 				t.Fatal("verify after a failure", report, err)
 			}
-			if _, err = MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), "--verify") {
+			migrateRevisionsFault = func(string) error { return nil }
+			if !tc.converted {
+				if !strings.Contains(err.Error(), "nothing to restore") {
+					t.Fatal("verify of an unconverted store", err)
+				}
+				sameFiles(t, dir, before)
+				if report, err = MigrateRevisions(dir); err != nil || report != v20Report {
+					t.Fatal("rerun did not reuse the backup", report, err)
+				}
+				backupsHold(t, dir, before)
+				checkMigrated(t, dir, original, v20Kept)
+				return
+			}
+			if _, err = MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), "converted the store but did not complete") {
 				t.Fatal("rerun after a failure", err)
 			}
 			restoreBackups(t, dir)
@@ -124,7 +202,6 @@ func TestMigrateRevisionsFailureKeepsBackupForRestore(t *testing.T) {
 			if _, err = Open(dir); err == nil || !strings.Contains(err.Error(), "veda migrate-revisions") {
 				t.Fatal("restored store", err)
 			}
-			migrateRevisionsFault = func(string) error { return nil }
 			if _, err = MigrateRevisions(dir); err != nil {
 				t.Fatal("migration after restore", err)
 			}
@@ -153,7 +230,7 @@ func TestMigrateRevisionsRemovesInterruptedBackupCopies(t *testing.T) {
 	}
 }
 
-func TestVerifyRevisionsFailsForAChangedStore(t *testing.T) {
+func TestVerifyRevisionsNeedsBackupAndLock(t *testing.T) {
 	dir := copyFixture(t, v20Fixture)
 	if _, err := VerifyRevisions(dir); err == nil || !strings.Contains(err.Error(), "no complete state.before-revisions.* backup") {
 		t.Fatal("verify without a backup", err)
@@ -161,17 +238,58 @@ func TestVerifyRevisionsFailsForAChangedStore(t *testing.T) {
 	if _, err := MigrateRevisions(dir); err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	update(t, s, func(db *domain.Database) { appendRevision(db, "notes", "short.md", "# Changed") })
-	if report, err := VerifyRevisions(dir); err == nil || report != v20Report {
-		t.Fatal("verify accepted a store written after the migration", report, err)
-	}
 	holdWriterLock(t, dir)
 	if _, err := VerifyRevisions(dir); !errors.Is(err, errMigrationInUse) {
 		t.Fatal("verify with an active writer", err)
+	}
+}
+
+// Verify opens the store and backup read-only: no store or backup file
+// changes, not even its modification time, and no journal appears.
+func TestVerifyRevisionsWritesNothing(t *testing.T) {
+	for _, backend := range []string{"sqlite", "json"} {
+		t.Run(backend, func(t *testing.T) {
+			dir := copyFixture(t, v20Fixture)
+			if backend == "json" {
+				toJSON(t, dir)
+			}
+			if _, err := MigrateRevisions(dir); err != nil {
+				t.Fatal(err)
+			}
+			old := time.Now().Add(-time.Hour).Truncate(time.Second)
+			names := append([]string{"state.json", SQLiteFile, backupDone}, revisionBackups...)
+			stats := map[string]os.FileInfo{}
+			for _, name := range names {
+				p := filepath.Join(dir, name)
+				if !present(p) {
+					continue
+				}
+				if err := os.Chtimes(p, old, old); err != nil {
+					t.Fatal(err)
+				}
+				info, err := os.Stat(p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				stats[name] = info
+			}
+			before := snapshot(t, dir)
+			if _, err := VerifyRevisions(dir); err != nil {
+				t.Fatal(err)
+			}
+			sameFiles(t, dir, before)
+			for name, info := range stats {
+				now, err := os.Stat(filepath.Join(dir, name))
+				if err != nil || !now.ModTime().Equal(info.ModTime()) || now.Size() != info.Size() {
+					t.Fatal("verify touched", name)
+				}
+			}
+			for _, suffix := range []string{"-journal", "-wal", "-shm"} {
+				if present(filepath.Join(dir, SQLiteFile+suffix)) || present(filepath.Join(dir, backupSQLite+suffix)) {
+					t.Fatal("verify left a journal")
+				}
+			}
+		})
 	}
 }
 
@@ -222,6 +340,12 @@ func TestBlobCollectionPausedWhileRevisionBackupExists(t *testing.T) {
 		if err = os.Remove(filepath.Join(dir, b+backupTemp)); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if removed, err := s.CollectBlobs(now); !errors.Is(err, errCollectionPaused) || removed != 0 {
+		t.Fatal("collection ran with the completion record present", removed, err)
+	}
+	if err = os.Remove(filepath.Join(dir, backupDone)); err != nil {
+		t.Fatal(err)
 	}
 	if removed, err := s.CollectBlobs(now); err != nil || removed != 1 || present(s.BlobPath(stray.SHA)) {
 		t.Fatal("collection after the backup was removed", removed, err)
