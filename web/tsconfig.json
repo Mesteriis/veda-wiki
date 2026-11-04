@@ -8,12 +8,14 @@
     "strict": true,
     "noImplicitAny": true,
     "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
     "allowJs": true,
     "checkJs": false,
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": []
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts", "eslint.config.js"]
+  "files": []
 }
