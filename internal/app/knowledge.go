@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/knowledge/extractorclient"
 	"github.com/Mesteriis/veda-wiki/internal/knowledge/jobs"
 	"github.com/Mesteriis/veda-wiki/internal/knowledge/memindex"
+	"github.com/Mesteriis/veda-wiki/internal/knowledge/neo4jindex"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
@@ -135,14 +137,23 @@ func readSecretFile(p, what string) (string, error) {
 	return secret, nil
 }
 
+// neo4jConnectTimeout bounds connecting to Neo4j. The driver connects
+// lazily: an unreachable Neo4j makes the knowledge status degraded, and the
+// service retries with backoff; VEDA itself is unaffected.
+const neo4jConnectTimeout = 5 * time.Second
+
 type knowledgeModule struct {
-	service *knowledge.Service
-	db      *jobs.DB
+	service    *knowledge.Service
+	db         *jobs.DB
+	closeIndex func()
 }
 
 func (m *knowledgeModule) close() {
 	if m != nil {
 		_ = m.db.Close()
+		if m.closeIndex != nil {
+			m.closeIndex()
+		}
 	}
 }
 
@@ -159,34 +170,49 @@ var openKnowledge = func(dataDir string, st *store.Store, k *knowledgeFlags) (*k
 		return nil, err
 	}
 	var index knowledge.Index
+	closeIndex := func() {}
 	switch k.index {
 	case indexMemory:
 		index = memindex.New()
 	default:
-		if _, err = readSecretFile(k.neo4jPasswordFile, "knowledge Neo4j password file"); err != nil {
+		password, err := readSecretFile(k.neo4jPasswordFile, "knowledge Neo4j password file")
+		if err != nil {
 			return nil, err
 		}
-		return nil, errors.New("the Neo4j knowledge index is not available in this build; use --knowledge-index=memory for development")
+		neo, err := neo4jindex.New(neo4jindex.Config{URI: k.neo4jURI, User: k.neo4jUser, Password: password, ConnectTimeout: neo4jConnectTimeout})
+		if err != nil {
+			return nil, err
+		}
+		index = neo
+		closeIndex = func() {
+			ctx, cancel := context.WithTimeout(context.Background(), knowledge.CleanupTimeout)
+			defer cancel()
+			_ = neo.Close(ctx)
+		}
 	}
 	schema := knowledge.SchemaV1()
 	aliases, aliasDigest, err := jobs.ReadAliases(dataDir, schema)
 	if err != nil {
+		closeIndex()
 		return nil, err
 	}
 	client, err := extractorclient.New(k.extractorURL, key)
 	if err != nil {
+		closeIndex()
 		return nil, err
 	}
 	db, err := jobs.Open(dataDir)
 	if err != nil {
+		closeIndex()
 		return nil, err
 	}
 	svc, err := knowledge.NewService(knowledge.Config{Store: st, Manifest: db, Index: index, Extractor: client,
 		Schema: schema, Aliases: aliases, AliasDigest: aliasDigest, Workers: k.workers, ReconcileInterval: k.interval, Logf: log.Printf})
 	if err != nil {
 		db.Close()
+		closeIndex()
 		return nil, err
 	}
 	log.Printf("knowledge indexing enabled (%s index, %d workers)", k.index, k.workers)
-	return &knowledgeModule{service: svc, db: db}, nil
+	return &knowledgeModule{service: svc, db: db, closeIndex: closeIndex}, nil
 }

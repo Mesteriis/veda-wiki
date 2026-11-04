@@ -21,3 +21,5 @@ services/knowledge-extractor/dist/
 .cache/
 .ruff_cache/
 .mypy_cache/
+# knowledge dev stack secrets (scripts/knowledge_stack.py)
+deploy/knowledge/.secrets/
