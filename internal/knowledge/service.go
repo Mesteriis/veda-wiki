@@ -139,9 +139,6 @@ func (s *Service) wakeFeeder() {
 	}
 }
 
-// Index is the index the service publishes to, for the read service.
-func (s *Service) Index() Index { return s.cfg.Index }
-
 // Run resets jobs a previous process left running, then reconciles on
 // start, every ReconcileInterval and after signals, and processes jobs
 // until ctx ends. It returns after every goroutine it started has stopped;
@@ -345,26 +342,6 @@ func (s *Service) Status(ctx context.Context) Status {
 		st.State = StateReady
 	}
 	return st
-}
-
-// States is the job state of each key under the active fingerprint; keys
-// without a row are absent.
-func (s *Service) States(ctx context.Context, keys []SnapshotKey) (map[SnapshotKey]JobState, error) {
-	out := map[SnapshotKey]JobState{}
-	p, ok := s.Pipeline()
-	if !ok {
-		return out, nil
-	}
-	jobs, err := s.cfg.Manifest.Jobs(ctx, keys)
-	if err != nil {
-		return nil, err
-	}
-	for _, j := range jobs {
-		if j.Fingerprint == p.Fingerprint {
-			out[j.Key] = j.State
-		}
-	}
-	return out, nil
 }
 
 // degrade records an outage reason; an extractor or index outage also

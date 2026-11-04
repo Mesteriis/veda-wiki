@@ -10,11 +10,9 @@ import (
 // request reads. A caller learns it only for an article it may read.
 type ArticleStatus string
 
-// Article statuses.
+// Article statuses. There is no "disabled" status: with the module off REST
+// answers every knowledge read with 503 knowledge_disabled.
 const (
-	// ArticleDisabled: the module is off. REST answers every knowledge read
-	// with 503 knowledge_disabled instead; clients map that code to it.
-	ArticleDisabled ArticleStatus = "disabled"
 	// ArticleProcessing: the snapshot is queued or being extracted, or the
 	// pipeline is not known yet.
 	ArticleProcessing ArticleStatus = "processing"
