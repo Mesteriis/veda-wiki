@@ -12,3 +12,10 @@ __pycache__/
 /veda
 /dist/
 web/screens/
+.pytest_cache/
+*.egg-info/
+services/knowledge-extractor/build/
+services/knowledge-extractor/dist/
+# model weights and Hugging Face caches stay out of the repository
+*.safetensors
+.cache/
