@@ -175,38 +175,3 @@ main:has(.graph-section) .global-search input { font-size: 16px; }
   .graph-three-groups .graph-tools { position: absolute; right: 18px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 }
 @media (max-width: 600px) { .graph-tools { align-items: flex-end; } .graph-legend { max-width: 220px; } }
-/* Recently opened articles, scoped to the current browser tab. */
-main:has(.recent-history) .masthead { height: 250px; padding: 84px 0 0; display: block; }
-main:has(.recent-history) .masthead::before { inset: 0 -17px 90px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
-main:has(.recent-history) .masthead-title { min-width: 0; }
-main:has(.recent-history) .header-actions { position: absolute; top: 10px; right: 8px; margin: 0; }
-main:has(.recent-history) .global-search { position: absolute; top: auto; right: auto; left: 0; bottom: 15px; width: 100%; height: 56px; margin: 0; padding: 0 18px; gap: 14px; border-color: #00d9e9; border-radius: 10px; background: #00151e; box-shadow: none; }
-main:has(.recent-history) .global-search input { font-size: 16px; }
-.recent-history { padding: 22px; min-height: 360px; }
-.recent-history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid #174152; padding-bottom: 18px; }
-.recent-history-heading h2 { margin: 0; font-size: 23px; color: #f3f9fb; }
-.recent-history-heading p { margin: 5px 0 0; color: #a8c5d3; }
-.recent-history-heading button { color: #86ddeb; white-space: nowrap; }
-.recent-history-row { display: flex; align-items: center; gap: 14px; min-height: 69px; border-bottom: 1px solid #143b4b; }
-.recent-history-title { flex: 1; min-width: 0; }
-.recent-history-title strong, .recent-history-title small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.recent-history-title strong { font-size: 16px; color: #eef8fc; }
-.recent-history-title small, .recent-history-row time { color: #a8c5d3; }
-.recent-history-row time { white-space: nowrap; font-size: 13px; }
-.recent-history-row > .icon { width: 18px; height: 18px; }
-.recent-history-empty { display: flex; align-items: center; flex-direction: column; text-align: center; padding: 65px 16px; color: #a8c5d3; }
-.recent-history-empty > .icon { width: 32px; height: 32px; }
-.recent-history-empty h3 { color: #eaf7fb; margin: 12px 0 0; }
-.recent-history-empty p { margin: 8px 0 18px; }
-.recent-history-empty a { color: var(--cyan); display: flex; align-items: center; gap: 8px; }
-.recent-history-empty a .icon { width: 18px; height: 18px; }
-@media (max-width: 600px) {
- main:has(.recent-history) .masthead { height: 220px; padding-top: 52px; }
- main:has(.recent-history) .masthead::before { inset: 0 -14px 80px; }
- main:has(.recent-history) .masthead p { white-space: normal; }
- main:has(.recent-history) .global-search { bottom: 10px; }
- .recent-history { padding: 15px; }
- .recent-history-heading { flex-wrap: wrap; }
- .recent-history-row { flex-wrap: wrap; gap: 8px; padding: 12px 0; }
- .recent-history-row time { margin-left: 42px; }
-}
