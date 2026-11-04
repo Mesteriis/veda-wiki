@@ -281,15 +281,91 @@ the identical JSON as its text content.
 
 ## Interface
 
-> **To be completed after Task 7 is merged** (the UI is developed on a
-> separate branch; no screenshots are claimed here). Planned per the plan:
-> a "Links" / "Knowledge graph" switch on the existing graph screen
-> (`?graph=1&mode=knowledge`), entity search, source and relation filters,
-> a centre node, zoom, an element card with documents, explanation, quote
-> and a link to the article, an "Entities" and "Related articles" block in
-> the article view, a text list of relations, keyboard navigation and the
-> states disabled / processing / stale / unavailable / empty / loading. All
-> of it reads only; quotes are rendered as text.
+The React reader only reads knowledge (`web/src/api/knowledge.ts`,
+`web/src/features/knowledge/`). With the module off every screen looks as
+before.
+
+### Graph screen
+
+- The «Ссылки» / «Граф знаний» switch appears on the links screen only after
+  a probe `GET /api/v1/knowledge/entities?limit=1` shows the module is on (a
+  success, or an error only an enabled module sends). With the module off
+  (`knowledge_disabled`) the links screen is unchanged and shows no switch.
+- The knowledge mode is addressed as `?graph=1&mode=knowledge&entity=<id>`;
+  choosing a centre writes `entity` into the address, so a view can be
+  linked and reloaded. Article entities link to this address.
+- Toolbar: entity search (up to 20 results with type and document count;
+  one is picked as the centre), a source filter and relation-type checkboxes
+  (at least one stays checked). Filters are sent as `sources` and
+  `relations` of `graph`.
+- The canvas is centred on the chosen entity, with zoom from 40% to 160%
+  and a legend (entity, document, relation direction, mention). Each request
+  asks for at most 40 nodes and 80 edges; «Показать соседей» expands the
+  selected node step by step up to the server caps, and a `truncated`
+  answer is said in a note. A failed expansion says why (timeout, no
+  connection, unavailable, disabled, entity gone, rejected) and is never
+  shown as "no neighbours".
+- The card of the selected element: for an entity its mentions, documents
+  (links to the articles), how mentions were merged, unconfirmed same-name
+  candidates, and its relations each with status and quote; for a relation
+  its direction, a note that it was extracted and not checked by a person,
+  its status and up to 5 quotes; for a document a link to the article.
+  Quotes are rendered as text, never as Markdown or HTML, with a link to
+  their article.
+- «Связи» lists the same edges as text (relations with status and the
+  article of their first quote, then mentions) for screen readers and
+  keyboards. On the canvas the nodes are one tab stop: arrow keys move
+  between nodes, Enter or Space selects one.
+- Below 900 px the card moves under the canvas; below 600 px the search
+  field takes the full width. On a narrow screen the canvas scrolls to its
+  middle, where the centre is.
+
+### Article
+
+Under a source-qualified article the reader shows «Сущности» (links to the
+graph centred on each, with type; candidates labelled) and «Связанные
+статьи». A related article shows its first 3 reasons (shared entity,
+relation with its type, candidate with "возможное совпадение, не
+подтверждено" and a quote); further reasons are under a `details`
+element. A note says everything was found automatically and may be wrong.
+
+### States
+
+| State | Shown |
+| --- | --- |
+| loading | a short status line (in the article only once the module is known to be on) |
+| empty | «Сущности и связанные статьи не найдены.»; on the graph screen "no entities" or "no relations with these filters" |
+| disabled (`knowledge_disabled`) | the article block renders nothing; the knowledge mode says the module is off and points to «Ссылки» |
+| `processing`, `stale` | an explanation and a «Проверить снова» button that repeats the request |
+| `unavailable`, timeout, no connection | "Граф знаний сейчас недоступен"; the article still reads as usual |
+| `too_large` | the article is too large for automatic analysis |
+| `failed` | analysis failed; the owner also sees the error code (the server sends it only to the owner) |
+| SHA mismatch | an answer for another `content_sha256` than the displayed text is not shown; the block says the text changed and links for this version are not ready |
+
+An article that is not found or invalid for the knowledge API renders
+nothing.
+
+### Session and caching
+
+Every knowledge request belongs to the current browser session. Sign-in,
+sign-out and a password change reset the client: requests in flight are
+aborted, late answers of the previous session are dropped and the known
+module state is forgotten. The `/api/state` poll resets it too when the
+reading scope changes or the page leaves the readable scope (404). All
+knowledge responses, success or error, carry `Cache-Control: no-store`.
+
+### Verification
+
+- With the module off, `scripts/screens.py` and `scripts/ui_compare.mjs`
+  against the existing baseline: 27 screens compared, 0 violations.
+- `scripts/screens.py --knowledge` runs VEDA with `--knowledge
+  --knowledge-index=memory` and a deterministic fake extractor
+  (`scripts/ui_knowledge.py`, two synthetic articles) and captures 4
+  knowledge screens at 3 widths: 12 screens, compared to a machine-local
+  baseline in `web/screens/knowledge-baseline` (git-ignored, not
+  committed) with 0 violations. Real extraction quality is not what these
+  screens show.
+- `npx vitest run`: 103 tests.
 
 ## Running
 
