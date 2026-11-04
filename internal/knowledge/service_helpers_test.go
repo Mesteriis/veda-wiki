@@ -278,6 +278,19 @@ func (h *harness) jobsOf(key knowledge.SnapshotKey) []knowledge.Job {
 	return jobs
 }
 
+// logCount counts log lines that contain part.
+func (h *harness) logCount(part string) int {
+	h.logMu.Lock()
+	defer h.logMu.Unlock()
+	n := 0
+	for _, line := range h.logs {
+		if strings.Contains(line, part) {
+			n++
+		}
+	}
+	return n
+}
+
 func relations(v knowledge.ArticleView) []string {
 	var out []string
 	for _, c := range v.Claims {

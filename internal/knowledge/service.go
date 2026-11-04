@@ -174,9 +174,15 @@ func (s *Service) Run(ctx context.Context) error {
 func (s *Service) reconcileLoop(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.ReconcileInterval)
 	defer ticker.Stop()
+	logged := "" // the last reason logged; a repeat is not logged again
 	for {
 		if err := s.Reconcile(ctx); err != nil && ctx.Err() == nil {
-			s.cfg.Logf("knowledge: reconciliation incomplete: %s", reasonOf(err))
+			if reason := reasonOf(err); reason != logged {
+				s.cfg.Logf("knowledge: reconciliation incomplete: %s", reason)
+				logged = reason
+			}
+		} else if err == nil {
+			logged = ""
 		}
 		select {
 		case <-ctx.Done():
@@ -394,6 +400,8 @@ func reasonOf(err error) string {
 	switch {
 	case err == nil:
 		return "ok"
+	case errors.Is(err, errNoPipeline):
+		return "extractor settings unknown"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return "timeout or cancelled"
 	case errors.Is(err, ErrUnavailable):

@@ -141,6 +141,23 @@ func TestBusyExtractorRetriesWithoutDegrading(t *testing.T) {
 	}
 }
 
+// Without known extractor settings reconciliation cannot run; that is said
+// once with its reason, not on every signal or interval.
+func TestReconcileLogsUnknownPipelineOnce(t *testing.T) {
+	h := newHarness(t, 1)
+	h.ex.setDown(true)
+	h.start()
+	for i := range 5 {
+		h.write("pub", fmt.Sprintf("a%d.md", i), "billing uses Redis.\n")
+		time.Sleep(10 * time.Millisecond)
+	}
+	waitFor(t, func() bool { return h.logCount("reconciliation incomplete") > 0 })
+	time.Sleep(50 * time.Millisecond)
+	if n, m := h.logCount("reconciliation incomplete"), h.logCount("reconciliation incomplete: extractor settings unknown"); n != 1 || m != 1 {
+		t.Fatalf("logged %d times, %d with the reason", n, m)
+	}
+}
+
 type failingCounts struct {
 	*jobs.DB
 	fail bool
