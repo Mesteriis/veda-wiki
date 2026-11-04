@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -8,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/knowledge"
 	"github.com/Mesteriis/veda-wiki/internal/knowledge/jobs"
+	"github.com/Mesteriis/veda-wiki/internal/knowledge/memindex"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
@@ -143,5 +146,71 @@ func knowledgeStartsAndStops(t *testing.T, key string, index []string) {
 	info, err := os.Lstat(filepath.Join(dataDir, jobs.File))
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal("knowledge database missing or not private", err)
+	}
+}
+
+// slowExtractor ignores cancellation in Ready until released, like a call
+// that outlives the drain timeout.
+type slowExtractor struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (e slowExtractor) Ready(context.Context) (knowledge.ModelInfo, error) {
+	e.entered <- struct{}{}
+	<-e.release
+	return knowledge.ModelInfo{}, knowledge.ErrUnavailable
+}
+
+func (e slowExtractor) Extract(context.Context, knowledge.ExtractRequest) (knowledge.ExtractResult, error) {
+	return knowledge.ExtractResult{}, knowledge.ErrUnavailable
+}
+
+// close waits for Run to return before closing the manifest, even when Run
+// is still busy after the parent context ended.
+func TestKnowledgeCloseWaitsForRun(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := jobs.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := slowExtractor{entered: make(chan struct{}, 4), release: make(chan struct{})}
+	svc, err := knowledge.NewService(knowledge.Config{Store: st, Manifest: db, Index: memindex.New(), Extractor: ex,
+		Schema: knowledge.SchemaV1(), ReconcileInterval: time.Hour, Logf: func(string, ...any) {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexClosed := make(chan struct{})
+	m := &knowledgeModule{service: svc, db: db, closeIndex: func() { close(indexClosed) }}
+	ctx, cancel := context.WithCancel(context.Background())
+	var workers sync.WaitGroup
+	m.start(ctx, &workers)
+	<-ex.entered
+	cancel() // the drain gave up; Run is still inside Ready
+	closed := make(chan struct{})
+	go func() { m.close(); close(closed) }()
+	select {
+	case <-closed:
+		t.Fatal("close returned while Run was still running")
+	case <-indexClosed:
+		t.Fatal("index closed while Run was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(ex.release)
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("close did not return after Run stopped")
+	}
+	workers.Wait()
+	if _, err := db.Counts(context.Background(), "kg1-x"); err == nil {
+		t.Fatal("manifest still open after close")
 	}
 }

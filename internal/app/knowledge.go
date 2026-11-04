@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/knowledge"
@@ -146,10 +147,35 @@ type knowledgeModule struct {
 	service    *knowledge.Service
 	db         *jobs.DB
 	closeIndex func()
+	// cancel and stopped are set by start; close cancels Run and waits for
+	// it to return before closing what Run uses.
+	cancel  context.CancelFunc
+	stopped chan struct{}
 }
 
+// start runs the service until ctx ends or close is called; workers tracks
+// it for the graceful drain.
+func (m *knowledgeModule) start(ctx context.Context, workers *sync.WaitGroup) {
+	ctx, m.cancel = context.WithCancel(ctx)
+	m.stopped = make(chan struct{})
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		defer close(m.stopped)
+		_ = m.service.Run(ctx)
+	}()
+}
+
+// close stops the service and then closes the manifest and the index. It
+// waits for Run even when the drain timed out, so nothing uses a closed
+// database; Run returns once its context ends (job writes after
+// cancellation are bounded by knowledge.CleanupTimeout).
 func (m *knowledgeModule) close() {
 	if m != nil {
+		if m.cancel != nil {
+			m.cancel()
+			<-m.stopped
+		}
 		_ = m.db.Close()
 		if m.closeIndex != nil {
 			m.closeIndex()

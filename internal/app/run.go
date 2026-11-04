@@ -158,8 +158,7 @@ func Run(ctx context.Context, args []string) (err error) {
 	if kmod != nil {
 		// The store only signals after commits; it never waits for indexing.
 		st.OnCommit(kmod.service.Signal)
-		workers.Add(1)
-		go func() { defer workers.Done(); _ = kmod.service.Run(ctx) }()
+		kmod.start(ctx, &workers)
 	}
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
 		cfg := httpapi.Config{OwnerToken: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList}
