@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
-import { buildTree, buildMergedTree } from "./tree.js";
-import { catalogPages } from "./catalog.js";
-import { readVisits, recordVisit, saveVisits, clearVisits, visibleVisits } from "./recent.js";
+import { buildTree, buildMergedTree } from "./lib/tree";
+import { catalogPages } from "./lib/catalog";
+import { readVisits, recordVisit, saveVisits, clearVisits, visibleVisits } from "./lib/recent";
 import { I } from "./icon.jsx";
 import { AccessSettings } from "./AccessSettings.jsx";
 import { GitHubConnect } from "./GitHubConnect.jsx";
-import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
-import { fetchState, shouldPoll } from "./statePoll.js";
+import { conflictWarning, observationLabel, syncWarning } from "./lib/sourceWarnings";
+import { fetchState, shouldPoll } from "./api/state";
 const Features = createContext(() => {});
 const descriptions = {
   github: [

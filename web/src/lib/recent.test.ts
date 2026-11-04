@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { recordVisit, visibleVisits, readVisits, saveVisits, clearVisits } from './recent.js';
+import { recordVisit, visibleVisits, readVisits, saveVisits, clearVisits } from './recent';
 test('recent history deduplicates visits and keeps source-qualified paths', () => {
   let entries = recordVisit([], 'private/docs/a.md', 1);
   entries = recordVisit(entries, 'public/docs/a.md', 2);

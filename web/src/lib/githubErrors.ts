@@ -1,6 +1,6 @@
 // Only known server codes are mapped; arbitrary remote response text is never displayed.
-export function githubErrorMessage(code, status, fallback) {
-  const messages = {
+export function githubErrorMessage(code: string | undefined, status: number, fallback: string): string {
+  const messages: Record<string, string> = {
     rate_limited: "GitHub ограничил число запросов. Дождитесь сброса лимита или выберите другой аккаунт.",
     repository_unavailable: "Репозиторий или ветка недоступны. Проверьте адрес и доступ выбранного аккаунта.",
     permission_denied: "GitHub отказал в доступе. Проверьте права выбранного аккаунта.",
@@ -17,14 +17,21 @@ export function githubErrorMessage(code, status, fallback) {
     credentials_missing: "Сохранённые данные аккаунта недоступны. Проверьте подключение аккаунта GitHub.",
     publication_confirmation_required: "Для отправки ранее приватных изменений необходимо подтверждение публикации.",
   };
-  if (Object.hasOwn(messages, code)) return messages[code];
+  if (code !== undefined && Object.hasOwn(messages, code)) return messages[code] ?? fallback;
   if (status === 409) return "Настройки изменились или действует ограничение синхронизации. Обновите список и проверьте состояние.";
   return fallback;
 }
 
+export interface VisibilityInput {
+  private: unknown;
+  paused: boolean;
+  verification: string;
+  verified_at: string;
+}
+
 // Estimate proof freshness using the browser clock; the server independently
 // enforces its own clock and authorization for every public read.
-export function githubVisibilityLabel(connection, now = Date.now()) {
+export function githubVisibilityLabel(connection: VisibilityInput, now = Date.now()): string {
   const verified = Date.parse(connection.verified_at);
   if (typeof connection.private !== 'boolean' || connection.paused || connection.verification !== 'verified' || !Number.isFinite(verified)
       || verified > now + 60_000 || now - verified >= 600_000) {

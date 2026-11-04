@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { I } from "./icon.jsx";
-import { githubErrorMessage, githubVisibilityLabel } from "./githubErrors.js";
-import { githubSourceId } from "./githubSourceId.js";
+import { githubErrorMessage, githubVisibilityLabel } from "./lib/githubErrors";
+import { githubSourceId } from "./lib/githubSourceId";
 
 export function GitHubConnect() {
   const stateLabels = { pending: "Ожидает синхронизации", syncing: "Синхронизация", ready: "Синхронизирован", paused: "Приостановлен", skipped: "Нет папки docs/", blocked: "Требует внимания", error: "Ошибка синхронизации" };

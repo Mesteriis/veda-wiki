@@ -1,6 +1,6 @@
-import test from "node:test";
+import { test } from 'vitest';
 import assert from "node:assert/strict";
-import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings.js";
+import { conflictWarning, observationLabel, syncWarning } from "./sourceWarnings";
 
 test("explains known sync states without displaying arbitrary input", () => {
   assert.match(syncWarning("error"), /ошибка синхронизации/);

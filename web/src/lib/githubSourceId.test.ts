@@ -1,6 +1,6 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { githubSourceId } from './githubSourceId.js';
+import { githubSourceId } from './githubSourceId';
 test('derive a valid source ID from an owner/repository or GitHub URL', () => {
   assert.equal(githubSourceId('Example/handbook'), 'github-example-handbook');
   assert.equal(githubSourceId('https://github.com/Example/Repo.git/'), 'github-example-repo');

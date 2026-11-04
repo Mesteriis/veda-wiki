@@ -11,5 +11,5 @@ lint:
 	python3 scripts/check_architecture.py
 	go run honnef.co/go/tools/cmd/staticcheck@2026.2.2 ./...
 test: frontend lint
-	node --test web/src/*.test.js
+	cd web && npm run typecheck && npm run lint && npm test
 	go test -race ./... && go vet ./...

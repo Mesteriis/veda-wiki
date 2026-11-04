@@ -1,6 +1,6 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { githubErrorMessage } from './githubErrors.js';
+import { githubErrorMessage } from './githubErrors';
 
 test('explains known errors without displaying arbitrary remote content', () => {
   assert.match(githubErrorMessage('invalid_docs_directory', 0, 'fallback'), /docs должен быть каталогом/);

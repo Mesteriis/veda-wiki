@@ -1,18 +1,20 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { loginFromLink } from './link-login.js';
+import { loginFromLink, type LinkFetcher, type LinkHistory } from './session';
 
-function fixture(href, response = { ok: true }) {
-  const calls = [];
-  return { calls, location: { href }, history: { state: null, replaceState: (...args) => calls.push(['replace', ...args]) }, fetcher: async (...args) => { calls.push(['fetch', ...args]); return response; } };
+function fixture(href: string, response: { ok: boolean } = { ok: true }) {
+  const calls: unknown[][] = [];
+  const history: LinkHistory = { state: null, replaceState: (...args: unknown[]) => { calls.push(['replace', ...args]); } };
+  const fetcher: LinkFetcher = async (...args: unknown[]) => { calls.push(['fetch', ...args]); return response; };
+  return { calls, location: { href }, history, fetcher };
 }
 
 test('exchanges a link key only after removing it, preserving navigation', async () => {
   const f = fixture('https://wiki.example/?key=synthetic&env=all&page=article#section');
   assert.equal(await loginFromLink(f.location, f.history, f.fetcher), false);
-  assert.equal(f.calls[0][3], '/?env=all&page=article#section');
-  assert.equal(f.calls[1][1], '/api/session/login');
-  assert.deepEqual(JSON.parse(f.calls[1][2].body), { key: 'synthetic' });
+  assert.equal(f.calls[0]![3], '/?env=all&page=article#section');
+  assert.equal(f.calls[1]![1], '/api/session/login');
+  assert.deepEqual(JSON.parse((f.calls[1]![2] as RequestInit).body as string), { key: 'synthetic' });
 });
 
 test('missing key does nothing; duplicate or empty keys are removed without login', async () => {
@@ -23,7 +25,7 @@ test('missing key does nothing; duplicate or empty keys are removed without logi
     const f = fixture('https://wiki.example/' + query);
     assert.equal(await loginFromLink(f.location, f.history, f.fetcher), true);
     assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0][3], '/');
+    assert.equal(f.calls[0]![3], '/');
   }
 });
 

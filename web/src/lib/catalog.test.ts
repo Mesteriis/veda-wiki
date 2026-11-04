@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { catalogPages } from './catalog.js';
+import { catalogPages } from './catalog';
 
 test('catalog selection keeps identical folder paths in distinct sources', () => {
   const groups = [
