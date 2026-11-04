@@ -112,6 +112,7 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 		ProgramDocumentation:      src.Kind == "program",
 		UnresolvedConflict:        unresolved,
 		ConflictResolutionBlocked: blocked,
+		Assets:                    r.Assets,
 	}, nil
 }
 

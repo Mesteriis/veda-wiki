@@ -104,7 +104,12 @@ func Page(p domain.Page) (template.HTML, template.HTML, error) {
 			if e == nil && u.Scheme == "" && u.Host == "" {
 				sourceID, target, valid := SourceTarget(p.Path, u.Path)
 				if valid {
+					// An image bound to the displayed revision names its digest,
+					// so an older version shows the image it was written with.
 					image.Destination = []byte("/media/" + sourceID + "/" + url.PathEscape(target))
+					if ref, bound := p.Assets[target]; bound {
+						image.Destination = append(image.Destination, "?v="+ref.SHA...)
+					}
 				} else {
 					image.Destination = []byte("")
 				}

@@ -104,18 +104,8 @@ func Validate(db *domain.Database) error {
 				return errors.New("invalid stored metadata")
 			}
 		}
-		for name, ref := range src.Assets {
-			if !domain.SafeRelative(name) {
-				return errors.New("invalid stored asset")
-			}
-			if _, e := domain.HexKey(ref.SHA); e != nil {
-				return errors.New("invalid stored asset digest")
-			}
-			switch ref.MIME {
-			case "image/png", "image/jpeg", "image/webp", "image/gif":
-			default:
-				return errors.New("invalid stored asset type")
-			}
+		if e := validateAssets(src.Assets); e != nil {
+			return e
 		}
 	}
 	for key, article := range db.Articles {
@@ -140,6 +130,9 @@ func Validate(db *domain.Database) error {
 				return errors.New("invalid stored revision")
 			}
 			previous = revision.Number
+			if e := validateAssets(revision.Assets); e != nil {
+				return e
+			}
 		}
 		if article.Translation != nil {
 			tr := article.Translation
@@ -177,6 +170,9 @@ func Validate(db *domain.Database) error {
 			p := article.Published
 			if len(p.Text) > domain.MaxArticleBytes || (len(p.Text) > domain.LegacyArticleBytes && db.Version < 13) || !utf8.ValidString(p.Text) || domain.Digest([]byte(p.Text)) != p.SHA {
 				return errors.New("invalid publication snapshot")
+			}
+			if e := validateAssets(p.Assets); e != nil {
+				return e
 			}
 		}
 		for _, c := range article.Conflicts {
@@ -372,4 +368,23 @@ func storedOrPruned(a domain.Article, n int, sha string) bool {
 		return r.SHA == sha
 	}
 	return n >= 1 && n < domain.LatestRevision(a)
+}
+
+// validateAssets checks an image index of a source, revision or publication
+// copy: the media handler serves these references with their stored type.
+func validateAssets(assets map[string]domain.BlobRef) error {
+	for name, ref := range assets {
+		if !domain.SafeRelative(name) {
+			return errors.New("invalid stored asset")
+		}
+		if _, e := domain.HexKey(ref.SHA); e != nil {
+			return errors.New("invalid stored asset digest")
+		}
+		switch ref.MIME {
+		case "image/png", "image/jpeg", "image/webp", "image/gif":
+		default:
+			return errors.New("invalid stored asset type")
+		}
+	}
+	return nil
 }

@@ -87,7 +87,7 @@ func PutArticle(db *Database, sourceID, p, text string, expected int, now time.T
 		}
 	}
 	sum := sha256.Sum256([]byte(text))
-	rev = Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: now.UTC().Format(time.RFC3339Nano)}
+	rev = Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: now.UTC().Format(time.RFC3339Nano), Assets: RevisionAssets(text, p, src)}
 	versions := append([]Revision(nil), article.Versions...)
 	versions = append(versions, rev)
 	article.SourceID, article.Path, article.Versions, article.Deleted = sourceID, p, versions, false

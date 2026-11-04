@@ -67,6 +67,9 @@ func (s *Store) scopedLocked(scope []string) *Store {
 		// Strings are immutable values; copy every mutable field while the
 		// source lock still protects the coherent authorization snapshot.
 		article.Versions = slices.Clone(article.Versions)
+		for i := range article.Versions {
+			article.Versions[i].Assets = maps.Clone(article.Versions[i].Assets)
+		}
 		article.Conflicts = slices.Clone(article.Conflicts)
 		article.ReconcileBase = nil
 		if article.Translation != nil {
@@ -79,6 +82,7 @@ func (s *Store) scopedLocked(scope []string) *Store {
 		}
 		if article.Published != nil {
 			published := *article.Published
+			published.Assets = maps.Clone(published.Assets)
 			article.Published = &published
 		}
 		db.Articles[key] = article

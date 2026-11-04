@@ -14,7 +14,7 @@ func DisplayedRevision(a Article, revision Revision, public bool) (Revision, boo
 	if tr == nil || tr.OriginalSHA != revision.SHA || (public && !tr.PublicApproved) {
 		return revision, false
 	}
-	return Revision{Number: revision.Number, Text: tr.Text, SHA: tr.SHA, Created: tr.Created}, true
+	return Revision{Number: revision.Number, Text: tr.Text, SHA: tr.SHA, Created: tr.Created, Assets: revision.Assets}, true
 }
 
 // Title returns the text of the first "# " heading in text, or the base

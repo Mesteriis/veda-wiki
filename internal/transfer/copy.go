@@ -91,7 +91,21 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	if targetPublic && (domain.CredentialLike(rev.Text) || (!sourcePublicRevision && !in.ConfirmPublication)) {
 		return domain.Revision{}, domain.ErrInvalid
 	}
-	copied := domain.Revision{Number: domain.LatestRevision(b) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
+	if len(dependencies.Assets) > 0 && destination.ConnectionID == "" {
+		previous := destination.Assets
+		destination.Assets = make(map[string]domain.BlobRef, len(previous)+len(dependencies.Assets))
+		for p, ref := range previous {
+			destination.Assets[p] = ref
+		}
+		for p, ref := range dependencies.Assets {
+			destination.Assets[p] = ref
+		}
+		db.Sources[destination.ID] = destination
+	}
+	// The copy keeps the images of the destination index it will display:
+	// copied images of a local destination, the observed remote index of a
+	// connected one until its queued images are pulled back.
+	copied := domain.Revision{Number: domain.LatestRevision(b) + 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano), Assets: domain.RevisionAssets(rev.Text, in.DestinationPath, destination)}
 	b.SourceID, b.Path, b.Deleted = in.DestinationID, in.DestinationPath, false
 	b.Versions = append(append([]domain.Revision(nil), b.Versions...), copied)
 	b.CopiedFrom = &domain.CopyOrigin{SourceID: in.SourceID, Path: in.SourcePath, Revision: in.ExpectedRevision, SHA: rev.SHA}
@@ -111,17 +125,6 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	}
 	if dependencies.DirectoryLinks && db.Version < 16 {
 		db.Version = 16
-	}
-	if len(dependencies.Assets) > 0 && destination.ConnectionID == "" {
-		previous := destination.Assets
-		destination.Assets = make(map[string]domain.BlobRef, len(previous)+len(dependencies.Assets))
-		for p, ref := range previous {
-			destination.Assets[p] = ref
-		}
-		for p, ref := range dependencies.Assets {
-			destination.Assets[p] = ref
-		}
-		db.Sources[destination.ID] = destination
 	}
 	db.Articles[key] = b
 	// An active move may depend on the previous destination revision.

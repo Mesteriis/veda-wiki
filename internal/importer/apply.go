@@ -318,6 +318,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 			return Result{}, false, ErrAssetUnavailable
 		}
 	}
+	bindImportedAssets(db, batch, refs, proof != nil && proof.Visibility == "public")
 	src.Metadata = batch.Metadata
 	src.Assets = refs
 	src.ImportCommit = batch.Commit
@@ -407,5 +408,34 @@ func retainPrivateAssets(db *domain.Database, batch Batch, previous, refs map[st
 				refs[name] = ref
 			}
 		}
+	}
+}
+
+// bindImportedAssets gives every revision this import created or observed
+// unchanged, and every publication copy it made, the images the imported
+// text references in the final index refs. A revision whose text equals the
+// imported file mirrors the observed commit, so it follows that commit's
+// images even when only an image changed. Locally changed revisions and
+// local publications keep the images they were written with.
+func bindImportedAssets(db *domain.Database, batch Batch, refs map[string]domain.BlobRef, publicProof bool) {
+	index := domain.Source{Assets: refs}
+	for p, text := range batch.Files {
+		key := batch.SourceID + "/" + p
+		a, found := db.Articles[key]
+		if !found || a.Deleted {
+			continue
+		}
+		hash := domain.Digest([]byte(text))
+		assets := domain.RevisionAssets(text, p, index)
+		if n := len(a.Versions); n > 0 && a.Versions[n-1].SHA == hash {
+			a.Versions = append([]domain.Revision(nil), a.Versions...)
+			a.Versions[n-1].Assets = assets
+		}
+		if publicProof && !a.PublishedLocal && a.Published != nil && a.Published.SHA == hash {
+			published := *a.Published
+			published.Assets = assets
+			a.Published = &published
+		}
+		db.Articles[key] = a
 	}
 }

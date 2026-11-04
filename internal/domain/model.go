@@ -36,6 +36,10 @@ type Revision struct {
 	Text    string `json:"text"`
 	SHA     string `json:"sha256"`
 	Created string `json:"created_at"`
+	// Assets are the images the text referenced when the revision was
+	// written, by repository path. Revisions written before images were
+	// bound have none and display the source's current images.
+	Assets map[string]BlobRef `json:"assets,omitempty"`
 }
 
 // Article is one Markdown file of a source with its revision history,
@@ -274,4 +278,6 @@ type Page struct {
 	Updated                   string        `json:"updated_at,omitempty"`
 	Text                      string        `json:"-"`
 	HTML                      template.HTML `json:"-"`
+	// Assets are the images bound to the displayed revision, if any.
+	Assets map[string]BlobRef `json:"-"`
 }

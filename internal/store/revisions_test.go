@@ -36,3 +36,36 @@ func TestValidateRevisionNumbersStrictlyIncrease(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateRevisionAssets(t *testing.T) {
+	good := domain.BlobRef{SHA: domain.Digest([]byte("image")), MIME: "image/png"}
+	for _, tc := range []struct {
+		name  string
+		ref   domain.BlobRef
+		path  string
+		valid bool
+	}{
+		{"valid", good, "img/a.png", true},
+		{"unsafe path", good, "../a.png", false},
+		{"bad digest", domain.BlobRef{SHA: "x", MIME: "image/png"}, "img/a.png", false},
+		{"bad type", domain.BlobRef{SHA: good.SHA, MIME: "text/html"}, "img/a.png", false},
+	} {
+		for _, published := range []bool{false, true} {
+			a := numberedArticle(1)
+			assets := map[string]domain.BlobRef{tc.path: tc.ref}
+			if published {
+				copy := a.Versions[0]
+				copy.Number, copy.Assets = 0, assets
+				a.Published = &copy
+			} else {
+				a.Versions[0].Assets = assets
+			}
+			db := domain.Database{Version: 20,
+				Sources:  map[string]domain.Source{"one": {ID: "one", Title: "One", Kind: "wiki", Visibility: "private"}},
+				Articles: map[string]domain.Article{"one/a.md": a}}
+			if err := store.Validate(&db); (err == nil) != tc.valid {
+				t.Error(tc.name, published, err)
+			}
+		}
+	}
+}

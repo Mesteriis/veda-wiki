@@ -71,3 +71,24 @@ func TestMarkdownImagesStayInTheirSource(t *testing.T) {
 		t.Fatal("image escaped the source")
 	}
 }
+
+func TestMarkdownImagesUseTheRevisionDigest(t *testing.T) {
+	old := strings.Repeat("a", 64)
+	p := domain.Page{Path: "alpha/chapter/page.md", Text: "![Bound](../images/a.png)\n\n![Unbound](../images/b.png)", Assets: map[string]domain.BlobRef{"images/a.png": {SHA: old, MIME: "image/png"}}}
+	body, _, err := Page(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(body)
+	if !strings.Contains(html, `src="/media/alpha/images%2Fa.png?v=`+old+`"`) {
+		t.Fatal("bound image does not name its revision digest", html)
+	}
+	if !strings.Contains(html, `src="/media/alpha/images%2Fb.png"`) {
+		t.Fatal("unbound image changed its URL", html)
+	}
+	p.Assets = nil
+	body, _, _ = Page(p)
+	if strings.Contains(string(body), "?v=") {
+		t.Fatal("page without bound images names a digest")
+	}
+}

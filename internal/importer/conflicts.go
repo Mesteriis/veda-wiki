@@ -107,6 +107,7 @@ func (s Service) ResolveConflict(sourceID, p string, index, expected int, resolu
 					Text:    incoming.Incoming,
 					SHA:     incoming.IncomingSHA,
 					Created: time.Now().UTC().Format(time.RFC3339Nano),
+					Assets:  domain.RevisionAssets(incoming.Incoming, p, db.Sources[sourceID]),
 				})
 			}
 		}

@@ -120,6 +120,11 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 			}
 		}
 	}
+	index := domain.Source{Assets: assets}
+	if dst.ConnectionID != "" {
+		index.Assets = observedAssets
+	}
+	root = bindCopiedAssets(db, plan, in.DestinationID, in.DestinationPath, index)
 	if dst.ConnectionID != "" {
 		// The asset index reflects only the last observed remote tree.
 		dst.Assets = observedAssets
@@ -146,4 +151,28 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 		db.Version = 16
 	}
 	return root, Dependencies{Assets: batchAssets, Links: links, DirectoryLinks: directoryLinks}, nil
+}
+
+// bindCopiedAssets gives each staged copy, and its publication copy, the
+// images of index its text references: the copied images of a local
+// destination, or the observed remote index of a connected one until its
+// queued images are pulled back. It returns the copied revision at rootPath.
+func bindCopiedAssets(db *domain.Database, plan Plan, destinationID, rootPath string, index domain.Source) domain.Revision {
+	for _, item := range plan.Articles {
+		if item.Destination == "matching" {
+			continue
+		}
+		key := destinationID + "/" + item.DestinationPath
+		b := db.Articles[key]
+		assets := domain.RevisionAssets(b.Versions[0].Text, item.DestinationPath, index)
+		b.Versions[0].Assets = assets
+		if b.Published != nil {
+			published := *b.Published
+			published.Assets = assets
+			b.Published = &published
+		}
+		db.Articles[key] = b
+	}
+	root, _ := domain.LastRevision(db.Articles[destinationID+"/"+rootPath])
+	return root
 }
