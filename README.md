@@ -190,7 +190,7 @@ The default store uses an atomic, fsynced JSON transaction file, bounded to
 whole-store limit; migration and backup requirements are in [storage](docs/storage.md).
 Articles are bounded to 1 MiB of UTF-8;
 documents over 256,000 bytes require store format v13, which older binaries reject.
-There is no automatic history retention yet. Treat this
+The store keeps the three newest revisions of each article plus protected ones, and `veda migrate-revisions` converts older stores. Treat this
 as early software, not a completed hosted multi-user wiki. Named readers and
 teams have source-scoped read access; account recovery, MFA and SSO are not implemented.
 

@@ -30,7 +30,7 @@ The field is absent for public readers and for articles without a conflict.
 | POST | `/api/v1/sources` | Create a local source (owner only) |
 | GET | `/api/v1/articles` | Visible article index |
 | GET | `/api/v1/articles?source_id=…&path=…` | Current revision of a visible article |
-| GET | `/api/v1/articles?source_id=…&path=…&history=1` | All revisions (owner only; public callers still receive only current revision) |
+| GET | `/api/v1/articles?source_id=…&path=…&history=1` | Stored revisions: the newest three plus protected ones, so numbers can start above 1 and have gaps (owner only; public callers still receive only the current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
 | GET | `/api/v1/articles/translation-needed` | List program documents needing translation, publication review, or conflict resolution, limited to authorized sources; optional `source_id`, `limit` and `offset` |

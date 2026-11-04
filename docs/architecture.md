@@ -11,7 +11,7 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | --- | --- |
 | `cmd/veda` | Entry point: picks the subcommand and calls `internal/app`. |
 | `internal/app` | Assembly: server flags, listeners, the reader socket, workers, bounded shutdown and the writer lock. |
-| `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `import`, `github`, `mcp`, `mcp-relay`. |
+| `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `migrate-revisions`, `import`, `github`, `mcp`, `mcp-relay`. |
 | `internal/httpapi` | REST handlers, browser sessions, role checks and the embedded reading interface. Adapter only: it parses input, checks the role, calls an area and serializes the result. |
 | `internal/mcp` | MCP server behind `veda mcp`: the tool table (13 read-only tools for reader keys and the socket), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
 | `internal/mcp/client` | REST client of the MCP adapter. Adapter only: loopback HTTP or explicitly allowed reader-only HTTPS, private key and socket files, no proxy or redirects, 24 MiB response limit, sanitized refusal messages. |
@@ -69,6 +69,15 @@ guard checks.
 pure rules and the commit machinery live there. Cross-cutting rules needed
 when an article is written (queue a push, reconcile moves, check visibility)
 are `domain` functions that the writing operation calls.
+
+Revision rules are pure `domain` functions: `revisions.go` (numbering and
+lookup by number), `prune.go` (the three-newest rule and the protected
+revisions), `revision_assets.go` (the images a revision binds) and
+`blobrefs.go` (every blob a database references). `store` applies them: it
+prunes in every commit, writes the `revisions` and `revision_assets` rows
+together with the article, and collects unreferenced blobs under the write
+lock. `veda migrate-revisions` also lives in `store`; `app/commands` only
+registers it.
 
 `Sources` and `Articles` are shared content, not owned by one package. The
 article and source operations in `importer`, `transfer` and `translation` (and
