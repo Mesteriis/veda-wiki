@@ -7,7 +7,7 @@ build: frontend
 	go build -trimpath -o veda ./cmd/veda
 lint:
 	test -z "$$(gofmt -l $$(git ls-files '*.go'))"
-	python3 scripts/check_file_size.py --max 500 --include 'scripts/**/*.py' --include '**/*.go'
+	python3 scripts/check_file_size.py --max 500 --include 'scripts/**/*.py' --include '**/*.go' --include 'web/src/**/*.ts' --include 'web/src/**/*.tsx' --include 'web/src/**/*.css'
 	python3 scripts/check_architecture.py
 	go run honnef.co/go/tools/cmd/staticcheck@2026.2.2 ./...
 test: frontend lint

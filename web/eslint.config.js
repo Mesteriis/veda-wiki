@@ -3,9 +3,8 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
-// JSX components stay outside strict linting until each one moves to TypeScript.
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "screens", "src/**/*.jsx", "veda-design-preview.config.mjs"] },
+  { ignores: ["dist", "node_modules", "screens", "veda-design-preview.config.mjs"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

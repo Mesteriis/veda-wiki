@@ -104,7 +104,8 @@ fails the store closed.
 `make lint` runs these checks; CI runs their unit tests.
 
 ```sh
-python3 scripts/check_file_size.py --max 500 --include 'scripts/**/*.py' --include '**/*.go'
+python3 scripts/check_file_size.py --max 500 --include 'scripts/**/*.py' --include '**/*.go' \
+  --include 'web/src/**/*.ts' --include 'web/src/**/*.tsx' --include 'web/src/**/*.css'
 python3 scripts/check_architecture.py
 python3 -m unittest discover -s scripts -p test_check_architecture.py -v
 ```
@@ -126,3 +127,26 @@ Import checks look at non-test imports. The ownership check is a line-based
 text match: it catches direct writes such as `db.Moves[k] = v`,
 `delete(db.Users, k)` and `db.Users = ...`, not writes through an alias.
 The allow-lists are in the script and change together with this document.
+
+## Frontend
+
+React is a reading interface in TypeScript under `web/src`; it holds no article
+logic that the Go service does not own.
+
+- `api/` is the typed REST client and the only place that calls `fetch`
+  (`api/http.ts`).
+- `lib/` holds pure logic without React or network access.
+- `hooks/` holds shared React hooks.
+- `components/` is the application shell (layout, sidebar, header) and its CSS.
+- `features/<area>/` holds one screen area (reading, catalog, home, session,
+  graph, recent, github, access) with its stylesheet beside the components.
+- `styles/` holds design tokens, fonts and base rules.
+
+CSS is imported centrally from `main.tsx` in cascade order: fonts, tokens,
+base, shell, then features. Importing a stylesheet from a component would place
+it before the shell CSS in the bundle and change which rule wins.
+
+`tsconfig.json` sets `strict`, `noImplicitAny` and `noUncheckedIndexedAccess`;
+JavaScript is not allowed, and ESLint forbids `any`
+(`@typescript-eslint/no-explicit-any`). `make lint` fails any `.ts`, `.tsx` or
+`.css` file in `web/src` over 500 lines (the Guards command above).

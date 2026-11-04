@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { clusterPosition, graphHeight, graphPageCount, layoutNodes } from "./layout";
 
 // Expected values were computed by running the formulas of the former
-// Graph component in App.jsx; the layout must not move a single node.
+// Graph component of the former single-file UI; the layout must not move a single node.
 function group(id: string, count: number) {
   return { ID: id, Name: id.toUpperCase(), Pages: Array.from({ length: count }, (_, i) => ({ path: `${id}/p${i}`, title: `P${i}` })) };
 }

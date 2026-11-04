@@ -160,6 +160,30 @@ VEDA_TEST_CHROME=/absolute/path/to/chrome python3 scripts/smoke_ui.py
 For frontend development run the Go server and `npm run dev` in `web/`; Vite
 proxies API requests to the default loopback endpoint.
 
+Frontend checks, run in `web/`:
+
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+`make test` runs them together with the Go tests; `make lint` also limits every
+`.ts`, `.tsx` and `.css` file in `web/src` to 500 lines. The layout is described
+in [Backend architecture](docs/architecture.md#frontend).
+
+Visual regression check: after `make build`, capture screens and compare them
+with the baseline (0.1% of pixels per screen):
+
+```sh
+VEDA_TEST_CHROME=/absolute/path/to/chrome python3 scripts/screens.py --out DIR
+node scripts/ui_compare.mjs web/screens/baseline DIR --threshold 0.001
+```
+
+The baseline in `web/screens/baseline` is machine-local and git-ignored; capture
+it with `scripts/screens.py` from a known-good build before changing the UI.
+
 The default store uses an atomic, fsynced JSON transaction file, bounded to
 64 MiB including revision history. An opt-in SQLite backend removes that
 whole-store limit; migration and backup requirements are in [storage](docs/storage.md).
