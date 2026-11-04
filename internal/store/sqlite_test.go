@@ -220,3 +220,31 @@ func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
 		t.Fatal("large SQLite store lost articles", n)
 	}
 }
+
+func TestMigrateSQLiteRefusesSharedOrBusyDataDirectory(t *testing.T) {
+	s := testStore(t)
+	addSource(t, s, "local")
+	lock, err := os.OpenFile(filepath.Join(s.Dir(), "writer.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	if err = MigrateSQLite(s.Dir()); err == nil || err.Error() != "data directory already in use" {
+		t.Fatal("migrated a data directory in use:", err)
+	}
+	lock.Close()
+	if err = os.Chmod(s.Dir(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err = MigrateSQLite(s.Dir()); err == nil || err.Error() != "data directory must be private" {
+		t.Fatal("migrated a shared data directory:", err)
+	}
+	if err = os.Chmod(s.Dir(), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = MigrateSQLite(s.Dir()); err != nil {
+		t.Fatal(err)
+	}
+}

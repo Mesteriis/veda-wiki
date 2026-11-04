@@ -7,27 +7,23 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // MigrateSQLite runs only while no VEDA process owns the data directory. The
 // JSON backup and SQLite snapshot are durable before the marker switches the
 // active store; old binaries reject that marker instead of opening stale data.
 func MigrateSQLite(dir string) error {
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return errors.New("data directory must be private")
+	lock, err := lockDataDir(dir)
+	if errors.Is(err, errMigrationInUse) {
+		return errors.New("data directory already in use")
 	}
-	lock, err := os.OpenFile(filepath.Join(dir, "writer.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("data directory already in use")
-	}
 	statePath := filepath.Join(dir, "state.json")
-	if info, err = os.Lstat(statePath); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+	info, err := os.Lstat(statePath)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
 		return errors.New("JSON store must be a private regular file")
 	}
 	s, err := Open(dir)
