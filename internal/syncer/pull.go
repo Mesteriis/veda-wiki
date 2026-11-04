@@ -44,7 +44,7 @@ func (m *Manager) cachedBlob(ctx context.Context, c domain.GitHubConnection, ent
 					continue
 				}
 				if a, ok := db.Articles[id+"/"+entry.Path]; ok && !a.Deleted && domain.LatestRevision(a) > 0 {
-					articles = append(articles, lastText(a))
+					articles = append(articles, domain.LastText(a))
 				}
 				if ref, ok := src.Assets[entry.Path]; ok {
 					images = append(images, ref)

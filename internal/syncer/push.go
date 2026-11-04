@@ -170,7 +170,7 @@ func bundleContents(db domain.Database, job domain.SyncJob) (map[string]string, 
 	result := make(map[string]string, len(job.Bundle))
 	for name, sha := range job.Bundle {
 		a, ok := db.Articles[job.SourceID+"/"+name]
-		if !ok || a.Deleted || !lastHasSHA(a, sha) {
+		if !ok || a.Deleted || !domain.LastHasSHA(a, sha) {
 			return nil, domain.ErrConflict
 		}
 		for _, conflict := range a.Conflicts {
@@ -322,9 +322,4 @@ func (m *Manager) pendingBundle(ctx context.Context, c domain.GitHubConnection, 
 		return nil, domain.ErrConflict
 	}
 	return files, nil
-}
-
-func lastHasSHA(a domain.Article, sha string) bool {
-	r, ok := domain.LastRevision(a)
-	return ok && r.SHA == sha
 }

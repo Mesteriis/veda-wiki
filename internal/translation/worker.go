@@ -182,7 +182,7 @@ func (w *Worker) stillNeeded(candidate Candidate) bool {
 			return nil
 		}
 		a, ok := db.Articles[candidate.SourceID+"/"+candidate.Path]
-		if !ok || a.Deleted || candidate.Revision < 1 || domain.LatestRevision(a) != candidate.Revision || !lastHasSHA(a, candidate.OriginalSHA) {
+		if !ok || a.Deleted || candidate.Revision < 1 || domain.LatestRevision(a) != candidate.Revision || !domain.LastHasSHA(a, candidate.OriginalSHA) {
 			return nil
 		}
 		if a.Translation != nil && a.Translation.OriginalSHA == candidate.OriginalSHA {
@@ -303,9 +303,4 @@ func (w *Worker) translate(ctx context.Context, original string) (string, error)
 		return "", errors.New("invalid translation response")
 	}
 	return result.Response, nil
-}
-
-func lastHasSHA(a domain.Article, sha string) bool {
-	r, ok := domain.LastRevision(a)
-	return ok && r.SHA == sha
 }

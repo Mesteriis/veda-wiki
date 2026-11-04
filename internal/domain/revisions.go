@@ -28,7 +28,14 @@ func LastRevision(a Article) (Revision, bool) {
 	return a.Versions[len(a.Versions)-1], true
 }
 
-func lastHasSHA(a Article, sha string) bool {
+// LastHasSHA reports whether the article's newest stored revision has sha.
+func LastHasSHA(a Article, sha string) bool {
 	r, ok := LastRevision(a)
 	return ok && r.SHA == sha
+}
+
+// LastText is the text of the newest stored revision, "" when there is none.
+func LastText(a Article) string {
+	r, _ := LastRevision(a)
+	return r.Text
 }

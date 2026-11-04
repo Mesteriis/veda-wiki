@@ -30,7 +30,7 @@ func (m *Manager) PublishJob(id string, expected int, confirm bool) error {
 		}
 		for name, sha := range job.Bundle {
 			linked, ok := db.Articles[job.SourceID+"/"+name]
-			if !ok || linked.Deleted || !lastHasSHA(linked, sha) || domain.CredentialLike(lastText(linked)) {
+			if !ok || linked.Deleted || !domain.LastHasSHA(linked, sha) || domain.CredentialLike(domain.LastText(linked)) {
 				return domain.ErrInvalid
 			}
 		}
@@ -85,9 +85,4 @@ func (m *Manager) CancelBundle(id string, confirm bool) error {
 		domain.ReconcileMoves(db)
 		return nil
 	})
-}
-
-func lastText(a domain.Article) string {
-	r, _ := domain.LastRevision(a)
-	return r.Text
 }
