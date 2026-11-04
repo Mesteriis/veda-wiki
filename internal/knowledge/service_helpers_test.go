@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -276,5 +277,6 @@ func relations(v knowledge.ArticleView) []string {
 	for _, c := range v.Claims {
 		out = append(out, c.Relation)
 	}
+	slices.Sort(out) // claim order follows claim IDs, which hash the fingerprint
 	return out
 }

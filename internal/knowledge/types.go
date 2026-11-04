@@ -23,7 +23,7 @@ import (
 // the pipeline fingerprint and causes reprocessing.
 const (
 	PreprocessVersion = "prepare-v2"
-	NormalizeVersion  = "normalize-v2"
+	NormalizeVersion  = "normalize-v3"
 	ResolveVersion    = NormalizeVersion + "+" + MarkersVersion
 )
 

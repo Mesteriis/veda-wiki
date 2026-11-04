@@ -76,7 +76,7 @@ Community, are created on first use.
 ### Pipeline fingerprint
 
 `kg1-` + SHA-256 over the schema digest, `prepare-v2`, the resolution version
-(`normalize-v2+markers-v2`, plus the alias file digest) and the checkpoint
+(`normalize-v3+markers-v2`, plus the alias file digest) and the checkpoint
 `fastino/gliner2.5-multi-v1@cf5593a5…` plus a digest of the extractor's
 reported `model.pipeline` (chunker version, window 512 / margin 16 / overlap
 64 tokens, per-block caps, JointIE decoder settings, library version). Any
@@ -179,9 +179,12 @@ uncertain.
 
 1. An explicit alias from `<data>/knowledge-aliases.json`
    (`{"version":1,"aliases":{"service":{"pg":"postgres"}}}`) → `alias`.
-2. A technical key for `host`, `repository` and `service` (lower case,
+2. A technical key for `host`, `repository` and `service` (a leading type
+   word `host`, `server`, `service`, `repo`, `repository`, `хост`, `сервер`,
+   `сервис` or `репозиторий` followed by white space is dropped, so
+   "host db-01" and "db-01" share the key `db-01`; then lower case,
    spaces removed, only letters, digits and `.-_/:@`) → `technical_key`; it
-   merges across sources.
+   merges across sources. The displayed name keeps the text as extracted.
 3. Any other name is scoped to its source → `same_source_name`. Equal names
    in different sources (persons, technologies, projects …) stay separate
    entities and are offered as `candidates`, never merged.
@@ -480,9 +483,11 @@ Relations by type (lenient): `runs_on` P 1.00 R 0.81; `uses` 0.62 / 1.00;
 Notable failure modes:
 
 - In English the span often includes the type noun ("billing service",
-  "host db-01", "payments project"). For technical keys this changes the
-  key (`hostdb-01` ≠ `db-01`), so the same host may not merge across
-  sentences; in the smoke articles the bare `db-01` was chosen and merged.
+  "host db-01", "payments project"). Since `normalize-v3` a leading type
+  word is dropped from technical keys ("host db-01" → `db-01`); a trailing
+  one is not (`billing service` keeps the key `billingservice` and does not
+  merge with `billing`). The evaluation numbers above were measured with
+  `normalize-v2`; entity scoring there compares spans, not keys.
 - `uses` and `depends_on` are emitted together for the same pair (9 extra
   `depends_on`, 6 extra `uses`); treat them as one weak dependency signal.
 - `documents` was never extracted; a runbook name was typed `document` once

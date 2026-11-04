@@ -19,12 +19,16 @@ type Name struct {
 type Aliases map[string]map[string]string
 
 // Normalize returns the key of name under the rules of its entity type
-// (NormalizeVersion "normalize-v2"). Keys are in Unicode NFC, so composed
+// (NormalizeVersion "normalize-v3"). Keys are in Unicode NFC, so composed
 // and decomposed spellings share a key; NFC never maps one script to
 // another. White space is trimmed and collapsed first. A name whose letters mix scripts (for example Latin and Cyrillic) is
 // never folded: its key is the collapsed name as written and it is not
 // technical, so look-alikes stay distinct. Otherwise:
-//   - host, repository, service: lower case without any white space; a host
+//   - host, repository, service: a leading type word ("host", "server",
+//     "service", "repo", "repository", "хост", "сервер", "сервис",
+//     "репозиторий", any case) followed by white space is dropped first, so
+//     "host db-01" and "db-01" share a key; the script check then applies
+//     to what remains. Then lower case without any white space; a host
 //     drops trailing dots, a repository trailing slashes and ".git". The key
 //     is technical, and merges across sources, when it holds only letters,
 //     digits and ". - _ / : @".
@@ -32,12 +36,14 @@ type Aliases map[string]map[string]string
 //     merges only inside one source.
 func Normalize(entityType, name string) (key string, technical bool) {
 	collapsed := norm.NFC.String(strings.Join(strings.Fields(name), " "))
+	if technicalTypes[entityType] {
+		collapsed = stripTypeWord(collapsed)
+	}
 	if collapsed == "" || mixedScript(collapsed) {
 		return collapsed, false
 	}
 	lower := strings.ToLower(collapsed)
-	switch entityType {
-	case "host", "repository", "service":
+	if technicalTypes[entityType] {
 		k := strings.ReplaceAll(lower, " ", "")
 		switch entityType {
 		case "host":
@@ -48,6 +54,25 @@ func Normalize(entityType, name string) (key string, technical bool) {
 		return k, k != "" && technicalKey(k)
 	}
 	return lower, false
+}
+
+var technicalTypes = map[string]bool{"host": true, "repository": true, "service": true}
+
+// typeWords are the type nouns a model often includes at the start of a
+// technical name ("host db-01"); compared after lower casing.
+var typeWords = map[string]bool{
+	"host": true, "server": true, "service": true, "repo": true, "repository": true,
+	"хост": true, "сервер": true, "сервис": true, "репозиторий": true,
+}
+
+// stripTypeWord drops one leading type word followed by white space from a
+// collapsed name; a bare type word, or a word that only contains one, stays.
+func stripTypeWord(collapsed string) string {
+	first, rest, found := strings.Cut(collapsed, " ")
+	if !found || rest == "" || !typeWords[strings.ToLower(first)] {
+		return collapsed
+	}
+	return rest
 }
 
 func technicalKey(k string) bool {

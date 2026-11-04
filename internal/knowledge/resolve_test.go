@@ -14,7 +14,23 @@ func TestNormalizeByType(t *testing.T) {
 		{"service", "Billing  API", "billingapi", true},
 		{"service", "billing-api", "billing-api", true},
 		{"repository", "github.com/Mesteriis/Veda.git/", "github.com/mesteriis/veda", true},
-		{"service", "Сервис  Оплаты", "сервисоплаты", true},
+		{"service", "Сервис  Оплаты", "оплаты", true},
+		{"service", "Платёжный сервис", "платёжныйсервис", true},
+		// A leading type word is dropped for technical types only.
+		{"host", "host db-01", "db-01", true},
+		{"host", "Server  DB-01.", "db-01", true},
+		{"service", "Service billing-api", "billing-api", true},
+		{"repository", "repo Mesteriis/veda.git", "mesteriis/veda", true},
+		{"repository", "Repository veda", "veda", true},
+		{"host", "хост db-01", "db-01", true},
+		{"host", "сервер бд-01", "бд-01", true},
+		{"repository", "репозиторий veda", "veda", true},
+		{"host", "host", "host", true},
+		{"host", "hostdb-01", "hostdb-01", true},
+		{"technology", "service mesh", "service mesh", false},
+		// Mixed scripts stay unfolded after the type word is dropped.
+		{"host", "хост dbвиc", "dbвиc", false},
+		{"host", "хоst db-01", "хоst db-01", false},
 		{"person", "  Анна   Иванова ", "анна иванова", false},
 		{"organization", "ACME\tCorp", "acme corp", false},
 		{"technology", "PostgreSQL", "postgresql", false},
@@ -34,6 +50,20 @@ func TestNormalizeByType(t *testing.T) {
 		if key != c.key || technical != c.technical {
 			t.Errorf("Normalize(%q, %q) = %q, %v; want %q, %v", c.typ, c.name, key, technical, c.key, c.technical)
 		}
+	}
+}
+
+func TestNormalizeTypeWordJoinsBareName(t *testing.T) {
+	for _, name := range []string{"host db-01", "HOST  db-01", "хост db-01", "Сервер db-01", "server db-01"} {
+		if k, _ := Normalize("host", name); k != "db-01" {
+			t.Errorf("Normalize(host, %q) = %q; want db-01", name, k)
+		}
+	}
+	// A Cyrillic look-alike of a Latin name keeps its own key.
+	latin, _ := Normalize("host", "host cep")
+	cyr, _ := Normalize("host", "хост сер")
+	if latin == cyr {
+		t.Fatalf("look-alikes merged after type word: %q", latin)
 	}
 }
 
