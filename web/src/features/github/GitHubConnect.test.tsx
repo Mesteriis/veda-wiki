@@ -86,4 +86,31 @@ describe("GitHubConnect", () => {
     fireEvent.submit(form);
     expect(await within(dialogOf(form)).findByText("GitHub отказал в доступе. Проверьте права выбранного аккаунта.")).toBeTruthy();
   });
+
+  async function submitApp(container: HTMLElement): Promise<HTMLFormElement> {
+    const form = await openDialog(container, "Добавить аккаунт");
+    fireEvent.change(input(form, "id"), { target: { value: "personal" } });
+    fireEvent.change(input(form, "app_id"), { target: { value: "1" } });
+    fireEvent.change(input(form, "installation_id"), { target: { value: "2" } });
+    fireEvent.change(input(form, "private_key"), { target: { value: "synthetic key text" } });
+    fireEvent.submit(form);
+    return form;
+  }
+
+  it("app account form clears the private key after success", async () => {
+    signedIn({ "POST /api/admin/github/accounts": () => json({ id: "personal", kind: "app", login: "owner" }) });
+    const { container } = render(<GitHubConnect />);
+    const form = await submitApp(container);
+    await screen.findAllByText("Аккаунт подключён.");
+    expect(input(form, "private_key").value).toBe("");
+  });
+
+  it("app account form clears the private key after a failure", async () => {
+    signedIn({ "POST /api/admin/github/accounts": networkDown });
+    const { container } = render(<GitHubConnect />);
+    const form = await submitApp(container);
+    await within(dialogOf(form)).findByText("Не удалось подключить аккаунт. Проверьте данные и идентификатор.");
+    expect(input(form, "private_key").value).toBe("");
+    expect(button(form, "Сохранить аккаунт").disabled).toBe(false);
+  });
 });

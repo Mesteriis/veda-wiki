@@ -18,6 +18,25 @@ function signedIn(users: WikiUser[], extra: Record<string, Route>) {
   });
 }
 
+const readerKey = "synthetic-reader-key";
+
+async function issueKey(container: HTMLElement) {
+  fireEvent.click(await screen.findByRole("button", { name: "Ключи доступа" }));
+  await waitFor(() => expect(button(container, "Создать ключ").disabled).toBe(false));
+  fireEvent.click(button(container, "Создать ключ"));
+  const form = container.querySelector("dialog[open] form");
+  if (!(form instanceof HTMLFormElement)) throw new Error("no key form");
+  fireEvent.change(within(form).getByRole("textbox", { hidden: true }), { target: { value: "agent-one" } });
+  fireEvent.click(within(form).getByRole("checkbox", { hidden: true }));
+  fireEvent.submit(form);
+  await screen.findByText("Ключ agent-one создан");
+}
+
+function keyShown(container: HTMLElement): boolean {
+  const texts = [...container.querySelectorAll("textarea")].map((area) => area.value);
+  return texts.some((text) => text.includes(readerKey)) || (container.textContent ?? "").includes(readerKey);
+}
+
 describe("AccessSettings", () => {
   beforeEach(stubDialogs);
   afterEach(() => {
@@ -67,5 +86,46 @@ describe("AccessSettings", () => {
     await screen.findByText("Для управления доступом войдите как администратор.");
     expect(container.querySelector("input[name=username]")).not.toBeNull();
     expect(container.querySelector("input[name=password][type=password]")).not.toBeNull();
+  });
+
+  it("shows an issued key once, blocks a second key and hides it on request", async () => {
+    signedIn([], { "POST /api/access/keys": () => json({ id: "agent-one", sources: ["wiki"], expires_at: "2026-12-04T00:00:00Z", key: readerKey }) });
+    const { container } = render(<AccessSettings />);
+    await issueKey(container);
+    expect(keyShown(container)).toBe(true);
+    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(button(container, "Создать ключ").disabled).toBe(true);
+    fireEvent.click(button(container, "Скрыть ключ"));
+    expect(keyShown(container)).toBe(false);
+    expect(container.querySelector(".access-issued")).toBeNull();
+    expect(button(container, "Создать ключ").disabled).toBe(false);
+  });
+
+  it("drops an issued key on logout", async () => {
+    signedIn([], {
+      "POST /api/access/keys": () => json({ id: "agent-one", sources: ["wiki"], expires_at: "2026-12-04T00:00:00Z", key: readerKey }),
+      "POST /api/access/session/logout": () => json({ authenticated: false }),
+    });
+    const { container } = render(<AccessSettings />);
+    await issueKey(container);
+    fireEvent.click(button(container, "Выйти из управления доступом"));
+    await screen.findByText("Для управления доступом войдите как администратор.");
+    expect(keyShown(container)).toBe(false);
+    expect(container.querySelector(".access-issued")).toBeNull();
+  });
+
+  it("shows teams without sources when the server sends null", async () => {
+    signedIn([], { "GET /api/access/teams": () => json([{ id: "ops", sources: null, revision: 1 }]) });
+    const { container } = render(<AccessSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: "Команды" }));
+    const row = (await screen.findByText("ops")).closest(".settings-row");
+    if (!(row instanceof HTMLElement)) throw new Error("no team row");
+    expect(row.querySelector(":scope > span")?.textContent).toBe("");
+    fireEvent.click(button(row, "Изменить источники"));
+    const form = container.querySelector("dialog[open] form");
+    if (!(form instanceof HTMLFormElement)) throw new Error("no team form");
+    const box = within(form).getByRole("checkbox", { hidden: true });
+    expect(box instanceof HTMLInputElement && box.checked).toBe(false);
+    expect(form.textContent).toContain("Источники для ops");
   });
 });
