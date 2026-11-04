@@ -194,20 +194,22 @@ func (s *Sessions) forget(hash [32]byte) {
 	delete(s.users, hash)
 }
 
-// Issue runs one login attempt under the session lock: the per-identity
-// limit, the credential check, pruning of expired or no longer valid
-// sessions, the session limit and issuance. It returns the new cookie value,
-// valid for eight hours from l.Now.
+// Issue runs one login attempt: the per-identity limit under the session
+// lock, then the credential check without it, so slow password checks run
+// concurrently up to the password workers and do not delay cookie checks,
+// then, under the lock again, pruning of expired or no longer valid sessions,
+// the session limit and issuance. The attempt is counted before the check.
+// It returns the new cookie value, valid for eight hours from l.Now.
 func (s *Sessions) Issue(l Login) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if l.Limited && !s.allowAttempt(l.Kind, l.Identity, l.Now) {
+	if l.Limited && !s.AllowAttempt(l.Kind, l.Identity, l.Now) {
 		return "", ErrRateLimited
 	}
 	grant, ok := l.Authenticate()
 	if !ok {
 		return "", ErrDenied
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	current := l.Current
 	if current == nil {
 		current = func(Grant) bool { return false }
