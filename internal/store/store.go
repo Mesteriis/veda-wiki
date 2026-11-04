@@ -35,6 +35,8 @@ type Store struct {
 	// time.Now in tests.
 	blobsCollected time.Time
 	clock          func() time.Time
+	// commitHooks run after every successful commit (see OnCommit).
+	commitHooks []func()
 }
 
 var errReadOnly = errors.New("read-only store")

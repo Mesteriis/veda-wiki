@@ -47,6 +47,16 @@ func (tx *Tx) StoreInvalid() bool { return tx.invalid }
 // has committed successfully. It does not run when fn or the commit fails.
 func (tx *Tx) AfterCommit(fn func()) { tx.afterCommit = append(tx.afterCommit, fn) }
 
+// OnCommit registers fn to run under the write lock after every successful
+// commit of any transaction. fn must return at once and never take the store
+// lock: it is meant for a non-blocking signal (a send to a buffered channel
+// with a default case) to background work that then reads with View.
+func (s *Store) OnCommit(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.commitHooks = append(s.commitHooks, fn)
+}
+
 // OnlyArticle declares that the transaction changes exactly one article and
 // may add or update outbox jobs and move states, but removes neither and
 // changes no other record category. SQLite then writes only those records.
@@ -103,6 +113,9 @@ func (s *Store) update(fn func(tx *Tx) error) error {
 	}
 	for _, after := range tx.afterCommit {
 		after()
+	}
+	for _, hook := range s.commitHooks {
+		hook()
 	}
 	s.collectBlobsDue()
 	return nil
