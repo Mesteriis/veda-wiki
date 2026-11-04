@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { HttpError } from "../api/http";
+import { resetKnowledge } from "../api/knowledge";
 import { fetchState, shouldPoll } from "../api/state";
 import type { StatePayload } from "../api/types";
+import { readingScope } from "../lib/view";
 
 const pollInterval = 10000;
 
@@ -19,6 +21,12 @@ export function useStatePoll(restartKey: string | null): StatePoll {
   // The tag belongs to the displayed state, so it survives restarts of the
   // polling effect (for example after a dialog closes) together with that state.
   const etag = useRef("");
+  // The reading scope of the displayed state. There is no other session
+  // signal: the app has no cross-tab or storage listener, and a lost session
+  // falls back to the public or a narrower scope instead of an error. So a
+  // changed scope is how a session lost elsewhere is noticed; it resets the
+  // knowledge client (requests aborted, data cleared).
+  const scope = useRef("");
   useEffect(() => {
     const c = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined, busy = false;
@@ -31,14 +39,20 @@ export function useStatePoll(restartKey: string | null): StatePoll {
         const next = await fetchState(fetch, "/api/state" + window.location.search, c.signal, etag.current);
         if (!c.signal.aborted) {
           etag.current = next.etag;
-          if (!("unchanged" in next)) setData(next.data);
+          if (!("unchanged" in next)) {
+            const nextScope = readingScope(next.data.view);
+            if (scope.current && scope.current !== nextScope) resetKnowledge();
+            scope.current = nextScope;
+            setData(next.data);
+          }
           setError("");
         }
       } catch (e) {
         if (!c.signal.aborted) {
           const status = e instanceof HttpError ? e.status : 0;
           if (status) etag.current = "";
-          if (status === 404) setData(null);
+          // The page left the readable scope: knowledge of it must not stay.
+          if (status === 404) { setData(null); resetKnowledge(); }
           setError(e instanceof Error ? e.message : "");
         }
       } finally {

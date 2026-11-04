@@ -15,7 +15,9 @@ export function sessionStatus(prefix: SessionPrefix, signal?: AbortSignal): Prom
 }
 
 // Every session change resets the knowledge client: requests of the previous
-// session are aborted and their late answers are dropped.
+// session are aborted and their late answers are dropped. A failed sign-in or
+// password change leaves the session as it was, so it intentionally does not
+// reset (the rejection propagates before resetKnowledge runs).
 export async function login(prefix: SessionPrefix, credentials: Credentials): Promise<SessionStatus> {
   const status = await postJSON<SessionStatus>(`${prefix}/login`, credentials);
   resetKnowledge();

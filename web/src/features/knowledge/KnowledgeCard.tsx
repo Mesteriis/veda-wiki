@@ -28,9 +28,10 @@ interface EntityCardProps {
   onCenter: () => void;
   onExpand: () => void;
   expanding: boolean;
+  expansionNote: string | null;
 }
 
-function EntityDetails({ node, names, isCenter, onCenter, onExpand, expanding }: EntityCardProps) {
+function EntityDetails({ node, names, isCenter, onCenter, onExpand, expanding, expansionNote }: EntityCardProps) {
   const state = useKnowledgeRead(node.id, (signal) => getEntity(node.id, CARD_LIMIT, signal));
   const card = state.status === "done" ? state.data : null;
   const allNames = new Map(names);
@@ -41,6 +42,7 @@ function EntityDetails({ node, names, isCenter, onCenter, onExpand, expanding }:
       {!isCenter && <button type="button" onClick={onCenter}>Сделать центром</button>}
       <button type="button" onClick={onExpand} disabled={expanding}>{expanding ? "Раскрываем…" : "Показать соседей"}</button>
     </div>
+    {expansionNote && <p className="knowledge-status kg-expansion" role="status">{expansionNote}</p>}
     {state.status === "loading" && <p className="knowledge-status" role="status">Загружаем карточку…</p>}
     {state.status === "error" && <p className="knowledge-status" role="status">Карточка сущности недоступна.</p>}
     {card && <>
@@ -76,10 +78,12 @@ interface CardProps {
   onCenter: (id: string) => void;
   onExpand: (id: string) => void;
   expanding: boolean;
+  /** The outcome of the last neighbour expansion of the selected node. */
+  expansionNote: string | null;
 }
 
 /** The card of the selected node or edge; read-only, with links to the articles. */
-export function KnowledgeCard({ node, edge, names, center, onCenter, onExpand, expanding }: CardProps) {
+export function KnowledgeCard({ node, edge, names, center, onCenter, onExpand, expanding, expansionNote }: CardProps) {
   let body;
   if (node?.kind === "document") {
     body = <>
@@ -87,7 +91,7 @@ export function KnowledgeCard({ node, edge, names, center, onCenter, onExpand, e
       {node.key && <p><a href={articleHref(node.key)}>Открыть статью {node.key.source_id}/{node.key.path}</a></p>}
     </>;
   } else if (node) {
-    body = <EntityDetails node={node} names={names} isCenter={node.id === center} onCenter={() => onCenter(node.id)} onExpand={() => onExpand(node.id)} expanding={expanding} />;
+    body = <EntityDetails node={node} names={names} isCenter={node.id === center} onCenter={() => onCenter(node.id)} onExpand={() => onExpand(node.id)} expanding={expanding} expansionNote={expansionNote} />;
   } else if (edge) {
     body = <EdgeDetails edge={edge} names={names} />;
   } else {

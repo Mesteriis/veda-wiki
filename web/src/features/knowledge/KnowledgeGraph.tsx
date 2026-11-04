@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { I } from "../../components/Icon";
 import { isAbort } from "../../api/http";
-import { getGraph, searchEntities, type GraphSearch } from "../../api/knowledge";
+import { getGraph, knowledgeFailure, searchEntities, type GraphSearch, type KnowledgeFailure } from "../../api/knowledge";
 import { RELATION_TYPES, type EntitySummary } from "../../api/knowledgeTypes";
 import type { View } from "../../lib/view";
 import { mergeGraphs, normalizeGraph, radialLayout, type KnowledgeGraphData } from "./graphLayout";
@@ -17,11 +17,31 @@ const SEARCH_LIMIT = 20;
 // expanding neighbours adds more up to those caps.
 const STEP = { maxNodes: 40, maxEdges: 80 } as const;
 
+/** What the last "show neighbours" of one node did: a failure is never shown as "no neighbours". */
+type ExpansionOutcome = { id: string; added: number } | { id: string; failure: KnowledgeFailure };
+
 interface Expansion {
   base: string;
   generation: number;
   graphs: KnowledgeGraphData[];
   pending: string | null;
+  outcome: ExpansionOutcome | null;
+}
+
+const expansionFailures: Record<KnowledgeFailure, string> = {
+  timeout: "Сервер не успел ответить: соседи не загружены. Попробуйте ещё раз.",
+  network: "Нет связи с сервером: соседи не загружены. Попробуйте ещё раз.",
+  unavailable: "Граф знаний сейчас недоступен: соседи не загружены. Попробуйте позже.",
+  disabled: "Граф знаний отключён на этом сервере: соседи не загружены.",
+  not_found: "Сущность больше недоступна: соседи не загружены.",
+  invalid: "Сервер отклонил запрос соседей.",
+};
+
+/** The card line about the last expansion of the selected node, or null. */
+export function expansionText(outcome: ExpansionOutcome | null, id: string | undefined): string | null {
+  if (!outcome || outcome.id !== id) return null;
+  if ("failure" in outcome) return expansionFailures[outcome.failure];
+  return outcome.added ? `Добавлено узлов: ${outcome.added}.` : "Новых соседей нет: все найденные связи уже показаны.";
 }
 
 /** Keeps the chosen centre in the address so the view can be linked and reloaded. */
@@ -102,12 +122,14 @@ export function KnowledgeGraph({ v }: { v: View }) {
     const controller = new AbortController();
     expandRequest.current = controller;
     const previous = own?.graphs ?? [];
-    setExpansion({ base: graphKey, generation, graphs: previous, pending: id });
+    const shown = new Set((graph?.nodes ?? []).map((node) => node.id));
+    setExpansion({ base: graphKey, generation, graphs: previous, pending: id, outcome: null });
     try {
       const more = normalizeGraph(await getGraph({ entityID: id, ...filters }, controller.signal));
-      if (!controller.signal.aborted) setExpansion({ base: graphKey, generation, graphs: [...previous, more], pending: null });
+      const added = more.nodes.filter((node) => !shown.has(node.id)).length;
+      if (!controller.signal.aborted) setExpansion({ base: graphKey, generation, graphs: [...previous, more], pending: null, outcome: { id, added } });
     } catch (error) {
-      if (!controller.signal.aborted && !isAbort(error)) setExpansion({ base: graphKey, generation, graphs: previous, pending: null });
+      if (!controller.signal.aborted && !isAbort(error)) setExpansion({ base: graphKey, generation, graphs: previous, pending: null, outcome: { id, failure: knowledgeFailure(error) } });
     }
   }
 
@@ -140,7 +162,8 @@ export function KnowledgeGraph({ v }: { v: View }) {
             </div>
           </div>
           <KnowledgeCard node={selectedNode} edge={selectedEdge} names={names} center={center}
-            onCenter={choose} onExpand={(id) => { void expand(id); }} expanding={!!own?.pending && own.pending === selectedNode?.id} />
+            onCenter={choose} onExpand={(id) => { void expand(id); }} expanding={!!own?.pending && own.pending === selectedNode?.id}
+            expansionNote={expansionText(own?.outcome ?? null, selectedNode?.id)} />
         </div>
         <RelationList edges={graph.edges} names={names} selection={selection} onSelect={setSelection} />
       </> : <Message>У этой сущности нет связей с учётом выбранных фильтров.</Message>)}

@@ -47,6 +47,8 @@ interface CanvasProps {
 // SVG drawing of the graph. Documents are squares, entities are circles;
 // relation edges carry an arrow from head to tail and their type. Nodes are
 // one tab stop: arrow keys move between them, Enter or Space selects one.
+// Edges are hidden from assistive technology here; the canvas label points to
+// the relation list (RelationList), which names every edge as a button.
 export function KnowledgeCanvas({ graph, layout, center, scale, selection, onSelect }: CanvasProps) {
   const refs = useRef(new Map<string, SVGGElement>());
   const selectedNode = selection?.kind === "node" ? selection.id : null;
@@ -62,7 +64,7 @@ export function KnowledgeCanvas({ graph, layout, center, scale, selection, onSel
       onSelect({ kind: "node", id });
     }
   }
-  return <svg className="kg-canvas" width={layout.width * scale} height={layout.height * scale} viewBox={`0 0 ${layout.width} ${layout.height}`} role="group" aria-label="Граф знаний: стрелки — перемещение, Enter — выбор">
+  return <svg className="kg-canvas" width={layout.width * scale} height={layout.height * scale} viewBox={`0 0 ${layout.width} ${layout.height}`} role="group" aria-label="Граф знаний: стрелки — перемещение между узлами, Enter — выбор. Все связи также перечислены в списке «Связи» ниже.">
     <defs>
       <marker id="kg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0 0L10 5L0 10z" />

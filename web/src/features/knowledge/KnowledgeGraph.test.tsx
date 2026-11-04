@@ -155,4 +155,22 @@ describe("knowledge graph", () => {
     await act(async () => { late.resolve(json(subgraph())); await late.promise; });
     expect(container.querySelector(".kg-canvas")).toBeNull();
   });
+
+  it("explains a failed expansion and tells it apart from no new neighbours", async () => {
+    let graphCalls = 0;
+    serveURL(async (url) => {
+      if (url.pathname.endsWith("/entities")) return json(entities);
+      if (url.pathname.endsWith("/graph")) return ++graphCalls === 2 ? json({ error: "timeout" }, 504) : json(subgraph());
+      return json(card);
+    });
+    at("?graph=1&mode=knowledge&entity=ent-billing");
+    render(<Graph v={view} />);
+    const cardRegion = await screen.findByRole("region", { name: "Карточка выбранного элемента" });
+    fireEvent.click(within(cardRegion).getByRole("button", { name: "Показать соседей" }));
+    expect((await within(cardRegion).findByText(/Сервер не успел ответить/)).textContent).toBe("Сервер не успел ответить: соседи не загружены. Попробуйте ещё раз.");
+    expect(within(cardRegion).queryByText(/Новых соседей нет/)).toBeNull();
+    fireEvent.click(within(cardRegion).getByRole("button", { name: "Показать соседей" }));
+    await within(cardRegion).findByText("Новых соседей нет: все найденные связи уже показаны.");
+    expect(within(cardRegion).queryByText(/не успел/)).toBeNull();
+  });
 });
