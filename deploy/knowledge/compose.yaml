@@ -1,0 +1,103 @@
+# Development profile of the VEDA knowledge graph: Neo4j Community and the
+# CPU knowledge extractor. VEDA itself runs separately (go run / the binary)
+# and connects over loopback. Use scripts/knowledge_stack.py, which creates
+# the secrets in deploy/knowledge/.secrets/ (git-ignored, 0600) and passes
+# the invoking user's UID/GID.
+#
+# Data never lives in the repository: Neo4j data and logs and the model cache
+# are named Docker volumes. Ports are published on 127.0.0.1 only.
+name: veda-knowledge
+
+services:
+  # Copies the Neo4j auth secret into a Docker volume, owned by the image's
+  # neo4j user with mode 0400: the entrypoint reads only a secret file that
+  # the neo4j user owns, and a bind-mounted host file keeps the host owner.
+  neo4j-secret:
+    image: neo4j:2026.10.1-community@sha256:44ad2a2504fd7d27df1d1e976f2d481e4266a0814d3657f2d5df62124ce657f1
+    user: "0:0"
+    entrypoint: ["install", "-o", "neo4j", "-g", "neo4j", "-m", "0400", "/run/secrets/neo4j_auth", "/secrets/neo4j_auth"]
+    secrets:
+      - neo4j_auth
+    volumes:
+      - neo4j-secrets:/secrets
+    network_mode: none
+
+  neo4j:
+    image: neo4j:2026.10.1-community@sha256:44ad2a2504fd7d27df1d1e976f2d481e4266a0814d3657f2d5df62124ce657f1
+    restart: unless-stopped
+    depends_on:
+      neo4j-secret:
+        condition: service_completed_successfully
+    environment:
+      # "neo4j/<password>": sets the initial password on first start.
+      NEO4J_AUTH_FILE: /secrets/neo4j_auth
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1g
+      NEO4J_server_memory_pagecache_size: 512m
+      # Only Bolt is published; the HTTP browser endpoint stays inside.
+      NEO4J_server_bolt_listen__address: 0.0.0.0:7687
+      NEO4J_dbms_usage__report_enabled: "false"
+    ports:
+      - "127.0.0.1:${KNOWLEDGE_NEO4J_PORT:-7687}:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - neo4j-secrets:/secrets:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/7687"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  extractor:
+    profiles: ["extractor"]
+    build:
+      context: ../../services/knowledge-extractor
+      dockerfile: ../../deploy/knowledge/extractor.Dockerfile
+      additional_contexts:
+        scripts: ../../scripts
+    image: veda-knowledge-extractor:dev
+    restart: unless-stopped
+    user: "${KNOWLEDGE_UID:-10001}:${KNOWLEDGE_GID:-10001}"
+    command:
+      - --host=0.0.0.0
+      - --allow-non-loopback
+      - --allowed-host=127.0.0.1
+      - --allowed-host=extractor
+      - --key-file=/run/secrets/extractor_key
+      - --device=cpu
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    secrets:
+      - extractor_key
+    ports:
+      - "127.0.0.1:${KNOWLEDGE_EXTRACTOR_PORT:-8790}:8790"
+    volumes:
+      - model-cache:/models
+
+  # One-shot: download the pinned checkpoint into the model cache volume.
+  # The only service with network access to Hugging Face.
+  fetch-model:
+    profiles: ["fetch-model"]
+    image: veda-knowledge-extractor:dev
+    user: "${KNOWLEDGE_UID:-10001}:${KNOWLEDGE_GID:-10001}"
+    entrypoint: ["python", "/app/fetch_knowledge_model.py"]
+    environment:
+      HF_HUB_OFFLINE: "0"
+      TRANSFORMERS_OFFLINE: "0"
+    volumes:
+      - model-cache:/models
+
+secrets:
+  neo4j_auth:
+    file: ./.secrets/neo4j_auth
+  extractor_key:
+    file: ./.secrets/extractor.key
+
+volumes:
+  neo4j-secrets:
+  neo4j-data:
+  neo4j-logs:
+  model-cache:

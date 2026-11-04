@@ -19,3 +19,5 @@ services/knowledge-extractor/dist/
 # model weights and Hugging Face caches stay out of the repository
 *.safetensors
 .cache/
+# knowledge dev stack secrets (scripts/knowledge_stack.py)
+deploy/knowledge/.secrets/

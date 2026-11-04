@@ -39,6 +39,8 @@ KNOWLEDGE_IMPORTS = {
     'knowledge/extractorclient': {'knowledge', 'domain'},
     'knowledge/memindex': {'knowledge', 'domain'},
     'knowledge/neo4jindex': {'knowledge', 'domain'},
+    # Shared Index contract suite, imported by the index adapters' tests.
+    'knowledge/indextest': {'knowledge', 'domain'},
 }
 
 # Area -> area imports that are allowed, with the reason.

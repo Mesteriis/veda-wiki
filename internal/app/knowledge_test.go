@@ -80,7 +80,7 @@ func TestKnowledgeFlagValidation(t *testing.T) {
 		"neo4j with memory": with("-knowledge-neo4j-uri", "bolt://127.0.0.1:7687"),
 		"neo4j missing":     with("-knowledge-index", "neo4j"),
 		"neo4j remote bolt": with("-knowledge-index", "neo4j", "-knowledge-neo4j-uri", "bolt://10.0.0.1:7687", "-knowledge-neo4j-user", "neo4j", "-knowledge-neo4j-password-file", key),
-		"neo4j not built":   with("-knowledge-index", "neo4j", "-knowledge-neo4j-uri", "bolt://127.0.0.1:7687", "-knowledge-neo4j-user", "neo4j", "-knowledge-neo4j-password-file", key),
+		"neo4j shared pass": with("-knowledge-index", "neo4j", "-knowledge-neo4j-uri", "bolt://127.0.0.1:7687", "-knowledge-neo4j-user", "neo4j", "-knowledge-neo4j-password-file", secretFile(t, "p", 0644)),
 		"unknown index":     with("-knowledge-index", "sqlite"),
 	}
 	for name, args := range cases {
@@ -96,10 +96,22 @@ func TestKnowledgeFlagValidation(t *testing.T) {
 	}
 }
 
-// An enabled module (memory index) starts, asks the extractor for its
-// settings, creates a private knowledge.sqlite and stops within the
-// bounded shutdown.
+// An enabled module (memory index, or a Neo4j index whose server is
+// unreachable) starts, asks the extractor for its settings, creates a
+// private knowledge.sqlite and stops within the bounded shutdown: an
+// unreachable Neo4j only degrades knowledge, it never blocks VEDA.
 func TestKnowledgeOnStartsAndStops(t *testing.T) {
+	key := secretFile(t, "service-key\n", 0600)
+	password := secretFile(t, "neo4j-password\n", 0600)
+	for name, index := range map[string][]string{
+		"memory":            {"-knowledge-index", "memory"},
+		"neo4j unreachable": {"-knowledge-index", "neo4j", "-knowledge-neo4j-uri", "bolt://127.0.0.1:1", "-knowledge-neo4j-user", "neo4j", "-knowledge-neo4j-password-file", password},
+	} {
+		t.Run(name, func(t *testing.T) { knowledgeStartsAndStops(t, key, index) })
+	}
+}
+
+func knowledgeStartsAndStops(t *testing.T, key string, index []string) {
 	ready := make(chan struct{}, 1)
 	extractor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/ready" {
@@ -113,7 +125,6 @@ func TestKnowledgeOnStartsAndStops(t *testing.T) {
 		}
 	}))
 	defer extractor.Close()
-	key := secretFile(t, "service-key\n", 0600)
 	start := time.Now()
 	dataDir, err := runWithServe(t, func() error {
 		select {
