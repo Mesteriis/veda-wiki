@@ -51,6 +51,9 @@ type Config struct {
 	// ProbeBase and ProbeMax bound the wait between availability probes
 	// during an outage (defaults 5s and 5m).
 	ProbeBase, ProbeMax time.Duration
+	// ReadTimeout bounds one index query of the read service (default
+	// DefaultReadTimeout).
+	ReadTimeout time.Duration
 	// Now is the clock (default time.Now).
 	Now func() time.Time
 	// Logf receives operational messages without article text or secrets.
@@ -107,6 +110,9 @@ func NewService(cfg Config) (*Service, error) {
 	}
 	if cfg.ProbeMax == 0 {
 		cfg.ProbeMax = 5 * time.Minute
+	}
+	if cfg.ReadTimeout == 0 {
+		cfg.ReadTimeout = DefaultReadTimeout
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now

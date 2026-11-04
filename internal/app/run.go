@@ -164,6 +164,9 @@ func Run(ctx context.Context, args []string) (err error) {
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
 		cfg := httpapi.Config{OwnerToken: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList}
 		deps := httpapi.Deps{Store: st, Observations: observations, Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Sync: manager}
+		if kmod != nil {
+			deps.Knowledge = kmod.service
+		}
 		if readerOnly {
 			cfg.OwnerToken = ""
 			cfg.ReaderToken = ""
