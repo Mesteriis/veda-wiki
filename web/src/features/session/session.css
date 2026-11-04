@@ -1,0 +1,3 @@
+.reader-access form, .reader-access label { display: flex; flex-direction: column; gap: 10px; }
+.reader-access input { background: #001522; border: 1px solid #15657a; color: #e9f9ff; border-radius: 5px; padding: 10px; font: inherit; }
+.reader-access button { align-self: flex-start; background: #00314a; border: 1px solid #00bcd4; color: #e9f9ff; border-radius: 5px; padding: 8px 16px; cursor: pointer; }

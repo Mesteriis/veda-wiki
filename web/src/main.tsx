@@ -13,6 +13,7 @@ import "./styles/responsive-wide.css";
 import "./styles/responsive-narrow.css";
 import "./styles/alignment.css";
 import "./styles/sections.css";
+import "./features/session/session.css";
 import "./features/graph/graph.css";
 import "./features/recent/recent.css";
 import "./features/github/github.css";

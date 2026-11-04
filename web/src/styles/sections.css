@@ -61,9 +61,6 @@ main:has(.home-dashboard) .global-search > .icon { width: 25px; height: 25px; }
 .tree-folder > summary { padding: 0 8px; min-width: 0; font-size: 13px; }
 .tree-folder > summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-folder > .tree-pages { margin-left: 18px; }
-.reader-access form, .reader-access label { display: flex; flex-direction: column; gap: 10px; }
-.reader-access input { background: #001522; border: 1px solid #15657a; color: #e9f9ff; border-radius: 5px; padding: 10px; font: inherit; }
-.reader-access button { align-self: flex-start; background: #00314a; border: 1px solid #00bcd4; color: #e9f9ff; border-radius: 5px; padding: 8px 16px; cursor: pointer; }
 /* Source and folder browser */
 main:has(.catalog) .masthead { height: 250px; padding: 84px 0 0; display: block; }
 main:has(.catalog) .masthead::before { inset: 0 -17px 90px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
