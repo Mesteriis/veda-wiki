@@ -254,7 +254,7 @@ func TestLargeImportUsesVersionGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s.db().Version != domain.RevisionsFormat {
-		t.Fatal("large import did not upgrade store")
+		t.Fatal("large import changed the store format")
 	}
 	if _, err := s.reopen(s.Store.Dir()); err != nil {
 		t.Fatal("large import could not reopen", err)

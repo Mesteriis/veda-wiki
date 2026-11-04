@@ -40,11 +40,11 @@ func TestOldBinaryRejectsImageMoveStore(t *testing.T) {
 	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject v6")
+		t.Fatal("old binary did not reject the store")
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v6 data")
+		t.Fatal("old binary changed the store data")
 	}
 }
 
@@ -192,11 +192,11 @@ func TestOldBinaryRejectsQueuedImageStore(t *testing.T) {
 	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject v7")
+		t.Fatal("old binary did not reject the store")
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v7 data")
+		t.Fatal("old binary changed the store data")
 	}
 }
 

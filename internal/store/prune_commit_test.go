@@ -235,3 +235,40 @@ func TestCommitDoesNotPruneOlderFormat(t *testing.T) {
 		t.Fatal("commit changed the store format", v)
 	}
 }
+
+// Declarations that persist the whole state prune every article: conflicting
+// OnlyArticle keys and an empty key both fall back to a whole-state commit.
+func TestWholeStateFallbacksPruneEveryArticle(t *testing.T) {
+	declarations := map[string]func(tx *store.Tx){
+		"conflicting": func(tx *store.Tx) {
+			tx.OnlyArticle("local/other.md")
+			tx.OnlyArticle("local/third.md")
+		},
+		"empty key": func(tx *store.Tx) { tx.OnlyArticle("") },
+	}
+	for name, declare := range declarations {
+		for _, backend := range []string{"json", "sqlite"} {
+			t.Run(name+"/"+backend, func(t *testing.T) {
+				st := backendStore(t, backend)
+				protectedHistory(t, st)
+				completeHeldJob(t, st)
+				if err := st.Update(func(tx *store.Tx) error {
+					appendTo(tx.DB(), "local/third.md", 1)
+					a := tx.DB().Articles["local/third.md"]
+					a.SourceID, a.Path = "local", "third.md"
+					tx.DB().Articles["local/third.md"] = a
+					declare(tx)
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if got := numbersInMemoryAndOnDisk(t, st, "local/held.md"); !slices.Equal(got, []int{3, 4, 5}) {
+					t.Fatal("whole-state commit kept", got)
+				}
+				if got := numbersInMemoryAndOnDisk(t, st, "local/third.md"); !slices.Equal(got, []int{1}) {
+					t.Fatal("whole-state commit lost an article", got)
+				}
+			})
+		}
+	}
+}

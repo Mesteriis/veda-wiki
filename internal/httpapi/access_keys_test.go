@@ -189,7 +189,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	_ = connectFixture(t, s, f, true)
 	_, err := s.moveArticle(transfer.MoveRequest{SourceID: "handbook", SourcePath: "README.md", ExpectedRevision: 1, DestinationID: "local", DestinationPath: "copy.md", ConfirmMove: true})
 	if err != nil || s.state(t).Version != domain.RevisionsFormat {
-		t.Fatal("version 3 move not created", err)
+		t.Fatal("move not created at the current store format", err)
 	}
 	key, err := s.auth().CreateAccessKey("agent", []string{"local"}, time.Now().Add(time.Hour))
 	if err != nil {
@@ -197,7 +197,7 @@ func TestAccessKeyUpgradePreservesPendingGitHubMove(t *testing.T) {
 	}
 	reopened, err := openStore(s.Dir())
 	if err != nil || reopened.state(t).Version != domain.RevisionsFormat || len(reopened.auth().AccessScope(key, time.Now())) != 1 {
-		t.Fatal("version upgrade lost access", err)
+		t.Fatal("move lost access or changed the store format", err)
 	}
 	manager := newSyncManager(reopened, f.Client())
 	manager.Once(context.Background())

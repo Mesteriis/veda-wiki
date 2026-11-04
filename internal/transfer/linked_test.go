@@ -103,7 +103,7 @@ func TestCopyLinkedDirectoryReadmeAndRootLinks(t *testing.T) {
 		t.Fatal("directory graph not copied", err)
 	}
 	if s.db().Version != domain.RevisionsFormat {
-		t.Fatal("directory transfer did not gate old binaries")
+		t.Fatal("directory transfer changed the store format")
 	}
 	reopened, err := s.reopen()
 	if err != nil || reopened.db().Articles["to/docs/README.md"].Versions[0].Text != "# Docs\n\n[Root](../)" {
@@ -130,14 +130,14 @@ func TestCopyLinkedIndexDirectoryToReadme(t *testing.T) {
 		t.Fatal("index mapping provenance missing")
 	}
 	if _, err = s.reopen(); err != nil {
-		t.Fatal("v17 store did not reopen", err)
+		t.Fatal("directory index store did not reopen", err)
 	}
 	if err = store.MigrateSQLite(s.Store.Dir()); err != nil {
-		t.Fatal("v17 SQLite migration failed", err)
+		t.Fatal("directory index SQLite migration failed", err)
 	}
 	reopened, err := s.reopen()
 	if err != nil || reopened.db().Version != domain.RevisionsFormat || !reopened.db().Articles["to/docs/README.md"].CopiedFrom.DirectoryIndex {
-		t.Fatal("v17 provenance lost after SQLite migration", err)
+		t.Fatal("directory index provenance lost after SQLite migration", err)
 	}
 }
 

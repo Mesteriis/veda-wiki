@@ -141,7 +141,7 @@ func TestMoveImageAndTranslationTogether(t *testing.T) {
 	}
 	reopened, err := openStore(s.Dir())
 	if err != nil || reopened.state(t).Version != domain.RevisionsFormat {
-		t.Fatal("v6 restart failed", err)
+		t.Fatal("restart failed or changed the store format", err)
 	}
 	page, err := reopened.page("to/docs/sub/b.md", false)
 	if err != nil || !page.Translated || reopened.state(t).Sources["to"].Assets["docs/sub/img/icon.png"] != ref {

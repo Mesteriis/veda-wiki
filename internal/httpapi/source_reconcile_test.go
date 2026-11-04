@@ -103,7 +103,7 @@ asyncio.run(main())`
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic MCP failed: %v %s", err, out)
 	}
-	if s.state(t).Version != 18 || s.state(t).Articles["handbook/a.md"].ReconcileBase == nil {
+	if s.state(t).Version != domain.RevisionsFormat || s.state(t).Articles["handbook/a.md"].ReconcileBase == nil {
 		t.Fatal("MCP did not persist baseline")
 	}
 }

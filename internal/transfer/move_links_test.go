@@ -32,7 +32,7 @@ func TestMovePreservesMatchingRelativeLink(t *testing.T) {
 	}
 	reopened, err := s.reopen()
 	if err != nil || reopened.db().Version != domain.RevisionsFormat || reopened.Moves()[0].Links["guide.md"] != rev.SHA {
-		t.Fatal("v8 restart", err)
+		t.Fatal("restart lost move links", err)
 	}
 	page, err := reopened.page("to/chapter/b.md", false)
 	if err != nil {

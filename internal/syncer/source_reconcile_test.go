@@ -159,11 +159,11 @@ func TestOldBinaryRejectsReconciliationStore(t *testing.T) {
 	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject v18")
+		t.Fatal("old binary did not reject the store")
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed v18 state")
+		t.Fatal("old binary changed the store state")
 	}
 }
 
@@ -252,11 +252,11 @@ func TestOldBinaryRejectsReconciliationSQLite(t *testing.T) {
 	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject SQLite v18")
+		t.Fatal("old binary did not reject the SQLite store")
 	}
 	after, err := os.ReadFile(file)
 	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed SQLite v18 state")
+		t.Fatal("old binary changed the SQLite store state")
 	}
 }
 

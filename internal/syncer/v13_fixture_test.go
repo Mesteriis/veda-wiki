@@ -40,7 +40,7 @@ func TestExportV13RestoreFixture(t *testing.T) {
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	m, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true, IncludeLinked: true})
-	if err != nil || m.State != "waiting_destination" || s.db().Version != 13 {
+	if err != nil || m.State != "waiting_destination" || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("fixture move", err, m)
 	}
 	if err = s.pauseConnection("handbook", true); err != nil {
@@ -61,7 +61,7 @@ func TestExportV13RestoreFixture(t *testing.T) {
 		}
 	}
 	reopened, err := openStore(t, dir)
-	if err != nil || reopened.db().Version != 13 || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || reopened.jobs()[0].Bundle["related.md"] != domain.Digest([]byte("# Related fixture")) || !reopened.db().Connections["handbook"].Paused {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || reopened.jobs()[0].Bundle["related.md"] != domain.Digest([]byte("# Related fixture")) || !reopened.db().Connections["handbook"].Paused {
 		t.Fatal("fixture validation", err)
 	}
 }

@@ -256,11 +256,11 @@ func TestOldBinaryRejectsLinkedBundleStore(t *testing.T) {
 	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject v9")
+		t.Fatal("old binary did not reject the store")
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v9 state")
+		t.Fatal("old binary changed the store state")
 	}
 }
 
@@ -361,7 +361,7 @@ func TestCopyRootDependenciesToGitHubInOneCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s.db().Version != domain.RevisionsFormat {
-		t.Fatal("root dependency bundle did not upgrade the store")
+		t.Fatal("root dependency bundle changed the store format")
 	}
 	if _, err := s.reopen(); err != nil {
 		t.Fatal("root dependency store did not reopen", err)
@@ -390,7 +390,7 @@ func TestOldBinaryRejectsRootDependencyStore(t *testing.T) {
 	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
 	connectFixture(t, s, f, true)
 	_, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmPublication: true})
-	if err != nil || s.db().Version != 12 {
+	if err != nil || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("root dependency store not created", err)
 	}
 	state := filepath.Join(s.Dir(), "state.json")
@@ -403,10 +403,10 @@ func TestOldBinaryRejectsRootDependencyStore(t *testing.T) {
 	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject v12")
+		t.Fatal("old binary did not reject the store")
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v12 data")
+		t.Fatal("old binary changed the store data")
 	}
 }

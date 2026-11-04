@@ -37,7 +37,7 @@ func TestExportV7RestoreFixture(t *testing.T) {
 	f.Modify(func() { f.Private = true })
 	connectFixture(t, s, f, true)
 	m, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmMove: true})
-	if err != nil || m.State != "waiting_destination" || s.db().Version != 7 {
+	if err != nil || m.State != "waiting_destination" || s.db().Version != domain.RevisionsFormat {
 		t.Fatal("fixture move", err, m)
 	}
 	if err = s.pauseConnection("handbook", true); err != nil {
@@ -58,7 +58,7 @@ func TestExportV7RestoreFixture(t *testing.T) {
 		}
 	}
 	reopened, err := openStore(t, dir)
-	if err != nil || reopened.db().Version != 7 || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || !reopened.db().Connections["handbook"].Paused {
+	if err != nil || reopened.db().Version != domain.RevisionsFormat || len(reopened.jobs()) != 1 || reopened.jobs()[0].Assets["img/icon.png"] != ref || !reopened.db().Connections["handbook"].Paused {
 		t.Fatal("fixture validation", err)
 	}
 }

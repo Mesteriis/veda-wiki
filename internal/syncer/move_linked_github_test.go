@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
 )
@@ -50,8 +51,8 @@ func TestOldBinaryRejectsConnectedGraphMoveStore(t *testing.T) {
 	if _, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "a.md", ConfirmMove: true, ConfirmPublication: true, IncludeLinked: true}); err != nil {
 		t.Fatal(err)
 	}
-	if s.db().Version != 10 {
-		t.Fatal("graph move did not upgrade store")
+	if s.db().Version != domain.RevisionsFormat {
+		t.Fatal("graph move changed the store format")
 	}
 	state := filepath.Join(s.Dir(), "state.json")
 	before, err := os.ReadFile(state)
@@ -63,11 +64,11 @@ func TestOldBinaryRejectsConnectedGraphMoveStore(t *testing.T) {
 	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject v10")
+		t.Fatal("old binary did not reject the store")
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed v10 state")
+		t.Fatal("old binary changed the store state")
 	}
 }
 func TestCancelledLinkedBundleKeepsSource(t *testing.T) {

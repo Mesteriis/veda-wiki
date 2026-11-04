@@ -25,7 +25,7 @@ func TestLargeArticlesPersistWithVersionGateAndAPI(t *testing.T) {
 	out := httptest.NewRecorder()
 	w.ServeHTTP(out, req)
 	if out.Code != 201 || s.state(t).Version != domain.RevisionsFormat {
-		t.Fatal("large article not written with version gate", out.Code, s.state(t).Version)
+		t.Fatal("large article not written at the current store format", out.Code, s.state(t).Version)
 	}
 	reopened, err := openStore(s.Dir())
 	if err != nil {
@@ -60,7 +60,7 @@ func TestPreviousBinaryRefusesLargeArticleStore(t *testing.T) {
 	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject v13")
+		t.Fatal("old binary did not reject the store")
 	}
 	after, err := os.ReadFile(state)
 	if err != nil || string(before) != string(after) {

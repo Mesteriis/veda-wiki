@@ -78,7 +78,7 @@ func TestMovePreservesTranslationAsPrivateDraft(t *testing.T) {
 	}
 	reopened, err := s.reopen()
 	if err != nil || reopened.db().Version != domain.RevisionsFormat {
-		t.Fatal("store version or restart", err)
+		t.Fatal("restart failed or changed the store format", err)
 	}
 	if reopened.Moves()[0].TranslationFingerprint != m.TranslationFingerprint {
 		t.Fatal("move fingerprint lost")
