@@ -63,9 +63,9 @@ async def main():
                     await session.initialize()
                     tools = await session.list_tools()
                     assert {tool.name for tool in tools.tools} == {
-                        "veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_create_source",
+                        "veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_prepare_update", "veda_prepare_new_article", "veda_create_source",
                         "veda_write_article", "veda_copy_article", "veda_transfer_plan", "veda_reconcile_sources", "veda_source_mirrors", "veda_configure_source_mirror", "veda_moves", "veda_cancel_move",
-                        "veda_move_article", "veda_translation_needed", "veda_translate_article", "veda_context",
+                        "veda_move_article", "veda_context",
                         "veda_conflicts", "veda_resolve_conflict", "veda_github_status", "veda_github_connect",
                         "veda_sync", "veda_publish_job", "veda_cancel_bundle"}
                     connect_schema = next(tool.inputSchema for tool in tools.tools if tool.name == "veda_github_connect")
@@ -116,28 +116,9 @@ async def main():
                     copy_read = await call("veda_read", {"source_id": "copy", "path": "copied.md"})
                     assert copy_read["text"] == "# Private updated"
                     await call("veda_create_source", {"id": "program", "title": "program", "kind": "program", "visibility": "private"})
-                    original = await call("veda_write_article", {"source_id": "program", "path": "docs/setup.md", "text": "# Setup\nRun `install`.", "expected_revision": 0})
-                    waiting = await call("veda_translation_needed", {})
-                    assert any(c["source_id"] == "program" and c["original_sha256"] == original["sha256"] for c in waiting["candidates"])
-                    filtered = await call("veda_translation_needed", {"source_id": "program"})
-                    assert filtered["total"] == 1 and filtered["candidates"][0]["original_sha256"] == original["sha256"]
-                    assert (await call("veda_translation_needed", {"source_id": "missing"}))["total"] == 0
-                    translation_proposal = await call("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Установка\nЗапустите `install`."})
-                    assert translation_proposal["expected_translation_fingerprint"] == ""
-                    translated = await call("veda_translate_article", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "original_sha256": original["sha256"], "text": "# Установка\nЗапустите `install`.", "expected_translation_fingerprint": translation_proposal["expected_translation_fingerprint"]})
-                    assert translated["language"] == "ru"
-                    stale_translation = await session.call_tool("veda_translate_article", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "original_sha256": original["sha256"], "text": "# Установка\nЗапустите `install`.", "expected_translation_fingerprint": translation_proposal["expected_translation_fingerprint"]})
-                    assert stale_translation.isError
+                    await call("veda_write_article", {"source_id": "program", "path": "docs/setup.md", "text": "# Setup\nRun `install`.", "expected_revision": 0})
                     unchanged = await call("veda_read", {"source_id": "program", "path": "docs/setup.md"})
                     assert unchanged["text"] == "# Setup\nRun `install`."
-                    displayed = await call("veda_read_display", {"source_id": "program", "path": "docs/setup.md"})
-                    assert displayed["translated"] and displayed["translation_state"] == "current"
-                    assert displayed["text"] == "# Установка\nЗапустите `install`." and displayed["original_sha256"] == original["sha256"]
-                    first = await call("veda_read_display_excerpt", {"source_id": "program", "path": "docs/setup.md", "limit": 3})
-                    tail = await call("veda_read_display_excerpt", {"source_id": "program", "path": "docs/setup.md", "offset": first["next_offset"], "expected_sha256": first["sha256"], "expected_original_sha256": first["original_sha256"]})
-                    assert first["text"] + tail["text"] == displayed["text"] and tail["next_offset"] is None
-                    assert not (await call("veda_translation_needed", {}))["candidates"]
-                    await call("veda_write_article", {"source_id": "program", "path": "docs/pending.md", "text": "# Pending", "expected_revision": 0})
                     await call("veda_create_source", {"id": "hidden-program", "title": "hidden", "kind": "program", "visibility": "private"})
                     await call("veda_write_article", {"source_id": "hidden-program", "path": "docs/hidden.md", "text": "# Hidden", "expected_revision": 0})
                     await call("veda_write_article", {"source_id":"closed", "path":"move.md", "text":"# Move fixture", "expected_revision":0})
@@ -238,15 +219,10 @@ async def main():
                                       "--source", "imported-program", "--url", f"http://127.0.0.1:{private_port}",
                                       "--key-file", str(data / "owner.key")]
                     subprocess.run(program_import + ["--create"], check=True, capture_output=True)
-                    local = await call("veda_write_article", {"source_id": "imported-program", "path": "docs/guide.md", "text": "# Local edit", "expected_revision": 1})
-                    translation = {"source_id": "imported-program", "path": "docs/guide.md", "expected_revision": 2, "text": "# Локальная правка"}
-                    assert (await call("veda_prepare_translation", translation))["validation"]["structural_valid"] is True
+                    await call("veda_write_article", {"source_id": "imported-program", "path": "docs/guide.md", "text": "# Local edit", "expected_revision": 1})
                     (program_checkout / "docs/guide.md").write_text("# Remote edit")
                     assert json.loads(subprocess.run(program_import, check=True, capture_output=True, text=True).stdout)["conflicts"] == 1
-                    assert (await session.call_tool("veda_prepare_translation", translation)).isError
-                    assert (await session.call_tool("veda_translate_article", {**translation, "original_sha256": local["sha256"]})).isError
                     await call("veda_resolve_conflict", {"source_id": "imported-program", "path": "docs/guide.md", "index": 0, "expected_revision": 2, "resolution": "local"})
-                    assert (await call("veda_prepare_translation", translation))["validation"]["structural_valid"] is True
                     for port in (private_port, public_port):
                         public = public_json(port, "/api/state")
                         encoded = json.dumps(public)
@@ -266,7 +242,7 @@ async def main():
                             result = await reader.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not result.isError and json.loads(result.content[0].text)["text"] == "# Private updated"
                             names = {tool.name for tool in (await reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed", "veda_transfer_plan"}
+                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"}
                     def owner_post(route, value):
                         req = Request(f"http://127.0.0.1:{private_port}" + route,
                             data=json.dumps(value).encode(), method="POST",
@@ -286,7 +262,7 @@ async def main():
                         async with ClientSession(scoped_in, scoped_out) as scoped:
                             await scoped.initialize()
                             names = {tool.name for tool in (await scoped.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed", "veda_transfer_plan"}
+                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"}
                             visible = await scoped.call_tool("veda_sources", {})
                             assert {item["id"] for item in json.loads(visible.content[0].text)["sources"]} == {"closed", "program"}
                             found = await scoped.call_tool("veda_find", {"query": "Private updated", "limit": 1})
@@ -294,14 +270,6 @@ async def main():
                             assert not found.isError and result["total"] == 1 and result["results"][0]["source_id"] == "closed"
                             hidden_find = await scoped.call_tool("veda_find", {"query": "Hidden", "source_id": "hidden-program"})
                             assert not hidden_find.isError and json.loads(hidden_find.content[0].text)["total"] == 0
-                            queue = await scoped.call_tool("veda_translation_needed", {})
-                            assert not queue.isError
-                            candidates = json.loads(queue.content[0].text)
-                            assert candidates["total"] == 1 and candidates["candidates"][0]["source_id"] == "program" and candidates["candidates"][0]["path"] == "docs/pending.md"
-                            allowed_queue = await scoped.call_tool("veda_translation_needed", {"source_id": "program"})
-                            assert not allowed_queue.isError and json.loads(allowed_queue.content[0].text)["total"] == 1
-                            hidden_queue = await scoped.call_tool("veda_translation_needed", {"source_id": "hidden-program"})
-                            assert not hidden_queue.isError and json.loads(hidden_queue.content[0].text)["total"] == 0
                             plan_args = {"source_id": "closed", "source_path": "README.md", "expected_revision": 2,
                                 "destination_id": "program", "destination_path": "docs/copied.md"}
                             scoped_plan = await scoped.call_tool("veda_transfer_plan", plan_args)
@@ -312,12 +280,6 @@ async def main():
                             assert denied_copy.isError
                             allowed = await scoped.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert not allowed.isError
-                            displayed = await scoped.call_tool("veda_read_display", {"source_id": "program", "path": "docs/setup.md"})
-                            assert not displayed.isError and json.loads(displayed.content[0].text)["translated"] is True
-                            excerpt = await scoped.call_tool("veda_read_display_excerpt", {"source_id": "program", "path": "docs/setup.md", "limit": 3})
-                            assert not excerpt.isError and json.loads(excerpt.content[0].text)["text"] == "# У"
-                            denied_display = await scoped.call_tool("veda_read_display", {"source_id": "copy", "path": "copied.md"})
-                            assert denied_display.isError
                             proposal = await scoped.call_tool("veda_prepare_update", {"source_id": "closed", "path": "README.md", "expected_revision": 2, "text": "# Proposed"})
                             prepared = json.loads(proposal.content[0].text)
                             assert not proposal.isError and prepared["saved"] is False and prepared["expected_revision"] == 2
@@ -339,19 +301,6 @@ async def main():
                             assert unsafe.isError
                             unauthorized = await scoped.call_tool("veda_prepare_new_article", {"source_id": "copy", "path": "new.md", "text": "# Forbidden"})
                             assert unauthorized.isError
-                            translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Предложение\nЗапустите `install`."})
-                            draft = json.loads(translation.content[0].text)
-                            assert not translation.isError and draft["saved"] is False and draft["original_sha256"] == original["sha256"]
-                            assert draft["validation"]["structural_valid"] is True and draft["validation"]["russian_prose"] is True
-                            assert draft["source_status"] == draft["validation"]["source_status"]
-                            broken_translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Ошибка\nЗапустите `different`."})
-                            assert not broken_translation.isError and json.loads(broken_translation.content[0].text)["validation"]["structural_valid"] is False
-                            stale_translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 2, "text": "# Ошибка"})
-                            assert stale_translation.isError
-                            wrong_kind = await scoped.call_tool("veda_prepare_translation", {"source_id": "closed", "path": "README.md", "expected_revision": 2, "text": "# Ошибка"})
-                            assert wrong_kind.isError
-                            forbidden_translation = await scoped.call_tool("veda_prepare_translation", {"source_id": "copy", "path": "docs/a.md", "expected_revision": 1, "text": "# Ошибка"})
-                            assert forbidden_translation.isError
                             denied = await scoped.call_tool("veda_read", {"source_id": "copy", "path": "copied.md"})
                             assert denied.isError
                             ctx = await scoped.call_tool("veda_context", {"source_id": "closed", "path": "README.md"})
@@ -382,12 +331,8 @@ async def main():
                     async with stdio_client(socket_params) as (socket_in, socket_out):
                         async with ClientSession(socket_in, socket_out) as socket_reader:
                             await socket_reader.initialize()
-                            checked = await socket_reader.call_tool("veda_prepare_translation", {"source_id": "program", "path": "docs/setup.md", "expected_revision": 1, "text": "# Перевод\nЗапустите `install`."})
-                            assert not checked.isError and json.loads(checked.content[0].text)["validation"]["structural_valid"] is True
-                            displayed = await socket_reader.call_tool("veda_read_display", {"source_id": "program", "path": "docs/setup.md"})
-                            assert not displayed.isError and json.loads(displayed.content[0].text)["translation_state"] == "current"
                             names = {tool.name for tool in (await socket_reader.list_tools()).tools}
-                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_display", "veda_read_display_excerpt", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_prepare_translation", "veda_translation_needed", "veda_transfer_plan"}
+                            assert names == {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context", "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"}
                             socket_plan = await socket_reader.call_tool("veda_transfer_plan", {"source_id": "closed", "source_path": "unsafe.md", "expected_revision": 1,
                                 "destination_id": "open", "destination_path": "unsafe.md"})
                             assert not socket_plan.isError and json.loads(socket_plan.content[0].text)["articles"][0]["credential_like"] is True
@@ -437,7 +382,7 @@ async def main():
                             owner_post("/api/v1/access-keys/revoke", {"id": "required-test"})
                             revoked = await keyed_socket.call_tool("veda_read", {"source_id": "closed", "path": "README.md"})
                             assert revoked.isError
-            print("PASS: owner MCP; scoped MCP read and revocation; context; import; conflicts; public isolation; copy; move; translation and conflict guard; reader socket; restart")
+            print("PASS: owner MCP; scoped MCP read and revocation; context; import; conflicts; public isolation; copy; move; conflict guard; reader socket; restart")
         finally:
             process.terminate()
             process.wait(timeout=10)

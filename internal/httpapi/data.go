@@ -11,7 +11,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 // dataStore is the data one request may reach: the shared store, or for a
@@ -43,13 +42,9 @@ func (s *dataStore) importer() importer.Service {
 	return importer.Service{Store: s.Store, Observations: s.observations}
 }
 
-// transfer and translation report source statuses as the agent context does.
+// transfer reports source statuses as the agent context does.
 func (s *dataStore) transfer() transfer.Service {
 	return transfer.Service{Store: s.Store, Status: s.sourceStatus}
-}
-
-func (s *dataStore) translation() translation.Service {
-	return translation.Service{Store: s.Store, Status: s.sourceStatus}
 }
 
 func (s *dataStore) sourceStatus(db domain.Database, sourceID string, src domain.Source) domain.SourceStatus {

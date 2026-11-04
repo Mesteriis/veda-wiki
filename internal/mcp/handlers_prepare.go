@@ -4,10 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/Mesteriis/veda-wiki/internal/mcp/client"
 )
@@ -17,14 +15,10 @@ import (
 var prepareHandlers = map[string]handler{
 	"veda_prepare_update":      prepareUpdate,
 	"veda_prepare_new_article": prepareNewArticle,
-	"veda_prepare_translation": prepareTranslation,
 }
 
 const newArticleNote = "Proposal only; deleted history or concurrent writes may cause a conflict. " +
 	"The path is not reserved and an authorized write is still required."
-
-const translationNote = "Proposal only; validation cannot establish translation quality. " +
-	"Review and an authorized translation submission are still required."
 
 func proposalSHA(text string) string {
 	sum := sha256.Sum256([]byte(text))
@@ -110,75 +104,5 @@ func prepareNewArticle(ctx context.Context, c *client.Client, args arguments) (a
 	return object{
 		{"source_id", sourceID}, {"path", path}, {"expected_revision", 0}, {"proposed_sha256", proposalSHA(proposed)},
 		{"text", proposed}, {"saved", false}, {"source_status", status}, {"note", newArticleNote},
-	}, nil
-}
-
-// isProgramSource reports whether the first listed source with this id has
-// kind "program". A listed source without an id before the match is invalid.
-func isProgramSource(raw json.RawMessage, sourceID string) (bool, error) {
-	sources, err := decodeArray(raw)
-	if err != nil {
-		return false, err
-	}
-	for _, item := range sources {
-		source, err := decodeObject(item)
-		if err != nil {
-			return false, err
-		}
-		id, err := source.get("id")
-		if err != nil {
-			return false, err
-		}
-		if pyValue(id) == sourceID {
-			kind, _ := source.get("kind")
-			return pyValue(kind) == "program", nil
-		}
-	}
-	return false, nil
-}
-
-func prepareTranslation(ctx context.Context, c *client.Client, args arguments) (any, error) {
-	sourceID, path, proposed := args.str("source_id"), args.str("path"), args.str("text")
-	sources, err := c.Do(ctx, http.MethodGet, "/api/v1/sources", nil)
-	if err != nil {
-		return nil, err
-	}
-	program, err := isProgramSource(sources, sourceID)
-	if err != nil {
-		return nil, err
-	}
-	if !program || !strings.HasPrefix(path, "docs/") {
-		return nil, errInvalid // program documentation required
-	}
-	current, err := readLatest(ctx, c, sourceID, path)
-	if err != nil {
-		return nil, err
-	}
-	f, err := fields(current, "revision", "sha256")
-	if err != nil {
-		return nil, err
-	}
-	if proposed == "" || len(proposed) > MaxArticleBytes || !equalsInt(f["revision"], args.integer("expected_revision")) {
-		return nil, errInvalid // invalid or stale translation proposal
-	}
-	validationRaw, err := c.Do(ctx, http.MethodPost, "/api/v1/articles/translation-validate", object{
-		{"source_id", sourceID}, {"path", path}, {"expected_revision", f["revision"]},
-		{"original_sha256", f["sha256"]}, {"text", proposed},
-	})
-	if err != nil {
-		return nil, err
-	}
-	validation, err := decodeObject(validationRaw)
-	if err != nil {
-		return nil, err
-	}
-	v, err := fields(validation, "translation_fingerprint", "source_status")
-	if err != nil {
-		return nil, err
-	}
-	return object{
-		{"source_id", sourceID}, {"path", path}, {"expected_revision", f["revision"]}, {"original_sha256", f["sha256"]},
-		{"text", proposed}, {"expected_translation_fingerprint", v["translation_fingerprint"]}, {"validation", validationRaw},
-		{"source_status", v["source_status"]}, {"saved", false}, {"note", translationNote},
 	}, nil
 }

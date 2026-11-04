@@ -14,7 +14,7 @@ type Snapshot struct {
 
 // ReadSnapshot lists the current page of every article a reader may see,
 // sorted by key. Public readers see published revisions of connected sources
-// and approved translations only, and the snapshot time is that of the newest
+// only, and the snapshot time is that of the newest
 // visible revision instead of the state's.
 func ReadSnapshot(db Database, public bool, now time.Time) Snapshot {
 	snap := Snapshot{Pages: []Page{}}
@@ -36,8 +36,6 @@ func ReadSnapshot(db Database, public bool, now time.Time) Snapshot {
 				continue
 			}
 		}
-		original := rev.Text
-		rev, _ = DisplayedRevision(a, rev, public)
 		if public && rev.Created > snap.Generated {
 			snap.Generated = rev.Created
 		}
@@ -47,8 +45,7 @@ func ReadSnapshot(db Database, public bool, now time.Time) Snapshot {
 			Environment:       src.ID,
 			SHA:               rev.SHA,
 			Updated:           rev.Created,
-			SearchOriginal:    original,
-			SearchDisplayed:   rev.Text,
+			SearchText:        rev.Text,
 			SearchSourceTitle: src.Title,
 		})
 	}
@@ -56,9 +53,8 @@ func ReadSnapshot(db Database, public bool, now time.Time) Snapshot {
 	return snap
 }
 
-// ReadPage returns the displayed page of one article with its translation
-// and conflict state. Public readers never learn whether an unpublished
-// translation or an unresolved conflict exists.
+// ReadPage returns the displayed page of one article with its conflict
+// state. Public readers never learn whether an unresolved conflict exists.
 func ReadPage(db Database, key string, public bool, now time.Time) (Page, error) {
 	a, ok := db.Articles[key]
 	if !ok || a.Deleted {
@@ -75,9 +71,6 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 			return Page{}, ErrNotFound
 		}
 	}
-	originalSHA := r.SHA
-	r, translated := DisplayedRevision(a, r, public)
-	origin, translationState := "", ""
 	unresolved := false
 	if !public {
 		for _, conflict := range a.Conflicts {
@@ -85,16 +78,6 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 				unresolved = true
 				break
 			}
-		}
-	}
-	if src.Kind == "program" {
-		translationState = "unavailable"
-		if translated {
-			translationState = "current"
-			origin = a.Translation.Origin
-		} else if !public && a.Translation != nil && a.Translation.OriginalSHA != originalSHA {
-			// Public readers must not learn whether an unpublished translation exists.
-			translationState = "stale"
 		}
 	}
 	blocked := unresolved && !public && ConflictResolutionBlocked(db, a.SourceID, a.Path)
@@ -105,10 +88,6 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 		SHA:                       r.SHA,
 		Updated:                   r.Created,
 		Text:                      r.Text,
-		OriginalSHA:               originalSHA,
-		Translated:                translated,
-		TranslationOrigin:         origin,
-		TranslationState:          translationState,
 		ProgramDocumentation:      src.Kind == "program",
 		UnresolvedConflict:        unresolved,
 		ConflictResolutionBlocked: blocked,
@@ -117,7 +96,7 @@ func ReadPage(db Database, key string, public bool, now time.Time) (Page, error)
 }
 
 // ReadArticle returns an article record with copied versions. A public reader
-// receives only the visible revision, numbered 0, without translation, copy,
+// receives only the visible revision, numbered 0, without copy,
 // reconciliation, conflict or publication bookkeeping.
 func ReadArticle(db Database, sourceID, p string, public bool, now time.Time) (Article, error) {
 	a, ok := db.Articles[sourceID+"/"+p]
@@ -135,7 +114,6 @@ func ReadArticle(db Database, sourceID, p string, public bool, now time.Time) (A
 			return Article{}, ErrNotFound
 		}
 		a.Versions = []Revision{rev}
-		a.Translation = nil
 		a.CopiedFrom = nil
 		a.ReconcileBase = nil
 		a.Conflicts = nil

@@ -12,10 +12,6 @@ export interface Page {
   program_documentation?: boolean;
   unresolved_conflict?: boolean;
   conflict_resolution_blocked_by_write?: boolean;
-  translation_origin?: string;
-  translation_state?: string;
-  original_sha256?: string;
-  translated?: boolean;
 }
 
 /** The pages of one source (httpapi.Group). */

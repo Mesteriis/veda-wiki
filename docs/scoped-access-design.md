@@ -15,9 +15,8 @@ remain unavailable. Requests already in progress may finish after revocation.
 Existing owner, shared reader and Unix socket behavior remains unchanged. Keys
 have not yet been provisioned to the four agents. Use MCP
 `--reader-key-file /path/to/private-key` to expose read and search tools and
-non-persistent new-article, update and translation proposal preparation tools,
-the transfer plan when both sources are authorized, and the translation queue
-filtered to authorized sources;
+non-persistent new-article and update proposal preparation tools, and
+the transfer plan when both sources are authorized;
 the file must be owned by the process user and inaccessible to group/other.
 Server authorization remains the enforcement boundary.
 

@@ -16,7 +16,7 @@ TARGETS = ("linux-amd64", "linux-arm64", "darwin-arm64")
 DOCS = ("agent-workflow.md", "api.md", "assets.md", "browser-access.md",
         "content-model.md", "github.md", "implementation.md", "import.md",
         "linux-service.md", "roadmap.md", "scoped-access-design.md",
-        "storage.md", "translation.md")
+        "storage.md")
 
 
 def package(archive: Path, binary: Path, version: str, target: str) -> None:

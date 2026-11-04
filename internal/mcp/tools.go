@@ -99,30 +99,6 @@ var Tools = []ToolSpec{
 		ReadOnly: true,
 	},
 	{
-		Name: "veda_read_display",
-		Description: "Read the Markdown shown to readers, including an available Russian translation, with its status, origin and " +
-			"original SHA. This is not an editable source revision; use veda_read for the original and its revision before " +
-			"preparing changes.",
-		Schema: closedObject(required("source_id", "path"),
-			prop("source_id", nonEmpty),
-			prop("path", nonEmpty)),
-		ReadOnly: true,
-	},
-	{
-		Name: "veda_read_display_excerpt",
-		Description: "Read a bounded Unicode slice of the displayed Markdown, including any visible Russian translation. For " +
-			"continuation pass both sha256 and original_sha256 from the first response as expected_sha256 and " +
-			"expected_original_sha256. This is not an editable source revision.",
-		Schema: closedObject(required("source_id", "path"),
-			prop("source_id", nonEmpty),
-			prop("path", nonEmpty),
-			prop("offset", nonNegative),
-			prop("limit", `{"type":"integer","minimum":1,"maximum":16000}`),
-			prop("expected_sha256", sha256Hex),
-			prop("expected_original_sha256", sha256Hex)),
-		ReadOnly: true,
-	},
-	{
 		Name: "veda_read_excerpt",
 		Description: "Read a bounded portion of the current article. Offsets count Unicode code points; pass the first response's " +
 			"sha256 as expected_sha256 for every continuation. A changed revision is refused.",
@@ -155,20 +131,6 @@ var Tools = []ToolSpec{
 		Schema: closedObject(required("source_id", "path", "text"),
 			prop("source_id", nonEmpty),
 			prop("path", nonEmpty),
-			prop("text", articleText)),
-		ReadOnly: true,
-	},
-	{
-		Name: "veda_prepare_translation",
-		Description: "Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article, " +
-			"with source status and the current translation fingerprint from the validation snapshot. Pass the returned " +
-			"expected_translation_fingerprint to the authorized submission to reject concurrent translation changes. Stale " +
-			"original revisions are refused. Validation cannot establish translation quality, save a draft, or approve " +
-			"publication.",
-		Schema: closedObject(required("source_id", "path", "expected_revision", "text"),
-			prop("source_id", nonEmpty),
-			prop("path", nonEmpty),
-			prop("expected_revision", positive),
 			prop("text", articleText)),
 		ReadOnly: true,
 	},
@@ -279,9 +241,8 @@ var Tools = []ToolSpec{
 			"include_linked, copy the linked graph to a standalone local or connected GitHub destination before removing " +
 			"only the requested source article; other source articles remain. GitHub destination files are sent together " +
 			"and must be observed before source deletion. Otherwise linked articles must already exist at the destination " +
-			"with the same revision. Supported relative images are transferred. A stored translation can move only to a " +
-			"program source and remains a private draft. Local imported sources are unsupported. Inspect veda_moves for " +
-			"completion. Private-to-public publication requires explicit user approval; any credential-like text is " +
+			"with the same revision. Supported relative images are transferred. Local imported sources are unsupported. " +
+			"Inspect veda_moves for completion. Private-to-public publication requires explicit user approval; any credential-like text is " +
 			"rejected for a public destination.",
 		Schema: closedObject(required("source_id", "source_path", "expected_revision", "destination_id", "destination_path", "confirm_move"),
 			prop("source_id", nonEmpty),
@@ -292,32 +253,6 @@ var Tools = []ToolSpec{
 			prop("confirm_move", confirmed),
 			prop("confirm_publication", boolean),
 			prop("include_linked", boolean)),
-		ReadOnly: false,
-	},
-	{
-		Name: "veda_translation_needed",
-		Description: "List visible program documentation awaiting Russian translation, publication review, or import conflict " +
-			"resolution. Optionally filter by source_id. The blocked_conflict state must be resolved before translation; " +
-			"originals remain in veda_read. Results are limited to the client's authorized sources.",
-		Schema: closedObject(required(),
-			prop("source_id", nonEmpty),
-			prop("limit", pageLimit),
-			prop("offset", nonNegative)),
-		ReadOnly: true,
-	},
-	{
-		Name: "veda_translate_article",
-		Description: "Submit a Russian translation of a specific original revision; preserve code and links. Pass " +
-			"expected_translation_fingerprint from preparation to reject concurrent translation changes. Public publication" +
-			" needs explicit approval.",
-		Schema: closedObject(required("source_id", "path", "expected_revision", "original_sha256", "text"),
-			prop("source_id", nonEmpty),
-			prop("path", nonEmpty),
-			prop("expected_revision", positive),
-			prop("original_sha256", nonEmpty),
-			prop("text", articleText),
-			prop("confirm_publication", boolean),
-			prop("expected_translation_fingerprint", `{"type":"string","pattern":"^(|[0-9a-f]{64})$"}`)),
 		ReadOnly: false,
 	},
 	{

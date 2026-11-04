@@ -72,10 +72,6 @@ func (s *Store) scopedLocked(scope []string) *Store {
 		}
 		article.Conflicts = slices.Clone(article.Conflicts)
 		article.ReconcileBase = nil
-		if article.Translation != nil {
-			translation := *article.Translation
-			article.Translation = &translation
-		}
 		if article.CopiedFrom != nil {
 			origin := *article.CopiedFrom
 			article.CopiedFrom = &origin

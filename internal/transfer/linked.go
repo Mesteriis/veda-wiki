@@ -51,16 +51,12 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 		if item.Destination == "matching" {
 			continue
 		}
-		if a.Translation != nil && dst.Kind != "program" {
-			return domain.Revision{}, Dependencies{}, domain.ErrInvalid
-		}
 		copied := domain.Revision{Number: 1, Text: rev.Text, SHA: rev.SHA, Created: now.UTC().Format(time.RFC3339Nano)}
 		b := domain.Article{
-			SourceID:    in.DestinationID,
-			Path:        item.DestinationPath,
-			Versions:    []domain.Revision{copied},
-			CopiedFrom:  &domain.CopyOrigin{SourceID: in.SourceID, Path: item.SourcePath, Revision: item.Revision, SHA: rev.SHA, DirectoryIndex: item.DirectoryIndex},
-			Translation: domain.MovedTranslation(a.Translation),
+			SourceID:   in.DestinationID,
+			Path:       item.DestinationPath,
+			Versions:   []domain.Revision{copied},
+			CopiedFrom: &domain.CopyOrigin{SourceID: in.SourceID, Path: item.SourcePath, Revision: item.Revision, SHA: rev.SHA, DirectoryIndex: item.DirectoryIndex},
 		}
 		if public {
 			published := copied

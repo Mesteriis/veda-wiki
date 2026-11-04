@@ -105,7 +105,24 @@ func TestToolTableOrderMatchesPythonAdapter(t *testing.T) {
 	}
 	sort.Strings(readerNames)
 	sort.Strings(wantReader)
-	if !reflect.DeepEqual(names, want) || !reflect.DeepEqual(readerNames, wantReader) || len(readerNames) != 13 {
+	if !reflect.DeepEqual(names, want) || !reflect.DeepEqual(readerNames, wantReader) || len(readerNames) != 9 {
 		t.Fatalf("names %v\nreader %v", names, readerNames)
+	}
+}
+
+// The translation tools were removed; neither the owner nor a reader may list them.
+func TestRemovedTranslationToolsAreNotListed(t *testing.T) {
+	removed := map[string]bool{"veda_read_display": true, "veda_read_display_excerpt": true, "veda_prepare_translation": true, "veda_translation_needed": true, "veda_translate_article": true}
+	for _, readOnly := range []bool{false, true} {
+		_, base := startREST(t, nil)
+		listed, err := connect(t, base, readOnly).ListTools(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tool := range listed.Tools {
+			if removed[tool.Name] {
+				t.Errorf("reader=%v lists removed tool %s", readOnly, tool.Name)
+			}
+		}
 	}
 }

@@ -80,7 +80,7 @@ func TestMCPServesReaderToolsOverStreams(t *testing.T) {
 		t.Fatal(err)
 	}
 	tools, err := session.ListTools(t.Context(), nil)
-	if err != nil || len(tools.Tools) != 13 {
+	if err != nil || len(tools.Tools) != 9 {
 		t.Fatalf("tools=%v err=%v", tools, err)
 	}
 	_ = session.Close()

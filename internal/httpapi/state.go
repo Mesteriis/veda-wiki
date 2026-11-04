@@ -172,7 +172,7 @@ func (h handler) state(rw http.ResponseWriter, r *http.Request) {
 		if name == "" && (env == "" || env == "all" || env == id) {
 			score := 1
 			if query != "" {
-				score = search.Revisions(query, p.Path, p.SearchSourceTitle, p.SearchOriginal, p.SearchDisplayed, terms)
+				score = search.Article(query, p.Path, p.SearchSourceTitle, p.SearchText, terms)
 			}
 			if score > 0 {
 				v.Pages = append(v.Pages, p)

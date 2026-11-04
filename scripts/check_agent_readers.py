@@ -16,9 +16,8 @@ from mcp.client.stdio import get_default_environment, stdio_client
 AGENTS = ('codex', 'claude', 'opencode', 'hermes')
 BINARY = Path(os.environ.get('VEDA_TEST_BINARY', Path(__file__).resolve().parents[1] / 'veda'))
 READER_TOOLS = frozenset(('veda_sources', 'veda_search', 'veda_find', 'veda_read',
-    'veda_read_display', 'veda_read_display_excerpt', 'veda_read_excerpt', 'veda_context',
-    'veda_prepare_update', 'veda_prepare_new_article', 'veda_prepare_translation',
-    'veda_translation_needed', 'veda_transfer_plan'))
+    'veda_read_excerpt', 'veda_context',
+    'veda_prepare_update', 'veda_prepare_new_article', 'veda_transfer_plan'))
 REQUIRED_TOOLS = frozenset(('veda_sources', 'veda_read_excerpt', 'veda_context',
                             'veda_prepare_update', 'veda_prepare_new_article'))
 

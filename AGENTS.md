@@ -14,5 +14,5 @@ The public listener must ignore owner tokens. Browser writes are disabled.
 Keep state/key files and local machine configuration out of the repository.
 
 Run make test after meaningful backend changes; use the official SDK smoke
-test for MCP changes. Never claim GitHub synchronization, translations, user
+test for MCP changes. Never claim GitHub synchronization, user
 accounts or cross-repository moves work until implemented and tested.

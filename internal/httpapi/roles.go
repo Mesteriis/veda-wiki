@@ -30,9 +30,9 @@ func (h handler) readerAuthorized(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(provided), []byte(h.ReaderToken)) == 1
 }
 
-// validationRequest reports one of the two POST routes a reader may call.
+// validationRequest reports the only POST route a reader may call.
 func validationRequest(r *http.Request) bool {
-	return r.Method == "POST" && (r.URL.Path == "/api/v1/articles/translation-validate" || r.URL.Path == "/api/v1/articles/transfer-plan")
+	return r.Method == "POST" && r.URL.Path == "/api/v1/articles/transfer-plan"
 }
 
 // resolveRole decides whether the request reads as the owner or as a reader.
@@ -129,7 +129,7 @@ func (h handler) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader
 		return
 	}
 	switch path {
-	case "/api/v1/articles/new-proposal-base", "/api/v1/articles/proposal-base", "/api/v1/articles/translation-needed":
+	case "/api/v1/articles/new-proposal-base", "/api/v1/articles/proposal-base":
 		if public {
 			http.NotFound(rw, r)
 			return
@@ -145,24 +145,16 @@ func (h handler) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader
 		h.proposalBase(rw, r, true)
 	case "/api/v1/articles/proposal-base":
 		h.proposalBase(rw, r, false)
-	case "/api/v1/articles/display":
-		h.display(rw, r, public)
-	case "/api/v1/articles/excerpt", "/api/v1/articles/display-excerpt":
+	case "/api/v1/articles/excerpt":
 		h.excerpt(rw, r, public)
 	case "/api/v1/context":
 		h.context(rw, r, public)
-	case "/api/v1/articles/translation-validate":
-		h.validateTranslation(rw, r)
 	case "/api/v1/search":
 		h.search(rw, r, public)
 	case "/api/v1/moves/cancel":
 		h.cancelMove(rw, r)
 	case "/api/v1/moves":
 		h.moves(rw, r)
-	case "/api/v1/articles/translation-needed":
-		h.translationNeeded(rw, r)
-	case "/api/v1/articles/translation":
-		h.submitTranslation(rw, r)
 	case "/api/v1/articles/transfer-plan":
 		h.transferPlan(rw, r)
 	case "/api/v1/sources/mirrors":

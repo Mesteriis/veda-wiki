@@ -15,7 +15,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 // fixture is a transfer service over a fresh store, with the reads and
@@ -171,7 +170,7 @@ func (s *fixture) programSource(id, visibility string) {
 	}
 }
 
-// page is the reader API's view of an article, with its translation state.
+// page is the reader API's view of an article.
 func (s *fixture) page(key string, public bool) (domain.Page, error) {
 	return domain.ReadPage(s.db(), key, public, time.Now())
 }
@@ -183,7 +182,3 @@ func (s *fixture) article(sourceID, p string, public bool) (domain.Article, erro
 }
 
 func (s *fixture) auth() auth.Service { return auth.Service{Store: s.Store} }
-
-func (s *fixture) translation() translation.Service {
-	return translation.Service{Store: s.Store}
-}

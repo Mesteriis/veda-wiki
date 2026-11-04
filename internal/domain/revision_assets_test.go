@@ -121,12 +121,3 @@ func TestRevisionImageVisibility(t *testing.T) {
 		t.Error("public local source image hidden")
 	}
 }
-
-func TestTranslatedPageKeepsOriginalImages(t *testing.T) {
-	rev := Revision{Number: 1, Text: "![I](i.png)", SHA: "x", Assets: map[string]BlobRef{"i.png": assetRef("a")}}
-	a := Article{Versions: []Revision{rev}, Translation: &Translation{OriginalSHA: "x", Text: "![Я](i.png)", SHA: "y", PublicApproved: true}}
-	shown, translated := DisplayedRevision(a, rev, true)
-	if !translated || shown.Assets["i.png"] != assetRef("a") {
-		t.Fatal("translation lost the original images", shown.Assets)
-	}
-}

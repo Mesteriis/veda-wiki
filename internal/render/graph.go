@@ -26,7 +26,7 @@ func GraphEdges(pages []domain.Page) []Edge {
 	edges := make([]Edge, 0)
 	seen := make(map[Edge]bool)
 	for _, page := range pages {
-		doc := domain.Markdown.Parser().Parse(text.NewReader([]byte(page.SearchDisplayed)))
+		doc := domain.Markdown.Parser().Parse(text.NewReader([]byte(page.SearchText)))
 		_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			link, ok := n.(*ast.Link)
 			if !entering || !ok {

@@ -154,8 +154,6 @@ func ConfirmSourceDeletions(db *Database, connectionID string, files map[string]
 			len(target.Versions) == 1 &&
 			target.Versions[0].SHA == move.SHA &&
 			destination.ConnectionID == move.DestinationConnectionID &&
-			TranslationFingerprint(original.Translation) == move.TranslationFingerprint &&
-			TranslationFingerprint(target.Translation) == TranslationFingerprint(MovedTranslation(original.Translation)) &&
 			AssetsPresent(destination, move.Assets) &&
 			LinksPresent(*db, move.DestinationID, move.Links)
 		if !assetsAvailable(move.Assets) {
