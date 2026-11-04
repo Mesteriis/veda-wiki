@@ -400,9 +400,6 @@ func retainPrivateAssets(db *domain.Database, batch Batch, previous, refs map[st
 			continue
 		}
 		retained := domain.RetainedPendingAssets(latest.Text, article.Path, previous)
-		if len(retained) > 0 && domain.HasRootReference(latest.Text) && db.Version < 12 {
-			db.Version = 12
-		}
 		for name, ref := range retained {
 			if _, present := refs[name]; !present {
 				refs[name] = ref

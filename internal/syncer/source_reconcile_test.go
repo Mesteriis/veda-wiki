@@ -3,12 +3,7 @@ package syncer
 import (
 	"context"
 	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
@@ -135,38 +130,6 @@ func TestReconcileSkipsSecretLikeAndMissingDependencies(t *testing.T) {
 	}
 }
 
-func TestOldBinaryRejectsReconciliationStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V18_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "local", "private")
-	s.put("local", "a.md", "# Same", 0)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.Modify(func() { f.Private = true })
-	connectFixture(t, s, f, true)
-	if _, err := s.reconcileSources(context.Background(), ReconcileRequest{SourceID: "local", DestinationID: "handbook"}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject the store")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed the store state")
-	}
-}
-
 func TestReconcileEqualArticleQueuesMissingImageAndBlocksDifferentImage(t *testing.T) {
 	for _, different := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing", true: "different"}[different], func(t *testing.T) {
@@ -213,50 +176,10 @@ func TestReconcileRejectsInvalidStoredBaseline(t *testing.T) {
 	b := s.db().Articles["target/a.md"]
 	b.ReconcileBase = &domain.ReconcileBase{SourceID: "local", Path: "a.md", Revision: 1, SHA: "invalid"}
 	s.mutate(func(db *domain.Database) {
-		db.Version = 18
 		db.Articles["target/a.md"] = b
 	})
 	if _, err := s.reopen(); err == nil {
 		t.Fatal("invalid baseline accepted on reopen")
-	}
-}
-
-func TestOldBinaryRejectsReconciliationSQLite(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V18_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "local", "private")
-	s.put("local", "a.md", "# Same", 0)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "a.md": "# Same"})
-	f.Modify(func() { f.Private = true })
-	connectFixture(t, s, f, true)
-	if err := store.MigrateSQLite(s.Dir()); err != nil {
-		t.Fatal(err)
-	}
-	s, err := s.reopen()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.reconcileSources(context.Background(), ReconcileRequest{SourceID: "local", DestinationID: "handbook"}); err != nil {
-		t.Fatal(err)
-	}
-	file := filepath.Join(s.Dir(), "state.sqlite")
-	before, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(out), "unsupported store") {
-		t.Fatal("old binary did not reject the SQLite store")
-	}
-	after, err := os.ReadFile(file)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("old binary changed the SQLite store state")
 	}
 }
 

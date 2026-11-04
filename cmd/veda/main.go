@@ -22,6 +22,8 @@ func main() {
 		err = commands.CreateSuperuser(os.Args[2:])
 	case "migrate-sqlite":
 		err = commands.MigrateSQLite(os.Args[2:])
+	case "migrate-revisions":
+		err = commands.MigrateRevisions(os.Args[2:], os.Stdout)
 	case "github":
 		err = commands.GitHub(os.Args[2:])
 	case "access-key":

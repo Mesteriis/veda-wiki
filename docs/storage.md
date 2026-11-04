@@ -67,3 +67,28 @@ the other rows untouched. Loading requires every revision of an article record
 to have exactly one row whose text matches its SHA, and fails otherwise. Stores
 below format 21 keep the texts inside the article records and have neither
 table; a store whose tables do not match its format is rejected.
+
+This binary refuses to open a store below format 21 with
+`store format vN requires "veda migrate-revisions"`. Convert a stopped
+instance (after a PBS snapshot of the stopped service) with:
+
+```sh
+./veda migrate-revisions --data /path/to/private-data
+```
+
+The command takes the writer lock and refuses an active writer, an existing
+`state.before-revisions.*` backup, an invalid, inconsistent or already
+converted store, and a store whose revisions reference a missing image. Before
+changing anything it copies the store files to `state.before-revisions.*`
+(`.sqlite` and the `.json` marker for SQLite, `.json` for JSON) and syncs them.
+It then binds images to revisions, keeps the three newest revisions of each
+article plus protected ones, sets format 21 and, on SQLite, moves the texts
+into revision rows, all in one transaction. It rereads the store and checks
+SQLite integrity, `Validate`, the kept revisions and their texts byte for byte,
+and every referenced image. It prints only counts. If any step after the backup
+fails, the backup stays in place: restore by copying each
+`state.before-revisions.X` back to `state.X` (or restore the PBS snapshot)
+before starting a binary. Blob collection stays paused while a
+`state.before-revisions.*` file exists; remove it once the converted store is
+no longer expected to be rolled back. Binaries before format 21 refuse a
+converted store; rolling back means restoring the backup or snapshot.

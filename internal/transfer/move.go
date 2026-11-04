@@ -107,7 +107,6 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 	if e != nil {
 		return domain.Move{}, e
 	}
-	setMoveVersion(db, in, destinationSource, a, dependencies)
 	id, e := store.RandomID()
 	if e != nil {
 		return domain.Move{}, e
@@ -143,43 +142,9 @@ func (s Service) move(db *domain.Database, in MoveRequest) (domain.Move, error) 
 		m.DestinationRepositoryID = conn.RepositoryID
 		m.DestinationBranch = conn.Branch
 	}
-	// Never downgrade a store with newer features to an older format.
-	if src.ConnectionID != "" && db.Version < 3 {
-		db.Version = 3
-	} else if db.Version < 2 {
-		db.Version = 2
-	}
 	db.Moves[id] = m
 	domain.ReconcileMoves(db)
 	return db.Moves[id], nil
-}
-
-// setMoveVersion raises the store version so that old binaries refuse
-// stores containing the move's new invariants. destination is the
-// destination source as it was before the copy.
-func setMoveVersion(db *domain.Database, in MoveRequest, destination domain.Source, a domain.Article, dependencies Dependencies) {
-	if a.Translation != nil && db.Version < 5 {
-		db.Version = 5
-	}
-	if len(dependencies.Assets) > 0 {
-		version := 6
-		if destination.ConnectionID != "" {
-			version = 7
-		}
-		if db.Version < version {
-			db.Version = version
-		}
-	}
-	if len(dependencies.Links) > 0 && db.Version < 8 {
-		db.Version = 8
-	}
-	if dependencies.DirectoryLinks && db.Version < 16 {
-		db.Version = 16
-	}
-	if in.IncludeLinked && db.Sources[in.DestinationID].ConnectionID != "" && db.Version < 10 {
-		// Previous binaries do not understand graph moves awaiting a bundle.
-		db.Version = 10
-	}
 }
 
 // Moves lists all moves, oldest first.

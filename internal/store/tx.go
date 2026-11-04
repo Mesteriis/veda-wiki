@@ -147,23 +147,6 @@ func (s *Store) commitTargeted(db domain.Database, targeted func(domain.Database
 	if s.invalid {
 		return errors.New("store unavailable")
 	}
-	// Old binaries reject the upgraded store before reading a large revision.
-	if db.Version < 13 {
-		for _, article := range db.Articles {
-			large := article.Published != nil && len(article.Published.Text) > domain.LegacyArticleBytes
-			large = large || article.Translation != nil && len(article.Translation.Text) > domain.LegacyArticleBytes
-			for _, revision := range article.Versions {
-				large = large || len(revision.Text) > domain.LegacyArticleBytes
-			}
-			for _, conflict := range article.Conflicts {
-				large = large || len(conflict.Incoming) > domain.LegacyArticleBytes
-			}
-			if large {
-				db.Version = 13
-				break
-			}
-		}
-	}
 	db.Updated = time.Now().UTC().Format(time.RFC3339Nano)
 	if !s.sqlite {
 		return s.writeJSON(db)

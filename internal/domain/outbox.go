@@ -3,7 +3,6 @@ package domain
 import (
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/yuin/goldmark/ast"
@@ -47,9 +46,6 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 	visibility := "private"
 	if !privateDependencies && SourcePublic(*db, db.Sources[a.SourceID], now) {
 		visibility = "public"
-	}
-	if (len(retained) > 0 || len(retainedLinks) > 0) && HasRootReference(rev.Text) && db.Version < 12 {
-		db.Version = 12
 	}
 	db.Outbox[id] = SyncJob{
 		ID:         id,
@@ -208,34 +204,6 @@ func RetainedPendingLinks(value, articlePath string, candidates map[string]strin
 		return ast.WalkContinue, nil
 	})
 	return refs
-}
-
-// Earlier binaries do not retain repository-root references in pending work.
-// Such work requires a version gate before it is committed to disk.
-func HasRootReference(value string) bool {
-	root := Markdown.Parser().Parse(text.NewReader([]byte(value)))
-	found := false
-	ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		var destination []byte
-		switch n := node.(type) {
-		case *ast.Link:
-			destination = n.Destination
-		case *ast.Image:
-			destination = n.Destination
-		default:
-			return ast.WalkContinue, nil
-		}
-		u, err := url.Parse(string(destination))
-		if err == nil && u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") {
-			found = true
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	return found
 }
 
 // SupersedePendingWrites marks every unfinished queued write of path p

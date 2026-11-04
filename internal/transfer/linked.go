@@ -62,9 +62,6 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 			CopiedFrom:  &domain.CopyOrigin{SourceID: in.SourceID, Path: item.SourcePath, Revision: item.Revision, SHA: rev.SHA, DirectoryIndex: item.DirectoryIndex},
 			Translation: domain.MovedTranslation(a.Translation),
 		}
-		if item.DirectoryIndex && db.Version < 17 {
-			db.Version = 17
-		}
 		if public {
 			published := copied
 			published.Number = 0
@@ -92,13 +89,11 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 	db.Sources[dst.ID] = validationSource
 	batchAssets := map[string]domain.BlobRef{}
 	verifiedAssets := map[domain.BlobRef]bool{}
-	rootReferences := false
 	directoryLinks := false
 	var total int64
 	for _, item := range plan.Articles {
 		a := db.Articles[in.SourceID+"/"+item.SourcePath]
 		itemRev, _ := domain.RevisionByNumber(a, item.Revision)
-		rootReferences = rootReferences || domain.HasRootReference(itemRev.Text)
 		deps, e := s.ResolveDependencies(db, itemRev.Text, item.SourcePath, item.DestinationPath, src, dst)
 		if e != nil {
 			return domain.Revision{}, Dependencies{}, e
@@ -131,24 +126,8 @@ func (s Service) PrepareLinkedCopy(db *domain.Database, in CopyRequest) (domain.
 		db.Sources[dst.ID] = dst
 		a := db.Articles[in.DestinationID+"/"+in.DestinationPath]
 		domain.EnqueueBundle(db, a, root, batchAssets, remoteLinks, bundle, time.Now())
-		version := 7
-		if len(remoteLinks) > 0 {
-			version = 8
-		}
-		if len(bundle) > 0 {
-			version = 9
-		}
-		if db.Version < version {
-			db.Version = version
-		}
-		if rootReferences && (len(batchAssets) > 0 || len(remoteLinks) > 0 || len(bundle) > 0) && db.Version < 12 {
-			db.Version = 12
-		}
 	} else {
 		db.Sources[dst.ID] = dst
-	}
-	if directoryLinks && db.Version < 16 {
-		db.Version = 16
 	}
 	return root, Dependencies{Assets: batchAssets, Links: links, DirectoryLinks: directoryLinks}, nil
 }

@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,37 +14,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
 )
-
-func TestOldBinaryRejectsImageMoveStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V6_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	fixtureAsset(t, s, "from", "img/icon.png")
-	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	if _, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "b.md", ConfirmMove: true}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject the store")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed the store data")
-	}
-}
 
 func TestMoveImageWaitsForVerifiedBlobBeforeRemoteDeletion(t *testing.T) {
 	s := testStore(t)
@@ -165,38 +132,6 @@ func TestConnectedBundleUploadsIdenticalImageOnlyOnce(t *testing.T) {
 	f.Mu.Unlock()
 	if blobWrites != 2 || f.Contents()["img/one.png"] != f.Contents()["img/two.png"] || s.jobs()[0].State != "complete" {
 		t.Fatal("identical image uploaded more than once or missing", blobWrites)
-	}
-}
-
-func TestOldBinaryRejectsQueuedImageStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V7_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	fixtureAsset(t, s, "from", "img/icon.png")
-	s.put("from", "a.md", "![icon](img/icon.png)", 0)
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Target"})
-	connectFixture(t, s, f, true)
-	if _, err := s.copyArticle(transfer.CopyRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "handbook", DestinationPath: "b.md", ConfirmPublication: true}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject the store")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed the store data")
 	}
 }
 

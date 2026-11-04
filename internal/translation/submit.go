@@ -86,9 +86,6 @@ func (s Service) save(in Request, privateDraft bool) (domain.Translation, error)
 			Origin:         origin,
 		}
 		a.Translation = &tr
-		if origin != "" && db.Version < 11 {
-			db.Version = 11
-		}
 		db.Articles[key] = a
 		domain.ReconcileMoves(db)
 		return nil

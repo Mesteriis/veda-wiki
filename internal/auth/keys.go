@@ -119,9 +119,6 @@ func (a Service) CreateAccessKey(id string, sourceIDs []string, expiry time.Time
 			db.AccessKeys = map[string]domain.AccessKey{}
 		}
 		db.AccessKeys[id] = domain.AccessKey{ID: id, Hash: hex.EncodeToString(digest[:]), Sources: sources, Expires: expiry.UTC().Format(time.RFC3339Nano)}
-		if db.Version < 4 {
-			db.Version = 4
-		}
 		return nil
 	})
 	if err != nil {

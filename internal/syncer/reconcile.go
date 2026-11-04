@@ -263,9 +263,6 @@ func (r *reconciliation) stage(change func(db *domain.Database) error) (refused,
 		if refused = change(db); refused != nil {
 			return refused
 		}
-		if db.Version < 18 {
-			db.Version = 18
-		}
 		return r.ctx.Err()
 	})
 	if refused != nil {

@@ -47,8 +47,16 @@ func copyFixture(t *testing.T) string {
 	return dir
 }
 
-func TestOpenFc35beaSQLite(t *testing.T) {
-	st, err := store.Open(copyFixture(t))
+// The fc35bea fixture (format 15) opens only after veda migrate-revisions.
+func TestOpenFc35beaSQLiteAfterMigration(t *testing.T) {
+	dir := copyFixture(t)
+	if _, err := store.Open(dir); err == nil {
+		t.Fatal("format 15 store opened without migration")
+	}
+	if _, err := store.MigrateRevisions(dir); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

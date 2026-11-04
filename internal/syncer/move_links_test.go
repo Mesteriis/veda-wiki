@@ -2,13 +2,7 @@ package syncer
 
 import (
 	"context"
-	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
@@ -76,37 +70,5 @@ func TestChangedRemoteLinkBeforeUploadKeepsSource(t *testing.T) {
 	manager.Once(context.Background())
 	if s.db().Articles["from/a.md"].Deleted || f.Contents()["b.md"] != "" || f.Contents()["guide.md"] != "# Changed" {
 		t.Fatal("transfer changed data after the linked article changed")
-	}
-}
-
-func TestOldBinaryRejectsLinkedMoveStore(t *testing.T) {
-	old := os.Getenv("VEDA_OLD_V8_BINARY")
-	if old == "" {
-		t.Skip("old binary not provided")
-	}
-	s := testStore(t)
-	source(t, s, "from", "private")
-	source(t, s, "to", "private")
-	s.put("from", "guide.md", "# Shared", 0)
-	s.put("to", "guide.md", "# Shared", 0)
-	s.put("from", "a.md", "[Guide](guide.md)", 0)
-	if _, err := s.moveArticle(transfer.MoveRequest{SourceID: "from", SourcePath: "a.md", ExpectedRevision: 1, DestinationID: "to", DestinationPath: "b.md", ConfirmMove: true}); err != nil {
-		t.Fatal(err)
-	}
-	state := filepath.Join(s.Dir(), "state.json")
-	before, err := os.ReadFile(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, old, "--data", s.Dir(), "--listen", "127.0.0.1:0", "--public-listen", "127.0.0.1:0").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || ctx.Err() != nil || !strings.Contains(string(output), "unsupported store") {
-		t.Fatal("old binary did not reject the store")
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || string(before) != string(after) {
-		t.Fatal("old binary changed the store data")
 	}
 }

@@ -123,9 +123,6 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	} else {
 		b.PublishedLocal = false
 	}
-	if dependencies.DirectoryLinks && db.Version < 16 {
-		db.Version = 16
-	}
 	db.Articles[key] = b
 	// An active move may depend on the previous destination revision.
 	// Reconcile it in the same transaction before queuing the new write.
@@ -133,7 +130,7 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 	if destination.ConnectionID != "" {
 		domain.EnqueueWrite(db, b, copied, time.Now())
 		if len(dependencies.Assets) > 0 || len(dependencies.Links) > 0 {
-			if err := queueDependencies(db, b, copied, dependencies, rev.Text); err != nil {
+			if err := queueDependencies(db, b, copied, dependencies); err != nil {
 				return domain.Revision{}, err
 			}
 		}
@@ -142,21 +139,8 @@ func (s Service) PrepareCopy(db *domain.Database, in CopyRequest) (domain.Revisi
 }
 
 // queueDependencies adds the copy's images and links to its outbox job.
-func queueDependencies(db *domain.Database, b domain.Article, copied domain.Revision, dependencies Dependencies, text string) error {
-	if err := domain.AddWriteDependencies(db, b, copied, dependencies.Assets, dependencies.Links); err != nil {
-		return err
-	}
-	version := 7
-	if len(dependencies.Links) > 0 {
-		version = 8
-	}
-	if db.Version < version {
-		db.Version = version
-	}
-	if domain.HasRootReference(text) && db.Version < 12 {
-		db.Version = 12
-	}
-	return nil
+func queueDependencies(db *domain.Database, b domain.Article, copied domain.Revision, dependencies Dependencies) error {
+	return domain.AddWriteDependencies(db, b, copied, dependencies.Assets, dependencies.Links)
 }
 
 // Copy copies an article, or its linked graph, in one transaction.

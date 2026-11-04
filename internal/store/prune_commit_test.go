@@ -1,9 +1,6 @@
 package store_test
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"testing"
@@ -203,36 +200,6 @@ func TestConnectionsCommitDoesNotPrune(t *testing.T) {
 	}
 	if got := numbersInMemoryAndOnDisk(t, st, "local/held.md"); !slices.Equal(got, []int{1, 3, 4, 5}) {
 		t.Fatal("connections commit pruned an article", got)
-	}
-}
-
-// Stores below format 21 are not pruned by commits; migrate-revisions
-// converts them.
-func TestCommitDoesNotPruneOlderFormat(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "data")
-	if err := os.Mkdir(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	b, err := json.Marshal(domain.Database{Version: 20, Sources: map[string]domain.Source{"local": {ID: "local", Title: "local", Kind: "wiki", Visibility: "private"}}, Articles: map[string]domain.Article{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, "state.json"), b, 0600); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 5 {
-		writeRevision(t, st, "guide.md")
-	}
-	storetest.Mutate(t, st, func(*domain.Database) {})
-	if got := numbersInMemoryAndOnDisk(t, st, "local/guide.md"); !slices.Equal(got, []int{1, 2, 3, 4, 5}) {
-		t.Fatal("v20 store was pruned", got)
-	}
-	if v := storetest.Read(t, st).Version; v != 20 {
-		t.Fatal("commit changed the store format", v)
 	}
 }
 

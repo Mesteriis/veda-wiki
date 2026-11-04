@@ -6,6 +6,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -61,42 +62,59 @@ func PrivateDataDir(dir string) error {
 // writer lock (writer.lock, as internal/app and MigrateSQLite do) before
 // calling Open; collection then runs only in the process that owns the
 // directory. Tests open private temporary directories.
+//
+// Open refuses a store below format 21 (domain.RevisionsFormat): such a store
+// is converted offline by "veda migrate-revisions" (MigrateRevisions).
 func Open(dir string) (*Store, error) {
-	if err := PrivateDataDir(dir); err != nil {
-		return nil, err
+	s, found, err := read(dir)
+	if err != nil || !found {
+		return s, err
 	}
-	s := &Store{dir: dir, db: domain.Database{Version: domain.RevisionsFormat, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
-	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
-		return nil, errors.New("store must be a private regular file")
-	}
-	f, err := os.OpenFile(path.Join(dir, "state.json"), os.O_RDONLY, 0)
-	if os.IsNotExist(err) {
-		return s, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxStoreBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(b) > maxStoreBytes {
-		return nil, errors.New("store too large")
-	}
-	if err = json.Unmarshal(b, &s.db); err != nil {
-		return nil, err
-	}
-	if s.db.Version == 14 {
-		if err = s.loadSQLite(b); err != nil {
-			return nil, err
-		}
+	if v := s.db.Version; v >= 1 && v < domain.RevisionsFormat {
+		return nil, fmt.Errorf("store format v%d requires \"veda migrate-revisions\"", v)
 	}
 	if err = Validate(&s.db); err != nil {
 		return nil, err
 	}
 	s.collectBlobsDue()
 	return s, nil
+}
+
+// read loads the store in dir in any supported format without validating it
+// or collecting blobs. Without state.json it returns an empty v21 store and
+// found is false.
+func read(dir string) (s *Store, found bool, err error) {
+	if err = PrivateDataDir(dir); err != nil {
+		return nil, false, err
+	}
+	s = &Store{dir: dir, db: domain.Database{Version: domain.RevisionsFormat, Sources: map[string]domain.Source{}, Articles: map[string]domain.Article{}}}
+	if info, e := os.Lstat(path.Join(dir, "state.json")); e == nil && (!info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0) {
+		return nil, false, errors.New("store must be a private regular file")
+	}
+	f, err := os.OpenFile(path.Join(dir, "state.json"), os.O_RDONLY, 0)
+	if os.IsNotExist(err) {
+		return s, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxStoreBytes+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(b) > maxStoreBytes {
+		return nil, false, errors.New("store too large")
+	}
+	if err = json.Unmarshal(b, &s.db); err != nil {
+		return nil, false, err
+	}
+	if s.db.Version == 14 {
+		if err = s.loadSQLite(b); err != nil {
+			return nil, false, err
+		}
+	}
+	return s, true, nil
 }
 
 // Dir returns the data directory.

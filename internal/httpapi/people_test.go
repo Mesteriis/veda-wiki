@@ -1,12 +1,10 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/domain"
-	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"net/http"
 	"net/http/httptest"
@@ -266,39 +264,5 @@ func TestHumanLoginUsesGenericFailuresAndRateLimit(t *testing.T) {
 	}
 	if r := login("person", password); r.Code != 429 {
 		t.Fatal("login rate limit missing", r.Code)
-	}
-}
-
-func TestResumePeopleRestoreFixture(t *testing.T) {
-	dir := os.Getenv("VEDA_PEOPLE_RESTORED_DIR")
-	if dir == "" {
-		t.Skip("restored fixture not provided")
-	}
-	s, err := openStore(dir)
-	if err != nil || s.state(t).Version != 15 {
-		t.Fatal("invalid restored user store", err)
-	}
-	version, ok := s.auth().AuthenticateUser("person", "synthetic fixture password")
-	if !ok {
-		t.Fatal("restored user login failed")
-	}
-	scope := s.auth().UserScope("person", version)
-	if len(scope) != 1 || scope[0] != "from" {
-		t.Fatal("restored team scope incorrect")
-	}
-	f := githubtest.New(t, map[string]string{"veda.yaml": metadataFixture, "README.md": "# Synthetic target"})
-	f.Modify(func() { f.Private = true })
-	if err = s.pauseConnection("handbook", false); err != nil {
-		t.Fatal(err)
-	}
-	manager := newSyncManager(s, f.Client())
-	manager.Once(context.Background())
-	manager.Once(context.Background())
-	if len(s.jobs()) != 1 || s.jobs()[0].State != "complete" || len(s.moves()) != 1 || s.moves()[0].State != "complete" || !s.state(t).Articles["from/a.md"].Deleted {
-		t.Fatal("restored queue did not complete")
-	}
-	ref := s.state(t).Sources["handbook"].Assets["img/icon.png"]
-	if ref.SHA == "" || domain.Digest([]byte(f.Contents()["img/icon.png"])) != ref.SHA || f.Contents()["related.md"] != "# Related fixture" {
-		t.Fatal("restored bundle incomplete")
 	}
 }

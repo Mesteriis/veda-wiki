@@ -253,25 +253,45 @@ func TestSQLiteLayoutMustMatchFormat(t *testing.T) {
 	}
 }
 
-// legacySQLite migrates a v20 JSON store to SQLite; it keeps the legacy
-// layout with revision texts inside the article records.
+// legacySQLite writes a v20 SQLite store in the legacy layout, with revision
+// texts inside the article records, as binaries before format 21 did.
 func legacySQLite(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "data")
 	if err := os.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	b, err := json.Marshal(domain.Database{Version: 20, Sources: map[string]domain.Source{"local": {ID: "local", Title: "local", Kind: "wiki", Visibility: "private"}}, Articles: map[string]domain.Article{}})
-	if err != nil {
+	db := domain.Database{Version: 20, Sources: map[string]domain.Source{"local": {ID: "local", Title: "local", Kind: "wiki", Visibility: "private"}}, Articles: map[string]domain.Article{}}
+	if err := initSQLite(dir, db.Version); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(dir, "state.json"), b, 0600); err != nil {
+	if err := (&Store{dir: dir, sqlite: true}).commitSQLite(db); err != nil {
 		t.Fatal(err)
 	}
-	if err = MigrateSQLite(dir); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"version":14,"backend":"sqlite"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// openLegacy loads a store below format 21 the way MigrateRevisions does;
+// Open refuses it.
+func openLegacy(t *testing.T, dir string) *Store {
+	t.Helper()
+	if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), "veda migrate-revisions") {
+		t.Fatal("Open accepted a store below format 21", err)
+	}
+	s, found, err := read(dir)
+	if err == nil && !found {
+		err = os.ErrNotExist
+	}
+	if err == nil {
+		err = Validate(&s.db)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func TestSQLiteLegacyLayoutLoadsAndWrites(t *testing.T) {
@@ -290,10 +310,7 @@ func TestSQLiteLegacyLayoutLoadsAndWrites(t *testing.T) {
 	}
 	for name, dir := range map[string]string{"fc35bea fixture": fixture, "v20": legacySQLite(t)} {
 		t.Run(name, func(t *testing.T) {
-			s, err := Open(dir)
-			if err != nil {
-				t.Fatal(err)
-			}
+			s := openLegacy(t, dir)
 			if s.db.Version >= domain.RevisionsFormat {
 				t.Fatal("legacy store version", s.db.Version)
 			}
@@ -302,10 +319,7 @@ func TestSQLiteLegacyLayoutLoadsAndWrites(t *testing.T) {
 				sourceID = "fixture"
 			}
 			update(t, s, func(db *domain.Database) { appendRevision(db, sourceID, "guide.md", "# Legacy write") })
-			reopened, err := Open(dir)
-			if err != nil {
-				t.Fatal(err)
-			}
+			reopened := openLegacy(t, dir)
 			if text := latest(t, reopened, sourceID+"/guide.md"); text != "# Legacy write" {
 				t.Fatal("legacy write lost", text)
 			}
@@ -423,10 +437,7 @@ func TestSQLiteCommitRequiresStoredRevisionRows(t *testing.T) {
 }
 
 func TestSQLiteLegacyFileRejectsRowFormatCommit(t *testing.T) {
-	s, err := Open(legacySQLite(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := openLegacy(t, legacySQLite(t))
 	update(t, s, func(db *domain.Database) { appendRevision(db, "local", "guide.md", "# Legacy") })
 	for name, narrow := range map[string]bool{"whole state": false, "article": true} {
 		t.Run(name, func(t *testing.T) {
@@ -444,9 +455,9 @@ func TestSQLiteLegacyFileRejectsRowFormatCommit(t *testing.T) {
 			if s.Invalid() || s.db.Version != 20 || latest(t, s, "local/guide.md") != "# Legacy" {
 				t.Fatal("failed commit changed memory or closed the store", s.db.Version)
 			}
-			reopened, err := Open(s.Dir())
-			if err != nil || reopened.db.Version != 20 || latest(t, reopened, "local/guide.md") != "# Legacy" {
-				t.Fatal("failed commit changed disk", err)
+			reopened := openLegacy(t, s.Dir())
+			if reopened.db.Version != 20 || latest(t, reopened, "local/guide.md") != "# Legacy" {
+				t.Fatal("failed commit changed disk")
 			}
 		})
 	}

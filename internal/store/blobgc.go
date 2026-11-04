@@ -42,7 +42,8 @@ func (s *Store) now() time.Time {
 // directory named by a digest the database does not reference, and every
 // temporary blob file, whose modification time is more than 24 hours before
 // now. It returns the number of files removed. It refuses read-only, failed
-// (Invalid), pre-v21 and unvalidated stores.
+// (Invalid), pre-v21 and unvalidated stores, and is paused while a
+// state.before-revisions.* backup of "veda migrate-revisions" exists.
 func (s *Store) CollectBlobs(now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -57,7 +58,12 @@ func (s *Store) collectBlobsDue() {
 	if !s.blobsCollected.IsZero() && now.Sub(s.blobsCollected) < blobCollectInterval {
 		return
 	}
-	if s.collectable() != nil {
+	if err := s.collectable(); err != nil {
+		if err == errCollectionPaused {
+			// Logged at most once per interval; the message names no path.
+			s.blobsCollected = now
+			log.Printf("blob collection paused: a state.before-revisions.* migration backup exists")
+		}
 		return
 	}
 	// collectBlobs logs failures as counts; the error is intentionally not
@@ -74,8 +80,27 @@ func (s *Store) collectable() error {
 		return errors.New("store unavailable")
 	case s.db.Version < domain.RevisionsFormat:
 		return errors.New("blob collection requires the current store format")
+	case revisionBackupPresent(s.dir):
+		return errCollectionPaused
 	}
 	return nil
+}
+
+// errCollectionPaused stops blob collection while a backup of the store from
+// before "veda migrate-revisions" exists: restoring that backup must find
+// every image its records reference, so nothing is removed until the
+// operator deletes the backup.
+var errCollectionPaused = errors.New("blob collection paused until state.before-revisions.* is removed")
+
+// revisionBackupPresent reports whether dir holds a migrate-revisions backup;
+// an entry that cannot be checked counts as present.
+func revisionBackupPresent(dir string) bool {
+	for _, name := range revisionBackups {
+		if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			return true
+		}
+	}
+	return false
 }
 
 // collectBlobs is CollectBlobs for a caller that holds the write lock.
