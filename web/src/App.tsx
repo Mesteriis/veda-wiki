@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { AccessSettings } from "./AccessSettings.jsx";
-import { GitHubConnect } from "./GitHubConnect.jsx";
+import { AccessSettings } from "./features/access/AccessSettings";
+import { GitHubConnect } from "./features/github/GitHubConnect";
 import { FeatureContext, type FeatureName } from "./components/FeatureContext";
 import { FeatureDialog } from "./components/FeatureDialog";
 import { Header } from "./components/Header";

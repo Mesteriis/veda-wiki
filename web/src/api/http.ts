@@ -38,3 +38,13 @@ export function postJSON<T>(route: string, body: unknown): Promise<T> {
 export function putJSON<T>(route: string, body: unknown): Promise<T> {
   return request<T>(route, withBody("PUT", body));
 }
+
+/** True for the rejection of a request cancelled through its AbortSignal. */
+export function isAbort(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+}
+
+/** The HTTP status of a refused request, or 0 when the request never got an answer. */
+export function statusOf(error: unknown): number {
+  return error instanceof HttpError ? error.status : 0;
+}

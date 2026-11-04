@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { getJSON, HttpError, postJSON, putJSON } from "./http";
+import { getJSON, HttpError, isAbort, postJSON, putJSON, statusOf } from "./http";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -39,4 +39,15 @@ test("putJSON uses PUT and getJSON forwards the init", async () => {
   const signal = new AbortController().signal;
   await getJSON("/api/z", { signal });
   expect((mock.mock.calls[1]?.[1] as RequestInit).signal).toBe(signal);
+});
+
+test("statusOf reads a refusal status and gives 0 for a network failure", () => {
+  expect(statusOf(new HttpError(409))).toBe(409);
+  expect(statusOf(new TypeError("Failed to fetch"))).toBe(0);
+});
+
+test("isAbort recognises only cancelled requests", () => {
+  expect(isAbort(new DOMException("aborted", "AbortError"))).toBe(true);
+  expect(isAbort(new TypeError("Failed to fetch"))).toBe(false);
+  expect(isAbort(null)).toBe(false);
 });

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { AccessSettings } from "../AccessSettings.jsx";
-import { GitHubConnect } from "../GitHubConnect.jsx";
+import { AccessSettings } from "../features/access/AccessSettings";
+import { GitHubConnect } from "../features/github/GitHubConnect";
 import { ReaderAccess } from "../features/session/ReaderAccess";
 import type { FeatureName } from "./FeatureContext";
 import { I } from "./Icon";

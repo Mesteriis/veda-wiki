@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { githubErrorMessage } from './githubErrors';
+import { githubErrorMessage, rateLimitedUntil } from './githubErrors';
 
 test('explains known errors without displaying arbitrary remote content', () => {
   assert.match(githubErrorMessage('invalid_docs_directory', 0, 'fallback'), /docs должен быть каталогом/);
@@ -30,4 +30,13 @@ test('reports repository visibility only while its verification is current', asy
   assert.equal(githubVisibilityLabel({ ...verified, verified_at: new Date(now - 599_999).toISOString() }, now), 'публичный');
   assert.equal(githubVisibilityLabel({ ...verified, verified_at: new Date(now - 600_000).toISOString() }, now), 'видимость не подтверждена');
   assert.equal(githubVisibilityLabel({ ...verified, verified_at: new Date(now + 60_001).toISOString() }, now), 'видимость не подтверждена');
+});
+
+test('holds synchronization only while a rate limit has not reset', () => {
+  const now = Date.parse('2026-11-04T10:00:00Z');
+  assert.equal(rateLimitedUntil({ last_error: 'rate_limited', next_attempt: '2026-11-04T10:05:00Z' }, now)?.toISOString(), '2026-11-04T10:05:00.000Z');
+  assert.equal(rateLimitedUntil({ last_error: 'rate_limited', next_attempt: '2026-11-04T09:55:00Z' }, now), null);
+  assert.equal(rateLimitedUntil({ last_error: 'rate_limited' }, now), null);
+  assert.equal(rateLimitedUntil({ last_error: 'rate_limited', next_attempt: 'not a date' }, now), null);
+  assert.equal(rateLimitedUntil({ last_error: 'upstream_unavailable', next_attempt: '2026-11-04T10:05:00Z' }, now), null);
 });

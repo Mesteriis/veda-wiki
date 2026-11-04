@@ -39,3 +39,15 @@ export function githubVisibilityLabel(connection: VisibilityInput, now = Date.no
   }
   return connection.private ? 'приватный' : 'публичный';
 }
+
+export interface RetryInput {
+  last_error?: string;
+  next_attempt?: string;
+}
+
+// A rate-limited connection must not be synchronized again before GitHub's reset time.
+export function rateLimitedUntil(connection: RetryInput, now = Date.now()): Date | null {
+  if (connection.last_error !== "rate_limited" || connection.next_attempt === undefined) return null;
+  const next = Date.parse(connection.next_attempt);
+  return next > now ? new Date(next) : null;
+}
