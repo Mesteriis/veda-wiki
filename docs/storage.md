@@ -58,3 +58,12 @@ logical state into memory and serializes records during commits. It is not a
 fully indexed or retention-managed database; large histories and collections
 need further performance and recovery validation. Migration is opt-in; verify
 the backup and recovery procedure separately for each deployment.
+
+From store format 21 the SQLite file keeps each article revision as its own row
+in a `revisions` table, with its images listed in `revision_assets`; the
+article record holds the history without texts. An article write inserts the
+new revision row and deletes pruned ones in the same transaction and leaves
+the other rows untouched. Loading requires every revision of an article record
+to have exactly one row whose text matches its SHA, and fails otherwise. Stores
+below format 21 keep the texts inside the article records and have neither
+table; a store whose tables do not match its format is rejected.

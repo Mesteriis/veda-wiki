@@ -47,7 +47,9 @@ func sqliteDB(dir string) (*sql.DB, error) {
 	return db, nil
 }
 
-func initSQLite(dir string) error {
+// initSQLite creates the SQLite file for a store of the given format; from
+// format 21 it also creates the revision tables (see sqlite_revisions.go).
+func initSQLite(dir string, version int) error {
 	f, err := os.OpenFile(filepath.Join(dir, SQLiteFile), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
@@ -60,8 +62,16 @@ func initSQLite(dir string) error {
 		return err
 	}
 	defer db.Close()
-	_, err = db.Exec(`CREATE TABLE records (category TEXT NOT NULL, id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (category,id)) WITHOUT ROWID`)
-	return err
+	tables := []string{`CREATE TABLE records (category TEXT NOT NULL, id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (category,id)) WITHOUT ROWID`}
+	if version >= domain.RevisionsFormat {
+		tables = append(tables, revisionsTable, revisionAssetsTable)
+	}
+	for _, table := range tables {
+		if _, err = db.Exec(table); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) loadSQLite(marker []byte) error {
@@ -172,6 +182,15 @@ func (s *Store) loadSQLite(marker []byte) error {
 	}
 	if !metaFound {
 		return errors.New("missing SQLite metadata")
+	}
+	rowsLayout, err := revisionRowsLayout(db, result.Version)
+	if err != nil {
+		return err
+	}
+	if rowsLayout {
+		if err = attachRevisions(db, result.Articles); err != nil {
+			return err
+		}
 	}
 	s.db = result
 	s.sqlite = true

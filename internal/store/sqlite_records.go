@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 
@@ -50,10 +51,8 @@ func (s *Store) commitSQLite(state domain.Database) error {
 			return err
 		}
 	}
-	for id, v := range state.Articles {
-		if err = put("article", id, v); err != nil {
-			return err
-		}
+	if err = putArticles(tx, state, put); err != nil {
+		return err
 	}
 	for id, v := range state.Accounts {
 		if err = put("account", id, v); err != nil {
@@ -135,7 +134,28 @@ func (s *Store) commitSQLiteArticle(state domain.Database, key string) error {
 	if err = put("meta", "state", sqliteMeta{state.Version, state.Updated}); err != nil {
 		return err
 	}
-	if err = put("article", key, article); err != nil {
+	rowsLayout, err := revisionRowsLayout(tx, state.Version)
+	if err != nil {
+		return err
+	}
+	if rowsLayout {
+		w, e := newRevisionWriter(tx)
+		if e != nil {
+			return e
+		}
+		defer w.close()
+		old, e := w.storedHeader(key)
+		if e == nil {
+			e = w.sync(old, &article)
+		}
+		if e != nil {
+			return e
+		}
+		err = put("article", key, articleHeader(article))
+	} else {
+		err = put("article", key, article)
+	}
+	if err != nil {
 		return err
 	}
 	for id, job := range state.Outbox {
@@ -186,4 +206,51 @@ func (s *Store) commitSQLiteConnections(state domain.Database) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// putArticles writes every article record of a whole-state commit. With
+// revision rows it writes headers and the revision difference, and removes
+// the rows of articles the state no longer holds; their records are removed
+// with every other unseen record.
+func putArticles(tx *sql.Tx, state domain.Database, put func(category, id string, v any) error) error {
+	rowsLayout, err := revisionRowsLayout(tx, state.Version)
+	if err != nil {
+		return err
+	}
+	if !rowsLayout {
+		for id, v := range state.Articles {
+			if err = put("article", id, v); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	w, err := newRevisionWriter(tx)
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	stored, err := w.storedHeaders()
+	if err != nil {
+		return err
+	}
+	for id, v := range state.Articles {
+		var old *domain.Article
+		if header, ok := stored[id]; ok {
+			old = &header
+			delete(stored, id)
+		}
+		if err = w.sync(old, &v); err != nil {
+			return err
+		}
+		if err = put("article", id, articleHeader(v)); err != nil {
+			return err
+		}
+	}
+	for _, header := range stored {
+		if err = w.sync(&header, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }

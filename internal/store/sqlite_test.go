@@ -201,8 +201,9 @@ func TestSQLiteStoreExceedsJSONCapacity(t *testing.T) {
 	text := strings.Repeat("x", domain.MaxArticleBytes)
 	sha := domain.Digest([]byte(text))
 	if err = s.Update(func(tx *Tx) error {
+		// The store keeps its format: a v21 store has revision rows, which
+		// an older format would not read.
 		state := tx.DB()
-		state.Version = 13
 		for i := 0; i < 65; i++ {
 			p := fmt.Sprintf("%02d.md", i)
 			state.Articles["local/"+p] = domain.Article{SourceID: "local", Path: p, Versions: []domain.Revision{{Number: 1, Text: text, SHA: sha}}}

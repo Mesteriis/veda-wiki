@@ -32,12 +32,22 @@ func TestSQLiteConnectionStatusWritesOnlyConnections(t *testing.T) {
 	a.Versions = append([]domain.Revision(nil), a.Versions...)
 	a.Versions[0].Text = "# Changed on disk"
 	a.Versions[0].SHA = domain.Digest([]byte(a.Versions[0].Text))
+	// A v21 store keeps the text in the revision row and the article
+	// record holds the header without it.
+	row, err := json.Marshal(a.Versions[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Versions[0].Text = ""
 	data, err := json.Marshal(a)
 	if err != nil {
 		t.Fatal(err)
 	}
 	db := storetest.SQLite(t, s.Dir())
 	if _, err = db.Exec(`UPDATE records SET data=? WHERE category='article' AND id='handbook/README.md'`, data); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE revisions SET data=? WHERE source_id='handbook' AND path='README.md' AND number=?`, row, a.Versions[0].Number); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
