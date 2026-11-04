@@ -21,7 +21,7 @@ func EnqueueWrite(db *Database, a Article, rev Revision, now time.Time) {
 	retainedLinks := map[string]string{}
 	privateDependencies := false
 	for id, job := range db.Outbox {
-		if job.SourceID == a.SourceID && job.Path == a.Path && job.State != "complete" && job.State != "superseded" {
+		if job.SourceID == a.SourceID && job.Path == a.Path && !JobTerminal(job.State) {
 			inherited := RetainedPendingAssets(rev.Text, a.Path, job.Assets)
 			inheritedLinks := RetainedPendingLinks(rev.Text, a.Path, job.Links)
 			if (len(inherited) > 0 || len(inheritedLinks) > 0) && job.Visibility != "public" {
@@ -113,7 +113,7 @@ func EnqueueBundle(db *Database, a Article, root Revision, assets map[string]Blo
 // writes or depends on article p.
 func BundleLocks(db Database, sourceID, p string) bool {
 	for _, job := range db.Outbox {
-		if (len(job.Bundle) == 0 && !job.ScopeBundle) || job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
+		if (len(job.Bundle) == 0 && !job.ScopeBundle) || job.SourceID != sourceID || JobTerminal(job.State) {
 			continue
 		}
 		if job.Path == p {
@@ -135,7 +135,7 @@ func BundleLocks(db Database, sourceID, p string) bool {
 // Caller holds the store lock or uses a scoped snapshot.
 func ConflictResolutionBlocked(db Database, sourceID, p string) bool {
 	for _, job := range db.Outbox {
-		if job.SourceID != sourceID || job.State == "complete" || job.State == "superseded" {
+		if job.SourceID != sourceID || JobTerminal(job.State) {
 			continue
 		}
 		if job.Path == p && (job.PreparedCommit != "" || job.ScopePrepared || len(job.Bundle) != 0 || job.ScopeBundle) {

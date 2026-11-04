@@ -40,14 +40,14 @@ func (m *Manager) pushPending(ctx context.Context, c domain.GitHubConnection, he
 	jobs := m.Jobs()
 	uncertain := map[string]int{}
 	for _, job := range jobs {
-		if job.SourceID == c.ID && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" {
+		if job.SourceID == c.ID && job.PreparedCommit != "" && !domain.JobTerminal(job.State) {
 			if previous, ok := uncertain[job.Path]; !ok || job.Revision < previous {
 				uncertain[job.Path] = job.Revision
 			}
 		}
 	}
 	for _, job := range jobs {
-		if job.SourceID != c.ID || job.State == "complete" || job.State == "superseded" {
+		if job.SourceID != c.ID || domain.JobTerminal(job.State) {
 			continue
 		}
 		// A later revision must not overtake an unresolved prepared ref update.

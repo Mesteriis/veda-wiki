@@ -34,7 +34,7 @@ func AdoptionSnapshot(db Database, id string) (string, error) {
 		articles[key] = a
 	}
 	for _, j := range db.Outbox {
-		if j.SourceID == id && j.State != "complete" && j.State != "superseded" {
+		if j.SourceID == id && !JobTerminal(j.State) {
 			return "", ErrConflict
 		}
 	}
@@ -42,9 +42,7 @@ func AdoptionSnapshot(db Database, id string) (string, error) {
 		if m.SourceID != id && m.DestinationID != id {
 			continue
 		}
-		switch m.State {
-		case "complete", "cancelled", "source_changed", "destination_changed":
-		default:
+		if !MoveTerminal(m.State) {
 			return "", ErrConflict
 		}
 	}
@@ -65,7 +63,7 @@ func ObservedWrite(db *Database, sourceID, p, hash, commit string, assets map[st
 	firstPrepared := 0
 	matches := map[string]bool{}
 	for _, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && (firstPrepared == 0 || job.Revision < firstPrepared) {
+		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && !JobTerminal(job.State) && (firstPrepared == 0 || job.Revision < firstPrepared) {
 			firstPrepared = job.Revision
 		}
 	}
@@ -86,7 +84,7 @@ func ObservedWrite(db *Database, sourceID, p, hash, commit string, assets map[st
 				break
 			}
 		}
-		eligibleState := job.State != "complete" && job.State != "superseded" && (job.State != "conflict" || (job.PreparedCommit != "" && job.Revision == firstPrepared))
+		eligibleState := !JobTerminal(job.State) && (job.State != "conflict" || (job.PreparedCommit != "" && job.Revision == firstPrepared))
 		eligible := job.SourceID == sourceID &&
 			job.Path == p &&
 			job.SHA == hash &&
@@ -124,7 +122,7 @@ func ObservedWrite(db *Database, sourceID, p, hash, commit string, assets map[st
 // update, that write still cannot be silently superseded or retried over it.
 func PreparedWriteDiffers(db Database, sourceID, p, hash string) bool {
 	for _, job := range db.Outbox {
-		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && job.State != "complete" && job.State != "superseded" && job.SHA != hash {
+		if job.SourceID == sourceID && job.Path == p && job.PreparedCommit != "" && !JobTerminal(job.State) && job.SHA != hash {
 			return true
 		}
 	}

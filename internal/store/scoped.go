@@ -86,7 +86,7 @@ func (s *Store) scopedLocked(scope []string) *Store {
 	// Copy only fields needed for source counts and the selected article's
 	// blocking status; no commit IDs, revisions, contents or link hashes.
 	for id, job := range s.db.Outbox {
-		if selected[job.SourceID] && job.State != "complete" && job.State != "superseded" {
+		if selected[job.SourceID] && !domain.JobTerminal(job.State) {
 			paths := map[string]bool{}
 			if len(job.Bundle) != 0 || job.ScopeBundle {
 				for p := range job.Bundle {

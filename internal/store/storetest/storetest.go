@@ -41,8 +41,10 @@ func Mutate(t testing.TB, st *store.Store, fn func(db *domain.Database)) {
 }
 
 // Renumber commits article key with its revisions numbered consecutively
-// from first, as a history whose older revisions were pruned looks. Outbox
-// jobs of the article follow their revision's new number and ID.
+// from first, as a history whose older revisions were pruned looks. It
+// remaps only outbox jobs of the article (revision number and ID); moves,
+// reconciliation baselines and copy origins that name its revisions are left
+// unchanged, so callers must not renumber articles they reference.
 func Renumber(t testing.TB, st *store.Store, key string, first int) {
 	t.Helper()
 	Mutate(t, st, func(db *domain.Database) {

@@ -288,13 +288,14 @@ func Validate(db *domain.Database) error {
 			if p == j.Path || !domain.ArticlePath(p, db.Sources[j.SourceID].Kind) || len(sha) != 64 || !exists || len(a.Versions) == 0 {
 				return errors.New("invalid queued bundle article")
 			}
-			// Bundles create their articles as revision 1, which a final job no
-			// longer protects from pruning.
+			// A linked copy creates each bundle article as revision 1, and the
+			// bundle SHA is that revision's. An active job protects revision 1
+			// (domain.ProtectedRevisions); a final one does not, so it may be pruned.
 			if domain.JobTerminal(j.State) {
 				if !storedOrPruned(a, 1, sha) {
 					return errors.New("invalid queued bundle article")
 				}
-			} else if a.Versions[0].SHA != sha {
+			} else if !revisionHasSHA(a, 1, sha) {
 				return errors.New("invalid queued bundle article")
 			}
 			if _, e := hex.DecodeString(sha); e != nil {

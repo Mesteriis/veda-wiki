@@ -48,7 +48,7 @@ func pendingReconcilePath(db *domain.Database, source, p string) bool {
 		return true
 	}
 	for _, j := range db.Outbox {
-		if j.SourceID != source || j.State == "complete" || j.State == "superseded" {
+		if j.SourceID != source || domain.JobTerminal(j.State) {
 			continue
 		}
 		if j.Path == p {

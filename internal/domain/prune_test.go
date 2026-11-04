@@ -88,7 +88,7 @@ func TestActiveOutboxJobProtectsItsRevisionUntilTerminal(t *testing.T) {
 	}
 }
 
-func TestActiveBundleProtectsTheFirstRevisionOfItsArticles(t *testing.T) {
+func TestActiveBundleProtectsRevisionOneOfItsArticles(t *testing.T) {
 	db := pruneDB(1, 2, 3, 4, 5, 6)
 	db.Articles["one/b.md"] = Article{SourceID: "one", Path: "b.md", Versions: revisions(1, 2, 3, 4, 5)}
 	db.Outbox["one/a.md@6"] = SyncJob{ID: "one/a.md@6", SourceID: "one", Path: "a.md", Revision: 6, SHA: "sha6", State: "pending", Bundle: map[string]string{"b.md": "sha1"}}
@@ -177,4 +177,89 @@ func TestCopyOriginDoesNotProtect(t *testing.T) {
 	db.Articles["two/a.md"] = Article{SourceID: "two", Path: "a.md", Versions: revisions(1), CopiedFrom: &CopyOrigin{SourceID: "one", Path: "a.md", Revision: 1, SHA: "sha1"}}
 	PruneAll(&db)
 	expectRevisions(t, db, "one/a.md", 3, 4, 5)
+}
+
+func connectedDB(versions ...int) Database {
+	db := pruneDB(versions...)
+	db.Sources["one"] = Source{ID: "one", Kind: "wiki", ConnectionID: "conn"}
+	return db
+}
+
+func TestUpstreamBaseOfAConnectedArticleIsProtected(t *testing.T) {
+	db := connectedDB(1, 2, 3, 4, 5, 6)
+	a := db.Articles["one/a.md"]
+	a.UpstreamHash = "sha2"
+	db.Articles["one/a.md"] = a
+	if got := ProtectedRevisions(db, "one/a.md"); !reflect.DeepEqual(got, map[int]bool{2: true}) {
+		t.Fatal("protected", got)
+	}
+	PruneArticle(&db, "one/a.md")
+	expectRevisions(t, db, "one/a.md", 2, 4, 5, 6)
+
+	// The newest revision with that SHA is the one kept.
+	db = connectedDB(1, 2, 3, 4, 5, 6)
+	a = db.Articles["one/a.md"]
+	versions := append([]Revision(nil), a.Versions...)
+	versions[2].SHA = "sha1"
+	a.Versions, a.UpstreamHash = versions, "sha1"
+	db.Articles["one/a.md"] = a
+	if got := ProtectedRevisions(db, "one/a.md"); !reflect.DeepEqual(got, map[int]bool{3: true}) {
+		t.Fatal("protected", got)
+	}
+
+	db = pruneDB(1, 2, 3, 4, 5, 6)
+	a = db.Articles["one/a.md"]
+	a.UpstreamHash = "sha2"
+	db.Articles["one/a.md"] = a
+	PruneArticle(&db, "one/a.md")
+	expectRevisions(t, db, "one/a.md", 4, 5, 6)
+}
+
+func TestRevisionProtectedBySeveralRecords(t *testing.T) {
+	db := connectedDB(1, 2, 3, 4, 5, 6)
+	a := db.Articles["one/a.md"]
+	a.UpstreamHash = "sha1"
+	db.Articles["one/a.md"] = a
+	db.Articles["two/a.md"] = Article{SourceID: "two", Path: "a.md", Versions: revisions(1), ReconcileBase: &ReconcileBase{SourceID: "one", Path: "a.md", Revision: 1, SHA: "sha1"}}
+	db.Outbox["one/a.md@1"] = SyncJob{ID: "one/a.md@1", SourceID: "one", Path: "a.md", Revision: 1, SHA: "sha1", State: "pending"}
+	db.Moves["m"] = Move{ID: "m", SourceID: "one", SourcePath: "a.md", SourceRevision: 1, DestinationID: "two", DestinationPath: "a.md", SHA: "sha1", State: "waiting_destination"}
+	if got := ProtectedRevisions(db, "one/a.md"); !reflect.DeepEqual(got, map[int]bool{1: true}) {
+		t.Fatal("protected", got)
+	}
+	if removed := PruneAll(&db); removed != 2 {
+		t.Fatal("removed", removed)
+	}
+	expectRevisions(t, db, "one/a.md", 1, 4, 5, 6)
+	// Lifting all but one protection still keeps the revision.
+	job := db.Outbox["one/a.md@1"]
+	job.State = "complete"
+	db.Outbox["one/a.md@1"] = job
+	move := db.Moves["m"]
+	move.State = "cancelled"
+	db.Moves["m"] = move
+	a = db.Articles["one/a.md"]
+	a.UpstreamHash = "sha6"
+	db.Articles["one/a.md"] = a
+	PruneAll(&db)
+	expectRevisions(t, db, "one/a.md", 1, 4, 5, 6)
+	target := db.Articles["two/a.md"]
+	target.ReconcileBase = nil
+	db.Articles["two/a.md"] = target
+	PruneAll(&db)
+	expectRevisions(t, db, "one/a.md", 4, 5, 6)
+}
+
+func TestPruneAllKeepsTheReconcileBaseOfADeletedArticle(t *testing.T) {
+	db := pruneDB(1, 2, 3, 4, 5, 6)
+	a := db.Articles["one/a.md"]
+	a.Deleted = true
+	db.Articles["one/a.md"] = a
+	db.Articles["two/a.md"] = Article{SourceID: "two", Path: "a.md", Versions: revisions(1), ReconcileBase: &ReconcileBase{SourceID: "one", Path: "a.md", Revision: 2, SHA: "sha2"}}
+	if removed := PruneAll(&db); removed != 2 {
+		t.Fatal("removed", removed)
+	}
+	expectRevisions(t, db, "one/a.md", 2, 4, 5, 6)
+	if !db.Articles["one/a.md"].Deleted {
+		t.Fatal("deletion lost")
+	}
 }

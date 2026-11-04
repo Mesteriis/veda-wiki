@@ -26,9 +26,9 @@ func MoveTerminal(state string) bool {
 //   - an outbox job that is not final (JobTerminal) reads revision
 //     SyncJob.Revision of its article: the push writes its text
 //     (syncer push, pendingBundle) and Validate checks its SHA;
-//   - such a job's Bundle names articles created as revision 1 by a linked
-//     copy. The push reads their newest revision, but Validate compares each
-//     with the article's first stored revision, so that one is kept;
+//   - such a job's Bundle names articles a linked copy created as revision 1
+//     and holds that revision's SHA. The push reads their newest revision, but
+//     Validate checks revision 1 against the bundle SHA, so revision 1 is kept;
 //   - a move that is not final (MoveTerminal) reads Move.SourceRevision of its
 //     source: removing the source from GitHub sends that text, and Validate
 //     checks its SHA;
@@ -37,11 +37,21 @@ func MoveTerminal(state string) bool {
 //     destination check compare it with Move.SHA (the destination then has
 //     only that revision, so this costs nothing);
 //   - ReconcileBase of any article names a revision of another article;
-//     Validate checks its SHA, and reconciliation moves it forward.
+//     Validate checks its SHA, and reconciliation moves it forward;
+//   - an article of a connected source (Source.ConnectionID set) keeps the
+//     newest revision whose SHA is its UpstreamHash: when the remote file
+//     differs from the queued write, the push of a job with images, links,
+//     a bundle or a directory index (syncer pendingBundle) hashes that
+//     revision's text as a git blob to prove the remote still holds the
+//     base. It is kept for every connected article, not only those with an
+//     active job, because a job can be queued after the base was otherwise
+//     old enough to prune. At most one extra revision per article.
 //
 // Not protected, because nothing reads their text: Article.Published (a full
 // copy kept on the article), CopyOrigin (provenance number and SHA only),
-// ImportConflict, UpstreamHash, final jobs and moves. Translations read only
+// ImportConflict.BaseSHA (compared as a SHA only), final jobs and moves.
+// Every other UpstreamHash reader (importer, moves, reconciliation, transfer)
+// compares it with a SHA and reads no text. Translations read only
 // the newest revision: the worker drops a candidate whose revision is no
 // longer the newest, and submissions require the newest expected revision.
 // Publishing a job, transfers and conflict resolution likewise act only on
@@ -114,13 +124,18 @@ func revisionReferences(db Database) []revisionReference {
 			out = append(out, revisionReference{key, a.Versions[0].Number})
 		}
 	}
+	revisionOne := func(key string) {
+		if _, ok := db.Articles[key]; ok {
+			out = append(out, revisionReference{key, 1})
+		}
+	}
 	for _, j := range db.Outbox {
 		if JobTerminal(j.State) {
 			continue
 		}
 		out = append(out, revisionReference{j.SourceID + "/" + j.Path, j.Revision})
 		for p := range j.Bundle {
-			first(j.SourceID + "/" + p)
+			revisionOne(j.SourceID + "/" + p)
 		}
 	}
 	for _, m := range db.Moves {
@@ -130,9 +145,18 @@ func revisionReferences(db Database) []revisionReference {
 		out = append(out, revisionReference{m.SourceID + "/" + m.SourcePath, m.SourceRevision})
 		first(m.DestinationID + "/" + m.DestinationPath)
 	}
-	for _, a := range db.Articles {
+	for key, a := range db.Articles {
 		if b := a.ReconcileBase; b != nil {
 			out = append(out, revisionReference{b.SourceID + "/" + b.Path, b.Revision})
+		}
+		if a.UpstreamHash == "" || db.Sources[a.SourceID].ConnectionID == "" {
+			continue
+		}
+		for i := len(a.Versions) - 1; i >= 0; i-- {
+			if a.Versions[i].SHA == a.UpstreamHash {
+				out = append(out, revisionReference{key, a.Versions[i].Number})
+				break
+			}
 		}
 	}
 	return out

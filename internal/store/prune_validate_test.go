@@ -105,9 +105,14 @@ func TestValidateTerminalOutboxJobWithPrunedRevisions(t *testing.T) {
 }
 
 func TestValidateActiveOutboxJobNeedsItsRevisions(t *testing.T) {
-	db := withJob(prunedDB(1), "pending", 5, revisionSHA(5), map[string]string{"b.md": revisionSHA(4)})
+	db := withJob(prunedDB(1), "pending", 5, revisionSHA(5), nil)
 	if err := store.Validate(&db); err != nil {
 		t.Fatal("gapped active job", err)
+	}
+	// An active bundle is checked against revision 1, not the first stored one.
+	db = withJob(prunedDB(1), "pending", 5, revisionSHA(5), map[string]string{"b.md": revisionSHA(4)})
+	if err := store.Validate(&db); err == nil {
+		t.Fatal("active bundle checked against the first stored revision")
 	}
 	db = withJob(prunedDB(1), "pending", 1, revisionSHA(1), nil)
 	if err := store.Validate(&db); err == nil {

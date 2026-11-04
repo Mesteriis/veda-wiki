@@ -29,7 +29,7 @@ func BuildSourceStatus(db Database, sourceID string, src Source, now time.Time, 
 		status.SyncVerification = conn.Verification
 		count, prepared := 0, 0
 		for _, job := range db.Outbox {
-			if job.SourceID == sourceID && job.State != "complete" && job.State != "superseded" {
+			if job.SourceID == sourceID && !JobTerminal(job.State) {
 				count++
 				if job.PreparedCommit != "" || job.ScopePrepared {
 					prepared++

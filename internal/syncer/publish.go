@@ -21,7 +21,7 @@ func (m *Manager) PublishJob(id string, expected int, confirm bool) error {
 		}
 		a, ok := db.Articles[job.SourceID+"/"+job.Path]
 		src := db.Sources[job.SourceID]
-		if !ok || a.Deleted || expected != domain.LatestRevision(a) || job.Revision != expected || job.State == "complete" || job.State == "superseded" || !domain.SourcePublic(*db, src, time.Now()) {
+		if !ok || a.Deleted || expected != domain.LatestRevision(a) || job.Revision != expected || domain.JobTerminal(job.State) || !domain.SourcePublic(*db, src, time.Now()) {
 			return domain.ErrConflict
 		}
 		current, _ := domain.RevisionByNumber(a, expected)
@@ -76,7 +76,7 @@ func (m *Manager) CancelBundle(id string, confirm bool) error {
 		if !ok {
 			return domain.ErrNotFound
 		}
-		if len(job.Bundle) == 0 || job.PreparedCommit != "" || job.State == "complete" || job.State == "superseded" {
+		if len(job.Bundle) == 0 || job.PreparedCommit != "" || domain.JobTerminal(job.State) {
 			return domain.ErrConflict
 		}
 		job.State = "superseded"
