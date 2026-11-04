@@ -1,8 +1,4 @@
 @media (max-width: 600px) {
-  .tabs button {
-    font-size: 11px;
-    padding: 3px 7px;
-  }
   .reading {
     padding: 17px;
   }
@@ -11,8 +7,5 @@
   }
   .markdown h1 {
     font-size: 27px;
-  }
-  .document-list strong {
-    font-size: 16px;
   }
 }
