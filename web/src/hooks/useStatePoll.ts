@@ -11,8 +11,9 @@ export interface StatePoll {
 }
 
 // Polls /api/state for the current address every ten seconds while the tab is
-// visible. A change of `restartKey` (the open dialog) restarts polling at once.
-export function useStatePoll(restartKey: unknown): StatePoll {
+// visible. A change of `restartKey` (the open dialog) restarts polling at once;
+// it is a primitive so that a value rebuilt on each render cannot restart it.
+export function useStatePoll(restartKey: string | null): StatePoll {
   const [data, setData] = useState<StatePayload | null>(null);
   const [error, setError] = useState("");
   // The tag belongs to the displayed state, so it survives restarts of the

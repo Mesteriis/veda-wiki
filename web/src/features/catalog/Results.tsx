@@ -10,7 +10,7 @@ export function Results({ v }: { v: View }) {
   return (
     <Panel
       className="search-results"
-      title={v.Query ? "Результаты поиска: " + v.Query : "Все страницы"}
+      title={"Результаты поиска: " + v.Query}
       actions={<span>{(v.Pages || []).length}</span>}
     >
       <div className="document-list">
