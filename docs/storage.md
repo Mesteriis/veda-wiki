@@ -62,8 +62,10 @@ deployment.
 
 The SQLite file has three tables. `records` holds one row per source, article
 (history without texts), job, move, key and so on. `revisions` holds one row per
-stored article revision (its text and bound images). `revision_assets` indexes
-those images by blob SHA-256 so that a reference lookup needs no scan. An article write
+stored article revision (its text and bound images). `revision_assets`
+mirrors those images, one row per revision image, so that loading can check
+them against the revision rows; blob collection does not read it and uses the
+in-memory set of referenced images instead. An article write
 inserts the new revision row and deletes pruned ones in the same transaction
 and leaves other articles' rows untouched. Loading requires every revision of
 an article record to have exactly one row whose text matches its SHA, and fails
@@ -152,10 +154,14 @@ Restore only when there is no `state.before-revisions.done` and verify fails,
 or when you deliberately accept losing every change made since the migration
 (restoring discards all of them):
 
-1. stop VEDA and all clients;
-2. copy `state.before-revisions.sqlite` over `state.sqlite` (SQLite only) and
+1. stop the VEDA service and all clients; the service must stay stopped until
+   the restore is complete;
+2. delete any `state.sqlite-journal`, `state.sqlite-wal` and `state.sqlite-shm`
+   left by the converted store (SQLite only); SQLite would otherwise apply them
+   to the restored file;
+3. copy `state.before-revisions.sqlite` over `state.sqlite` (SQLite only) and
    `state.before-revisions.json` over `state.json`;
-3. delete all `state.before-revisions.*` files; otherwise migrate-revisions
+4. delete all `state.before-revisions.*` files; otherwise migrate-revisions
    refuses to run again.
 
 Or restore the PBS snapshot, with the same loss. If a run failed before
