@@ -1,4 +1,11 @@
 // Capture reference screenshots of the reading interface over CDP.
+//
+// Known limits of the captures (they are a regression net, not a pixel-exact truth):
+// - time is frozen: API timestamps are rewritten to one instant, the client Date is pinned, timezone is UTC,
+//   so real date-handling regressions are not visible (the formatting itself still renders);
+// - Chrome runs with --hide-scrollbars (see screens.py) and prefers-reduced-motion, animations and caret blink are off;
+// - pages are captured at full content height (up to MAX_HEIGHT) at the given width;
+// - the baseline depends on this machine's Chrome version and fonts: recapture it when either changes.
 // usage: node ui_screens.mjs PORT PUBLIC_URL PRIVATE_URL KEY_FILE OUT_DIR
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,6 +17,7 @@ const readerKey = fs.readFileSync(keyFile, 'utf8');
 const ownerKey = 'd'.repeat(64);
 const WIDTHS = [1672, 390, 320];
 const HEIGHT = 941;
+const MAX_HEIGHT = 8000;
 const FREEZE_CSS = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}';
 
 // Client clock pinned to the same instant as the API timestamps (history times, relative dates).
@@ -89,7 +97,20 @@ const guest = [
   ['catalog', () => go(publicUrl + '?env=all', "!!document.querySelector('.catalog')")],
   ['article', () => go(publicUrl + '?page=' + article, "!!document.querySelector('.markdown') && document.body.innerText.includes('Демонстрационное содержимое')")],
   ['graph', () => go(publicUrl + '?graph=1', "!!document.querySelector('.graph-section')")],
-  ['recent', () => go(publicUrl + '?recent=1', "!!document.querySelector('.recent-history')")],
+  ['recent', async () => {
+    // The previous width seeded history in this tab; the plain recent screen must start empty.
+    await go(publicUrl, HOME);
+    await evaluate("sessionStorage.removeItem('veda.recent.v1')");
+    await go(publicUrl + '?recent=1', "!!document.querySelector('.recent-history-empty')");
+  }],
+  ['recent-filled', async () => {
+    // History lives in sessionStorage (web/src/recent.js); seed it with fixed times before opening the view.
+    await go(publicUrl, HOME);
+    const visits = ['fixture/projects/architecture.md', 'fixture/guides/intro.md', 'mirror/projects/architecture.md']
+      .map((visitedPath, index) => ({ path: visitedPath, visitedAt: Date.parse('2026-01-15T11:00:00Z') - index * 3600000 }));
+    await evaluate(`sessionStorage.setItem('veda.recent.v1', ${JSON.stringify(JSON.stringify(visits))})`);
+    await go(publicUrl + '?recent=1', "!!document.querySelector('.recent-history-row')");
+  }],
   ['login', async () => {
     await go(privateUrl, HOME);
     await evaluate("document.querySelector('button[aria-label=Войти]').click()");
@@ -112,7 +133,9 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `document.addEvent
 
 const capture = async (name, width) => {
   await settle();
-  const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const { cssContentSize } = await send('Page.getLayoutMetrics');
+  const height = Math.min(MAX_HEIGHT, Math.max(HEIGHT, Math.ceil(cssContentSize.height)));
+  const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width, height, scale: 1 } });
   fs.writeFileSync(path.join(outDir, `${name}-${width}.png`), Buffer.from(data, 'base64'));
 };
 

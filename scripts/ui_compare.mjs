@@ -20,19 +20,35 @@ export function compareImages(baseBuffer, nextBuffer) {
 
 const pngs = dir => fs.readdirSync(dir).filter(name => name.endsWith('.png')).sort();
 
+// A size mismatch is always a violation; otherwise a screen violates when its ratio exceeds the threshold.
 export function compareDirectories(baseDir, nextDir, threshold) {
-  const names = [...new Set([...pngs(baseDir), ...pngs(nextDir)])].sort();
   const violations = [];
-  for (const name of names) {
-    const basePath = path.join(baseDir, name), nextPath = path.join(nextDir, name);
-    if (!fs.existsSync(basePath)) violations.push({ name, reason: 'missing in baseline' });
-    else if (!fs.existsSync(nextPath)) violations.push({ name, reason: 'missing in new capture' });
-    else {
-      const result = compareImages(fs.readFileSync(basePath), fs.readFileSync(nextPath));
-      if (result.ratio > threshold) violations.push({ name, reason: result.sizeMismatch ? 'size differs' : `${(result.ratio * 100).toFixed(3)}% pixels differ (${result.differing})` });
+  let baseNames = [], nextNames = [];
+  for (const [label, dir] of [['baseline', baseDir], ['new capture', nextDir]]) {
+    try {
+      const names = pngs(dir);
+      if (label === 'baseline') baseNames = names; else nextNames = names;
+    } catch (error) {
+      violations.push({ name: label, reason: `cannot read directory ${dir}: ${error.code || error.message}` });
     }
   }
-  return { checked: names.length, violations };
+  if (violations.length) return { checked: 0, violations };
+  const names = [...new Set([...baseNames, ...nextNames])].sort();
+  let checked = 0;
+  for (const name of names) {
+    if (!baseNames.includes(name)) { violations.push({ name, reason: 'extra screen not in baseline' }); continue; }
+    if (!nextNames.includes(name)) { violations.push({ name, reason: 'missing in new capture' }); continue; }
+    try {
+      const result = compareImages(fs.readFileSync(path.join(baseDir, name)), fs.readFileSync(path.join(nextDir, name)));
+      checked++;
+      if (result.sizeMismatch) violations.push({ name, reason: 'size differs' });
+      else if (result.ratio > threshold) violations.push({ name, reason: `${(result.ratio * 100).toFixed(3)}% pixels differ (${result.differing})` });
+    } catch (error) {
+      violations.push({ name, reason: `unreadable image: ${error.message}` });
+    }
+  }
+  if (!names.length) violations.push({ name: '(none)', reason: 'no PNG files found to compare' });
+  return { checked, violations };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

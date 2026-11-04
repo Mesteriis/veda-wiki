@@ -109,7 +109,7 @@ def stop_browser(browser, browser_log):
     else:
         try:
             os.killpg(browser.pid, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             pass
     browser_log.close()
 
