@@ -3,37 +3,6 @@
   grid-template-columns: minmax(0, 1fr) 389px;
   gap: 16px;
 }
-.section-heading {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 40px;
-  margin: 0 12px;
-  border-bottom: 1px solid #083446;
-}
-.section-heading h2 {
-  color: #f1f3f4;
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0;
-  flex: 1;
-  white-space: nowrap;
-}
-.section-heading > a {
-  color: var(--cyan);
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.section-heading > a .icon {
-  width: 20px;
-  height: 20px;
-}
-.section-heading > button > .icon {
-  width: 21px;
-  height: 21px;
-}
 .knowledge-tree {
   min-height: 356px;
 }

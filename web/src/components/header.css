@@ -1,0 +1,260 @@
+.masthead {
+  position: relative;
+  height: 114px;
+  display: flex;
+  align-items: flex-start;
+  padding: 16px 8px 0 6px;
+  gap: 25px;
+  isolation: isolate;
+}
+.masthead::before {
+  content: "";
+  position: absolute;
+  inset: 0 -17px 0 -21px;
+  z-index: -1;
+  background: url("/assets/veda-header.png") no-repeat right -160px;
+  background-size: 1100px auto;
+  opacity: 0.9;
+}
+.masthead h1 {
+  font-size: 38px;
+  line-height: 1.15;
+  color: #f6f8fa;
+  margin: 0 0 2px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+.masthead p {
+  font-size: 18px;
+  margin: 0;
+  white-space: nowrap;
+}
+.masthead-title {
+  flex: 1;
+  min-width: 405px;
+}
+.global-search {
+  margin-top: 11px;
+  height: 39px;
+  border: 1px solid #0b7191;
+  background: #00101ddd;
+  border-radius: 6px;
+  box-shadow: 0 0 7px #008bb539;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 7px;
+  width: 360px;
+  flex-shrink: 1;
+  min-width: 210px;
+}
+.global-search > .icon {
+  height: 20px;
+  width: 20px;
+}
+.global-search input {
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+  border: 0;
+  outline: 0 !important;
+  background: transparent;
+  color: #d9ecf5;
+  font-size: 14px;
+  padding: 5px 0;
+}
+.global-search input::placeholder {
+  color: #c0d5e1;
+  opacity: 1;
+}
+kbd {
+  font-family: inherit;
+  font-size: 12px;
+  display: inline-block;
+  background: #092331;
+  border: 1px solid #123d4e;
+  border-radius: 3px;
+  color: #d4e6ee;
+  line-height: 19px;
+  min-width: 20px;
+  padding: 0 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 11px;
+  margin-left: auto;
+}
+.round {
+  height: 39px;
+  width: 39px;
+  border: 1px solid #185a6b;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #001017a8;
+}
+.round .icon {
+  width: 24px;
+  height: 24px;
+}
+.round.profile {
+  border-color: #00eaf5;
+  color: #e6fcff;
+  font-size: 18px;
+  margin-left: 1px;
+}
+.login-button {
+  border: 1px solid var(--cyan);
+  border-radius: 5px;
+  background: #001319c2;
+  color: var(--cyan);
+  padding: 9px 16px;
+  white-space: nowrap;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+@media (max-width: 1450px) {
+  .masthead {
+    gap: 15px;
+  }
+  .masthead-title {
+    min-width: 300px;
+  }
+  .masthead p {
+    font-size: 15px;
+  }
+  .masthead h1 {
+    font-size: 34px;
+  }
+  .global-search {
+    width: 280px;
+    min-width: 190px;
+  }
+  .header-actions {
+    gap: 9px;
+  }
+}
+@media (max-width: 1200px) {
+  .masthead-title {
+    min-width: 0;
+  }
+  .masthead p {
+    max-width: 300px;
+    white-space: normal;
+  }
+  .masthead {
+    gap: 12px;
+  }
+  .global-search {
+    width: 240px;
+  }
+  .header-actions {
+    gap: 7px;
+  }
+  .header-actions .round {
+    width: 33px;
+    height: 33px;
+  }
+  .header-actions .round:nth-last-child(2) {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .masthead {
+    height: 130px;
+    align-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0;
+    padding-top: 15px;
+  }
+  .masthead-title {
+    flex: 1;
+  }
+  .masthead-title p {
+    font-size: 14px;
+  }
+  .global-search {
+    order: 3;
+    width: 100%;
+    max-width: none;
+    flex: none;
+    margin-top: 8px;
+    height: 33px;
+  }
+  .header-actions {
+    margin-top: 0;
+  }
+  .header-actions .round {
+    display: none;
+  }
+  .header-actions .profile {
+    display: grid;
+  }
+}
+@media (max-width: 600px) {
+  .masthead {
+    height: 139px;
+    padding-top: 15px;
+  }
+  .masthead-title h1 {
+    font-size: 30px;
+  }
+  .masthead-title p {
+    font-size: 12px;
+    max-width: 220px;
+  }
+  .global-search {
+    margin-top: 9px;
+    height: 35px;
+  }
+}
+/* Reference alignment at the 1672px design viewport. */
+@media (min-width: 1451px) {
+  .global-search {
+    position: absolute;
+    left: 460px;
+    top: 26px;
+    margin-top: 0;
+    width: 360px;
+  }
+  .masthead-title {
+    flex: none;
+  }
+  .masthead::before {
+    background-position: calc(100% - 300px) -160px;
+  }
+}
+.masthead p {
+  letter-spacing: 0.3px;
+}
+@media (max-width: 1450px) {
+  .masthead::before {
+    left: -16px;
+    right: -14px;
+  }
+}
+@media (max-width: 900px) {
+  .masthead::before {
+    left: -14px;
+    right: -14px;
+  }
+}
+@media (max-width: 600px) {
+  .masthead::before {
+    left: -12px;
+    right: -12px;
+  }
+}
+/* VEDA is a reading surface; authors use external content channels. */
+.reading-mode { display:flex; align-items:center; gap:7px; color:var(--cyan); border:1px solid var(--line); background:#001319c2; border-radius:5px; padding:9px 12px; white-space:nowrap; font-size:14px; }
+.reading-mode .icon { width:18px; height:18px; }
+@media (max-width:600px) { .reading-mode { font-size:11px; padding:7px; } .reading-mode .icon { display:none; } }

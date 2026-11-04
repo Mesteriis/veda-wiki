@@ -58,12 +58,9 @@ main:has(.home-dashboard) .global-search > .icon { width: 25px; height: 25px; }
   .home-page-path { display: none; }
   .home-page-row time { font-size: 11px; }
 }
-@media (max-width:600px) { .reading-mode { font-size:11px; padding:7px; } .reading-mode .icon { display:none; } }
-
 .tree-folder > summary { padding: 0 8px; min-width: 0; font-size: 13px; }
 .tree-folder > summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-folder > .tree-pages { margin-left: 18px; }
-
 .reader-access form, .reader-access label { display: flex; flex-direction: column; gap: 10px; }
 .reader-access input { background: #001522; border: 1px solid #15657a; color: #e9f9ff; border-radius: 5px; padding: 10px; font: inherit; }
 .reader-access button { align-self: flex-start; background: #00314a; border: 1px solid #00bcd4; color: #e9f9ff; border-radius: 5px; padding: 8px 16px; cursor: pointer; }
@@ -75,7 +72,6 @@ main:has(.home-dashboard) .global-search > .icon { width: 25px; height: 25px; }
 .github-connect label.github-write { flex-direction: row; align-items: center; }
 .github-connect ul { padding-left: 20px; overflow-wrap: anywhere; }
 .github-connect .access-source { flex-direction: row; align-items: center; }
-
 /* Source and folder browser */
 main:has(.catalog) .masthead { height: 250px; padding: 84px 0 0; display: block; }
 main:has(.catalog) .masthead::before { inset: 0 -17px 90px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
@@ -122,7 +118,6 @@ main:has(.catalog) .global-search input { font-size: 16px; }
   .catalog-path, .catalog-row time { margin-left: 46px; text-align: left; }
 }
 .access-issued { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #00bcd4; border-radius: 6px; }
-
 /* Graph: nodes and edges are derived from the reader's visible snapshot. */
 main:has(.graph-section) .masthead { height: 250px; padding: 84px 0 0; display: block; }
 main:has(.graph-section) .masthead::before { inset: 0 -17px 90px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
@@ -189,7 +184,6 @@ main:has(.graph-section) .global-search input { font-size: 16px; }
   .graph-three-groups .graph-tools { position: absolute; right: 18px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 }
 @media (max-width: 600px) { .graph-tools { align-items: flex-end; } .graph-legend { max-width: 220px; } }
-
 /* Recently opened articles, scoped to the current browser tab. */
 main:has(.recent-history) .masthead { height: 250px; padding: 84px 0 0; display: block; }
 main:has(.recent-history) .masthead::before { inset: 0 -17px 90px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
@@ -225,7 +219,6 @@ main:has(.recent-history) .global-search input { font-size: 16px; }
  .recent-history-row { flex-wrap: wrap; gap: 8px; padding: 12px 0; }
  .recent-history-row time { margin-left: 42px; }
 }
-
 /* GitHub integration workspace */
 main:has(.github-page) .masthead { height: 180px; padding: 84px 0 0; display: block; }
 main:has(.github-page) .masthead::before { inset: 0 -17px 5px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
@@ -288,7 +281,6 @@ main:has(.github-page) .global-search { display: none; }
 .github-page .github-action-dialog input, .github-page .github-action-dialog select, .github-page .github-action-dialog textarea { width: 100%; min-width: 0; }
 .github-page .github-action-dialog input[type=checkbox] { width: auto; }
 .github-page .github-action-dialog p { margin: 0; color: #a9c8d7; }
-
 /* Settings and source-scoped access administration. */
 main:has(.settings-page) .masthead { height: 180px; padding: 84px 0 0; display: block; }
 main:has(.settings-page) .masthead::before { inset: 0 -17px 5px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
@@ -326,19 +318,16 @@ main:has(.settings-page) .global-search { display: none; }
   .settings-heading { flex-wrap: wrap; }
   .settings-row { grid-template-columns: 1fr; gap: 7px; }
 }
-
 @media (min-width: 1201px) {
   .settings-users .settings-row, .settings-table-head { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(115px, 1fr) minmax(110px, 1fr) 100px minmax(420px, 1.5fr); gap: 14px; align-items: center; }
   .settings-table-head { padding: 12px 8px; color: #82aabc; border-bottom: 1px solid #174152; font-size: .85rem; }
 }
 @media (max-width: 1200px) { .settings-table-head { display: none; } }
 @media (min-width: 901px) and (max-width: 1200px) { .settings-users .settings-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .settings-users .settings-row-actions { justify-content: flex-start; } }
-
 .settings-role, .settings-status { display: inline-block; border-radius: 7px; padding: 4px 9px; font-size: .85em; white-space: nowrap; }
 .settings-role { background: #103343; border: 1px solid #205163; color: #d2eaf1; }
 .settings-status.is-active { background: #073b2b; color: #a7f3cb; }
 .settings-status.is-disabled { background: #1a3442; color: #c1d5de; }
-
 /* Settings follow the selected, less condensed table design. */
 main:has(.settings-page) .masthead-title, .settings-page { font-family: Arial, sans-serif; }
 .settings-page .settings-tabs button, .settings-page .settings-add { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
@@ -352,7 +341,6 @@ main:has(.settings-page) .masthead-title, .settings-page { font-family: Arial, s
 .settings-page .settings-row-actions button { border-color: transparent; color: #dceff5; }
 .settings-page .settings-row-actions button:hover { color: var(--cyan); }
 @media (min-width: 901px) { .settings-table-head { background: #0b2632; border: 1px solid #174152; border-radius: 7px 7px 0 0; color: #d7edf5; } }
-
 @media (min-width: 901px) {
   main:has(.settings-page) .masthead { height: 196px; padding-top: 90px; }
   .settings-page { font-size: 16px; }

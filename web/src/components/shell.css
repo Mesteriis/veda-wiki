@@ -1,0 +1,149 @@
+.panel {
+  border: 1px solid var(--line);
+  background: #001017e8;
+  border-radius: 7px;
+  box-shadow: inset 0 0 20px #001e2a44;
+  overflow: hidden;
+}
+.source-warnings {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.source-warning {
+  padding: 10px 13px;
+  color: #f2d5a1;
+  background: #21190d;
+  border: 1px solid #76572b;
+  border-radius: 6px;
+}
+main {
+  margin-left: 248px;
+  padding: 0 17px 16px 21px;
+  min-height: 100vh;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  margin: 0 12px;
+  border-bottom: 1px solid #083446;
+}
+.section-heading h2 {
+  color: #f1f3f4;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  flex: 1;
+  white-space: nowrap;
+}
+.section-heading > a {
+  color: var(--cyan);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-heading > a .icon {
+  width: 20px;
+  height: 20px;
+}
+.section-heading > button > .icon {
+  width: 21px;
+  height: 21px;
+}
+.loading-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+.loading-screen > img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+}
+.loading-screen h1 {
+  letter-spacing: 10px;
+  margin: 0;
+  font-size: 35px;
+}
+.loading-screen p {
+  color: var(--muted);
+}
+.loading-screen a {
+  color: var(--cyan);
+}
+dialog {
+  background: #00151e;
+  color: #d9edf7;
+  border: 1px solid #00abc8;
+  border-radius: 8px;
+  box-shadow: 0 0 40px #0085ad44;
+  padding: 24px;
+  width: min(480px, 90vw);
+}
+dialog::backdrop {
+  background: #000b12cc;
+  backdrop-filter: blur(4px);
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.dialog-head h2 {
+  margin: 0;
+  font-size: 25px;
+  color: #f5fbff;
+}
+.dialog-head button {
+  border: 1px solid #0b4e61;
+  border-radius: 4px;
+  padding: 3px;
+}
+.dialog-head .icon {
+  width: 20px;
+  height: 20px;
+}
+dialog > p {
+  font-size: 17px;
+  line-height: 1.6;
+  color: #a7ccdf;
+}
+@media (max-width: 1450px) {
+  main {
+    margin-left: 218px;
+    padding-left: 16px;
+    padding-right: 14px;
+  }
+  .section-heading h2 {
+    font-size: 18px;
+  }
+}
+@media (max-width: 900px) {
+  main {
+    margin-left: 180px;
+    padding-left: 14px;
+  }
+}
+@media (max-width: 600px) {
+  main {
+    margin-left: 0;
+    padding: 0 12px 20px;
+  }
+  .section-heading h2 {
+    font-size: 18px;
+  }
+  .section-heading > a {
+    font-size: 13px;
+    gap: 6px;
+  }
+}
+.section-heading h2 {
+  letter-spacing: 0.15px;
+}
