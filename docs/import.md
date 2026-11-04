@@ -50,8 +50,8 @@ change either side. It uses current article hashes, not import-base revisions,
 and the two systems can change during the comparison. Withheld and untracked
 files are excluded, so `veda_only` does not imply deletion and `different` does
 not establish a conflict. Image counts compare stored source hashes, not blob
-availability or historical image bindings. Metadata is not compared. Program sources
-are refused because their displayed hashes can refer to translations. The endpoint
+availability or historical image bindings. Metadata is not compared. Only wiki sources
+are compared; program sources are refused. The endpoint
 must be independently authorized and trusted; the comparison does not read or
 send a key, use a proxy, or follow redirects.
 
@@ -80,9 +80,7 @@ Metadata cannot set visibility or change repository access.
 
 If `veda.yaml` is absent, the source is a program and only `docs/` is imported.
 If `docs/` is absent, the command reports `skipped`; it does not substitute root
-README, source code or a `do/` directory. Original program Markdown remains intact. Agents can submit a separate Russian
-translation via REST/MCP; see [translation workflow](translation.md). Automatic
-translation is not yet configured.
+README, source code or a `do/` directory. Original program Markdown remains intact.
 
 In a program repository, if an entry named `docs` exists but is a file, symlink or submodule instead of
 a directory, import fails rather than treating it as an absent directory. A

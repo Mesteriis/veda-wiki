@@ -58,14 +58,12 @@ def main():
             rev=article['versions'][-1]
             if hashlib.sha256(upstream_bytes).hexdigest()!=rev['sha256'] or upstream_bytes.decode('utf-8')!=rev['text']:
                 raise RuntimeError('import differs from upstream revision')
-            candidates=api('/api/v1/articles/translation-needed')
-            needed=[x for x in candidates.get('candidates',[]) if x.get('source_id')=='fixture']
             proc.terminate();proc.wait(timeout=10)
             proc=start(data,private,public)
             restored=api('/api/v1/articles?'+urlencode({'source_id':'fixture','path':article_path}))
             if restored['versions'][-1]['sha256']!=rev['sha256'] or restored['versions'][-1]['text']!=rev['text']:
                 raise RuntimeError('import did not survive restart')
-            print(json.dumps({'status':'passed','anonymous':True,'kind':'program','public':True,'pages':len(pages),'all_under_docs':True,'translation_candidates':len(needed),'partial':bool(src.get('import_partial')),'upstream_article_hash_match':True,'restart_preserved':True}))
+            print(json.dumps({'status':'passed','anonymous':True,'kind':'program','public':True,'pages':len(pages),'all_under_docs':True,'partial':bool(src.get('import_partial')),'upstream_article_hash_match':True,'restart_preserved':True}))
         except HTTPError as exc:
             print(json.dumps({'status':'http_error','http':exc.code}))
             raise SystemExit(1)

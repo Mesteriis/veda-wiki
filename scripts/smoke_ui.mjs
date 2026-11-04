@@ -141,7 +141,7 @@ for (const width of [1672, 390, 320]) {
   if (await evaluate("(async () => (await fetch('/api/v1/articles?source_id=other-private&path=secret.md')).status)()") !== 404) throw Error('out-of-scope article available');
   if (width === 1672) {
     await send('Page.navigate', { url: privateUrl + '?page=program-fixture%2Fdocs%2Fcurrent.md' });
-    await until("document.querySelector('.markdown')?.innerText.includes('Read the guide.') && !document.querySelector('.provenance')?.innerText.includes('перевод')");
+    await until("document.querySelector('.markdown')?.innerText.includes('Read the guide.')");
     await send('Page.navigate', { url: privateUrl });
     await until("document.body.innerText.includes('Приватная тестовая страница')");
   }

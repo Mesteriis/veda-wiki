@@ -63,7 +63,7 @@ def main():
                 binary.chmod(0o755)
         scripts = root / 'scripts'
         scripts.mkdir(mode=0o755)
-        for name in ('smoke_directory_restore.py', 'smoke_translation_auth.py'):
+        for name in ('smoke_directory_restore.py',):
             shutil.copyfile(ROOT / 'scripts' / name, scripts / name)
             (scripts / name).chmod(0o644)
         baseline = root / 'baseline.py'
@@ -74,8 +74,7 @@ def main():
                    '--pids-limit', '64', '--memory', '256m', '--cpus', '1', '--tmpfs', '/tmp:rw,size=128m',
                    '--mount', f'type=bind,src={root},dst=/workspace,readonly', args.image, 'python']
         for test in (['/workspace/baseline.py'], ['/workspace/scripts/smoke_directory_restore.py'],
-                     ['/workspace/scripts/smoke_directory_restore.py', '--index'],
-                     ['/workspace/scripts/smoke_translation_auth.py', '--protocol', 'openai']):
+                     ['/workspace/scripts/smoke_directory_restore.py', '--index']):
             subprocess.run(command + test, check=True, timeout=90)
 
 

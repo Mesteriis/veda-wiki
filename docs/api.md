@@ -5,12 +5,6 @@ A separate `reader.key` bearer credential can read current private content but c
 data directory and is never returned by the API. Errors do not echo credentials
 or article bodies. Do not put the key into URLs, browser storage or logs.
 
-For a program document, the reading page includes `translation_state`: `current`
-when a matching translation is displayed, `unavailable` when none is visible,
-and `stale` to authenticated readers when an existing translation targets an
-older original. The public surface reports `unavailable` in that last case
-and does not expose the existence or origin of unpublished translations.
-Unknown translation origin is explicitly labelled in the interface.
 For an authenticated reader, the selected page includes
 `unresolved_conflict: true` when that article has an unresolved import conflict.
 The field is absent for public readers and for articles without a conflict.
@@ -21,8 +15,6 @@ The field is absent for public readers and for articles without a conflict.
 | GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path. Authenticated readers receive warnings for incomplete or dirty imports, unresolved conflicts and unverified, paused or failed GitHub synchronization in their visible sources. A conflicted article includes `conflict_resolution_blocked_by_write` when a prepared write or linked bundle prevents resolution; public responses omit it |
 | GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/articles/excerpt?source_id=&path=&offset=&limit=&expected_sha256=` | Read up to 16,000 Unicode code points of the current visible revision; continuation requires the first response's SHA |
-| GET | `/api/v1/articles/display?source_id=&path=` | Read the displayed Markdown, translation status and original SHA under the caller's source permissions |
-| GET | `/api/v1/articles/display-excerpt?source_id=&path=&offset=&limit=&expected_sha256=&expected_original_sha256=` | Read up to 16,000 Unicode code points of displayed Markdown; continuation requires both hashes from the first response |
 | GET | `/api/v1/articles/proposal-base?source_id=&path=` | Authenticated source-scoped revision, SHA, unresolved import-conflict flag and source status in one snapshot |
 | GET | `/api/v1/articles/new-proposal-base?source_id=&path=` | Authenticated source-scoped visible-path check and source status in one snapshot; does not reserve the path |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
@@ -33,9 +25,6 @@ The field is absent for public readers and for articles without a conflict.
 | GET | `/api/v1/articles?source_id=…&path=…&history=1` | Stored revisions: the newest three plus protected ones, so numbers can start above 1 and have gaps (owner only; public callers still receive only the current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
-| GET | `/api/v1/articles/translation-needed` | List program documents needing translation, publication review, or conflict resolution, limited to authorized sources; optional `source_id`, `limit` and `offset` |
-| POST | `/api/v1/articles/translation-validate` | Validate a revision-bound translation without saving; owner or authorized reader, no browser Origin |
-| POST | `/api/v1/articles/translation` | Save a version-bound Russian translation (owner only); optional `expected_translation_fingerprint` rejects concurrent translation changes |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |
 | GET/POST | `/api/v1/access-keys` | List, create or update a source-scoped read-only key (owner only) |
@@ -73,10 +62,7 @@ does not retroactively remove already published content or resolve an ambiguous
 prepared push. See [GitHub synchronization](github.md) for queue recovery.
 
 Search matches exact phrases or meaningful words across visible source titles, article titles, paths
-and article text. For translated articles it searches both the visible original
-revision and its visible translation, scores each text independently, and
-returns the displayed title. An unapproved translation is never searched on the
-public surface. Multiword queries require two distinct meaningful matches;
+and article text. Multiword queries require two distinct meaningful matches;
 source title, article title and path matches rank above body matches. A small set of infrastructure
 aliases covers generic container terms, LXC and Docker, as well as VPS/VDS/VSP.
 Generic container queries include both technologies; explicit LXC and Docker
@@ -91,7 +77,7 @@ Each individual search ranks titles and bodies from one in-memory snapshot;
 public results use only revisions visible to the public at that snapshot.
 
 Page objects expose `updated_at`, the timestamp of the revision displayed on
-that surface. Public pages use the published revision or approved translation,
+that surface. Public pages use the published revision,
 not timestamps from unpublished private edits. The home cards are sorted by
 this value; it is not the filesystem modification time or proof that the
 upstream repository or infrastructure was recently checked.
@@ -127,8 +113,7 @@ it does not expose other paths or indicate that an ordinary write is blocked.
 phase locks this article, including destination dependencies. The scoped result
 does not disclose the other endpoint or move details; it can change before a
 write. `write_blocked_by_bundle` indicates a linked group also blocks normal
-writes to the selected article. Translation validation uses the same scoped
-move and bundle locks.
+writes to the selected article.
 The MCP adapter requires a server that returns
 this status in the proposal-base response. New-article proposals use
 `new-proposal-base`; the path check and source status come from one snapshot.
@@ -233,8 +218,7 @@ With that flag, all recursively linked Markdown articles and supported images
 are copied atomically into a standalone local destination, or queued together
 for one GitHub commit. Cycles are handled;
 existing matching articles are retained and conflicts reject the whole batch.
-Each newly copied article retains source provenance and its translation is a
-private draft. Approval for a private-to-public batch covers every article;
+Each newly copied article retains source provenance. Approval for a private-to-public batch covers every article;
 each is checked for credential-like text. Independently imported destinations
 cannot receive a linked batch. Copy never deletes the source.
 
@@ -361,9 +345,7 @@ target import blocks the bundle. A relative or repository-root article link is a
 destination path already has the same current article revision; a public target
 also requires that revision to be published. The linked article is checked
 again before source deletion. Other relative links and embedded HTML remain
-unsupported. A stored translation can be moved only to another program source;
-it is copied as a separate private draft and requires publication review even
-when the target is public. The target must be a new path in another source.
+unsupported. The target must be a new path in another source.
 If two source IDs refer to the same GitHub repository and branch, moving to
 the same physical path is rejected even when one source view is stale.
 
@@ -388,14 +370,13 @@ or `veda_cancel_move` with `confirm_cancel: true` before source deletion is
 prepared. Both copies remain; an already queued destination write may still
 finish. Once deletion is prepared, its response can be uncertain and cancellation
 is refused until synchronization resolves it. During this interval, local edits,
-translation changes, conflict resolution and moves of the source, destination
+conflict resolution and moves of the source, destination
 and recorded linked destination articles are refused. External changes in a
 GitHub repository cannot be locked by VEDA. A definitive rejection of the
 first ref update restores the cancellable waiting state; a later rejection
 cannot resolve an earlier uncertain attempt. The two remote repositories
 cannot be updated atomically; external edits may occur between checks. Local
-source revision history is retained. A change to either translation while the
-move is waiting prevents source removal. Private-to-public publication requires
+source revision history is retained. Private-to-public publication requires
 separate explicit confirmation. Without `include_linked`, linked articles are
 not copied automatically; missing or different targets must be synchronized first. Live
 acceptance with credentials stored by VEDA remains pending.
@@ -404,12 +385,7 @@ Creating the first local-source move upgrades the local store format to version 
 the first GitHub-source move upgrades it to version 3. Older
 versions of VEDA reject that store instead of silently discarding move records.
 The previous version-2 store reader was tested against a synthetic version-3
-file and refused it without changing it. A move with a translation upgrades the
-store to version 5; older binaries reject it rather than discard the additional
-move invariant. An older binary refused a synthetic v5 store without changing
-it. A synthetic v5 store with a translation and scoped key also passed a PBS
-backup/restore round-trip; production v5 backup and restore have not been
-validated. A move containing images to a local target upgrades the store to
+file and refused it without changing it. A move containing images to a local target upgrades the store to
 version 6; a copy or move with images to a connected target upgrades it to
 version 7. Moves with linked articles, and connected copies with linked
 articles, upgrade the store to version 8. Older binaries reject these stores.

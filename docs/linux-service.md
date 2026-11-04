@@ -3,7 +3,7 @@
 The example [systemd unit](../deploy/systemd/veda.service) starts one VEDA
 process under a dedicated `veda` user. It binds both listeners to loopback and
 lets systemd create `/var/lib/veda` with mode 0700. It does not configure a
-reader socket, TLS, remote access, GitHub accounts, a translation model, or
+reader socket, TLS, remote access, GitHub accounts, or
 backups. Review and adapt the unit for the host before installing it.
 
 For a Debian-family host with systemd, build the binary on a trusted build host
@@ -61,7 +61,7 @@ SHA-256 manifest. These
 are CI builds, not signed releases, and expire under GitHub Actions retention.
 Verify the manifest before installing. A locally built ARM64 archive passed a
 synthetic Linux ARM64 container check for health, REST, isolation, embedded UI,
-SQLite restore and the local translation protocol. It did not use a real model.
+SQLite restore.
 The amd64 archive was also installed on a fresh GitHub-hosted
 Ubuntu runner using the commands above; the service, empty public index, UI,
 state/key permissions and restart passed. With the former Python adapter, a
