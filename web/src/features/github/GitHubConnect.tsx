@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { addAccount as postAccount, configureMirror as postMirror, connect as postConnection, listAccounts, listConnections, listMirrors, pause, reconfigure, sync, type AccountSecret } from "../../api/github";
-import { HttpError, isAbort, statusOf } from "../../api/http";
-import { login as postLogin, logout as postLogout, sessionStatus, setupPassword, type Credentials } from "../../api/session";
+import { HttpError, statusOf } from "../../api/http";
+import { login as postLogin, logout as postLogout, setupPassword, type Credentials } from "../../api/session";
 import type { GitHubAccount, GitHubConnection, SourceMirror } from "../../api/types";
+import { useSessionBootstrap } from "../../hooks/useSessionBootstrap";
 import { field } from "../../lib/forms";
 import { githubErrorMessage } from "../../lib/githubErrors";
 import { githubSourceId } from "../../lib/githubSourceId";
@@ -25,8 +26,6 @@ function clearField(form: HTMLFormElement, name: string) {
 
 // GitHub accounts, repository connections and mirrors, managed in an administrator session.
 export function GitHubConnect() {
-  const [status, setStatus] = useState<boolean | null>(null);
-  const [sharedSession, setSharedSession] = useState(false);
   const [accounts, setAccounts] = useState<GitHubAccount[]>([]);
   const [repoAccount, setRepoAccount] = useState<string | null>(null);
   const [selectedConnection, setSelectedConnection] = useState<string | null>(null);
@@ -42,13 +41,11 @@ export function GitHubConnect() {
     // The first loaded list picks the repository account once: the only one, or none.
     setRepoAccount((current) => current === null && a.length > 0 ? (a.length === 1 ? a[0]?.id ?? "" : "") : current);
   }
-  useEffect(() => {
-    const controller = new AbortController();
-    sessionStatus("/api/admin/session", controller.signal)
-      .then(async (s) => { setStatus(s.authenticated); setSharedSession(!!s.via_reader_session); if (s.authenticated) await refresh(); })
-      .catch((e: unknown) => { if (!isAbort(e)) setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
-    return () => controller.abort();
-  }, []);
+  const { status, setStatus, sharedSession } = useSessionBootstrap("/api/admin/session", {
+    unavailableMessage: "Управление доступно на приватном адресе через HTTPS или на этом компьютере.",
+    onMessage: setMessage,
+    onAuthenticated: () => refresh(),
+  });
   useEffect(() => {
     if (!status) return;
     const timer = setInterval(() => { refresh().catch(() => setMessage("Не удалось обновить состояние GitHub.")); }, 10000);

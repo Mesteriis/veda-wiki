@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { isAbort } from "../../api/http";
-import { changePassword as postPassword, login, logout as postLogout, sessionStatus, type Credentials } from "../../api/session";
+import { useState } from "react";
+import { changePassword as postPassword, login, logout as postLogout, type Credentials } from "../../api/session";
+import { useSessionBootstrap } from "../../hooks/useSessionBootstrap";
 import { clearVisits } from "../../lib/recent";
 import { LoginForm } from "./LoginForm";
 import { PasswordForm } from "./PasswordForm";
@@ -8,19 +8,13 @@ import { passwordChangeAllowed } from "./passwordChange";
 
 // Reader sign-in, password change and sign-out in the profile dialog.
 export function ReaderAccess() {
-  const [status, setStatus] = useState<boolean | null>(null);
   const [message, setMessage] = useState("");
   const [canChangePassword, setCanChangePassword] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    sessionStatus("/api/session", controller.signal)
-      .then(async (result) => {
-        setStatus(result.authenticated);
-        if (result.authenticated) setCanChangePassword(await passwordChangeAllowed(controller.signal));
-      })
-      .catch((error: unknown) => { if (!isAbort(error)) setMessage("Вход доступен на приватном адресе через HTTPS или на этом компьютере."); });
-    return () => controller.abort();
-  }, []);
+  const { status } = useSessionBootstrap("/api/session", {
+    unavailableMessage: "Вход доступен на приватном адресе через HTTPS или на этом компьютере.",
+    onMessage: setMessage,
+    onAuthenticated: async (signal) => setCanChangePassword(await passwordChangeAllowed(signal)),
+  });
   async function submit(credentials: Credentials) {
     setMessage("");
     try {

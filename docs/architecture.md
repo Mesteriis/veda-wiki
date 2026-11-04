@@ -142,6 +142,10 @@ logic that the Go service does not own.
   graph, recent, github, access) with its stylesheet beside the components.
 - `styles/` holds design tokens, fonts and base rules.
 
+Dependencies point one way: features may import components, hooks and lib, but
+components never import features. `App.tsx` is the composition root that hands
+feature bodies (profile, GitHub, access settings) to the shell's dialog.
+
 CSS is imported centrally from `main.tsx` in cascade order: fonts, tokens,
 base, shell, then features. Importing a stylesheet from a component would place
 it before the shell CSS in the bundle and change which rule wins.

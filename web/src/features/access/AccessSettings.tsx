@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { createKey, listKeys, listSources, listTeams, listUsers, revokeKey, saveTeam as postTeam, saveUser, updateKey, type UserChanges } from "../../api/access";
-import { isAbort, statusOf } from "../../api/http";
-import { login as postLogin, logout as postLogout, sessionStatus, type Credentials } from "../../api/session";
+import { statusOf } from "../../api/http";
+import { login as postLogin, logout as postLogout, type Credentials } from "../../api/session";
 import type { AccessKey, IssuedKey as Issued, SourceChoice, WikiTeam, WikiUser } from "../../api/types";
 import { I } from "../../components/Icon";
+import { useSessionBootstrap } from "../../hooks/useSessionBootstrap";
 import { field, fields } from "../../lib/forms";
 import { LoginForm } from "../session/LoginForm";
 import { AccessModal, type AccessModalState } from "./AccessModal";
@@ -24,8 +25,6 @@ const newItem: Record<Tab, "user" | "team" | "key"> = { users: "user", teams: "t
 
 // Users, teams and reader keys, managed in an access-administrator session.
 export function AccessSettings() {
-  const [status, setStatus] = useState<boolean | null>(null);
-  const [sharedSession, setSharedSession] = useState(false);
   const [accessTab, setAccessTab] = useState<Tab>("users");
   const [accessModal, setAccessModal] = useState<AccessModalState>(null);
   const [sources, setSources] = useState<SourceChoice[]>([]);
@@ -39,13 +38,11 @@ export function AccessSettings() {
     const [available, existing, groups, people] = await Promise.all([listSources(), listKeys(), listTeams(), listUsers()]);
     setSources(available); setKeys(existing); setTeams(groups); setUsers(people);
   }
-  useEffect(() => {
-    const controller = new AbortController();
-    sessionStatus("/api/access/session", controller.signal)
-      .then(async (s) => { setStatus(s.authenticated); setSharedSession(!!s.via_reader_session); if (s.authenticated) await refresh(); })
-      .catch((e: unknown) => { if (!isAbort(e)) setMessage("Управление доступно на приватном адресе через HTTPS или на этом компьютере."); });
-    return () => controller.abort();
-  }, []);
+  const { status, setStatus, sharedSession } = useSessionBootstrap("/api/access/session", {
+    unavailableMessage: "Управление доступно на приватном адресе через HTTPS или на этом компьютере.",
+    onMessage: setMessage,
+    onAuthenticated: () => refresh(),
+  });
   async function login(credentials: Credentials) {
     setBusy(true); setMessage("");
     try { await postLogin("/api/access/session", credentials); setStatus(true); await refresh(); }

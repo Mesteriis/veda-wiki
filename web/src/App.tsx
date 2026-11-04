@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AccessSettings } from "./features/access/AccessSettings";
 import { GitHubConnect } from "./features/github/GitHubConnect";
 import { FeatureContext, type FeatureName } from "./components/FeatureContext";
@@ -11,6 +11,7 @@ import { Graph } from "./features/graph/Graph";
 import { Dashboard } from "./features/home/Dashboard";
 import { Reading } from "./features/reading/Reading";
 import { Recent } from "./features/recent/Recent";
+import { ReaderAccess } from "./features/session/ReaderAccess";
 import { useShortcut } from "./hooks/useShortcut";
 import { useStatePoll } from "./hooks/useStatePoll";
 import type { StatePayload } from "./api/types";
@@ -44,6 +45,10 @@ export function App({ linkLoginError = false }: { linkLoginError?: boolean }) {
       </div>
     );
   const v = readerView(data.view, window.location.search);
+  // Administration dialogs exist only on the private listener.
+  const dialogBodies: Partial<Record<FeatureName, ReactNode>> = v.Public
+    ? { profile: <ReaderAccess /> }
+    : { profile: <ReaderAccess />, github: <GitHubConnect />, settings: <AccessSettings /> };
   return (
     <FeatureContext.Provider value={setFeature}>
       <Sidebar v={v} />
@@ -53,7 +58,7 @@ export function App({ linkLoginError = false }: { linkLoginError?: boolean }) {
         <SourceWarnings view={v} />
         <Section v={v} data={data} />
       </main>
-      <FeatureDialog feature={feature} isPublic={v.Public} onClose={() => setFeature(null)} />
+      <FeatureDialog feature={feature} isPublic={v.Public} bodies={dialogBodies} onClose={() => setFeature(null)} />
     </FeatureContext.Provider>
   );
 }

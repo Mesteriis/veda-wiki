@@ -1,7 +1,4 @@
-import { useEffect, useRef } from "react";
-import { AccessSettings } from "../features/access/AccessSettings";
-import { GitHubConnect } from "../features/github/GitHubConnect";
-import { ReaderAccess } from "../features/session/ReaderAccess";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { FeatureName } from "./FeatureContext";
 import { I } from "./Icon";
 
@@ -39,11 +36,13 @@ const descriptions: Record<FeatureName, [title: string, text: string]> = {
 export interface FeatureDialogProps {
   feature: FeatureName | null;
   isPublic: boolean;
+  /** Feature bodies supplied by the composition root; others show their description. */
+  bodies: Partial<Record<FeatureName, ReactNode>>;
   onClose: () => void;
 }
 
 // One modal dialog shows whichever feature was opened last.
-export function FeatureDialog({ feature, isPublic, onClose }: FeatureDialogProps) {
+export function FeatureDialog({ feature, isPublic, bodies, onClose }: FeatureDialogProps) {
   const modal = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (feature) modal.current?.showModal();
@@ -64,7 +63,7 @@ export function FeatureDialog({ feature, isPublic, onClose }: FeatureDialogProps
           <I name="x" />
         </button>
       </div>
-      {feature === "profile" ? <ReaderAccess /> : feature === "github" && !isPublic ? <GitHubConnect /> : feature === "settings" && !isPublic ? <AccessSettings /> : <p>{description?.[1]}</p>}
+      {(feature && bodies[feature]) || <p>{description?.[1]}</p>}
     </dialog>
   );
 }
