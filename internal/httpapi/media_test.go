@@ -111,6 +111,32 @@ func TestMediaServesTheImagesOfTheShownVersion(t *testing.T) {
 			t.Error(tc.name, "404 differs from an unknown digest")
 		}
 	}
+	// Readers cannot read revision history, so on the private listener a
+	// reader key or a scoped key loads only the latest revision's images.
+	scopedKey, err := s.auth().CreateAccessKey("agent", []string{"handbook"}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := Wiki{Store: s, Token: "test-owner", ReaderToken: "test-reader"}
+	for _, credential := range []string{"test-reader", scopedKey} {
+		get := func(url string) *httptest.ResponseRecorder {
+			r := httptest.NewRequest("GET", url, nil)
+			r.Header.Set("Authorization", "Bearer "+credential)
+			out := httptest.NewRecorder()
+			private.ServeHTTP(out, r)
+			return out
+		}
+		readerUnknown := get(media("handbook", strings.Repeat("0", 64)))
+		if older := get(media("handbook", oldSHA)); older.Code != 404 || older.Body.String() != readerUnknown.Body.String() {
+			t.Error("reader loaded an older revision's image", older.Code)
+		}
+		if latest := get(media("handbook", newSHA)); latest.Code != 200 || !bytes.Equal(latest.Body.Bytes(), newImage) {
+			t.Error("reader cannot load the latest revision's image", latest.Code)
+		}
+	}
+	if older := request(private, "GET", media("handbook", oldSHA), "", true); older.Code != 200 || !bytes.Equal(older.Body.Bytes(), oldImage) {
+		t.Error("owner cannot load an older revision's image", older.Code)
+	}
 }
 
 func TestUnchangedTextFollowsTheImportedImage(t *testing.T) {

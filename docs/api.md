@@ -140,7 +140,8 @@ may also include `assets`: the images its text referenced when it was written,
 as repository path → `{sha256, mime}`, limited to images the source had then.
 It is omitted when there are none and for revisions written before images were
 bound. Rendered pages load such an image as `/media/<source>/<path>?v=<sha256>`;
-that URL answers only for a version the reader may see (the public listener: the
+that URL answers only for a version the reader may see (the owner: any stored
+version; other private readers: the latest revision; the public listener: the
 public version of a publicly readable source) and is otherwise the same 404 as an
 unknown image.
 Creation returns 201; update returns 200. Revision mismatch returns 409;

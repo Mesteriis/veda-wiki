@@ -18,10 +18,12 @@ func RevisionAssets(text, articlePath string, source Source) map[string]BlobRef 
 // returns its reference. A public reader sees only the version ReadPage shows
 // to the public: the publication copy of a connected source, or the latest
 // revision of a local one, and only while the source is publicly readable.
-// Other readers see every stored revision and the publication copy of
-// articles that are not deleted. Callers answer every refusal identically, so
-// a public request does not learn whether a private image exists.
-func RevisionImage(db Database, sourceID, name, sha string, public bool, now time.Time) (BlobRef, bool) {
+// The owner sees every stored revision and the publication copy of articles
+// that are not deleted; any other private reader sees only the latest
+// revision, as ReadPage shows it, since readers cannot read revision history.
+// Callers answer every refusal identically, so a request does not learn
+// whether an image it may not see exists.
+func RevisionImage(db Database, sourceID, name, sha string, public, owner bool, now time.Time) (BlobRef, bool) {
 	if _, err := HexKey(sha); err != nil {
 		return BlobRef{}, false
 	}
@@ -33,7 +35,7 @@ func RevisionImage(db Database, sourceID, name, sha string, public bool, now tim
 		if a.SourceID != sourceID || a.Deleted {
 			continue
 		}
-		for _, rev := range shownRevisions(a, src, public) {
+		for _, rev := range shownRevisions(a, src, public, owner) {
 			if ref, found := rev.Assets[name]; found && ref.SHA == sha {
 				return ref, true
 			}
@@ -43,9 +45,15 @@ func RevisionImage(db Database, sourceID, name, sha string, public bool, now tim
 }
 
 // shownRevisions lists the versions of a whose images a reader may load.
-func shownRevisions(a Article, src Source, public bool) []Revision {
+func shownRevisions(a Article, src Source, public, owner bool) []Revision {
 	if public {
 		if rev, visible := PublicRevision(a, src); visible {
+			return []Revision{rev}
+		}
+		return nil
+	}
+	if !owner {
+		if rev, found := LastRevision(a); found {
 			return []Revision{rev}
 		}
 		return nil

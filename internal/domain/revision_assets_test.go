@@ -85,34 +85,39 @@ func TestRevisionImageVisibility(t *testing.T) {
 	now := time.Now()
 	db := publicConnected(now)
 	for _, tc := range []struct {
-		name, source, sha string
-		public, visible   bool
+		name, source, sha      string
+		public, owner, visible bool
 	}{
-		{"public published image", "pub", assetRef("a").SHA, true, true},
-		{"public unpublished revision image", "pub", assetRef("d").SHA, true, false},
-		{"public current source image not in a shown version", "pub", assetRef("b").SHA, true, false},
-		{"public deleted article image", "pub", assetRef("f").SHA, true, false},
-		{"public private source image", "priv", assetRef("e").SHA, true, false},
-		{"private published image", "pub", assetRef("a").SHA, false, true},
-		{"private stored revision image", "pub", assetRef("d").SHA, false, true},
-		{"private deleted article image", "pub", assetRef("f").SHA, false, false},
-		{"private source image", "priv", assetRef("e").SHA, false, true},
-		{"unknown source", "none", assetRef("e").SHA, false, false},
-		{"unknown digest", "pub", assetRef("9").SHA, false, false},
+		{"public published image", "pub", assetRef("a").SHA, true, false, true},
+		{"public unpublished revision image", "pub", assetRef("d").SHA, true, false, false},
+		{"public current source image not in a shown version", "pub", assetRef("b").SHA, true, false, false},
+		{"public deleted article image", "pub", assetRef("f").SHA, true, false, false},
+		{"public private source image", "priv", assetRef("e").SHA, true, false, false},
+		{"owner published image", "pub", assetRef("a").SHA, false, true, true},
+		{"owner stored revision image", "pub", assetRef("d").SHA, false, true, true},
+		{"owner older stored revision image", "pub", assetRef("a").SHA, false, true, true},
+		{"owner deleted article image", "pub", assetRef("f").SHA, false, true, false},
+		{"owner private source image", "priv", assetRef("e").SHA, false, true, true},
+		{"reader latest revision image", "pub", assetRef("d").SHA, false, false, true},
+		{"reader older revision and publication image", "pub", assetRef("a").SHA, false, false, false},
+		{"reader deleted article image", "pub", assetRef("f").SHA, false, false, false},
+		{"reader private source image", "priv", assetRef("e").SHA, false, false, true},
+		{"unknown source", "none", assetRef("e").SHA, false, true, false},
+		{"unknown digest", "pub", assetRef("9").SHA, false, true, false},
 	} {
-		ref, ok := RevisionImage(db, tc.source, "i.png", tc.sha, tc.public, now)
+		ref, ok := RevisionImage(db, tc.source, "i.png", tc.sha, tc.public, tc.owner, now)
 		if ok != tc.visible || (ok && ref.SHA != tc.sha) {
 			t.Error(tc.name, ok, ref)
 		}
 	}
-	if _, ok := RevisionImage(db, "pub", "other.png", assetRef("a").SHA, false, now); ok {
+	if _, ok := RevisionImage(db, "pub", "other.png", assetRef("a").SHA, false, true, now); ok {
 		t.Error("image of another path served")
 	}
 	// A local public source shows its latest revision to the public.
 	src := db.Sources["priv"]
 	src.Visibility = "public"
 	db.Sources["priv"] = src
-	if _, ok := RevisionImage(db, "priv", "i.png", assetRef("e").SHA, true, now); !ok {
+	if _, ok := RevisionImage(db, "priv", "i.png", assetRef("e").SHA, true, false, now); !ok {
 		t.Error("public local source image hidden")
 	}
 }
