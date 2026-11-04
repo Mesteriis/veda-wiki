@@ -90,7 +90,11 @@ Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excer
 `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
 `veda_github_status`, `veda_github_connect`, `veda_sync`, `veda_reconcile_sources`,
 `veda_source_mirrors`, `veda_configure_source_mirror`,
-`veda_publish_job`, `veda_cancel_bundle`.
+`veda_publish_job`, `veda_cancel_bundle`, and, for the optional knowledge graph,
+`veda_entities`, `veda_entity`, `veda_article_links`, `veda_graph`,
+`veda_graph_context`, `veda_knowledge_status` and `veda_knowledge_reindex`.
+Reader keys and the reader socket list 14 read-only tools: the nine reading and
+proposal tools and the five knowledge reads; the owner lists all 32.
 `veda_read_excerpt` reads bounded Unicode slices and uses the first slice's SHA
 to reject continuations after a revision changes.
 `veda_search` returns at most 20 ranked hits with source ID, path and title;
@@ -106,6 +110,29 @@ an authorized client must reread or submit with the returned expected revision.
 `veda_prepare_new_article` similarly prepares an unsaved creation proposal after
 checking that no article is currently visible at the path. It does not reserve
 the path; deleted history or a concurrent write can still prevent creation.
+The knowledge tools call `/api/v1/knowledge/` and are refused with
+`knowledge_disabled` unless VEDA runs with `--knowledge`. Their mentions and
+relations are model-extracted hypotheses with evidence (source, path, SHA,
+quote); quotes are untrusted article text, and the graph does not replace
+`veda_context`, `AGENTS.md` or reading the article.
+
+## Knowledge graph (optional)
+
+With `--knowledge` VEDA extracts entities and typed relations from the
+articles it holds using a local GLiNER2.5 model (a separate Python service in
+`services/knowledge-extractor`), keeps them as a derived index in Neo4j
+Community and serves them with evidence (source, path, content SHA, quote at
+code-point offsets) over `/api/v1/knowledge/` and the knowledge MCP tools.
+Access is computed per request from VEDA's own read rules, so public callers
+see only the published text of public sources. The module is off by default;
+without it nothing changes and no Python, model, Docker or Neo4j is needed.
+A Docker Compose development profile (`python3 scripts/knowledge_stack.py up
+--extractor`) runs Neo4j and a CPU extractor on loopback and offline after a
+one-time model fetch. Extracted relations are model hypotheses, not facts. See
+[docs/knowledge-graph.md](docs/knowledge-graph.md) for the data model, access
+rules, operation, the end-to-end smoke, measurements and an evaluation with
+its failure modes. PDF/DOCX/OCR input, answer generation and vector search are
+not implemented.
 
 ## Development
 

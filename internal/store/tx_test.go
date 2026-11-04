@@ -367,3 +367,20 @@ func TestExclusiveKeepsEarlierCommitsAndDiscardsAFailedStep(t *testing.T) {
 		t.Fatal("failed step reached disk")
 	}
 }
+
+func TestOnCommitRunsAfterEverySuccessfulCommitOnly(t *testing.T) {
+	st := storetest.New(t)
+	runs := 0
+	st.OnCommit(func() { runs++ })
+	storetest.Source(t, st, "local", "private")
+	if err := st.Update(func(tx *store.Tx) error { return errors.New("refused") }); err == nil || runs != 1 {
+		t.Fatal("hook ran for a refused transaction", err, runs)
+	}
+	if err := st.Update(func(tx *store.Tx) error {
+		tx.OnlyArticle("local/guide.md")
+		tx.DB().Articles["local/guide.md"] = revision("local", "guide.md", "# Committed")
+		return nil
+	}); err != nil || runs != 2 {
+		t.Fatal("hook did not run after an article commit", err, runs)
+	}
+}

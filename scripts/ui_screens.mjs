@@ -6,12 +6,13 @@
 // - Chrome runs with --hide-scrollbars (see screens.py) and prefers-reduced-motion, animations and caret blink are off;
 // - pages are captured at full content height (a page taller than MAX_HEIGHT fails the run) at the given width;
 // - the baseline depends on this machine's Chrome version and fonts: recapture it when either changes.
-// usage: node ui_screens.mjs PORT PUBLIC_URL PRIVATE_URL KEY_FILE OUT_DIR
+// usage: node ui_screens.mjs PORT PUBLIC_URL PRIVATE_URL KEY_FILE OUT_DIR [knowledge]
+// With `knowledge` it captures only the knowledge screens (a separate baseline; see screens.py --knowledge).
 import fs from 'node:fs';
 import path from 'node:path';
 import { pollCondition } from './ui_poll.mjs';
 
-const [port, publicUrl, privateUrl, keyFile, outDir] = process.argv.slice(2);
+const [port, publicUrl, privateUrl, keyFile, outDir, mode] = process.argv.slice(2);
 // Synthetic fixture keys only: the owner key is the constant from scripts/ui_fixture.py, the reader key is read from keyFile.
 const readerKey = fs.readFileSync(keyFile, 'utf8');
 const ownerKey = 'd'.repeat(64);
@@ -117,6 +118,22 @@ const guest = [
     await until("!!document.querySelector('.reader-access button')");
   }],
 ];
+// Knowledge screens of the fake-extractor fixture (scripts/ui_knowledge.py), as an anonymous public reader.
+const entityGraph = async () => {
+  await go(publicUrl, HOME);
+  const id = await evaluate("fetch('/api/v1/knowledge/entities?q=billing').then(r => r.json()).then(b => b.entities.find(e => e.name === 'billing').id)");
+  await go(publicUrl + '?graph=1&mode=knowledge&entity=' + encodeURIComponent(id), "!!document.querySelector('.kg-canvas') && !!document.querySelector('.kg-card')?.textContent.includes('Документы')");
+};
+const knowledgeScreens = [
+  ['knowledge-links', () => go(publicUrl + '?graph=1', "!!document.querySelector('nav.graph-modes')")],
+  ['knowledge-graph', entityGraph],
+  ['knowledge-edge', async () => {
+    await entityGraph();
+    await evaluate("[...document.querySelectorAll('.kg-list button')].find(b => b.textContent === 'billing → работает на → db1').click()");
+    await until("!!document.querySelector('.kg-card blockquote')");
+  }],
+  ['knowledge-article', () => go(publicUrl + '?page=fixture%2Fservices%2Fbilling.md', "!!document.querySelector('.knowledge-related') && !!document.querySelector('.knowledge-entities')")],
+];
 const admin = [
   ['settings', '/api/access/session/login', '?settings=1', "!!document.querySelector('.settings-page')?.textContent.includes('Пользователи')"],
   ['github', '/api/admin/session/login', '?github=1', "!!document.querySelector('.github-page')?.textContent.includes('Подключить репозиторий')"],
@@ -143,6 +160,14 @@ const capture = async (name, width) => {
 
 for (const width of WIDTHS) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: HEIGHT, deviceScaleFactor: 1, mobile: width <= 390 });
+  if (mode === 'knowledge') {
+    for (const [name, prepare] of knowledgeScreens) {
+      try { await prepare(); } catch (error) { throw Error(`${name}-${width}: ${error.message}`); }
+      await capture(name, width);
+    }
+    console.log(JSON.stringify({ width, screens: knowledgeScreens.length }));
+    continue;
+  }
   for (const [name, prepare, cleanup] of guest) {
     try { await prepare(); } catch (error) { throw Error(`${name}-${width}: ${error.message}`); }
     await capture(name, width);

@@ -21,3 +21,11 @@ export function readerView(view: StateView, search: string): View {
     RecentView: params.get("recent") === "1" && plain,
   };
 }
+
+// The sources a state shows identify what the session may read. When it
+// changes between two polls (the session expired, another tab signed out or
+// in, access was changed), data fetched for the previous scope must go.
+export function readingScope(view: StateView): string {
+  const sources = (view.Groups ?? []).map((group) => group.ID).sort();
+  return JSON.stringify([view.Public, sources]);
+}

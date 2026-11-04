@@ -71,3 +71,21 @@ func TestRefusalCodePattern(t *testing.T) {
 		}
 	}
 }
+
+func TestRefusalKnowledgeCodes(t *testing.T) {
+	for _, tc := range []struct {
+		status    int
+		body, msg string
+	}{
+		{503, `{"error":"knowledge_disabled"}`, "VEDA request refused: the knowledge graph module is disabled on this VEDA server (HTTP 503, knowledge_disabled)."},
+		{503, `{"error":"knowledge_unavailable"}`, "VEDA request refused: the knowledge index is temporarily unavailable; retry later (HTTP 503, knowledge_unavailable)."},
+		{409, `{"error":"reindex_busy"}`, "VEDA request refused: a knowledge reindex is already running; retry later (HTTP 409, reindex_busy)."},
+		{504, `{"error":"timeout"}`, "VEDA request refused: VEDA did not answer in time; retry with smaller limits (HTTP 504, timeout)."},
+		{404, `{"error":"not_found"}`, "VEDA request refused: not found or not visible to this client (HTTP 404, not_found)."},
+		{400, `{"error":"invalid_request"}`, "VEDA request refused: invalid input (HTTP 400, invalid_request)."},
+	} {
+		if got := refusalFor(t, tc.status, tc.body).Message(); got != tc.msg {
+			t.Errorf("%s: %q", tc.body, got)
+		}
+	}
+}

@@ -475,3 +475,59 @@ authorized snapshot used by the page. Directory targets resolve to visible
 images, fragments without a path, and duplicate edges are excluded. Links are
 resolved inside the originating source, as in article rendering. This endpoint
 does not infer semantic relationships or parse unsupported wiki-link syntax.
+
+## Knowledge graph (optional module)
+
+Data model, access rules, operation and a worked example are in
+[knowledge-graph.md](knowledge-graph.md). The `/api/v1/knowledge/` routes serve data only when VEDA runs with
+`--knowledge`. Without it every read and `reindex` answer
+`503 {"error":"knowledge_disabled"}`, `status` answers the owner
+`{"enabled":false,"state":"disabled"}`, and every other route is unchanged.
+`/api/state` never carries knowledge data.
+
+| Method | Route | Who | Parameters |
+| --- | --- | --- | --- |
+| GET | `/api/v1/knowledge/entities` | public, reader, owner | `q` (≤200 code points), `source_id`, `type` (schema entity type), `limit` 1–100 (default 50), `offset` 0–10000 |
+| GET | `/api/v1/knowledge/entity` | public, reader, owner | `id` (`ent-` + 20 hex), `limit` 1–100 |
+| GET | `/api/v1/knowledge/article` | public, reader, owner | `source_id`, `path`, `sha256` (owner only: the publication copy, read beside the owner's current revisions of all other articles), `limit` 1–100 |
+| GET | `/api/v1/knowledge/graph` | public, reader, owner | `entity_id` or `source_id`+`path` (+ owner `sha256`), `depth` 1–2 (default 1), `max_nodes` ≤200, `max_edges` ≤400, `sources` and `relations` (comma lists, ≤20 each) |
+| GET | `/api/v1/knowledge/context` | public, reader, owner | `q` (1–200 code points), `depth` 1–2, `limit_bytes` 2–16000 (default 8000): the exact JSON size of the returned `items` array, reported as `bytes` |
+| GET | `/api/v1/knowledge/status` | owner | none |
+| POST | `/api/v1/knowledge/reindex` | owner, not from a browser | JSON body: `scope` (`all`, `source` or `article`), `source_id`, `path`, `force` |
+
+Access follows the computed mode `public := !owner && !reader` over the
+request's own snapshot (scoped key, scoped session or team user), checked on
+every request: public callers see the published revision of publicly
+readable sources, readers and the owner the current revision. Names,
+aliases, counts, ranking, candidates, related-article reasons, graph
+traversal and context are computed from those snapshots only. The public
+listener ignores owner and reader credentials; the reader socket, reader
+and scoped keys and browser sessions never reach `status` or `reindex`.
+There is no route for Cypher or other free-form queries.
+
+Query strings are strict: an unknown or repeated parameter is
+`400 invalid_request`. Errors use the API's flat form `{"error":"<code>"}` with
+`invalid_request` (400), `not_found` (404, the same for an unknown and an
+unreadable entity, article or SHA), `method_not_allowed` (405),
+`reindex_busy` (409), `knowledge_unavailable` (503: the index cannot answer
+or the extractor settings are not known yet) and `timeout` (504: an index
+query exceeded the read timeout, 10 seconds). `status` and `reindex` are
+bounded by the same timeout. A truncated graph or context sets
+`truncated: true`; entity pages return `total` and `next`.
+
+`article` returns `status` for the snapshot read: `ready` (with
+`knowledge`), `processing`, `stale` (indexed before by an older pipeline or
+lost by the index; being rebuilt, nothing old is shown), `unavailable`,
+`too_large` or `failed` (the owner also receives the `error` code).
+`disabled` is the client-side status for `knowledge_disabled`. Backlog and
+job counts appear only in the owner's `status`. `reindex` answers
+`202` with `operation_id`; `force` re-extracts instead of rebuilding from
+stored results.
+
+MCP exposes these routes through the REST client with the same bounds:
+`veda_entities` (`query` → `q`), `veda_entity`, `veda_article_links`
+(`article`), `veda_graph` (`entity_id` or `source_id`+`path`, `depth`,
+`max_nodes`, `max_edges`) and `veda_graph_context` (`query` → `q`, `depth`,
+`limit_bytes`) for readers and the owner; `veda_knowledge_status` and
+`veda_knowledge_reindex` for the owner only. MCP does not pass `sha256`,
+`sources` or `relations`. A tool answer above 2 MiB is refused.

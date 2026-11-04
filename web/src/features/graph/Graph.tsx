@@ -2,9 +2,16 @@ import { useState } from "react";
 import { I } from "../../components/Icon";
 import { pageHref } from "../../lib/format";
 import type { View } from "../../lib/view";
+import { GraphModes, graphMode } from "../knowledge/GraphModes";
+import { KnowledgeGraph } from "../knowledge/KnowledgeGraph";
 import { clusterPosition, graphHeight, graphPageCount, layoutNodes } from "./layout";
 
 export function Graph({ v }: { v: View }) {
+  if (graphMode(window.location.search) === "knowledge") return <section className="graph-section kg-section" aria-label="Граф знаний"><GraphModes mode="knowledge" /><KnowledgeGraph v={v} /></section>;
+  return <LinksGraph v={v} />;
+}
+
+function LinksGraph({ v }: { v: View }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [sourceID, setSourceID] = useState("");
@@ -21,6 +28,7 @@ export function Graph({ v }: { v: View }) {
   const related = chosen ? (v.GraphEdges || []).filter((edge) => edge.from === chosen.path || edge.to === chosen.path).map((edge) => ({ path: edge.from === chosen.path ? edge.to : edge.from, incoming: edge.to === chosen.path })).filter((item) => allPages.has(item.path)) : [];
   const height = graphHeight(groups.length);
   return <section className="graph-section" aria-label="Граф связей статей">
+    <GraphModes mode="links" />
     <div className="graph-filter"><label>Источник <select value={sourceID} onChange={(event) => { setSourceID(event.target.value); setPageIndex(0); setSelected(null); }}><option value="">Все источники</option>{available.map((group) => <option key={group.ID} value={group.ID}>{group.Name}</option>)}</select></label>{pageCount > 1 && <div><button disabled={currentPage === 0} onClick={() => { setPageIndex(currentPage - 1); setSelected(null); }}>Назад</button><span>Страница {currentPage + 1} из {pageCount}</span><button disabled={currentPage + 1 === pageCount} onClick={() => { setPageIndex(currentPage + 1); setSelected(null); }}>Вперёд</button></div>}</div>
     {(v.Count > nodes.length) && <p className="graph-note">Показано {nodes.length} из {v.Count} доступных статей. Выберите источник и страницу, чтобы увидеть остальные; линии показаны только между видимыми узлами.</p>}
     {!nodes.length ? <p className="graph-note">Нет доступных статей для отображения.</p> : <>

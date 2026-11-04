@@ -129,5 +129,41 @@ class ImportTests(unittest.TestCase):
             self.assertIn('domain', out)
 
 
+class KnowledgeImportTests(unittest.TestCase):
+    def test_knowledge_imports_only_domain(self):
+        self.assertEqual(check_imports([pkg('knowledge', [internal('domain'), 'strings'])], '/repo'), [])
+        for other in ('store', 'render', 'search', 'auth', 'httpapi', 'knowledge/memindex'):
+            with self.subTest(other):
+                found = check_imports([pkg('knowledge', [internal(other)])], '/repo')
+                self.assertEqual(len(found), 1)
+                self.assertIn('internal/knowledge', found[0])
+
+    def test_knowledge_adapters_import_knowledge_and_domain_only(self):
+        adapters = ('knowledge/jobs', 'knowledge/extractorclient', 'knowledge/memindex', 'knowledge/neo4jindex')
+        for adapter in adapters:
+            with self.subTest(adapter):
+                ok = pkg(adapter, [internal('knowledge'), internal('domain')])
+                self.assertEqual(check_imports([ok], '/repo'), [])
+                self.assertEqual(len(check_imports([pkg(adapter, [internal('store')])], '/repo')), 1)
+        sibling = pkg('knowledge/memindex', [internal('knowledge/neo4jindex')])
+        self.assertEqual(len(check_imports([sibling], '/repo')), 1)
+
+    def test_unknown_knowledge_subpackage(self):
+        found = check_imports([pkg('knowledge/util', [])], '/repo')
+        self.assertEqual(len(found), 1)
+        self.assertIn('unknown knowledge package', found[0])
+
+    def test_only_assembly_imports_knowledge(self):
+        for owner in ('httpapi', 'mcp', 'app', 'app/commands'):
+            with self.subTest(owner):
+                imports = [internal('knowledge'), internal('knowledge/memindex')]
+                self.assertEqual(check_imports([pkg(owner, imports)], '/repo'), [])
+        for owner in ('auth', 'syncer', 'store', 'domain', 'render', 'search', 'webui'):
+            with self.subTest(owner):
+                found = check_imports([pkg(owner, [internal('knowledge')])], '/repo')
+                self.assertEqual(len(found), 1)
+                self.assertIn('must not import knowledge', found[0])
+
+
 if __name__ == '__main__':
     unittest.main()

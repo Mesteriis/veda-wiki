@@ -1,0 +1,1 @@
+"""VEDA knowledge extractor service."""

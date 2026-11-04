@@ -27,7 +27,7 @@ const genericRefusal = "VEDA request refused: invalid input, unavailable source,
 type handler func(ctx context.Context, c *client.Client, args arguments) (any, error)
 
 // handlerTables holds every tool implementation, grouped by kind.
-var handlerTables = []map[string]handler{readHandlers, prepareHandlers, writeHandlers}
+var handlerTables = []map[string]handler{readHandlers, prepareHandlers, writeHandlers, knowledgeHandlers}
 
 func handlerFor(name string) (handler, bool) {
 	for _, table := range handlerTables {
@@ -91,14 +91,27 @@ func toolHandler(c *client.Client, schema *inputSchema, h handler) sdk.ToolHandl
 		result, err := h(ctx, c, args)
 		if err != nil {
 			var refusal client.Refused
-			if errors.As(err, &refusal) {
+			var invalid *validationError
+			var own *toolRefusal
+			switch {
+			case errors.As(err, &refusal):
 				return refused(refusal.Message()), nil
+			case errors.As(err, &invalid):
+				return refused("Input validation error: " + invalid.reason), nil
+			case errors.As(err, &own):
+				return refused(own.message), nil
 			}
 			return refused(genericRefusal), nil
 		}
 		return succeeded(result)
 	}
 }
+
+// toolRefusal is a handler failure with a fixed message that carries no
+// server text or argument value.
+type toolRefusal struct{ message string }
+
+func (e *toolRefusal) Error() string { return e.message }
 
 func refused(message string) *sdk.CallToolResult {
 	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: message}}, IsError: true}

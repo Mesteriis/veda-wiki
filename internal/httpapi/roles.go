@@ -120,6 +120,9 @@ func (h handler) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader
 		}
 		h.people(rw, r)
 		return
+	case strings.HasPrefix(path, "/api/v1/knowledge/"):
+		h.knowledgeAPI(rw, r, owner, reader)
+		return
 	case strings.HasPrefix(path, "/api/v1/github/"):
 		if !owner {
 			http.NotFound(rw, r)

@@ -23,7 +23,14 @@ jobs:
       - run: python scripts/check_tracked_secrets.py
       - run: python -m unittest discover -s scripts -p test_package_release.py -v
       - run: python -m unittest discover -s scripts -p test_save_reader_key.py -v
+      - name: Knowledge stack script unit tests (no Docker)
+        run: python -m unittest discover -s scripts -p test_knowledge_stack.py -v
       - run: make test
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.11'
+      - name: Knowledge extractor unit tests (fake model, offline)
+        run: make extractor-test
       - run: go build -o veda ./cmd/veda
       - run: python scripts/smoke_superuser.py
       - run: python scripts/smoke_dual_listener.py

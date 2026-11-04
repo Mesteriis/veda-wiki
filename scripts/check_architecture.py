@@ -7,7 +7,9 @@ Checks:
 1. internal/domain stays pure: it imports no I/O package.
 2. Area packages import other areas only through ALLOWED_AREA_IMPORTS, and
    leaf packages import no area.
-3. Database collections are written only by their owner package, by
+3. internal/knowledge imports only domain; its adapter subpackages import
+   only knowledge and domain; only adapter and assembly packages import it.
+4. Database collections are written only by their owner package, by
    internal/domain and by internal/store.
 """
 import json
@@ -26,6 +28,20 @@ ASSEMBLY = {'httpapi', 'app', 'mcp'}
 # Leaf packages: may not import areas. Subpackages (store/storetest,
 # github/githubtest, app/commands) are classified with their parent.
 LEAVES = {'domain', 'render', 'search', 'github', 'store', 'webui'}
+
+# Knowledge package (path below internal/) -> internal packages it may
+# import. Adapters depend on the knowledge contracts, never on each other;
+# only ASSEMBLY packages import knowledge from outside.
+KNOWLEDGE = 'knowledge'
+KNOWLEDGE_IMPORTS = {
+    'knowledge': {'domain'},
+    'knowledge/jobs': {'knowledge', 'domain'},
+    'knowledge/extractorclient': {'knowledge', 'domain'},
+    'knowledge/memindex': {'knowledge', 'domain'},
+    'knowledge/neo4jindex': {'knowledge', 'domain'},
+    # Shared Index contract suite, imported by the index adapters' tests.
+    'knowledge/indextest': {'knowledge', 'domain'},
+}
 
 # Area -> area imports that are allowed, with the reason.
 #   importer  <- syncer    applies pulled batches
@@ -64,6 +80,25 @@ def package_name(import_path):
     return import_path.split(MODULE_INTERNAL, 1)[1].split('/')[0]
 
 
+def internal_path(import_path):
+    """Return the path below internal/, or None outside it."""
+    if MODULE_INTERNAL not in import_path:
+        return None
+    return import_path.split(MODULE_INTERNAL, 1)[1]
+
+
+def check_knowledge(pkg, where):
+    own = internal_path(pkg.get('ImportPath', ''))
+    if own not in KNOWLEDGE_IMPORTS:
+        return [f'{where}: unknown knowledge package, add it to KNOWLEDGE_IMPORTS']
+    violations = []
+    for imp in pkg.get('Imports') or []:
+        target = internal_path(imp)
+        if target is not None and target not in KNOWLEDGE_IMPORTS[own]:
+            violations.append(f'{where}: {own} must not import {target}')
+    return violations
+
+
 def list_packages(root):
     out = subprocess.run(['go', 'list', '-json', './...'], cwd=root, check=True,
                          capture_output=True, text=True).stdout
@@ -92,6 +127,11 @@ def check_imports(packages, root):
         if own is None:
             continue
         where = package_dir(pkg, root)
+        if own == KNOWLEDGE:
+            violations.extend(check_knowledge(pkg, where))
+            continue
+        if own not in ASSEMBLY and any(package_name(imp) == KNOWLEDGE for imp in pkg.get('Imports') or []):
+            violations.append(f'{where}: {own} must not import knowledge')
         if own not in AREAS | ASSEMBLY | LEAVES:
             violations.append(f'{where}: unknown internal package, add it to AREAS/LEAVES/ASSEMBLY')
             continue

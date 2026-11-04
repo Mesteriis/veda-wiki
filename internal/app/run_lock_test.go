@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func runWithServe(t *testing.T, fake func() error) (dataDir string, runErr error) {
+func runWithServe(t *testing.T, fake func() error, extra ...string) (dataDir string, runErr error) {
 	t.Helper()
 	previous := serve
 	serve = func(ctx context.Context, stop context.CancelFunc, _ []servedListener, workers *sync.WaitGroup) error {
@@ -28,7 +28,7 @@ func runWithServe(t *testing.T, fake func() error) (dataDir string, runErr error
 	if err := os.Mkdir(dataDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	runErr = Run(context.Background(), []string{"-data", dataDir, "-listen", "127.0.0.1:0", "-public-listen", "127.0.0.1:0"})
+	runErr = Run(context.Background(), append([]string{"-data", dataDir, "-listen", "127.0.0.1:0", "-public-listen", "127.0.0.1:0"}, extra...))
 	return dataDir, runErr
 }
 

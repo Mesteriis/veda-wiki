@@ -1,0 +1,29 @@
+{
+  "version": "v1",
+  "entities": [
+    {"type": "person", "description": "A named human being."},
+    {"type": "organization", "description": "A company, team, community or other named group."},
+    {"type": "project", "description": "A named undertaking, product or initiative."},
+    {"type": "service", "description": "A running software service, API or daemon."},
+    {"type": "host", "description": "A machine, virtual machine, container host or domain name that runs software."},
+    {"type": "repository", "description": "A source code or documentation repository."},
+    {"type": "technology", "description": "A programming language, database, framework, protocol or tool."},
+    {"type": "document", "description": "A named document such as a runbook, specification or guide."}
+  ],
+  "relations": [
+    {"type": "depends_on", "description": "The head needs the tail to work.", "head": ["service", "project"], "tail": ["service", "technology", "repository"]},
+    {"type": "runs_on", "description": "The head service is deployed on the tail host.", "head": ["service"], "tail": ["host"]},
+    {"type": "uses", "description": "The head uses the tail.", "head": ["project", "service", "person"], "tail": ["technology", "service"]},
+    {"type": "part_of", "description": "The head is a component or member of the tail.", "head": ["service", "project", "host", "repository"], "tail": ["project", "organization"]},
+    {"type": "maintained_by", "description": "The tail is responsible for the head.", "head": ["project", "service", "repository"], "tail": ["person", "organization"]},
+    {"type": "documents", "description": "The head document describes the tail.", "head": ["document"], "tail": ["project", "service", "host", "repository", "technology"]}
+  ],
+  "limits": {
+    "depth_default": 1,
+    "depth_max": 2,
+    "nodes_max": 200,
+    "edges_max": 400,
+    "request_bytes_max": 1048576,
+    "blocks_max": 4096
+  }
+}

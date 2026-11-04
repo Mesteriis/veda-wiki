@@ -13,7 +13,7 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/app` | Assembly: server flags, listeners, the reader socket, workers, bounded shutdown and the writer lock. |
 | `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `migrate-revisions`, `import`, `github`, `mcp`, `mcp-relay`. |
 | `internal/httpapi` | REST handlers, browser sessions, role checks and the embedded reading interface. Adapter only: it parses input, checks the role, calls an area and serializes the result. |
-| `internal/mcp` | MCP server behind `veda mcp`: the tool table (9 read-only tools for reader keys and the socket), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
+| `internal/mcp` | MCP server behind `veda mcp`: the tool table (14 read-only tools for reader keys and the socket, five of them knowledge-graph reads; 32 for the owner), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
 | `internal/mcp/client` | REST client of the MCP adapter. Adapter only: loopback HTTP or explicitly allowed reader-only HTTPS, private key and socket files, no proxy or redirects, 24 MiB response limit, sanitized refusal messages. |
 | `internal/auth` | Access keys, named users and teams, password hashing and the login limiter, browser sessions. |
 | `internal/importer` | `veda.yaml` metadata, bounded local checkout observations, batch decoding, asset storage, import conflicts and the process-local observations. |
@@ -26,6 +26,20 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/render` | Markdown rendering, cross-source links, table of contents and the link graph. |
 | `internal/search` | Lexical search. |
 | `internal/webui` | The built reading interface, embedded with `embed`. |
+| `internal/knowledge` | Contracts of the derived knowledge graph: text preparation with source maps, the per-request access rule over `domain` read rules, the extraction schema (`schema/v1.json`), pipeline fingerprints, entity normalization and uncertainty markers. Also the background indexing service (reconciliation, bounded queue, workers, publication) over narrow `Snapshots`, `Manifest`, `Extractor` and `Index` interfaces, and the `Index` read contract. Imports only `domain`; all I/O goes through those interfaces. |
+| `internal/knowledge/jobs` | `<data>/knowledge.sqlite` (0600, own migrations): the snapshot manifest (one row per snapshot and fingerprint, which is also the job), immutable extraction results and the last extractor settings; reads the optional `knowledge-aliases.json`. |
+| `internal/knowledge/extractorclient` | HTTP client of the Python extractor (`/v1/extract`, `/ready`): service key header, time and size bounds, response validation. |
+| `internal/knowledge/memindex` | Deterministic in-memory `knowledge.Index`, the reference behaviour for other indexes; used by tests and the non-persistent `--knowledge-index=memory` mode. |
+| `internal/knowledge/neo4jindex` | `knowledge.Index` on Neo4j Community (driver v6): one write transaction per snapshot publication, reads that start from the allowed complete snapshots (`UNWIND $allowed`), constant Cypher with parameters only. The database is a derived, rebuildable index; one VEDA writes to it. |
+| `internal/knowledge/indextest` | Test-only contract suite shared by memindex and neo4jindex (access, stale revisions, publication copies, limits, parity). |
+
+Outside the Go module, `services/knowledge-extractor` is a Python 3.12
+service (uv lock, `gliner2==2.1.0`, pinned GLiNER2.5 checkpoint) that only
+turns text blocks into spans over a loopback HTTP API with a service key; it
+owns no data and reads no files, paths, URLs or Git. `deploy/knowledge/`
+holds the development Compose profile (Neo4j Community and the CPU
+extractor on an internal network, loopback forwarders) driven by
+`scripts/knowledge_stack.py`. See [knowledge-graph.md](knowledge-graph.md).
 
 Test helpers are separate packages: `internal/store/storetest` builds stores
 with data and `internal/github/githubtest` is an in-memory GitHub server.
@@ -51,6 +65,48 @@ An area imports another area only through this list:
 | `agentctx` | `importer` | Reads import observations for source status. |
 
 Logic that two areas need belongs in `domain` as a pure function.
+
+`internal/knowledge` has its own rule. It imports only `domain`. Its adapter
+subpackages (`knowledge/jobs`, `knowledge/extractorclient`,
+`knowledge/memindex`, `knowledge/neo4jindex`) import only `knowledge` and
+`domain`, never each other. Only `httpapi`, `mcp` and `app` import knowledge
+packages. `knowledge.Allowed` derives the snapshots a request may read from
+the request-scoped database with `domain.ReadSnapshot` and
+`domain.PublicRevision`; scoped keys, scoped sessions and team users are
+restricted by that snapshot, not by knowledge. The read service
+(`knowledge.Service` reads) computes that set on every request and passes it
+to the index, which filters before traversal; `httpapi` supplies lexical
+seeds from `internal/search` for `context`, and MCP reaches the same routes
+through its REST client.
+
+Knowledge data has its own owners: the manifest, jobs and extraction results
+in `<data>/knowledge.sqlite` are written only through `knowledge.Manifest`
+(`knowledge/jobs`); the graph only through `knowledge.Index` publication and
+retirement by the knowledge service; `<data>/knowledge-aliases.json` is owner
+configuration that VEDA only reads. None of them is part of `state.json`,
+and none decides access. Direction of calls: `app` wires the service; the
+store signals it after commits; the service reads the store through `View`,
+calls the extractor over HTTP and writes the index; `httpapi` and `mcp` only
+read.
+
+`knowledge.Prepare` extracts headings, paragraphs, list items and table cells
+from the Markdown parsed by `domain.Markdown`. Frontmatter, code blocks,
+inline code, HTML, images and link destinations are not extracted; link
+text and autolink labels (URLs, hosts, e-mail addresses as written) are.
+Removed inline content leaves a gap in the source map, so quotes around it
+map exactly. Offsets are half-open Unicode code point ranges. Markdown over
+the schema's `request_bytes_max` is rejected.
+
+Background indexing runs only with `--knowledge`. The store calls
+`Store.OnCommit` hooks under its write lock; knowledge registers a
+non-blocking signal there and does everything else after `View`. The
+manifest is reconciled with `knowledge.ActiveSnapshots` on start, every
+`--knowledge-reconcile-interval` and after signals; workers copy the text
+under `View`, call the extractor with no lock held, store the immutable
+result and publish only after re-checking that the snapshot is still active
+under the active pipeline fingerprint. The fingerprint covers the schema,
+preparation, resolution and alias rules, the model checkpoint and the
+extractor's reported settings; reads use only the active fingerprint.
 
 ## Collection ownership
 
@@ -124,7 +180,10 @@ prints `path: reason` and exits 1 when:
 - `internal/domain` imports `os`, `net`, `net/http`, `database/sql` or `os/exec`;
 - an area imports another area outside the table above, a leaf imports an area,
   or an area imports `httpapi`, `app` or `mcp`;
-- an `internal/<pkg>` is in none of the area, leaf or adapter sets, so it would
+- `internal/knowledge` or one of its subpackages imports an internal package
+  outside its row of `KNOWLEDGE_IMPORTS`, a knowledge subpackage is not listed
+  there, or a package other than `httpapi`, `app` or `mcp` imports knowledge;
+- an `internal/<pkg>` is in none of the area, leaf, adapter or knowledge sets, so it would
   otherwise escape the checks (subpackages such as `store/storetest` and
   `github/githubtest` count with their parent);
 - a non-test Go file assigns to or deletes from a checked collection outside its owner,
@@ -147,7 +206,13 @@ logic that the Go service does not own.
 - `hooks/` holds shared React hooks.
 - `components/` is the application shell (layout, sidebar, header) and its CSS.
 - `features/<area>/` holds one screen area (reading, catalog, home, session,
-  graph, recent, github, access) with its stylesheet beside the components.
+  graph, knowledge, recent, github, access) with its stylesheet beside the
+  components. `knowledge` provides the read-only knowledge graph mode of the
+  graph screen (`?graph=1&mode=knowledge`) and the article's entities and
+  related articles; the graph and reading areas embed it.
+- `api/knowledge.ts` scopes knowledge reads to the browser session: sign-in,
+  sign-out and password change (`api/session.ts`) abort them, and an answer
+  of an earlier session is dropped.
 - `styles/` holds design tokens, fonts and base rules.
 
 Dependencies point one way: features may import components, hooks and lib, but

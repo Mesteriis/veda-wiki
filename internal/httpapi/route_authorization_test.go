@@ -38,6 +38,7 @@ func TestMutatingRoutesRefuseNonOwners(t *testing.T) {
 		{"POST", "/api/v1/github/sync", `{}`},
 		{"POST", "/api/v1/github/publish-job", `{}`},
 		{"POST", "/api/v1/github/cancel-bundle", `{}`},
+		{"POST", "/api/v1/knowledge/reindex", `{"scope":"all"}`},
 	}
 	credentials := map[string]struct {
 		header string
@@ -123,7 +124,7 @@ func TestEveryRouteKeepsItsRole(t *testing.T) {
 			}
 		}
 	}
-	ownerOnly := []string{"/api/v1/access-keys", "/api/v1/users", "/api/v1/teams", "/api/v1/moves", "/api/v1/conflicts", "/api/v1/sources/mirrors", "/api/v1/github/accounts", "/api/v1/github/connections", "/api/v1/github/outbox"}
+	ownerOnly := []string{"/api/v1/access-keys", "/api/v1/users", "/api/v1/teams", "/api/v1/moves", "/api/v1/conflicts", "/api/v1/sources/mirrors", "/api/v1/github/accounts", "/api/v1/github/connections", "/api/v1/github/outbox", "/api/v1/knowledge/status"}
 	for _, path := range ownerOnly {
 		for name, header := range credentials {
 			got := call(private, "GET", path, header).Code

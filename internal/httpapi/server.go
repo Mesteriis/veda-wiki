@@ -10,6 +10,7 @@ import (
 
 	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
+	"github.com/Mesteriis/veda-wiki/internal/knowledge"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
 )
@@ -42,6 +43,8 @@ type Deps struct {
 	AccessSessions *auth.Sessions
 	// Sync is the running synchronization manager, or nil when none runs.
 	Sync *syncer.Manager
+	// Knowledge is the knowledge service, or nil when the module is off.
+	Knowledge *knowledge.Service
 }
 
 // LocalRootKey is the request context key, set only from kernel credentials
@@ -50,7 +53,7 @@ type LocalRootKey struct{}
 
 // New returns the handler for one listener.
 func New(cfg Config, deps Deps) http.Handler {
-	h := handler{Config: cfg, Sessions: deps.Sessions, AdminSessions: deps.AdminSessions, AccessSessions: deps.AccessSessions, Sync: deps.Sync}
+	h := handler{Config: cfg, Sessions: deps.Sessions, AdminSessions: deps.AdminSessions, AccessSessions: deps.AccessSessions, Sync: deps.Sync, Knowledge: deps.Knowledge}
 	if deps.Store != nil {
 		observations := deps.Observations
 		if observations == nil {
@@ -70,6 +73,7 @@ type handler struct {
 	AdminSessions  *auth.Sessions
 	AccessSessions *auth.Sessions
 	Sync           *syncer.Manager
+	Knowledge      *knowledge.Service
 }
 
 func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,7 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
+	"github.com/Mesteriis/veda-wiki/internal/knowledge"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
@@ -39,11 +40,12 @@ type Wiki struct {
 	AdminSessions     *auth.Sessions
 	AccessSessions    *auth.Sessions
 	Sync              *syncer.Manager
+	Knowledge         *knowledge.Service
 }
 
 func (w Wiki) handler() handler {
 	cfg := Config{Public: w.Public, ReaderLocal: w.ReaderLocal, ReaderKeyRequired: w.ReaderKeyRequired, LocalImportSource: w.LocalImportSource, AllowedHosts: w.AllowedHosts, OwnerToken: w.Token, ReaderToken: w.ReaderToken}
-	deps := Deps{Sessions: w.Sessions, AdminSessions: w.AdminSessions, AccessSessions: w.AccessSessions, Sync: w.Sync}
+	deps := Deps{Sessions: w.Sessions, AdminSessions: w.AdminSessions, AccessSessions: w.AccessSessions, Sync: w.Sync, Knowledge: w.Knowledge}
 	if w.Store != nil {
 		deps.Store, deps.Observations = w.Store.Store, w.Store.observations
 	}
