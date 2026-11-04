@@ -166,15 +166,26 @@ func (m *knowledgeModule) start(ctx context.Context, workers *sync.WaitGroup) {
 	}()
 }
 
+// knowledgeCloseTimeout bounds how long close waits for Run after
+// cancelling it.
+var knowledgeCloseTimeout = 15 * time.Second
+
 // close stops the service and then closes the manifest and the index. It
 // waits for Run even when the drain timed out, so nothing uses a closed
 // database; Run returns once its context ends (job writes after
-// cancellation are bounded by knowledge.CleanupTimeout).
+// cancellation are bounded by knowledge.CleanupTimeout). If Run still has
+// not returned after knowledgeCloseTimeout, close leaves the manifest and
+// index open rather than hang the process on exit.
 func (m *knowledgeModule) close() {
 	if m != nil {
 		if m.cancel != nil {
 			m.cancel()
-			<-m.stopped
+			select {
+			case <-m.stopped:
+			case <-time.After(knowledgeCloseTimeout):
+				log.Print("knowledge service did not stop in time; leaving its stores open")
+				return
+			}
 		}
 		_ = m.db.Close()
 		if m.closeIndex != nil {

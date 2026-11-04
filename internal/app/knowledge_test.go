@@ -214,3 +214,23 @@ func TestKnowledgeCloseWaitsForRun(t *testing.T) {
 		t.Fatal("manifest still open after close")
 	}
 }
+
+func TestKnowledgeCloseGivesUpOnAStuckRun(t *testing.T) {
+	previous := knowledgeCloseTimeout
+	knowledgeCloseTimeout = 50 * time.Millisecond
+	defer func() { knowledgeCloseTimeout = previous }()
+	stopped := make(chan struct{})
+	indexClosed := false
+	m := &knowledgeModule{cancel: func() {}, stopped: stopped, closeIndex: func() { indexClosed = true }}
+	done := make(chan struct{})
+	go func() { m.close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("close hung on a Run that ignores cancellation")
+	}
+	if indexClosed {
+		t.Fatal("index closed while Run had not returned")
+	}
+	close(stopped)
+}

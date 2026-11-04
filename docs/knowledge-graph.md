@@ -576,8 +576,12 @@ Notable failure modes:
   "host db-01", "payments project"). Since `normalize-v3` a leading type
   word is dropped from technical keys ("host db-01" → `db-01`); a trailing
   one is not (`billing service` keeps the key `billingservice` and does not
-  merge with `billing`). The evaluation numbers above were measured with
-  `normalize-v2`; entity scoring there compares spans, not keys.
+  merge with `billing`). The type words are not tied to the entity type, so
+  a service named "Service Desk" keys as `desk`. Alias entries written
+  against `normalize-v2` technical keys (for example `сервисоплаты`) no
+  longer match and must be rewritten with the new keys. The evaluation
+  numbers above were measured with `normalize-v2`; entity scoring there
+  compares spans, not keys.
 - `uses` and `depends_on` are emitted together for the same pair (9 extra
   `depends_on`, 6 extra `uses`); treat them as one weak dependency signal.
 - `documents` was never extracted; a runbook name was typed `document` once
