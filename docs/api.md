@@ -478,7 +478,8 @@ does not infer semantic relationships or parse unsupported wiki-link syntax.
 
 ## Knowledge graph (optional module)
 
-The `/api/v1/knowledge/` routes serve data only when VEDA runs with
+Data model, access rules, operation and a worked example are in
+[knowledge-graph.md](knowledge-graph.md). The `/api/v1/knowledge/` routes serve data only when VEDA runs with
 `--knowledge`. Without it every read and `reindex` answer
 `503 {"error":"knowledge_disabled"}`, `status` answers the owner
 `{"enabled":false,"state":"disabled"}`, and every other route is unchanged.

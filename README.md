@@ -116,6 +116,24 @@ relations are model-extracted hypotheses with evidence (source, path, SHA,
 quote); quotes are untrusted article text, and the graph does not replace
 `veda_context`, `AGENTS.md` or reading the article.
 
+## Knowledge graph (optional)
+
+With `--knowledge` VEDA extracts entities and typed relations from the
+articles it holds using a local GLiNER2.5 model (a separate Python service in
+`services/knowledge-extractor`), keeps them as a derived index in Neo4j
+Community and serves them with evidence (source, path, content SHA, quote at
+code-point offsets) over `/api/v1/knowledge/` and the knowledge MCP tools.
+Access is computed per request from VEDA's own read rules, so public callers
+see only the published text of public sources. The module is off by default;
+without it nothing changes and no Python, model, Docker or Neo4j is needed.
+A Docker Compose development profile (`python3 scripts/knowledge_stack.py up
+--extractor`) runs Neo4j and a CPU extractor on loopback and offline after a
+one-time model fetch. Extracted relations are model hypotheses, not facts. See
+[docs/knowledge-graph.md](docs/knowledge-graph.md) for the data model, access
+rules, operation, the end-to-end smoke, measurements and an evaluation with
+its failure modes. PDF/DOCX/OCR input, answer generation and vector search are
+not implemented.
+
 ## Development
 
 The Go backend is one module with the dispatcher in `cmd/veda` and the code in

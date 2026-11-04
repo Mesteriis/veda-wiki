@@ -30,6 +30,16 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/knowledge/jobs` | `<data>/knowledge.sqlite` (0600, own migrations): the snapshot manifest (one row per snapshot and fingerprint, which is also the job), immutable extraction results and the last extractor settings; reads the optional `knowledge-aliases.json`. |
 | `internal/knowledge/extractorclient` | HTTP client of the Python extractor (`/v1/extract`, `/ready`): service key header, time and size bounds, response validation. |
 | `internal/knowledge/memindex` | Deterministic in-memory `knowledge.Index`, the reference behaviour for other indexes; used by tests and the non-persistent `--knowledge-index=memory` mode. |
+| `internal/knowledge/neo4jindex` | `knowledge.Index` on Neo4j Community (driver v6): one write transaction per snapshot publication, reads that start from the allowed complete snapshots (`UNWIND $allowed`), constant Cypher with parameters only. The database is a derived, rebuildable index; one VEDA writes to it. |
+| `internal/knowledge/indextest` | Test-only contract suite shared by memindex and neo4jindex (access, stale revisions, publication copies, limits, parity). |
+
+Outside the Go module, `services/knowledge-extractor` is a Python 3.12
+service (uv lock, `gliner2==2.1.0`, pinned GLiNER2.5 checkpoint) that only
+turns text blocks into spans over a loopback HTTP API with a service key; it
+owns no data and reads no files, paths, URLs or Git. `deploy/knowledge/`
+holds the development Compose profile (Neo4j Community and the CPU
+extractor on an internal network, loopback forwarders) driven by
+`scripts/knowledge_stack.py`. See [knowledge-graph.md](knowledge-graph.md).
 
 Test helpers are separate packages: `internal/store/storetest` builds stores
 with data and `internal/github/githubtest` is an in-memory GitHub server.
@@ -63,7 +73,21 @@ subpackages (`knowledge/jobs`, `knowledge/extractorclient`,
 packages. `knowledge.Allowed` derives the snapshots a request may read from
 the request-scoped database with `domain.ReadSnapshot` and
 `domain.PublicRevision`; scoped keys, scoped sessions and team users are
-restricted by that snapshot, not by knowledge.
+restricted by that snapshot, not by knowledge. The read service
+(`knowledge.Service` reads) computes that set on every request and passes it
+to the index, which filters before traversal; `httpapi` supplies lexical
+seeds from `internal/search` for `context`, and MCP reaches the same routes
+through its REST client.
+
+Knowledge data has its own owners: the manifest, jobs and extraction results
+in `<data>/knowledge.sqlite` are written only through `knowledge.Manifest`
+(`knowledge/jobs`); the graph only through `knowledge.Index` publication and
+retirement by the knowledge service; `<data>/knowledge-aliases.json` is owner
+configuration that VEDA only reads. None of them is part of `state.json`,
+and none decides access. Direction of calls: `app` wires the service; the
+store signals it after commits; the service reads the store through `View`,
+calls the extractor over HTTP and writes the index; `httpapi` and `mcp` only
+read.
 
 `knowledge.Prepare` extracts headings, paragraphs, list items and table cells
 from the Markdown parsed by `domain.Markdown`. Frontmatter, code blocks,

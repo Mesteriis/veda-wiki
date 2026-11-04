@@ -35,6 +35,10 @@ NEO4J_AUTH = SECRETS / 'neo4j_auth'
 EXTRACTOR_KEY = SECRETS / 'extractor.key'
 NEO4J_PORT = int(os.environ.get('KNOWLEDGE_NEO4J_PORT', '7687'))
 EXTRACTOR_PORT = int(os.environ.get('KNOWLEDGE_EXTRACTOR_PORT', '8790'))
+# A disposable run (scripts/smoke_knowledge.py) sets another compose project
+# name and override files, so it never touches the developer's volumes.
+PROJECT = None
+OVERRIDES = ()
 
 
 def write_private(path, value):
@@ -66,7 +70,12 @@ def compose(*args, check=True, capture=False):
     env = dict(os.environ)
     env.setdefault('KNOWLEDGE_UID', str(os.getuid()))
     env.setdefault('KNOWLEDGE_GID', str(os.getgid()))
-    cmd = ['docker', 'compose', '-f', str(COMPOSE), *args]
+    cmd = ['docker', 'compose', '-f', str(COMPOSE)]
+    for override in OVERRIDES:
+        cmd += ['-f', str(override)]
+    if PROJECT:
+        cmd += ['-p', PROJECT]
+    cmd += list(args)
     return subprocess.run(cmd, cwd=DEPLOY, env=env, check=check, text=True,
                           capture_output=capture)
 

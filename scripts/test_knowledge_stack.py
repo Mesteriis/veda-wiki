@@ -52,6 +52,17 @@ class KnowledgeStackTests(unittest.TestCase):
         self.assertIn('  backend:\n    internal: true', compose)
         self.assertEqual(compose.count('networks: [backend]\n'), 2)
 
+    def test_compose_uses_the_selected_project_and_overrides(self):
+        with mock.patch.object(module.subprocess, 'run') as run, \
+                mock.patch.multiple(module, PROJECT='veda-knowledge-smoke', OVERRIDES=('/tmp/override.yaml',)):
+            module.compose('ps')
+        cmd = run.call_args.args[0]
+        self.assertEqual(cmd[:4], ['docker', 'compose', '-f', str(module.COMPOSE)])
+        self.assertEqual(cmd[4:], ['-f', '/tmp/override.yaml', '-p', 'veda-knowledge-smoke', 'ps'])
+        with mock.patch.object(module.subprocess, 'run') as run:
+            module.compose('ps')
+        self.assertEqual(run.call_args.args[0], ['docker', 'compose', '-f', str(module.COMPOSE), 'ps'])
+
 
 if __name__ == '__main__':
     unittest.main()
