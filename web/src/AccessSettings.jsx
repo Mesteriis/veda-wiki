@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { I } from "./icon.jsx";
+import { I } from "./components/Icon";
 
 export function AccessSettings() {
   const [status, setStatus] = useState(null);

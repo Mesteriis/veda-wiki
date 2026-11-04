@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { I } from "./icon.jsx";
+import { I } from "./components/Icon";
 import { githubErrorMessage, githubVisibilityLabel } from "./lib/githubErrors";
 import { githubSourceId } from "./lib/githubSourceId";
 
