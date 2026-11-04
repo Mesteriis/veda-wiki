@@ -39,8 +39,7 @@ type Hit struct {
 type Candidate struct {
 	hit         Hit
 	sourceTitle string
-	original    string
-	displayed   string
+	text        string
 }
 
 // Candidates captures the visible revisions of db. Callers that share db with
@@ -62,9 +61,7 @@ func Candidates(db domain.Database, sourceID string, public bool, now time.Time)
 			}
 			rev = *a.Published
 		}
-		original := rev.Text
-		rev, _ = domain.DisplayedRevision(a, rev, public)
-		candidates = append(candidates, Candidate{hit: Hit{SourceID: a.SourceID, Path: a.Path, Title: domain.Title(rev.Text, a.Path)}, sourceTitle: src.Title, original: original, displayed: rev.Text})
+		candidates = append(candidates, Candidate{hit: Hit{SourceID: a.SourceID, Path: a.Path, Title: domain.Title(rev.Text, a.Path)}, sourceTitle: src.Title, text: rev.Text})
 	}
 	return candidates
 }
@@ -83,7 +80,7 @@ func Rank(candidates []Candidate, query string) []Hit {
 	terms := Terms(query)
 	var scratch []byte
 	for _, c := range candidates {
-		score := revisionsWithScratch(query, c.hit.SourceID+"/"+c.hit.Path, c.sourceTitle, c.original, c.displayed, terms, &scratch)
+		score := articleWithScratch(query, c.hit.SourceID+"/"+c.hit.Path, c.sourceTitle, c.text, terms, &scratch)
 		if score == 0 {
 			continue
 		}
@@ -102,21 +99,14 @@ func Find(db domain.Database, query, sourceID string, public bool, now time.Time
 	return Rank(Candidates(db, sourceID, public, now), query)
 }
 
-// Score each text independently: words from different translations must not
-// combine into a match that exists in neither version.
-// Revisions scores the original and displayed texts of one article.
-func Revisions(query, articlePath, sourceTitle, original, displayed string, terms [][]string) int {
+// Article scores the visible text of one article.
+func Article(query, articlePath, sourceTitle, text string, terms [][]string) int {
 	var scratch []byte
-	return revisionsWithScratch(query, articlePath, sourceTitle, original, displayed, terms, &scratch)
+	return articleWithScratch(query, articlePath, sourceTitle, text, terms, &scratch)
 }
 
-func revisionsWithScratch(query, articlePath, sourceTitle, original, displayed string, terms [][]string, scratch *[]byte) int {
-	originalScore := scoreWithScratch(query, domain.Title(original, articlePath)+" "+articlePath+" "+sourceTitle, original, terms, scratch)
-	if original == displayed {
-		return originalScore
-	}
-	displayedScore := scoreWithScratch(query, domain.Title(displayed, articlePath)+" "+articlePath+" "+sourceTitle, displayed, terms, scratch)
-	return max(originalScore, displayedScore)
+func articleWithScratch(query, articlePath, sourceTitle, text string, terms [][]string, scratch *[]byte) int {
+	return scoreWithScratch(query, domain.Title(text, articlePath)+" "+articlePath+" "+sourceTitle, text, terms, scratch)
 }
 
 var stopWords = map[string]bool{

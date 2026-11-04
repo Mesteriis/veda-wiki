@@ -21,7 +21,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"github.com/Mesteriis/veda-wiki/internal/transfer"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 )
 
 const metadataFixture = "schema_version: 1\nkind: wiki\ntitle: Handbook\ndescription: Team documentation\n"
@@ -59,8 +58,6 @@ func (s *fixtureStore) importer() *importer.Service {
 }
 
 func (s *fixtureStore) transfer() transfer.Service { return transfer.Service{Store: s.st} }
-
-func (s *fixtureStore) translation() translation.Service { return translation.Service{Store: s.st} }
 
 // newSyncManager returns the manager the process would run over s.
 func newSyncManager(s *fixtureStore, g *github.Client) *Manager { return New(s.st, g, s.importer()) }
@@ -291,15 +288,13 @@ func readable(db domain.Database, key string, public bool) (domain.Article, doma
 	return a, src, r, nil
 }
 
-// page is the article view of the reader API, without its translation state.
+// page is the article view of the reader API.
 func (s *fixtureStore) page(key string, public bool) (domain.Page, error) {
 	a, src, r, err := readable(s.db(), key, public)
 	if err != nil {
 		return domain.Page{}, err
 	}
-	originalSHA := r.SHA
-	r, translated := domain.DisplayedRevision(a, r, public)
-	return domain.Page{Path: key, Title: domain.Title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text, OriginalSHA: originalSHA, Translated: translated}, nil
+	return domain.Page{Path: key, Title: domain.Title(r.Text, a.Path), Environment: src.ID, SHA: r.SHA, Updated: r.Created, Text: r.Text}, nil
 }
 
 // article is the stored article as the owner reads it, or with public its

@@ -5,7 +5,6 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 	"github.com/Mesteriis/veda-wiki/internal/github/githubtest"
 	"github.com/Mesteriis/veda-wiki/internal/search"
-	"github.com/Mesteriis/veda-wiki/internal/translation"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -66,7 +65,7 @@ func TestPublicSearchUsesPublishedRevision(t *testing.T) {
 	}
 }
 
-func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
+func TestSearchIncludesVisibleOriginal(t *testing.T) {
 	s := testStore(t)
 	f := githubtest.New(t, map[string]string{"docs/guide.md": "# Deployment guide\n\nInstall the service."})
 	connectFixture(t, s, f, false)
@@ -74,51 +73,19 @@ func TestSearchIncludesVisibleOriginalAndTranslation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := a.Versions[0]
-	_, err = s.translation().Submit(translation.Request{SourceID: "handbook", Path: "docs/guide.md", ExpectedRevision: 1, OriginalSHA: original.SHA, Text: "# Руководство\n\nУстановите службу.", ConfirmPublication: true})
-	if err != nil {
-		t.Fatal(err)
+	if hits := s.findArticles("Deployment", "", true); len(hits) != 1 || hits[0].Title != "Deployment guide" {
+		t.Fatalf("search missed visible document: %+v", hits)
 	}
-	for _, q := range []string{"Deployment", "Руководство"} {
-		if hits := s.findArticles(q, "", true); len(hits) != 1 || hits[0].Title != "Руководство" {
-			t.Fatalf("search %q missed visible document: %+v", q, hits)
-		}
-		w := Wiki{Store: s, Public: true}
-		response := httptest.NewRecorder()
-		request := httptest.NewRequest("GET", "/api/state?q="+url.QueryEscape(q), nil)
-		w.ServeHTTP(response, request)
-		var result struct {
-			View struct {
-				Pages []domain.Page `json:"Pages"`
-			} `json:"view"`
-		}
-		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.View.Pages) != 1 {
-			t.Fatalf("browser search %q missed visible document: %d", q, response.Code)
-		}
-	}
-	if hits := s.findArticles("Deployment Установите", "", true); len(hits) != 0 {
-		t.Fatal("search combined words from different texts")
-	}
-	s.mutate(t, func(db *domain.Database) {
-		a = db.Articles["handbook/docs/guide.md"]
-		a.Translation.PublicApproved = false
-		db.Articles["handbook/docs/guide.md"] = a
-	})
-	if hits := s.findArticles("Руководство", "", true); len(hits) != 0 {
-		t.Fatal("public search exposed unapproved translation")
-	}
-	if hits := s.findArticles("Руководство", "", false); len(hits) != 1 {
-		t.Fatal("private search missed private translation")
-	}
+	w := Wiki{Store: s, Public: true}
 	response := httptest.NewRecorder()
-	Wiki{Store: s, Public: true}.ServeHTTP(response, httptest.NewRequest("GET", "/api/state?q="+url.QueryEscape("Руководство"), nil))
+	w.ServeHTTP(response, httptest.NewRequest("GET", "/api/state?q="+url.QueryEscape("Deployment"), nil))
 	var result struct {
 		View struct {
 			Pages []domain.Page `json:"Pages"`
 		} `json:"view"`
 	}
-	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.View.Pages) != 0 {
-		t.Fatal("browser search exposed unapproved translation")
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.View.Pages) != 1 {
+		t.Fatalf("browser search missed visible document: %d", response.Code)
 	}
 	s.mutate(t, func(db *domain.Database) {
 		a = db.Articles["handbook/docs/guide.md"]

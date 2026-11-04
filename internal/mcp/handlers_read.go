@@ -12,20 +12,17 @@ import (
 const searchLimit = "20"
 
 var readHandlers = map[string]handler{
-	"veda_sources":              wrapped("sources", "/api/v1/sources"),
-	"veda_search":               search,
-	"veda_find":                 withQuery(findQuery, "/api/v1/search"),
-	"veda_read":                 read,
-	"veda_read_display":         withQuery(arguments.query, "/api/v1/articles/display"),
-	"veda_read_display_excerpt": withQuery(arguments.query, "/api/v1/articles/display-excerpt"),
-	"veda_read_excerpt":         withQuery(arguments.query, "/api/v1/articles/excerpt"),
-	"veda_context":              withQuery(arguments.query, "/api/v1/context"),
-	"veda_translation_needed":   withQuery(arguments.query, "/api/v1/articles/translation-needed"),
-	"veda_transfer_plan":        post("/api/v1/articles/transfer-plan"),
-	"veda_source_mirrors":       wrapped("mirrors", "/api/v1/sources/mirrors"),
-	"veda_moves":                withQuery(arguments.query, "/api/v1/moves"),
-	"veda_conflicts":            withQuery(arguments.query, "/api/v1/conflicts"),
-	"veda_github_status":        githubStatus,
+	"veda_sources":        wrapped("sources", "/api/v1/sources"),
+	"veda_search":         search,
+	"veda_find":           withQuery(findQuery, "/api/v1/search"),
+	"veda_read":           read,
+	"veda_read_excerpt":   withQuery(arguments.query, "/api/v1/articles/excerpt"),
+	"veda_context":        withQuery(arguments.query, "/api/v1/context"),
+	"veda_transfer_plan":  post("/api/v1/articles/transfer-plan"),
+	"veda_source_mirrors": wrapped("mirrors", "/api/v1/sources/mirrors"),
+	"veda_moves":          withQuery(arguments.query, "/api/v1/moves"),
+	"veda_conflicts":      withQuery(arguments.query, "/api/v1/conflicts"),
+	"veda_github_status":  githubStatus,
 }
 
 // wrapped returns {key: <GET route response>}.

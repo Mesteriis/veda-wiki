@@ -85,69 +85,6 @@
       }
     },
     {
-      "name": "veda_read_display",
-      "description": "Read the Markdown shown to readers, including an available Russian translation, with its status, origin and original SHA. This is not an editable source revision; use veda_read for the original and its revision before preparing changes.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "source_id",
-          "path"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "veda_read_display_excerpt",
-      "description": "Read a bounded Unicode slice of the displayed Markdown, including any visible Russian translation. For continuation pass both sha256 and original_sha256 from the first response as expected_sha256 and expected_original_sha256. This is not an editable source revision.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 16000
-          },
-          "expected_sha256": {
-            "type": "string",
-            "minLength": 64,
-            "maxLength": 64
-          },
-          "expected_original_sha256": {
-            "type": "string",
-            "minLength": 64,
-            "maxLength": 64
-          }
-        },
-        "required": [
-          "source_id",
-          "path"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
       "name": "veda_read_excerpt",
       "description": "Read a bounded portion of the current article. Offsets count Unicode code points; pass the first response's sha256 as expected_sha256 for every continuation. A changed revision is refused.",
       "inputSchema": {
@@ -237,38 +174,6 @@
         "required": [
           "source_id",
           "path",
-          "text"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "veda_prepare_translation",
-      "description": "Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article, with source status and the current translation fingerprint from the validation snapshot. Pass the returned expected_translation_fingerprint to the authorized submission to reject concurrent translation changes. Stale original revisions are refused. Validation cannot establish translation quality, save a draft, or approve publication.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "expected_revision": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "text": {
-            "type": "string",
-            "maxLength": 1048576
-          }
-        },
-        "required": [
-          "source_id",
-          "path",
-          "expected_revision",
           "text"
         ],
         "additionalProperties": false
@@ -538,7 +443,7 @@
     },
     {
       "name": "veda_move_article",
-      "description": "Move a standalone local or synchronized writable GitHub article after explicit user instruction. With include_linked, copy the linked graph to a standalone local or connected GitHub destination before removing only the requested source article; other source articles remain. GitHub destination files are sent together and must be observed before source deletion. Otherwise linked articles must already exist at the destination with the same revision. Supported relative images are transferred. A stored translation can move only to a program source and remains a private draft. Local imported sources are unsupported. Inspect veda_moves for completion. Private-to-public publication requires explicit user approval; any credential-like text is rejected for a public destination.",
+      "description": "Move a standalone local or synchronized writable GitHub article after explicit user instruction. With include_linked, copy the linked graph to a standalone local or connected GitHub destination before removing only the requested source article; other source articles remain. GitHub destination files are sent together and must be observed before source deletion. Otherwise linked articles must already exist at the destination with the same revision. Supported relative images are transferred. Local imported sources are unsupported. Inspect veda_moves for completion. Private-to-public publication requires explicit user approval; any credential-like text is rejected for a public destination.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -580,74 +485,6 @@
           "destination_id",
           "destination_path",
           "confirm_move"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "veda_translation_needed",
-      "description": "List visible program documentation awaiting Russian translation, publication review, or import conflict resolution. Optionally filter by source_id. The blocked_conflict state must be resolved before translation; originals remain in veda_read. Results are limited to the client's authorized sources.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0
-          }
-        },
-        "required": [],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "veda_translate_article",
-      "description": "Submit a Russian translation of a specific original revision; preserve code and links. Pass expected_translation_fingerprint from preparation to reject concurrent translation changes. Public publication needs explicit approval.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "expected_revision": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "original_sha256": {
-            "type": "string",
-            "minLength": 1
-          },
-          "text": {
-            "type": "string",
-            "maxLength": 1048576
-          },
-          "confirm_publication": {
-            "type": "boolean"
-          },
-          "expected_translation_fingerprint": {
-            "type": "string",
-            "pattern": "^(|[0-9a-f]{64})$"
-          }
-        },
-        "required": [
-          "source_id",
-          "path",
-          "expected_revision",
-          "original_sha256",
-          "text"
         ],
         "additionalProperties": false
       }
@@ -950,69 +787,6 @@
       }
     },
     {
-      "name": "veda_read_display",
-      "description": "Read the Markdown shown to readers, including an available Russian translation, with its status, origin and original SHA. This is not an editable source revision; use veda_read for the original and its revision before preparing changes.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "source_id",
-          "path"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "veda_read_display_excerpt",
-      "description": "Read a bounded Unicode slice of the displayed Markdown, including any visible Russian translation. For continuation pass both sha256 and original_sha256 from the first response as expected_sha256 and expected_original_sha256. This is not an editable source revision.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 16000
-          },
-          "expected_sha256": {
-            "type": "string",
-            "minLength": 64,
-            "maxLength": 64
-          },
-          "expected_original_sha256": {
-            "type": "string",
-            "minLength": 64,
-            "maxLength": 64
-          }
-        },
-        "required": [
-          "source_id",
-          "path"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
       "name": "veda_read_excerpt",
       "description": "Read a bounded portion of the current article. Offsets count Unicode code points; pass the first response's sha256 as expected_sha256 for every continuation. A changed revision is refused.",
       "inputSchema": {
@@ -1126,62 +900,6 @@
           "path",
           "text"
         ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "veda_prepare_translation",
-      "description": "Prepare and structurally validate a non-persistent Russian translation proposal for a program docs/ article, with source status and the current translation fingerprint from the validation snapshot. Pass the returned expected_translation_fingerprint to the authorized submission to reject concurrent translation changes. Stale original revisions are refused. Validation cannot establish translation quality, save a draft, or approve publication.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "expected_revision": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "text": {
-            "type": "string",
-            "maxLength": 1048576
-          }
-        },
-        "required": [
-          "source_id",
-          "path",
-          "expected_revision",
-          "text"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "veda_translation_needed",
-      "description": "List visible program documentation awaiting Russian translation, publication review, or import conflict resolution. Optionally filter by source_id. The blocked_conflict state must be resolved before translation; originals remain in veda_read. Results are limited to the client's authorized sources.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0
-          }
-        },
-        "required": [],
         "additionalProperties": false
       }
     },

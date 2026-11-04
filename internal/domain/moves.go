@@ -1,9 +1,5 @@
 package domain
 
-import (
-	"encoding/json"
-)
-
 // Called only inside the same transaction that changes source or destination.
 // Connected destinations must be observed in GitHub before source removal.
 func ReconcileMoves(db *Database) {
@@ -16,7 +12,6 @@ func ReconcileMoves(db *Database) {
 		if !exists ||
 			!srcOK ||
 			source.Deleted ||
-			TranslationFingerprint(source.Translation) != m.TranslationFingerprint ||
 			LatestRevision(source) != m.SourceRevision ||
 			!LastHasSHA(source, m.SHA) ||
 			src.ConnectionID != m.SourceConnectionID ||
@@ -50,7 +45,6 @@ func ReconcileMoves(db *Database) {
 			target.Deleted ||
 			len(target.Versions) != 1 ||
 			target.Versions[0].SHA != m.SHA ||
-			TranslationFingerprint(target.Translation) != TranslationFingerprint(MovedTranslation(source.Translation)) ||
 			(m.DestinationConnectionID == "" && !AssetsPresent(dst, m.Assets)) ||
 			!LocalLinksPresent(*db, m.DestinationID, m.Links) {
 			m.State = "destination_changed"
@@ -149,26 +143,6 @@ func MoveDeletionLocksConnection(db Database, id string) bool {
 		}
 	}
 	return false
-}
-
-// TranslationFingerprint returns a digest of tr, or "" for no translation.
-func TranslationFingerprint(tr *Translation) string {
-	if tr == nil {
-		return ""
-	}
-	b, _ := json.Marshal(tr)
-	return Digest(b)
-}
-
-// MovedTranslation copies tr for a moved or copied article; the copy needs
-// public approval again.
-func MovedTranslation(tr *Translation) *Translation {
-	if tr == nil {
-		return nil
-	}
-	copy := *tr
-	copy.PublicApproved = false
-	return &copy
 }
 
 // AssetsPresent reports whether source holds every expected image with the

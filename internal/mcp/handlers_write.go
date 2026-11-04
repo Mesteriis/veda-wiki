@@ -17,7 +17,6 @@ var writeHandlers = map[string]handler{
 	"veda_configure_source_mirror": post("/api/v1/sources/mirrors"),
 	"veda_cancel_move":             post("/api/v1/moves/cancel"),
 	"veda_move_article":            post("/api/v1/moves"),
-	"veda_translate_article":       post("/api/v1/articles/translation"),
 	"veda_resolve_conflict":        post("/api/v1/conflicts/resolve"),
 	"veda_github_connect":          post("/api/v1/github/connections"),
 	"veda_sync":                    post("/api/v1/github/sync"),

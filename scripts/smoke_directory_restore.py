@@ -1,4 +1,4 @@
-"""Exercise v16 directory transfers and a stopped SQLite restore with fixtures."""
+"""Exercise directory transfers (v21 store) and a stopped SQLite restore with fixtures."""
 import argparse
 import json
 from pathlib import Path
@@ -83,7 +83,7 @@ def main():
         db = sqlite3.connect(f'file:{restored / "state.sqlite"}?mode=ro', uri=True)
         try:
             row = db.execute("SELECT data FROM records WHERE category='meta' AND id='state'").fetchone()
-            if row is None or json.loads(row[0])['version'] != (17 if use_index else 16) or db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+            if row is None or json.loads(row[0])['version'] != 21 or db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise RuntimeError('restored database version or integrity mismatch')
         finally:
             db.close()

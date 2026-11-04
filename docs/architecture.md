@@ -13,12 +13,11 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/app` | Assembly: server flags, listeners, the reader socket, workers, bounded shutdown and the writer lock. |
 | `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `migrate-revisions`, `import`, `github`, `mcp`, `mcp-relay`. |
 | `internal/httpapi` | REST handlers, browser sessions, role checks and the embedded reading interface. Adapter only: it parses input, checks the role, calls an area and serializes the result. |
-| `internal/mcp` | MCP server behind `veda mcp`: the tool table (13 read-only tools for reader keys and the socket), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
+| `internal/mcp` | MCP server behind `veda mcp`: the tool table (9 read-only tools for reader keys and the socket), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
 | `internal/mcp/client` | REST client of the MCP adapter. Adapter only: loopback HTTP or explicitly allowed reader-only HTTPS, private key and socket files, no proxy or redirects, 24 MiB response limit, sanitized refusal messages. |
 | `internal/auth` | Access keys, named users and teams, password hashing and the login limiter, browser sessions. |
 | `internal/importer` | `veda.yaml` metadata, bounded local checkout observations, batch decoding, asset storage, import conflicts and the process-local observations. |
 | `internal/transfer` | Copies and moves between sources, linked graphs and images, and the transfer plan. |
-| `internal/translation` | Validation and storage of Russian translations, the list of articles that need one, and the optional local translation worker. |
 | `internal/syncer` | Background synchronization with GitHub: connections and accounts, pulls, the write outbox, publication approval, source mirrors and reconciliation. |
 | `internal/agentctx` | What agents see before they read or propose: root and ancestor `AGENTS.md` instructions, source status and proposal bases. |
 | `internal/store` | The data directory: one lock over the in-memory database and durable commits to the JSON or SQLite backend, migrations and scoped views. |
@@ -37,7 +36,7 @@ with data and `internal/github/githubtest` is an in-memory GitHub server.
 cmd -> app -> httpapi -> areas -> store -> domain
 ```
 
-The areas are `auth`, `importer`, `transfer`, `translation`, `syncer` and
+The areas are `auth`, `importer`, `transfer`, `syncer` and
 `agentctx`. `domain`, `render`, `search`, `github`, `store` and `webui` are
 leaves with respect to areas: they never import one. `httpapi`, `app` and
 `app/commands` are adapters and assembly and may import anything. An area never
@@ -80,7 +79,7 @@ lock. `veda migrate-revisions` also lives in `store`; `app/commands` only
 registers it.
 
 `Sources` and `Articles` are shared content, not owned by one package. The
-article and source operations in `importer`, `transfer` and `translation` (and
+article and source operations in `importer` and `transfer` (and
 `httpapi` through `domain` rules) write them directly and use `domain`
 functions for the invariants they share. They are not ownership-checked.
 

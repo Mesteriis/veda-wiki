@@ -23,7 +23,6 @@ func TestMutatingRoutesRefuseNonOwners(t *testing.T) {
 		{"PUT", "/api/v1/articles", article},
 		{"POST", "/api/v1/sources", `{"id":"beta","title":"Beta","kind":"wiki","visibility":"public"}`},
 		{"POST", "/api/v1/articles/copy", `{}`},
-		{"POST", "/api/v1/articles/translation", `{}`},
 		{"POST", "/api/v1/sources/reconcile", `{}`},
 		{"POST", "/api/v1/sources/mirrors", `{}`},
 		{"POST", "/api/v1/moves", `{}`},
@@ -139,7 +138,7 @@ func TestEveryRouteKeepsItsRole(t *testing.T) {
 			}
 		}
 	}
-	readerOnly := []string{"/api/v1/articles/proposal-base?source_id=alpha&path=guide.md", "/api/v1/articles/new-proposal-base?source_id=alpha&path=new.md", "/api/v1/articles/translation-needed"}
+	readerOnly := []string{"/api/v1/articles/proposal-base?source_id=alpha&path=guide.md", "/api/v1/articles/new-proposal-base?source_id=alpha&path=new.md"}
 	for _, path := range readerOnly {
 		if got := call(private, "GET", path, "").Code; got != 404 {
 			t.Errorf("anonymous GET %s: %d", path, got)

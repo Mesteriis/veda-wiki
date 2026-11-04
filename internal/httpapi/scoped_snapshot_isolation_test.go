@@ -32,7 +32,6 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 		db.Sources["alpha"] = src
 		a := db.Articles["alpha/guide.md"]
 		a.Conflicts = []domain.ImportConflict{{Incoming: "original conflict"}}
-		a.Translation = &domain.Translation{Text: "original translation"}
 		a.CopiedFrom = &domain.CopyOrigin{Path: "original path"}
 		a.ReconcileBase = &domain.ReconcileBase{SourceID: "beta", Path: "secret.md"}
 		a.Published = &domain.Revision{Text: "original published", Assets: map[string]domain.BlobRef{"image.png": {SHA: "original"}}}
@@ -59,7 +58,6 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 		a := db.Articles["alpha/guide.md"]
 		a.Versions[0].Text = "changed revision"
 		a.Conflicts[0].Incoming = "changed conflict"
-		a.Translation.Text = "changed translation"
 		a.CopiedFrom.Path = "changed path"
 		a.Published.Text = "changed published"
 		a.Versions[0].Assets["image.png"] = domain.BlobRef{SHA: "changed"}
@@ -75,15 +73,14 @@ func TestScopedSnapshotCopiesMutableStateAndOmitsOtherSources(t *testing.T) {
 	if va.Versions[0].Assets["image.png"].SHA != "original" || va.Published.Assets["image.png"].SHA != "original" {
 		t.Fatal("snapshot shared revision images")
 	}
-	if vs.Metadata.Title != "Original source" || vs.Assets["image.png"].SHA != "original" || va.Versions[0].Text != "# Original" || va.Conflicts[0].Incoming != "original conflict" || va.Translation.Text != "original translation" || va.CopiedFrom.Path != "original path" || va.Published.Text != "original published" || !observedAt(view, "alpha").Equal(observed) {
+	if vs.Metadata.Title != "Original source" || vs.Assets["image.png"].SHA != "original" || va.Versions[0].Text != "# Original" || va.Conflicts[0].Incoming != "original conflict" || va.CopiedFrom.Path != "original path" || va.Published.Text != "original published" || !observedAt(view, "alpha").Equal(observed) {
 		t.Fatal("snapshot shared mutable state")
 	}
 	vs.Metadata.Title = "snapshot only"
 	vs.Assets["image.png"] = domain.BlobRef{SHA: "snapshot only"}
 	va.Versions[0].Text = "snapshot only"
-	va.Translation.Text = "snapshot only"
 	live := s.state(t)
-	if live.Sources["alpha"].Metadata.Title != "changed source" || live.Sources["alpha"].Assets["image.png"].SHA != "changed" || live.Articles["alpha/guide.md"].Versions[0].Text != "changed revision" || live.Articles["alpha/guide.md"].Translation.Text != "changed translation" {
+	if live.Sources["alpha"].Metadata.Title != "changed source" || live.Sources["alpha"].Assets["image.png"].SHA != "changed" || live.Articles["alpha/guide.md"].Versions[0].Text != "changed revision" {
 		t.Fatal("snapshot mutation escaped")
 	}
 }
@@ -136,9 +133,9 @@ func TestScopedSnapshotMutableFieldInventory(t *testing.T) {
 		mutable []string
 	}{
 		{domain.Source{}, []string{"Metadata", "Assets"}},
-		{domain.Article{}, []string{"Translation", "CopiedFrom", "ReconcileBase", "Versions", "Conflicts", "Published"}},
+		{domain.Article{}, []string{"CopiedFrom", "ReconcileBase", "Versions", "Conflicts", "Published"}},
 		{domain.WikiMetadata{}, nil}, {domain.BlobRef{}, nil}, {domain.Revision{}, []string{"Assets"}},
-		{domain.ImportConflict{}, nil}, {domain.Translation{}, nil}, {domain.CopyOrigin{}, nil}, {domain.GitHubConnection{}, nil},
+		{domain.ImportConflict{}, nil}, {domain.CopyOrigin{}, nil}, {domain.GitHubConnection{}, nil},
 	}
 	for _, tc := range cases {
 		typ := reflect.TypeOf(tc.value)

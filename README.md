@@ -8,9 +8,7 @@ GitHub connections and background synchronization are implemented and tested
 with a simulated GitHub service. Cross-repository moves, including linked
 articles and images, have also passed a synthetic live test through an
 authenticated `gh` proxy; VEDA's own saved App/PAT credentials have not passed
-live acceptance. An optional local translation worker
-produces reviewable Russian drafts; model quality remains unverified. Scoped
-agent read keys and named reader users and teams are implemented; production
+live acceptance. Scoped agent read keys and named reader users and teams are implemented; production
 account acceptance and per-agent OS isolation remain open. This
 repository contains no knowledge-base content,
 credentials, production configuration or deployment history.
@@ -75,13 +73,10 @@ REST endpoint. For a local read-only agent, the service can instead expose a Uni
 private directory owned by the service user. Start VEDA with `--reader-socket
 /path/to/private/reader.sock`, then run `veda mcp` with `--reader-socket`
 pointing to that socket. This server advertises sources, search, read, context,
-the scoped translation queue, and non-persistent preparation of new articles,
-updates and translations; it has no write/admin access. The socket's directory must
+and non-persistent preparation of new articles and updates; it has no write/admin access. The socket's directory must
 be 0700 and owned by the server user. Anyone sharing that OS identity can read
 all private sources; this is not per-agent authorization. An optional Linux-only
 root snapshot import channel is described in the [API reference](docs/api.md).
-Translation proposal validation uses a non-mutating POST on this socket; it
-checks protected Markdown but does not assess meaning or publish the result.
 
 The owner key allows reading and writing all sources. To grant an agent only
 current-content reading, pass `--reader-key-file .veda/reader.key` instead. The reader
@@ -89,11 +84,10 @@ key cannot write or use administrative endpoints and is ignored by the public
 listener. It grants access to all private sources and is not user-scoped. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
-Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_display`, `veda_read_display_excerpt`, `veda_read_excerpt`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_prepare_translation`, `veda_create_source`,
+Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excerpt`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_create_source`,
 `veda_write_article`, `veda_copy_article`, `veda_transfer_plan`, `veda_moves`, `veda_move_article`,
 `veda_cancel_move`,
-`veda_translation_needed`,
-`veda_translate_article`, `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
+`veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
 `veda_github_status`, `veda_github_connect`, `veda_sync`, `veda_reconcile_sources`,
 `veda_source_mirrors`, `veda_configure_source_mirror`,
 `veda_publish_job`, `veda_cancel_bundle`.
@@ -117,7 +111,7 @@ the path; deleted history or a concurrent write can still prevent creation.
 
 The Go backend is one module with the dispatcher in `cmd/veda` and the code in
 `internal/` (`domain`, `store`, the areas `auth`, `importer`, `transfer`,
-`translation`, `syncer`, `agentctx`, and the adapters `httpapi` and `app`).
+`syncer`, `agentctx`, and the adapters `httpapi` and `app`).
 [Architecture](docs/architecture.md) lists the packages, allowed
 dependencies, collection ownership and the transaction model. `make lint`
 enforces a 500-line limit for Go and script files and runs
@@ -199,8 +193,7 @@ teams have source-scoped read access; account recovery, MFA and SSO are not impl
 See [repository import](docs/import.md). Wiki sources use strict root `veda.yaml`
 metadata; program sources import `docs/` only. Import uses the authenticated REST
 service, preserves local changes as conflicts, and tracks Git/content provenance.
-See [GitHub synchronization](docs/github.md). The optional translation worker
-is disabled by default and needs a separately configured, qualified local model.
+See [GitHub synchronization](docs/github.md).
 
 ## Direction
 

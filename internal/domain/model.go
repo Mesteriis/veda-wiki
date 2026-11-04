@@ -43,9 +43,8 @@ type Revision struct {
 }
 
 // Article is one Markdown file of a source with its revision history,
-// import conflicts, translation and publication state.
+// import conflicts and publication state.
 type Article struct {
-	Translation    *Translation     `json:"translation,omitempty"`
 	CopiedFrom     *CopyOrigin      `json:"copied_from,omitempty"`
 	ReconcileBase  *ReconcileBase   `json:"reconcile_base,omitempty"`
 	SourceID       string           `json:"source_id"`
@@ -72,17 +71,6 @@ type Database struct {
 	Users         map[string]WikiUser         `json:"users,omitempty"`
 	Teams         map[string]WikiTeam         `json:"teams,omitempty"`
 	SourceMirrors map[string]SourceMirror     `json:"source_mirrors,omitempty"`
-}
-
-// Translation is a translated draft of one original revision.
-type Translation struct {
-	Origin         string `json:"origin,omitempty"`
-	Language       string `json:"language"`
-	OriginalSHA    string `json:"original_sha256"`
-	Text           string `json:"text"`
-	SHA            string `json:"sha256"`
-	Created        string `json:"created_at"`
-	PublicApproved bool   `json:"public_approved"`
 }
 
 // CopyOrigin is retained on the destination for owner audit and is never
@@ -173,7 +161,6 @@ type Move struct {
 	SHA                     string             `json:"sha256"`
 	State                   string             `json:"state"`
 	PreparedDeletion        string             `json:"prepared_deletion,omitempty"`
-	TranslationFingerprint  string             `json:"translation_fingerprint,omitempty"`
 	Assets                  map[string]BlobRef `json:"assets,omitempty"`
 	Links                   map[string]string  `json:"links,omitempty"`
 	Created                 string             `json:"created_at"`
@@ -261,16 +248,11 @@ type SourceMirror struct {
 // Page is an article as served to a reader, with its rendered HTML and
 // display metadata.
 type Page struct {
-	SearchOriginal            string        `json:"-"`
-	SearchDisplayed           string        `json:"-"`
+	SearchText                string        `json:"-"`
 	SearchSourceTitle         string        `json:"-"`
 	ProgramDocumentation      bool          `json:"program_documentation,omitempty"`
 	UnresolvedConflict        bool          `json:"unresolved_conflict,omitempty"`
 	ConflictResolutionBlocked bool          `json:"conflict_resolution_blocked_by_write,omitempty"`
-	TranslationOrigin         string        `json:"translation_origin,omitempty"`
-	TranslationState          string        `json:"translation_state,omitempty"`
-	OriginalSHA               string        `json:"original_sha256,omitempty"`
-	Translated                bool          `json:"translated,omitempty"`
 	Path                      string        `json:"path"`
 	Title                     string        `json:"title"`
 	Environment               string        `json:"environment"`

@@ -22,7 +22,7 @@ VEDA_TEST_PUBLIC_GITHUB=1 .venv/bin/python scripts/smoke_public_github.py
 
 This check requires outbound GitHub access and available anonymous API quota.
 It does not verify GitHub App or token authentication, private repositories,
-write-back, translation quality, or the connectivity of another host.
+write-back, or the connectivity of another host.
 
 For two distinct public program repositories, the optional multi-source check
 imports both into a disposable store, migrates it to SQLite, restarts, and uses
@@ -98,7 +98,7 @@ It verifies the connection is anonymous and read-only, waits for synchronization
 checks that only `docs/` articles appear, and opens the article list. It requires
 Node 22+, a trusted Chrome or Chromium binary and at least 20 anonymous GitHub
 API requests remaining; larger repositories may need more. It does not run in
-CI or test saved credentials, private access, write-back, translation quality,
+CI or test saved credentials, private access, write-back,
 or connectivity from another host. The public `Mesteriis/mac-tower` repository
 passed this check on a workstation with six articles on 2026-11-02:
 
@@ -245,10 +245,9 @@ also been checked against a real public repository. Real authenticated App/PAT
 connections, writes and multi-repository recovery still require acceptance.
 Cross-repository moves have simulated-GitHub coverage and an opt-in live
 synthetic check using a `gh` credential-owning proxy; authentication using
-VEDA's own saved App/PAT credential still needs live acceptance. An optional local translation
-worker and source-scoped read-only keys are implemented; model qualification
-and production agent-key rollout remain outstanding. See
-[translation](translation.md) and [scoped access](scoped-access-design.md).
+VEDA's own saved App/PAT credential still needs live acceptance. Source-scoped read-only keys are implemented;
+production agent-key rollout remains outstanding. See
+[scoped access](scoped-access-design.md).
 
 An opt-in live acceptance test exercises a move between two branches of the
 public `Mesteriis/veda-wiki` repository using synthetic content, images and a

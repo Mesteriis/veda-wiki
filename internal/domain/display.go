@@ -5,18 +5,6 @@ import (
 	"strings"
 )
 
-// DisplayedRevision returns the revision a reader sees: the article's
-// translation when it was made from revision (and is approved for public
-// readers when public is set), otherwise revision itself. The flag reports
-// whether the translation was chosen.
-func DisplayedRevision(a Article, revision Revision, public bool) (Revision, bool) {
-	tr := a.Translation
-	if tr == nil || tr.OriginalSHA != revision.SHA || (public && !tr.PublicApproved) {
-		return revision, false
-	}
-	return Revision{Number: revision.Number, Text: tr.Text, SHA: tr.SHA, Created: tr.Created, Assets: revision.Assets}, true
-}
-
 // Title returns the text of the first "# " heading in text, or the base
 // name of path p when there is none.
 func Title(text, p string) string {

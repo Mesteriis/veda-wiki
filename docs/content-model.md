@@ -13,9 +13,7 @@ views use the same visibility-filtered data as the rest of the interface.
 
 - Wiki: root `veda.yaml` with versioned metadata (title, description, optional
   image/link), plus a Markdown hierarchy and scoped `AGENTS.md` instructions.
-- Program: import only `docs/`. No `docs/` means no documentation import. Keep
-  code blocks, original provenance and links while translating English docs
-  to Russian. Keep translations distinct from their upstream originals.
+- Program: import only `docs/`. No `docs/` means no documentation import.
 
 Public/private access inherits repository visibility once a repository is
 connected; folder names and YAML cannot override it. Unknown remote visibility
@@ -25,8 +23,8 @@ and are not connected to any repository.
 GitHub connections use an explicitly selected GitHub App/account. An optional
 server-held token can support installations without an App. Never guess an
 account by trying unrelated tokens. Import permissions and outbound write
-permissions are separate. Do not send private source text to a translation
-provider without owner authorization.
+permissions are separate. Do not send private source text to an external
+service without owner authorization.
 
 ## Synchronization and moves
 
@@ -44,5 +42,5 @@ The local importer implements metadata ingestion and program docs/ selection;
 see [repository import](import.md). Revision-bound moves are available with
 the restrictions documented in [the API](api.md). Named read-only users and
 teams have source-scoped access, but production account acceptance remains
-outstanding. Acceptance with VEDA-stored GitHub credentials and translation
-model qualification also require further work.
+outstanding. Acceptance with VEDA-stored GitHub credentials also requires
+further work.

@@ -4,13 +4,6 @@ import { readVisits, recordVisit, saveVisits } from "../../lib/recent";
 import { conflictWarning } from "../../lib/sourceWarnings";
 import { Toc } from "./Toc";
 
-function provenance(page: Page): string {
-  if (page.translated) return "Перевод на русский · SHA256";
-  if (page.translation_state === "stale") return "Оригинал · перевод устарел · SHA256";
-  if (page.program_documentation) return "Оригинал · перевод недоступен · SHA256";
-  return "SHA256";
-}
-
 export function Reading({ data, page }: { data: StatePayload; page: Page }) {
   const v = data.view;
   const warning = conflictWarning(page);
@@ -37,9 +30,7 @@ export function Reading({ data, page }: { data: StatePayload; page: Page }) {
         <div className="source-path">{page.path}</div>
         {warning && <p className="conflict-warning" role="status">{warning}</p>}
         <div className="provenance">
-          {provenance(page)} <code>{page.sha256}</code>
-          {page.translated && (page.translation_origin === "local_model" ? <> · Локальный автоматический перевод</> : <> · Происхождение перевода неизвестно</>)}
-          {page.translated && <> · Оригинал <code>{page.original_sha256}</code></>}
+          SHA256 <code>{page.sha256}</code>
         </div>
         <div
           className="markdown"

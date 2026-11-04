@@ -34,7 +34,6 @@ func TestInvalidArgumentsRefusedWithoutRequest(t *testing.T) {
 		{"veda_read_excerpt", `{"source_id":"a","path":"b","expected_sha256":"` + hex(63) + `"}`, "property 'expected_sha256' is too short"},
 		{"veda_read_excerpt", `{"source_id":"a","path":"b","expected_sha256":"` + hex(65) + `"}`, "property 'expected_sha256' is too long"},
 		{"veda_read_excerpt", `{"source_id":"a","path":"b","limit":16001}`, "property 'limit' out of range"},
-		{"veda_read_display_excerpt", `{"source_id":"a","path":"b","expected_original_sha256":1}`, "property 'expected_original_sha256' has the wrong type"},
 		{"veda_prepare_update", `{"source_id":"a","path":"b","expected_revision":0,"text":"x"}`, "property 'expected_revision' out of range"},
 		{"veda_prepare_update", `{"source_id":"a","path":"b","expected_revision":1,"text":5}`, "property 'text' has the wrong type"},
 		{"veda_prepare_new_article", `{"source_id":"a","path":"b","text":"` + strings.Repeat("я", 1<<20+1) + `"}`, "property 'text' is too long"},
@@ -44,10 +43,6 @@ func TestInvalidArgumentsRefusedWithoutRequest(t *testing.T) {
 		{"veda_write_article", `{"source_id":"a","path":"b","text":"x","expected_revision":-1}`, "property 'expected_revision' out of range"},
 		{"veda_cancel_move", `{"id":"m","confirm_cancel":false}`, "property 'confirm_cancel' must be true"},
 		{"veda_move_article", `{"source_id":"s","source_path":"p","expected_revision":1,"destination_id":"d","destination_path":"q","confirm_move":false}`, "property 'confirm_move' must be true"},
-		{"veda_translate_article", `{"source_id":"a","path":"b","expected_revision":1,"original_sha256":"o","text":"t","expected_translation_fingerprint":"XYZ"}`,
-			"property 'expected_translation_fingerprint' does not match the required pattern"},
-		{"veda_translate_article", `{"source_id":"a","path":"b","expected_revision":1,"original_sha256":"o","text":"t","expected_translation_fingerprint":"` +
-			strings.Repeat("A", 64) + `"}`, "property 'expected_translation_fingerprint' does not match the required pattern"},
 		{"veda_reconcile_sources", `{"source_id":"a","destination_id":"b","limit":51}`, "property 'limit' out of range"},
 		{"veda_resolve_conflict", `{"source_id":"a","path":"b","index":0,"expected_revision":1,"resolution":"both"}`, "property 'resolution' is not an allowed value"},
 		{"veda_github_connect", `{"id":"g","repository":"o/r","adopt_existing":"yes"}`, "property 'adopt_existing' has the wrong type"},

@@ -35,8 +35,6 @@ jobs:
       - run: python -m unittest discover -s scripts -p test_check_architecture.py -v
       - run: python scripts/smoke_mcp_https.py
       - run: python scripts/smoke.py
-      - run: python scripts/smoke_translation_auth.py
-      - run: python scripts/smoke_translation_auth.py --protocol openai
       - run: python scripts/smoke_directory_restore.py
       - run: python scripts/smoke_directory_restore.py --index
       - run: VEDA_TEST_MCP_PYTHON="$(command -v python)" go test -run '^(TestMultiSourceMCPAfterSQLiteRestart|TestAgentRoutesVPSRequestAcrossSources|TestReconcileThroughMCP|TestMirrorThroughMCP)$' -v ./internal/httpapi
