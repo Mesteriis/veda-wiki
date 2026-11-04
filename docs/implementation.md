@@ -76,7 +76,7 @@ change a second article. A synthetic benchmark with 200 approximately 126 KiB do
 measured approximately 42 ms and 31.7 MB allocated per single-article update
 before the targeted write path, and approximately 2.3 ms and 0.9–1.2 MB afterwards
 on an Apple M5 Max
-(`cd server && go test -run '^$' -bench '^BenchmarkSQLiteSingleArticleUpdateLargeCorpus$' -benchmem -benchtime=3x`).
+(`go test -run '^$' -bench '^BenchmarkSQLiteSingleArticleUpdateLargeCorpus$' -benchmem -benchtime=3x ./internal/store`).
 This is not a production workload or a storage limit. The specialized article
 path is only for `put`; any future change to the categories it mutates must
 update that transaction and its recovery tests. A second targeted path writes

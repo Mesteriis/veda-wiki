@@ -1,6 +1,6 @@
 web/node_modules/
 web/dist/
-server/ui/
+internal/webui/dist/
 .venv/
 __pycache__/
 .veda/
