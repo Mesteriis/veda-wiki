@@ -26,6 +26,7 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/render` | Markdown rendering, cross-source links, table of contents and the link graph. |
 | `internal/search` | Lexical search. |
 | `internal/webui` | The built reading interface, embedded with `embed`. |
+| `internal/knowledge` | Contracts of the derived knowledge graph: text preparation with source maps, the per-request access rule over `domain` read rules, the extraction schema (`schema/v1.json`), pipeline fingerprints, entity normalization and uncertainty markers. Pure: imports only `domain`. |
 
 Test helpers are separate packages: `internal/store/storetest` builds stores
 with data and `internal/github/githubtest` is an in-memory GitHub server.
@@ -51,6 +52,21 @@ An area imports another area only through this list:
 | `agentctx` | `importer` | Reads import observations for source status. |
 
 Logic that two areas need belongs in `domain` as a pure function.
+
+`internal/knowledge` has its own rule. It imports only `domain`. Its adapter
+subpackages (`knowledge/jobs`, `knowledge/extractorclient`,
+`knowledge/memindex`, `knowledge/neo4jindex`) import only `knowledge` and
+`domain`, never each other. Only `httpapi`, `mcp` and `app` import knowledge
+packages. `knowledge.Allowed` derives the snapshots a request may read from
+the request-scoped database with `domain.ReadSnapshot` and
+`domain.PublicRevision`; scoped keys, scoped sessions and team users are
+restricted by that snapshot, not by knowledge.
+
+`knowledge.Prepare` extracts headings, paragraphs, list items and table cells
+from the Markdown parsed by `domain.Markdown`. Frontmatter, code blocks,
+inline code, HTML, images, autolinks and link destinations are not
+extracted; removed inline content leaves a gap in the source map, so quotes
+around it map exactly. Offsets are half-open Unicode code point ranges.
 
 ## Collection ownership
 
@@ -124,7 +140,10 @@ prints `path: reason` and exits 1 when:
 - `internal/domain` imports `os`, `net`, `net/http`, `database/sql` or `os/exec`;
 - an area imports another area outside the table above, a leaf imports an area,
   or an area imports `httpapi`, `app` or `mcp`;
-- an `internal/<pkg>` is in none of the area, leaf or adapter sets, so it would
+- `internal/knowledge` or one of its subpackages imports an internal package
+  outside its row of `KNOWLEDGE_IMPORTS`, a knowledge subpackage is not listed
+  there, or a package other than `httpapi`, `app` or `mcp` imports knowledge;
+- an `internal/<pkg>` is in none of the area, leaf, adapter or knowledge sets, so it would
   otherwise escape the checks (subpackages such as `store/storetest` and
   `github/githubtest` count with their parent);
 - a non-test Go file assigns to or deletes from a checked collection outside its owner,
