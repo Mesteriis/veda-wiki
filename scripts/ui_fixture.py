@@ -1,6 +1,5 @@
 """Disposable synthetic VEDA store, servers and headless Chrome shared by the UI smoke and screenshot tools."""
 from contextlib import contextmanager
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -59,14 +58,8 @@ def seed(post):
     post('/api/v1/sources', {'id': 'program-fixture', 'title': 'Пример программы',
                             'kind': 'program', 'visibility': 'private'})
     original = '# Setup\n\nRead the guide.\n'
-    for path in ('docs/current.md', 'docs/stale.md'):
-        post('/api/v1/articles', {'source_id': 'program-fixture', 'path': path,
-             'text': original, 'expected_revision': 0})
-        post('/api/v1/articles/translation', {'source_id': 'program-fixture', 'path': path,
-             'expected_revision': 1, 'original_sha256': hashlib.sha256(original.encode()).hexdigest(),
-             'text': '# Установка\n\nПрочитайте руководство.\n'})
-    post('/api/v1/articles', {'source_id': 'program-fixture', 'path': 'docs/stale.md',
-         'text': '# Updated setup\n\nRead the updated guide.\n', 'expected_revision': 1}, method='PUT')
+    post('/api/v1/articles', {'source_id': 'program-fixture', 'path': 'docs/current.md',
+         'text': original, 'expected_revision': 0})
     post('/api/v1/teams', {'id': 'browser-team', 'sources': ['fixture', 'private-fixture', 'program-fixture']})
     post('/api/v1/users', {'id': 'browser-user', 'teams': ['browser-team'],
                            'password': 'synthetic fixture password'})

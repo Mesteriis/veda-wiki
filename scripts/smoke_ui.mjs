@@ -141,10 +141,7 @@ for (const width of [1672, 390, 320]) {
   if (await evaluate("(async () => (await fetch('/api/v1/articles?source_id=other-private&path=secret.md')).status)()") !== 404) throw Error('out-of-scope article available');
   if (width === 1672) {
     await send('Page.navigate', { url: privateUrl + '?page=program-fixture%2Fdocs%2Fcurrent.md' });
-    await until("document.querySelector('.provenance')?.innerText.includes('Перевод на русский') && document.querySelector('.markdown')?.innerText.includes('Прочитайте руководство')");
-    await send('Page.navigate', { url: privateUrl + '?page=program-fixture%2Fdocs%2Fstale.md' });
-    await until("document.querySelector('.provenance')?.innerText.includes('перевод устарел') && document.querySelector('.markdown')?.innerText.includes('Updated setup')");
-    if (await evaluate("document.querySelector('.markdown')?.innerText.includes('Прочитайте руководство')")) throw Error('stale translation was displayed');
+    await until("document.querySelector('.markdown')?.innerText.includes('Read the guide.') && !document.querySelector('.provenance')?.innerText.includes('перевод')");
     await send('Page.navigate', { url: privateUrl });
     await until("document.body.innerText.includes('Приватная тестовая страница')");
   }
@@ -236,7 +233,7 @@ for (const width of [1672, 390, 320]) {
     await evaluate("[...document.querySelectorAll('.reader-access button')].find(b => b.innerText === 'Выйти').click()");
     await until("!!document.querySelector('button[aria-label=Войти]')");
   }
-  console.log(JSON.stringify({ width, article: true, search: true, collidingSources: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, translationCurrentAndStale: width === 1672, adminSections: true, namedAdminLogin: width === 1672, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
+  console.log(JSON.stringify({ width, article: true, search: true, collidingSources: true, resultLink: true, keyLoginAndLogout: true, userLoginAndScope: true, adminSections: true, namedAdminLogin: width === 1672, browserWriteDenied: true, mobileNavigation: width <= 390, noHorizontalOverflow: true }));
 }
 // Let Chrome close its profile and children before the temporary directory is removed.
 ws.send(JSON.stringify({ id: ++id, method: 'Browser.close' }));
