@@ -70,25 +70,47 @@ table; a store whose tables do not match its format is rejected.
 
 This binary refuses to open a store below format 21 with
 `store format vN requires "veda migrate-revisions"`. Convert a stopped
-instance (after a PBS snapshot of the stopped service) with:
+instance, after a PBS snapshot of the stopped service, with:
 
 ```sh
 ./veda migrate-revisions --data /path/to/private-data
+./veda migrate-revisions --verify --data /path/to/private-data
 ```
 
-The command takes the writer lock and refuses an active writer, an existing
-`state.before-revisions.*` backup, an invalid, inconsistent or already
-converted store, and a store whose revisions reference a missing image. Before
-changing anything it copies the store files to `state.before-revisions.*`
-(`.sqlite` and the `.json` marker for SQLite, `.json` for JSON) and syncs them.
-It then binds images to revisions, keeps the three newest revisions of each
+The command takes the writer lock and refuses an active writer, an unclean
+stop (a `state.sqlite-journal` or `-wal` file: start and stop the previous
+binary once, then retry), an existing `state.before-revisions.*` backup, an
+invalid, inconsistent or already converted store, and revisions that
+reference missing or damaged images (it prints only their counts). Nothing
+changes before a complete backup exists: each file is copied to
+`state.before-revisions.<x>.tmp`, synced, reread, compared and renamed, the
+SQLite copy first and `state.before-revisions.json` (the marker for SQLite,
+the whole store for JSON) last. The backup must then load as the store. Partial
+`.tmp` copies from an interrupted run are removed by the next run. The command
+then binds images to revisions, keeps the three newest revisions of each
 article plus protected ones, sets format 21 and, on SQLite, moves the texts
 into revision rows, all in one transaction. It rereads the store and checks
 SQLite integrity, `Validate`, the kept revisions and their texts byte for byte,
-and every referenced image. It prints only counts. If any step after the backup
-fails, the backup stays in place: restore by copying each
-`state.before-revisions.X` back to `state.X` (or restore the PBS snapshot)
-before starting a binary. Blob collection stays paused while a
-`state.before-revisions.*` file exists; remove it once the converted store is
-no longer expected to be rolled back. Binaries before format 21 refuse a
-converted store; rolling back means restoring the backup or snapshot.
+and every referenced image. It prints only counts.
+
+`--verify` rebuilds the expected store from the backup, without writing, and
+runs the same checks against the current store; it prints the counts and
+`verify: OK` or `verify: FAIL` (non-zero exit). Only a passing verify means the
+migration is good; a service that starts proves nothing. Run it before the
+service writes again: a store changed after the migration fails it.
+
+If the command fails after the backup, or verify fails, restore before starting
+any binary:
+
+1. stop VEDA;
+2. copy `state.before-revisions.sqlite` over `state.sqlite` (SQLite only) and
+   `state.before-revisions.json` over `state.json`;
+3. delete both `state.before-revisions.*` files; otherwise migrate-revisions
+   refuses to run again.
+
+Or restore the PBS snapshot. If the command reports an incomplete backup and an
+unmodified store, delete the `state.before-revisions.*` files and run it again.
+Blob collection stays paused while any `state.before-revisions.*` file exists;
+after a passing verify, delete the backup once a rollback is no longer needed.
+Binaries before format 21 refuse a converted store; rolling back means
+restoring the backup or the snapshot.

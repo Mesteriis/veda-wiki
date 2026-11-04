@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
-	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -23,7 +25,7 @@ type revisionPlan struct {
 // without images to the images of its source that its text references
 // (domain.RevisionAssets; references the source cannot resolve are left out),
 // and checks the result independently of the rule's implementation.
-func planRevisions(original domain.Database, now time.Time) (revisionPlan, error) {
+func planRevisions(original domain.Database, updated string) (revisionPlan, error) {
 	db := clone(&original)
 	removed := domain.PruneAll(&db)
 	for key, a := range db.Articles {
@@ -46,7 +48,7 @@ func planRevisions(original domain.Database, now time.Time) (revisionPlan, error
 		db.Articles[key] = a
 	}
 	db.Version = domain.RevisionsFormat
-	db.Updated = now.UTC().Format(time.RFC3339Nano)
+	db.Updated = updated
 	plan := revisionPlan{db: db, kept: map[string][]int{}}
 	total := 0
 	for key, a := range db.Articles {
@@ -83,22 +85,45 @@ func planRevisions(original domain.Database, now time.Time) (revisionPlan, error
 	return plan, nil
 }
 
-// verifyRevisionBlobs checks every image a stored revision or publication
+// blobProblems counts distinct missing and damaged images and the articles
+// whose revisions reference them; it holds no names or digests.
+type blobProblems struct {
+	missing, damaged, articles int
+}
+
+// checkRevisionBlobs checks every image a stored revision or publication
 // copy of db references with VerifyBlob.
-func verifyRevisionBlobs(s *Store, db domain.Database) error {
+func checkRevisionBlobs(s *Store, db domain.Database) blobProblems {
+	var p blobProblems
+	bad := map[domain.BlobRef]bool{}
+	checked := map[domain.BlobRef]bool{}
 	for _, a := range db.Articles {
-		for _, r := range a.Versions {
-			if err := s.VerifyBlobs(r.Assets); err != nil {
-				return err
+		versions := a.Versions
+		if a.Published != nil {
+			versions = append(slices.Clone(versions), *a.Published)
+		}
+		affected := false
+		for _, r := range versions {
+			for _, ref := range r.Assets {
+				if !checked[ref] {
+					checked[ref] = true
+					if err := s.VerifyBlob(ref); err != nil {
+						bad[ref] = true
+						if _, statErr := os.Lstat(s.BlobPath(ref.SHA)); os.IsNotExist(statErr) {
+							p.missing++
+						} else {
+							p.damaged++
+						}
+					}
+				}
+				affected = affected || bad[ref]
 			}
 		}
-		if a.Published != nil {
-			if err := s.VerifyBlobs(a.Published.Assets); err != nil {
-				return err
-			}
+		if affected {
+			p.articles++
 		}
 	}
-	return nil
+	return p
 }
 
 // verifyMigration rereads the converted store from disk and requires it to
@@ -114,7 +139,7 @@ func verifyMigration(dir string, sqlite bool, original domain.Database, plan rev
 		return errors.New("converted store has the wrong format")
 	}
 	if sqlite {
-		if err = integrityCheck(dir); err != nil {
+		if err = integrityCheckFile(filepath.Join(dir, SQLiteFile), false); err != nil {
 			return err
 		}
 	}
@@ -147,15 +172,15 @@ func verifyMigration(dir string, sqlite bool, original domain.Database, plan rev
 	if !bytes.Equal(want, got) {
 		return errors.New("converted store differs from the planned state")
 	}
-	if err = verifyRevisionBlobs(check, check.db); err != nil {
-		return errors.New("a converted revision references a missing or damaged image")
+	if p := checkRevisionBlobs(check, check.db); p.articles > 0 {
+		return fmt.Errorf("converted revisions of %d articles reference images that are missing (%d) or damaged (%d)", p.articles, p.missing, p.damaged)
 	}
 	return nil
 }
 
-// integrityCheck runs the full SQLite integrity check.
-func integrityCheck(dir string) error {
-	db, err := sqliteDB(dir)
+// integrityCheckFile runs the full SQLite integrity check on the file p.
+func integrityCheckFile(p string, readOnly bool) error {
+	db, err := openSQLiteFile(p, readOnly)
 	if err != nil {
 		return err
 	}
@@ -231,6 +256,9 @@ func migrateSQLiteRows(dir string, state domain.Database, from int) error {
 		return err
 	}
 	if err = one(save.Exec(data, "meta", "state")); err != nil {
+		return err
+	}
+	if err = migrateRevisionsFault("commit"); err != nil {
 		return err
 	}
 	return tx.Commit()

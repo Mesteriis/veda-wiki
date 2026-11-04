@@ -134,26 +134,20 @@ func (s *Store) commitSQLiteArticle(state domain.Database, key string) error {
 	if err = put("meta", "state", sqliteMeta{state.Version, state.Updated}); err != nil {
 		return err
 	}
-	rowsLayout, err := revisionRowsLayout(tx, state.Version)
+	if err = requireRevisionRows(tx, state.Version); err != nil {
+		return err
+	}
+	w, err := newRevisionWriter(tx)
 	if err != nil {
 		return err
 	}
-	if rowsLayout {
-		w, e := newRevisionWriter(tx)
-		if e != nil {
-			return e
-		}
-		defer w.close()
-		old, e := w.storedHeader(key)
-		if e == nil {
-			e = w.sync(old, &article)
-		}
-		if e != nil {
-			return e
-		}
+	defer w.close()
+	old, err := w.storedHeader(key)
+	if err == nil {
+		err = w.sync(old, &article)
+	}
+	if err == nil {
 		err = put("article", key, articleHeader(article))
-	} else {
-		err = put("article", key, article)
 	}
 	if err != nil {
 		return err
@@ -208,22 +202,26 @@ func (s *Store) commitSQLiteConnections(state domain.Database) error {
 	return tx.Commit()
 }
 
-// putArticles writes every article record of a whole-state commit. With
-// revision rows it writes headers and the revision difference, and removes
-// the rows of articles the state no longer holds; their records are removed
-// with every other unseen record.
-func putArticles(tx *sql.Tx, state domain.Database, put func(category, id string, v any) error) error {
-	rowsLayout, err := revisionRowsLayout(tx, state.Version)
+// requireRevisionRows refuses a commit unless the file has the revision
+// tables of format 21. Files below format 21 are only read, by the
+// migration (MigrateRevisions); no commit writes the legacy layout.
+func requireRevisionRows(tx *sql.Tx, version int) error {
+	rows, err := revisionRowsLayout(tx, version)
 	if err != nil {
 		return err
 	}
-	if !rowsLayout {
-		for id, v := range state.Articles {
-			if err = put("article", id, v); err != nil {
-				return err
-			}
-		}
-		return nil
+	if !rows {
+		return errSQLiteLayout
+	}
+	return nil
+}
+
+// putArticles writes every article record of a whole-state commit: headers
+// and the revision difference, and it removes the rows of articles the state
+// no longer holds; their records are removed with every other unseen record.
+func putArticles(tx *sql.Tx, state domain.Database, put func(category, id string, v any) error) error {
+	if err := requireRevisionRows(tx, state.Version); err != nil {
+		return err
 	}
 	w, err := newRevisionWriter(tx)
 	if err != nil {

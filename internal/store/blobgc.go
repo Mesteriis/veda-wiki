@@ -92,17 +92,6 @@ func (s *Store) collectable() error {
 // operator deletes the backup.
 var errCollectionPaused = errors.New("blob collection paused until state.before-revisions.* is removed")
 
-// revisionBackupPresent reports whether dir holds a migrate-revisions backup;
-// an entry that cannot be checked counts as present.
-func revisionBackupPresent(dir string) bool {
-	for _, name := range revisionBackups {
-		if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
-			return true
-		}
-	}
-	return false
-}
-
 // collectBlobs is CollectBlobs for a caller that holds the write lock.
 func (s *Store) collectBlobs(now time.Time) (int, error) {
 	if err := s.collectable(); err != nil {

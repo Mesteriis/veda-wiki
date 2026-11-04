@@ -62,7 +62,7 @@ func MigrateSQLite(dir string) error {
 	if err != nil {
 		return err
 	}
-	if err = initSQLite(dir, s.db.Version); err != nil {
+	if err = initSQLite(dir); err != nil {
 		return err
 	}
 	if err = s.commitSQLite(s.db); err != nil {

@@ -115,11 +115,7 @@ func (s *Store) update(fn func(tx *Tx) error) error {
 // alone, a connections commit prunes nothing and a whole-state commit prunes
 // every article. A protection lifted by a narrow commit of another article
 // takes effect at that article's next write or the next whole-state commit.
-// Stores below format 21 are not pruned; veda migrate-revisions converts them.
 func (tx *Tx) prune() {
-	if tx.db.Version < domain.RevisionsFormat {
-		return
-	}
 	switch {
 	case tx.scope == scopeConnections:
 	case tx.scope == scopeArticle && tx.article != "":

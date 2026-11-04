@@ -7,7 +7,9 @@ Usage (from the repository root):
 Format 21 is deliberately unreadable for the deployed binary (fc35bea). The
 script checks, on private temporary copies of internal/store/testdata/fc35bea:
 
-1. the current `veda migrate-revisions` converts a copy and prints only counts;
+1. the current binary refuses an unconverted copy and names migrate-revisions;
+   the current `veda migrate-revisions` converts a copy and prints only
+   counts, and `veda migrate-revisions --verify` passes;
 2. the env-gated Go test TestWriteForPreviousBinary appends a revision through
    store.Update;
 3. the previous binary refuses to start on that copy: it exits with an error,
@@ -128,11 +130,21 @@ def main():
         old = args.old_binary or build_previous(tmp)
         current = build_current(tmp)
 
+        refused = subprocess.run([current, '--data', fixture_copy(tmp, 'refused'), '--listen', '127.0.0.1:%d' % free_port(), '--public-listen', '127.0.0.1:%d' % free_port()],
+                                 capture_output=True, text=True, timeout=30)
+        if refused.returncode == 0 or 'veda migrate-revisions' not in refused.stderr:
+            raise SystemExit('current binary did not refuse an unconverted copy')
+        result['current_on_unconverted'] = 'refused, exit %d' % refused.returncode
+
         data = fixture_copy(tmp, 'migrated')
         out = subprocess.run([current, 'migrate-revisions', '--data', data], capture_output=True, text=True, check=True).stdout
         if out != COUNTS or data in out:
             raise SystemExit('migrate-revisions printed unexpected output')
         result['migrate'] = 'counts only'
+        verified = subprocess.run([current, 'migrate-revisions', '--verify', '--data', data], capture_output=True, text=True, check=True).stdout
+        if not verified.endswith('verify: OK\n'):
+            raise SystemExit('migrate-revisions --verify did not pass')
+        result['verify'] = 'OK'
         env = dict(os.environ, VEDA_STORE_COMPAT_DIR=data)
         subprocess.run(['go', 'test', './internal/store', '-run', '^TestWriteForPreviousBinary$', '-count=1'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
 

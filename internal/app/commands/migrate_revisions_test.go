@@ -40,7 +40,7 @@ func TestMigrateRevisionsPrintsOnlyCounts(t *testing.T) {
 	if err := MigrateRevisions([]string{"--data", dir}, &out); err != nil {
 		t.Fatal(err)
 	}
-	want := "articles: 5\nkept revisions: 13\nremoved revisions: 6\nblob cleanup paused until state.before-revisions.* is removed\n"
+	want := "articles: 10\nkept revisions: 27\nremoved revisions: 9\nblob cleanup paused until state.before-revisions.* is removed\n"
 	if out.String() != want {
 		t.Fatalf("output %q", out.String())
 	}
@@ -50,11 +50,21 @@ func TestMigrateRevisionsPrintsOnlyCounts(t *testing.T) {
 		}
 	}
 	out.Reset()
+	if err := MigrateRevisions([]string{"--verify", "--data", dir}, &out); err != nil || out.String() != "articles: 10\nkept revisions: 27\nremoved revisions: 9\nverify: OK\n" {
+		t.Fatalf("verify %q %v", out.String(), err)
+	}
+	out.Reset()
 	err := MigrateRevisions([]string{"--data", dir}, &out)
 	if err == nil || out.Len() != 0 || strings.Contains(err.Error(), dir) {
 		t.Fatal("second run", err, out.String())
 	}
 	if err = MigrateRevisions([]string{"--data", dir, "extra"}, &out); err == nil {
 		t.Fatal("extra argument accepted")
+	}
+	out.Reset()
+	unconverted := copyStoreFixture(t, "v20-history")
+	err = MigrateRevisions([]string{"--verify", "--data", unconverted}, &out)
+	if err == nil || out.String() != "verify: FAIL\n" || strings.Contains(err.Error(), unconverted) {
+		t.Fatalf("verify without a migration %q %v", out.String(), err)
 	}
 }

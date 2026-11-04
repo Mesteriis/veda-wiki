@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
 
 // holdWriterLock takes writer.lock as a running service does.
@@ -61,10 +63,14 @@ func TestMigrateRevisionsRerunAfterSuccessIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := snapshot(t, dir)
-	if _, err := MigrateRevisions(dir); !errors.Is(err, errMigrationBackup) {
+	if _, err := MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), `run "veda migrate-revisions --verify --data DIR"`) || strings.Contains(err.Error(), "service starts") {
 		t.Fatal("rerun was not refused by the backup", err)
 	}
 	backupsHold(t, dir, before)
+	sameFiles(t, dir, after)
+	if report, err := VerifyRevisions(dir); err != nil || report != v20Report {
+		t.Fatal("verify after success", report, err)
+	}
 	sameFiles(t, dir, after)
 	// Without the backup the converted store is refused as already v21.
 	for _, b := range revisionBackups {
@@ -76,41 +82,96 @@ func TestMigrateRevisionsRerunAfterSuccessIsRefused(t *testing.T) {
 	sameFiles(t, dir, after)
 }
 
-// A failure after the backup leaves it in place; restoring it gives back a
-// store that the previous binary's format check and a new migration accept.
+// A failure after the backup leaves a complete backup and tells the operator
+// to verify; verify passes only for a committed conversion. Restoring the
+// backup and deleting it gives back the original store, which a new
+// migration converts.
 func TestMigrateRevisionsFailureKeepsBackupForRestore(t *testing.T) {
-	for _, step := range []string{"apply", "verify"} {
-		for _, backend := range []string{"sqlite", "json"} {
-			t.Run(step+"/"+backend, func(t *testing.T) {
-				dir := copyFixture(t, v20Fixture)
-				if backend == "json" {
-					toJSON(t, dir)
-				}
-				original, before := legacyState(t, dir), snapshot(t, dir)
-				failAt(t, step)
-				_, err := MigrateRevisions(dir)
-				if err == nil || !strings.Contains(err.Error(), "previous store is intact in state.before-revisions.*") {
-					t.Fatal("failure message", err)
-				}
-				backupsHold(t, dir, before)
-				if step == "apply" {
-					sameFiles(t, dir, before)
-				}
-				if _, err = MigrateRevisions(dir); !errors.Is(err, errMigrationBackup) {
-					t.Fatal("rerun after a failure", err)
-				}
-				restoreBackups(t, dir)
+	for _, tc := range []struct {
+		step, backend string
+		converted     bool
+	}{
+		{"apply", "sqlite", false}, {"apply", "json", false},
+		{"commit", "sqlite", false},
+		{"verify", "sqlite", true}, {"verify", "json", true},
+	} {
+		t.Run(tc.step+"/"+tc.backend, func(t *testing.T) {
+			dir := copyFixture(t, v20Fixture)
+			if tc.backend == "json" {
+				toJSON(t, dir)
+			}
+			original, before := legacyState(t, dir), snapshot(t, dir)
+			failAt(t, tc.step)
+			_, err := MigrateRevisions(dir)
+			if err == nil || !strings.Contains(err.Error(), "failed after the backup was written: injected failure. Do not start the service") || !strings.Contains(err.Error(), "--verify") {
+				t.Fatal("failure message", err)
+			}
+			backupsHold(t, dir, before)
+			if _, _, err = loadBackup(dir); err != nil {
+				t.Fatal("backup incomplete", err)
+			}
+			if !tc.converted {
 				sameFiles(t, dir, before)
-				if _, err = Open(dir); err == nil || !strings.Contains(err.Error(), "veda migrate-revisions") {
-					t.Fatal("restored store", err)
-				}
-				migrateRevisionsFault = func(string) error { return nil }
-				if _, err = MigrateRevisions(dir); err != nil {
-					t.Fatal("migration after restore", err)
-				}
-				checkMigrated(t, dir, original, v20Kept)
-			})
+			}
+			if report, err := VerifyRevisions(dir); (err == nil) != tc.converted || tc.converted && report != v20Report {
+				t.Fatal("verify after a failure", report, err)
+			}
+			if _, err = MigrateRevisions(dir); err == nil || !strings.Contains(err.Error(), "--verify") {
+				t.Fatal("rerun after a failure", err)
+			}
+			restoreBackups(t, dir)
+			sameFiles(t, dir, before)
+			if _, err = Open(dir); err == nil || !strings.Contains(err.Error(), "veda migrate-revisions") {
+				t.Fatal("restored store", err)
+			}
+			migrateRevisionsFault = func(string) error { return nil }
+			if _, err = MigrateRevisions(dir); err != nil {
+				t.Fatal("migration after restore", err)
+			}
+			checkMigrated(t, dir, original, v20Kept)
+		})
+	}
+}
+
+// Partial copies an interrupted backup left are ours: the migration removes
+// them and proceeds.
+func TestMigrateRevisionsRemovesInterruptedBackupCopies(t *testing.T) {
+	dir := copyFixture(t, v20Fixture)
+	for _, name := range revisionBackups {
+		writeFile(t, filepath.Join(dir, name+backupTemp), "partial")
+	}
+	if _, _, err := loadBackup(dir); err == nil {
+		t.Fatal("a partial copy counts as a complete backup")
+	}
+	if report, err := MigrateRevisions(dir); err != nil || report != v20Report {
+		t.Fatal(report, err)
+	}
+	for _, name := range revisionBackups {
+		if present(filepath.Join(dir, name+backupTemp)) {
+			t.Fatal("partial copy left")
 		}
+	}
+}
+
+func TestVerifyRevisionsFailsForAChangedStore(t *testing.T) {
+	dir := copyFixture(t, v20Fixture)
+	if _, err := VerifyRevisions(dir); err == nil || !strings.Contains(err.Error(), "no complete state.before-revisions.* backup") {
+		t.Fatal("verify without a backup", err)
+	}
+	if _, err := MigrateRevisions(dir); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update(t, s, func(db *domain.Database) { appendRevision(db, "notes", "short.md", "# Changed") })
+	if report, err := VerifyRevisions(dir); err == nil || report != v20Report {
+		t.Fatal("verify accepted a store written after the migration", report, err)
+	}
+	holdWriterLock(t, dir)
+	if _, err := VerifyRevisions(dir); !errors.Is(err, errMigrationInUse) {
+		t.Fatal("verify with an active writer", err)
 	}
 }
 
@@ -146,11 +207,19 @@ func TestBlobCollectionPausedWhileRevisionBackupExists(t *testing.T) {
 	if removed, err := s.CollectBlobs(now); !errors.Is(err, errCollectionPaused) || removed != 0 || !present(s.BlobPath(stray.SHA)) {
 		t.Fatal("collection ran with a backup present", removed, err)
 	}
+	for _, b := range revisionBackups {
+		if err = os.Rename(filepath.Join(dir, b), filepath.Join(dir, b+backupTemp)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if removed, err := s.CollectBlobs(now); !errors.Is(err, errCollectionPaused) || removed != 0 {
+		t.Fatal("collection ran with a partial backup copy present", removed, err)
+	}
 	if _, err = Open(dir); err != nil || !present(s.BlobPath(stray.SHA)) {
 		t.Fatal("Open collected with a backup present", err)
 	}
 	for _, b := range revisionBackups {
-		if err = os.Remove(filepath.Join(dir, b)); err != nil {
+		if err = os.Remove(filepath.Join(dir, b+backupTemp)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -178,7 +247,7 @@ func TestMigrateRevisionsVerificationCatchesDamage(t *testing.T) {
 			if err = os.Remove(s.BlobPath(s.db.Sources["notes"].Assets["img/b.png"].SHA)); err != nil {
 				t.Fatal(err)
 			}
-		}, text: "missing or damaged image"},
+		}, text: "reference images that are missing (1) or damaged (0)"},
 		"changed metadata": {damage: func(t *testing.T, dir string) {
 			execSQL(t, dir, `UPDATE records SET data='{"version":21,"updated_at":"2000-01-01T00:00:00Z"}' WHERE category='meta'`)
 		}, text: "differs from the planned state"},
@@ -215,8 +284,13 @@ func TestMigrateRevisionsVerificationCatchesDamage(t *testing.T) {
 			}
 			defer func() { migrateRevisionsFault = previous }()
 			_, err := MigrateRevisions(dir)
-			if err == nil || !strings.Contains(err.Error(), tc.text) || !strings.Contains(err.Error(), "do not start the service") {
+			if err == nil || !strings.Contains(err.Error(), tc.text) || !strings.Contains(err.Error(), "Do not start the service") {
 				t.Fatal("damage not detected", err)
+			}
+			// Verify takes the timestamp from the store, so only the
+			// changed timestamp passes it; every other damage fails it.
+			if _, err = VerifyRevisions(dir); (err == nil) != (name == "changed metadata") {
+				t.Fatal("verify of a damaged store", err)
 			}
 			backupsHold(t, dir, before)
 		})

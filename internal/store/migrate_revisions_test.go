@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -25,14 +26,29 @@ import (
 //   - notes/moved.md: five revisions; a complete move took revision 2 to
 //     archive/moved.md (one revision). Kept: 3, 4, 5.
 //   - notes/short.md: two revisions, the second binds img/c.png. Kept: both.
+//   - notes/pending.md: five revisions; an active move (waiting_destination)
+//     holds revision 1 and the first revision of archive/pending.md.
+//     Kept: 1, 3, 4, 5.
+//   - notes/based.md: five revisions; archive/based.md has a ReconcileBase on
+//     its revision 2. Kept: 2, 3, 4, 5.
+//   - hub/doc.md: five revisions in the connected source hub; its
+//     UpstreamHash is revision 2. Kept: 2, 3, 4, 5.
 const v20Fixture = "v20-history"
 
+// v20Report is the conversion of the v20-history fixture.
+var v20Report = MigrationReport{Articles: 10, KeptRevisions: 27, RemovedRevisions: 9}
+
 var v20Kept = map[string][]int{
-	"notes/guide.md":   {4, 5, 6},
-	"notes/queued.md":  {1, 3, 4, 5},
-	"notes/moved.md":   {3, 4, 5},
-	"archive/moved.md": {1},
-	"notes/short.md":   {1, 2},
+	"notes/guide.md":     {4, 5, 6},
+	"notes/queued.md":    {1, 3, 4, 5},
+	"notes/moved.md":     {3, 4, 5},
+	"archive/moved.md":   {1},
+	"notes/short.md":     {1, 2},
+	"notes/pending.md":   {1, 3, 4, 5},
+	"archive/pending.md": {1},
+	"notes/based.md":     {2, 3, 4, 5},
+	"archive/based.md":   {1},
+	"hub/doc.md":         {2, 3, 4, 5},
 }
 
 // copyFixture copies testdata/name into a private data directory.
@@ -189,7 +205,7 @@ func TestMigrateRevisionsConvertsV20Fixture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if report != (MigrationReport{Articles: 5, KeptRevisions: 13, RemovedRevisions: 6}) {
+			if report != v20Report {
 				t.Fatal("report", report)
 			}
 			backupsHold(t, dir, before)
@@ -210,7 +226,7 @@ func TestMigrateRevisionsConvertsV20Fixture(t *testing.T) {
 				t.Fatal("short images", got)
 			}
 			if backend == "sqlite" {
-				if n := count(t, s, `SELECT count(*) FROM revisions`); n != 13 {
+				if n := count(t, s, `SELECT count(*) FROM revisions`); n != v20Report.KeptRevisions {
 					t.Fatal("revision rows", n)
 				}
 				if n := count(t, s, `SELECT count(*) FROM records WHERE category='article' AND (instr(data, 'Revision 3')>0 OR instr(data, 'Five, no images')>0)`); n != 0 {
@@ -268,16 +284,28 @@ func TestMigrateRevisionsRefusals(t *testing.T) {
 			holdWriterLock(t, dir)
 			return dir
 		}, want: errMigrationInUse},
-		"sqlite backup exists": {prepare: func(t *testing.T) string {
+		"incomplete sqlite backup": {prepare: func(t *testing.T) string {
 			dir := copyFixture(t, v20Fixture)
-			writeFile(t, filepath.Join(dir, "state.before-revisions.sqlite"), "x")
+			writeFile(t, filepath.Join(dir, backupSQLite), "x")
 			return dir
-		}, want: errMigrationBackup},
-		"json backup exists": {prepare: func(t *testing.T) string {
+		}, text: "the original store was not modified: delete the state.before-revisions.* files"},
+		"damaged backup pair": {prepare: func(t *testing.T) string {
 			dir := copyFixture(t, v20Fixture)
-			writeFile(t, filepath.Join(dir, "state.before-revisions.json"), "x")
+			writeFile(t, filepath.Join(dir, backupSQLite), "x")
+			writeFile(t, filepath.Join(dir, backupJSON), `{"version":14,"backend":"sqlite"}`)
 			return dir
-		}, want: errMigrationBackup},
+		}, text: "the original store was not modified"},
+		"complete backup": {prepare: func(t *testing.T) string {
+			dir := copyFixture(t, v20Fixture)
+			for from, to := range map[string]string{SQLiteFile: backupSQLite, "state.json": backupJSON} {
+				data, err := os.ReadFile(filepath.Join(dir, from))
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, filepath.Join(dir, to), string(data))
+			}
+			return dir
+		}, text: `run "veda migrate-revisions --verify --data DIR"`},
 		"already v21": {prepare: func(t *testing.T) string {
 			s := sqliteStore(t)
 			writeNext(t, s, "guide.md")
@@ -300,9 +328,14 @@ func TestMigrateRevisionsRefusals(t *testing.T) {
 			execSQL(t, dir, revisionsTable)
 			return dir
 		}, want: errMigrationLayout},
-		"hot journal left": {prepare: func(t *testing.T) string {
+		"rollback journal left": {prepare: func(t *testing.T) string {
 			dir := copyFixture(t, v20Fixture)
-			writeFile(t, filepath.Join(dir, SQLiteFile+"-wal"), "")
+			hotJournal(t, dir)
+			return dir
+		}, want: errMigrationJournal},
+		"write-ahead log left": {prepare: func(t *testing.T) string {
+			dir := copyFixture(t, v20Fixture)
+			writeFile(t, filepath.Join(dir, SQLiteFile+"-wal"), strings.Repeat("w", 64))
 			return dir
 		}, want: errMigrationJournal},
 		"invalid store": {prepare: func(t *testing.T) string {
@@ -319,8 +352,9 @@ func TestMigrateRevisionsRefusals(t *testing.T) {
 			if err = os.Remove(s.BlobPath(s.db.Sources["notes"].Assets["img/c.png"].SHA)); err != nil {
 				t.Fatal(err)
 			}
+			writeFile(t, s.BlobPath(s.db.Sources["notes"].Assets["img/b.png"].SHA), "not an image")
 			return dir
-		}, text: "references a missing or damaged image, nothing was changed"},
+		}, text: "revisions of 2 articles reference images that are missing (1) or damaged (1), nothing was changed"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := tc.prepare(t)
@@ -352,6 +386,47 @@ func TestMigrateRevisionsRefusals(t *testing.T) {
 func writeFile(t *testing.T, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(name, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// hotJournal leaves the store in dir as a process that crashed inside a
+// write transaction does: the rollback journal SQLite wrote next to it, and
+// the database file as it was at that moment.
+func hotJournal(t *testing.T, dir string) {
+	t.Helper()
+	scratch := filepath.Join(t.TempDir(), "hot")
+	if err := os.Mkdir(scratch, 0700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, SQLiteFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(scratch, SQLiteFile), string(data))
+	db, err := sqliteDB(scratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	for _, statement := range []string{"PRAGMA cache_size=1", "BEGIN IMMEDIATE", "UPDATE records SET data=data WHERE category='article'", "CREATE TABLE crash (x BLOB)", "INSERT INTO crash VALUES (zeroblob(65536))"} {
+		if _, err = conn.ExecContext(context.Background(), statement); err != nil {
+			t.Fatal(statement, err)
+		}
+	}
+	for _, name := range []string{SQLiteFile, SQLiteFile + "-journal"} {
+		data, err := os.ReadFile(filepath.Join(scratch, name))
+		if err != nil || len(data) == 0 {
+			t.Fatal("no hot journal", name, err)
+		}
+		writeFile(t, filepath.Join(dir, name), string(data))
+	}
+	if _, err = conn.ExecContext(context.Background(), "ROLLBACK"); err != nil {
 		t.Fatal(err)
 	}
 }
