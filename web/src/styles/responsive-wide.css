@@ -1,16 +1,9 @@
 @media (min-width: 1900px) {
-  .dashboard {
-    grid-template-columns: minmax(0, 1fr) 420px;
-  }
   .knowledge-tree {
     min-height: 394px;
   }
 }
 @media (max-width: 1450px) {
-  .dashboard {
-    grid-template-columns: minmax(0, 1fr) 330px;
-    gap: 12px;
-  }
   .tabs button {
     padding: 4px 7px;
     font-size: 12px;
@@ -20,11 +13,6 @@
   }
   .knowledge-tree .section-heading h2 {
     font-size: 17px;
-  }
-}
-@media (max-width: 1200px) {
-  .dashboard {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 900px) {
