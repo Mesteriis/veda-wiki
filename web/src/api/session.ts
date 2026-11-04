@@ -1,4 +1,5 @@
 import { getJSON, postJSON } from "./http";
+import { resetKnowledge } from "./knowledge";
 import type { SessionProfile, SessionStatus } from "./types";
 
 /** The three session families; each has its own cookie and status route. */
@@ -13,17 +14,28 @@ export function sessionStatus(prefix: SessionPrefix, signal?: AbortSignal): Prom
   return getJSON<SessionStatus>(`${prefix}/status`, signal ? { signal } : {});
 }
 
-export function login(prefix: SessionPrefix, credentials: Credentials): Promise<SessionStatus> {
-  return postJSON<SessionStatus>(`${prefix}/login`, credentials);
+// Every session change resets the knowledge client: requests of the previous
+// session are aborted and their late answers are dropped.
+export async function login(prefix: SessionPrefix, credentials: Credentials): Promise<SessionStatus> {
+  const status = await postJSON<SessionStatus>(`${prefix}/login`, credentials);
+  resetKnowledge();
+  return status;
 }
 
 // The reader logout is a bare POST; the admin and access ones send an empty object.
-export function logout(prefix: SessionPrefix): Promise<SessionStatus> {
-  return postJSON<SessionStatus>(`${prefix}/logout`, prefix === "/api/session" ? undefined : {});
+export async function logout(prefix: SessionPrefix): Promise<SessionStatus> {
+  resetKnowledge();
+  try {
+    return await postJSON<SessionStatus>(`${prefix}/logout`, prefix === "/api/session" ? undefined : {});
+  } finally {
+    resetKnowledge();
+  }
 }
 
-export function changePassword(current: string, next: string): Promise<unknown> {
-  return postJSON<unknown>("/api/session/password", { current_password: current, new_password: next });
+export async function changePassword(current: string, next: string): Promise<unknown> {
+  const answer = await postJSON<unknown>("/api/session/password", { current_password: current, new_password: next });
+  resetKnowledge();
+  return answer;
 }
 
 export function profile(signal?: AbortSignal): Promise<SessionProfile> {

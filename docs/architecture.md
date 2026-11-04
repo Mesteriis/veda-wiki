@@ -182,7 +182,13 @@ logic that the Go service does not own.
 - `hooks/` holds shared React hooks.
 - `components/` is the application shell (layout, sidebar, header) and its CSS.
 - `features/<area>/` holds one screen area (reading, catalog, home, session,
-  graph, recent, github, access) with its stylesheet beside the components.
+  graph, knowledge, recent, github, access) with its stylesheet beside the
+  components. `knowledge` provides the read-only knowledge graph mode of the
+  graph screen (`?graph=1&mode=knowledge`) and the article's entities and
+  related articles; the graph and reading areas embed it.
+- `api/knowledge.ts` scopes knowledge reads to the browser session: sign-in,
+  sign-out and password change (`api/session.ts`) abort them, and an answer
+  of an earlier session is dropped.
 - `styles/` holds design tokens, fonts and base rules.
 
 Dependencies point one way: features may import components, hooks and lib, but

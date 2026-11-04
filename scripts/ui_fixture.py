@@ -1,5 +1,5 @@
 """Disposable synthetic VEDA store, servers and headless Chrome shared by the UI smoke and screenshot tools."""
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import json
 import os
 from pathlib import Path
@@ -12,6 +12,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
+EXTRACTOR_KEY = 'f' * 64  # synthetic fixture key of the fake knowledge extractor
 
 
 def port():
@@ -108,12 +109,15 @@ def stop_browser(browser, browser_log):
 
 
 @contextmanager
-def running_fixture(chrome_args=()):
-    """Start the fixture servers and Chrome; the caller drives Chrome and the browser exits when it closes."""
+def running_fixture(chrome_args=(), knowledge=False):
+    """Start the fixture servers and Chrome; the caller drives Chrome and the browser exits when it closes.
+
+    knowledge=True also starts the deterministic fake extractor (scripts/ui_knowledge.py) and runs VEDA
+    with --knowledge and the in-memory index, then seeds and indexes the synthetic knowledge articles."""
     chrome = os.environ.get('VEDA_TEST_CHROME', '')
     if not chrome or not Path(chrome).is_absolute():
         raise SystemExit('Set VEDA_TEST_CHROME to an absolute Chrome or Chromium executable path')
-    with tempfile.TemporaryDirectory(prefix='veda-ui-fixture-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='veda-ui-fixture-') as tmp, ExitStack() as stack:
         root = Path(tmp)
         data = root / 'data'
         data.mkdir(mode=0o700)
@@ -127,9 +131,18 @@ def running_fixture(chrome_args=()):
         private, public = port(), port()
         while private == public:
             public = port()
+        knowledge_flags = []
+        if knowledge:
+            from ui_knowledge import fake_extractor
+            extractor_key = root / 'extractor.key'
+            extractor_key.write_text(EXTRACTOR_KEY)
+            extractor_key.chmod(0o600)
+            knowledge_flags = ['--knowledge', '--knowledge-index=memory', '--knowledge-extractor-url',
+                               stack.enter_context(fake_extractor(EXTRACTOR_KEY)),
+                               '--knowledge-extractor-key-file', str(extractor_key)]
         server = subprocess.Popen(
             [os.environ.get('VEDA_TEST_BINARY', str(ROOT / 'veda')), '--data', str(data), '--listen', f'127.0.0.1:{private}',
-             '--public-listen', f'127.0.0.1:{public}'],
+             '--public-listen', f'127.0.0.1:{public}', *knowledge_flags],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         try:
@@ -154,7 +167,16 @@ def running_fixture(chrome_args=()):
                 with opener.open(request, timeout=5) as response:
                     return json.load(response)
 
+            def get(route):
+                request = urllib.request.Request(f'http://127.0.0.1:{private}' + route,
+                                                 headers={'Authorization': 'Bearer ' + 'd' * 64})
+                with opener.open(request, timeout=5) as response:
+                    return json.load(response)
+
             seed(post)
+            if knowledge:
+                from ui_knowledge import seed_knowledge
+                seed_knowledge(post, get)
             key = post('/api/v1/access-keys', {'id': 'browser-fixture',
                        'sources': ['fixture', 'private-fixture', 'conflict-fixture'],
                        'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})['key']
