@@ -14,28 +14,32 @@ import (
 const unlimited = math.MaxInt32
 
 // fetchMentions returns mentions of the given allowed documents ($docs are
-// snapshot IDs the view already admitted), optionally only of $entities,
-// at most $per per document and entity, at most $limit, in evidence order.
+// snapshot IDs the view already admitted, sorted in Go key order),
+// optionally only of $entities, at most $per per document and entity, at
+// most $limit, in Go's evidence order: list position, then evidence rank.
 const fetchMentions = `
-UNWIND $docs AS sid
+UNWIND range(0, size($docs) - 1) AS di
+WITH di, $docs[di] AS sid
 MATCH (s:Snapshot {id: sid})
 WHERE s.complete = true
 MATCH (s)-[:HAS]->(ev:Evidence)<-[:AT]-(m:Mention)-[:OF]->(e:Entity)
 WHERE $entities IS NULL OR e.id IN $entities
-WITH s, e, ev, m
-ORDER BY s.source_id, s.path, s.sha, ev.block_id, ev.start, ev.end, m.seq
-WITH s, e, collect([ev, m])[..$per] AS pairs
+WITH di, s, e, ev, m
+ORDER BY di, ev.rank
+WITH di, s, e, collect([ev, m])[..$per] AS pairs
 UNWIND pairs AS p
-WITH s, e, p[0] AS ev, p[1] AS m
+WITH di, s, e, p[0] AS ev, p[1] AS m
 RETURN s.source_id, s.path, s.sha, s.fp, ev.block_id, ev.quote, ev.start, ev.end, ev.src_start, ev.src_end, ev.exact,
        e.id, m.type, m.text, m.score, m.res_method, m.res_basis, m.seq
-ORDER BY s.source_id, s.path, s.sha, ev.block_id, ev.start, ev.end, m.seq
+ORDER BY di, ev.rank
 LIMIT $limit`
 
 // fetchClaims returns claims of the given allowed documents, optionally
-// only those with an end in $entities, at most $limit, in evidence order.
+// only those with an end in $entities, at most $limit, in Go's evidence
+// order (list position, then evidence rank).
 const fetchClaims = `
-UNWIND $docs AS sid
+UNWIND range(0, size($docs) - 1) AS di
+WITH di, $docs[di] AS sid
 MATCH (s:Snapshot {id: sid})
 WHERE s.complete = true
 MATCH (s)-[:HAS]->(ev:Evidence)<-[:AT]-(c:Claim)
@@ -44,7 +48,7 @@ MATCH (c)-[:TAIL]->(t:Entity)
 WHERE $entities IS NULL OR h.id IN $entities OR t.id IN $entities
 RETURN s.source_id, s.path, s.sha, s.fp, ev.block_id, ev.quote, ev.start, ev.end, ev.src_start, ev.src_end, ev.exact,
        c.claim_id, c.type, h.id, t.id, c.score, c.head_score, c.tail_score, c.status, c.markers, c.seq
-ORDER BY s.source_id, s.path, s.sha, ev.block_id, ev.start, ev.end, c.claim_id
+ORDER BY di, ev.rank
 LIMIT $limit`
 
 type mentionRow struct {

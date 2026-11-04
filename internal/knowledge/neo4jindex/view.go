@@ -17,15 +17,18 @@ WHERE s.complete = true
 RETURN s.id, s.source_id, s.path, s.sha`
 
 // entityStats aggregates, per entity, only the mentions of allowed complete
-// snapshots: the surface form and snapshot of every mention in evidence
-// order, and the resolution of the first one.
+// snapshots: the surface form and snapshot of every mention in Go's
+// evidence order, and the resolution of the first one. $allowed is sorted
+// in Go key order and the order is its list position plus the
+// publish-time evidence rank: no string is ordered in Cypher.
 const entityStats = `
-UNWIND $allowed AS sid
+UNWIND range(0, size($allowed) - 1) AS di
+WITH di, $allowed[di] AS sid
 MATCH (s:Snapshot {id: sid})
 WHERE s.complete = true
 MATCH (s)-[:HAS]->(ev:Evidence)<-[:AT]-(m:Mention)-[:OF]->(e:Entity)
-WITH e, s, ev, m
-ORDER BY s.source_id, s.path, s.sha, ev.block_id, ev.start, ev.end, m.seq
+WITH e, s, ev, m, di
+ORDER BY di, ev.rank
 WITH e, collect([m.surface, s.id]) AS ms, head(collect([m.res_method, m.res_basis])) AS res
 RETURN e.id, e.type, e.key, ms, res`
 
@@ -115,10 +118,13 @@ func (ix *Index) withView(ctx context.Context, allowed knowledge.AllowedSet, fp 
 	})
 }
 
-// docIDs are the snapshot IDs of keys, in key order.
+// docIDs are the snapshot IDs of keys, sorted in Go key order: queries
+// order by position in this list.
 func (v *view) docIDs(keys []knowledge.SnapshotKey) []string {
-	out := make([]string, 0, len(keys))
-	for _, k := range keys {
+	sorted := append([]knowledge.SnapshotKey(nil), keys...)
+	sort.Slice(sorted, func(i, j int) bool { return keyLess(sorted[i], sorted[j]) })
+	out := make([]string, 0, len(sorted))
+	for _, k := range sorted {
 		out = append(out, v.ids[k])
 	}
 	return out

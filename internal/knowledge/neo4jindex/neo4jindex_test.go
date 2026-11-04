@@ -110,6 +110,28 @@ func TestRepublishCreatesNoDuplicatesAndRetireRemovesOrphans(t *testing.T) {
 	}
 }
 
+// An entity listed in a graph that no mention or claim refers to is not
+// stored, so it can never become a permanent orphan.
+func TestUnreferencedEntitiesAreNotStored(t *testing.T) {
+	ix := testIndex(t)
+	ctx := context.Background()
+	g := indextest.Graph(indextest.PubA, indextest.FP)
+	g.Entities = append(g.Entities, knowledge.GraphEntity{ID: knowledge.EntityID("service:unused"), Type: "service", Key: "service:unused"})
+	snap := knowledge.Snapshot{Key: indextest.Key(indextest.PubA), Fingerprint: indextest.FP}
+	if err := ix.Publish(ctx, snap, g); err != nil {
+		t.Fatal(err)
+	}
+	if c := counts(t, ix); c["Entity"] != 2 {
+		t.Fatalf("entities %v", c)
+	}
+	if err := ix.Retire(ctx, []knowledge.Snapshot{snap}); err != nil {
+		t.Fatal(err)
+	}
+	if c := counts(t, ix); len(c) != 0 {
+		t.Fatalf("left after retire: %v", c)
+	}
+}
+
 // A snapshot left incomplete (never possible after a committed publish, but
 // a reader must not depend on that) is invisible to every read.
 func TestIncompleteSnapshotIsNeverRead(t *testing.T) {

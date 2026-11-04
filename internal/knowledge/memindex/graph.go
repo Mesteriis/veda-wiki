@@ -52,7 +52,9 @@ func (ix *Index) Graph(ctx context.Context, allowed knowledge.AllowedSet, fp kno
 				if other == id {
 					other = edges[i].From
 				}
-				if included[other] {
+				// A claim end without allowed mentions is not a node of
+				// this view: it is neither included nor traversed.
+				if _, ok := nodes[other]; !ok || included[other] {
 					continue
 				}
 				if len(included) == maxNodes {

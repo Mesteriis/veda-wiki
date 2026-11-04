@@ -96,6 +96,16 @@ def extractor_ready(timeout=2.0):
         return None, type(err).__name__
 
 
+def wait_bolt(seconds):
+    """Wait until the loopback forwarder accepts Bolt connections."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if bolt_open():
+            return True
+        time.sleep(1)
+    return False
+
+
 def wait_healthy(service, seconds):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -125,16 +135,16 @@ def print_flags(extractor):
 def cmd_up(args):
     ensure_secrets()
     started = time.monotonic()
-    services = ['neo4j']
+    services = ['neo4j', 'neo4j-port']
     if args.extractor or args.fetch_model:
         compose('--profile', 'extractor', 'build', 'extractor')
     if args.fetch_model:
         compose('--profile', 'fetch-model', 'run', '--rm', 'fetch-model')
     if args.extractor:
-        services.append('extractor')
+        services += ['extractor', 'extractor-port']
     profile = ['--profile', 'extractor'] if args.extractor else []
     compose(*profile, 'up', '-d', *services)
-    if not wait_healthy('neo4j', args.timeout):
+    if not wait_healthy('neo4j', args.timeout) or not wait_bolt(args.timeout):
         print('neo4j did not become healthy; see: docker compose -f deploy/knowledge/compose.yaml logs neo4j',
               file=sys.stderr)
         return 1

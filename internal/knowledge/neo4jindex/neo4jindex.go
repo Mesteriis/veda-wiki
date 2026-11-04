@@ -18,6 +18,12 @@
 // evidence of another snapshot is matched, aggregated or traversed. Relation
 // and entity types are validated against the schema before publication and
 // are stored as property values; Cypher text is never built from data.
+//
+// One writer process per Neo4j database: the index assumes that only one
+// VEDA process (the single writer of its data directory) publishes and
+// retires snapshots in a database. Two VEDA instances sharing one database
+// would retire each other's snapshots during reconciliation; give each
+// instance its own database (or Neo4j server).
 package neo4jindex
 
 import (
@@ -71,8 +77,27 @@ type Index struct {
 	publish  time.Duration
 	schema   knowledge.Schema
 
-	mu          sync.Mutex
-	schemaReady bool
+	// Schema creation runs at most once at a time, in its own goroutine
+	// bounded by the query timeout; callers wait for it only until their own
+	// context ends, and after a failure fail fast until schemaRetry passed.
+	mu           sync.Mutex
+	schemaReady  bool
+	schemaRun    *schemaAttempt
+	schemaFailed time.Time
+	closed       chan struct{}
+}
+
+// schemaRetry is how long after a failed schema attempt callers fail fast
+// with ErrUnavailable instead of reaching the server again; schemaWait is
+// the longest a caller that did not start the pending attempt waits for it.
+const (
+	schemaRetry = 2 * time.Second
+	schemaWait  = time.Second
+)
+
+type schemaAttempt struct {
+	done chan struct{}
+	err  error
 }
 
 var _ knowledge.Index = (*Index)(nil)
@@ -100,7 +125,7 @@ func New(cfg Config) (*Index, error) {
 	if schema.Version == "" {
 		schema = knowledge.SchemaV1()
 	}
-	return &Index{driver: driver, database: cfg.Database, schema: schema,
+	return &Index{driver: driver, database: cfg.Database, schema: schema, closed: make(chan struct{}),
 		query: orDefault(cfg.QueryTimeout, DefaultQueryTimeout), publish: orDefault(cfg.PublishTimeout, DefaultPublishTimeout)}, nil
 }
 
@@ -111,8 +136,25 @@ func orDefault(d, def time.Duration) time.Duration {
 	return d
 }
 
-// Close closes the driver.
-func (ix *Index) Close(ctx context.Context) error { return ix.driver.Close(ctx) }
+// Close cancels a pending schema attempt, waits for it (until ctx ends) so
+// that no background call races the driver shutdown, and closes the driver.
+func (ix *Index) Close(ctx context.Context) error {
+	ix.mu.Lock()
+	select {
+	case <-ix.closed:
+	default:
+		close(ix.closed)
+	}
+	attempt := ix.schemaRun
+	ix.mu.Unlock()
+	if attempt != nil {
+		select {
+		case <-attempt.done:
+		case <-ctx.Done():
+		}
+	}
+	return ix.driver.Close(ctx)
+}
 
 // Status implements knowledge.Index: it creates the constraints once and
 // runs a trivial query.
@@ -137,14 +179,67 @@ var schemaStatements = []string{
 	"CREATE INDEX veda_snapshot_complete IF NOT EXISTS FOR (n:Snapshot) ON (n.complete)",
 }
 
+// ensureSchema creates the constraints once. It never holds the lock
+// during network I/O: one attempt runs in the background and every caller
+// waits for it at most until its own context ends. While the server is
+// unreachable, callers fail fast with ErrUnavailable for schemaRetry after
+// each failed attempt, and a caller that finds an attempt pending waits for
+// it at most schemaWait, so reads do not pile up during an outage.
 func (ix *Index) ensureSchema(ctx context.Context) error {
 	ix.mu.Lock()
-	defer ix.mu.Unlock()
 	if ix.schemaReady {
+		ix.mu.Unlock()
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, ix.query)
+	attempt, wait := ix.schemaRun, schemaWait
+	if attempt == nil {
+		wait = 0
+		if !ix.schemaFailed.IsZero() && time.Since(ix.schemaFailed) < schemaRetry {
+			ix.mu.Unlock()
+			return fmt.Errorf("%w: schema not ready", ErrUnavailable)
+		}
+		attempt = &schemaAttempt{done: make(chan struct{})}
+		ix.schemaRun = attempt
+		go ix.createSchema(attempt)
+	}
+	ix.mu.Unlock()
+	if wait > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, wait)
+		defer cancel()
+	}
+	select {
+	case <-attempt.done:
+		return attempt.err
+	case <-ctx.Done():
+		return fmt.Errorf("%w: schema not ready: %w", ErrUnavailable, ctx.Err())
+	}
+}
+
+func (ix *Index) createSchema(attempt *schemaAttempt) {
+	ctx, cancel := context.WithTimeout(context.Background(), ix.query)
 	defer cancel()
+	go func() {
+		select {
+		case <-ix.closed:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	err := ix.runSchema(ctx)
+	ix.mu.Lock()
+	attempt.err = err
+	ix.schemaRun = nil
+	if err == nil {
+		ix.schemaReady = true
+	} else {
+		ix.schemaFailed = time.Now()
+	}
+	ix.mu.Unlock()
+	close(attempt.done)
+}
+
+func (ix *Index) runSchema(ctx context.Context) error {
 	session := ix.session(ctx, neo4j.AccessModeWrite)
 	defer session.Close(ctx)
 	for _, stmt := range schemaStatements {
@@ -156,7 +251,6 @@ func (ix *Index) ensureSchema(ctx context.Context) error {
 			return unavailable(err)
 		}
 	}
-	ix.schemaReady = true
 	return nil
 }
 
