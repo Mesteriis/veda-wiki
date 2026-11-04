@@ -13,6 +13,7 @@ import "./styles/responsive-wide.css";
 import "./styles/responsive-narrow.css";
 import "./styles/alignment.css";
 import "./styles/sections.css";
+import "./features/access/access.css";
 import { loginFromLink } from "./api/session";
 
 loginFromLink(window.location, window.history, window.fetch.bind(window)).then((linkLoginError) => {

@@ -1,0 +1,146 @@
+.access-issued { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #00bcd4; border-radius: 6px; }
+
+/* Settings and source-scoped access administration. */
+
+main:has(.settings-page) .masthead { height: 180px; padding: 84px 0 0; display: block; }
+
+main:has(.settings-page) .masthead::before { inset: 0 -17px 5px -21px; background-position: right -160px; background-size: 1100px auto; mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
+
+main:has(.settings-page) .masthead-title { min-width: 0; }
+
+main:has(.settings-page) .header-actions { position: absolute; top: 10px; right: 8px; margin: 0; }
+
+main:has(.settings-page) .global-search { display: none; }
+
+.settings-page { display: flex; flex-direction: column; gap: 16px; }
+
+.settings-page .settings-tabs { display: flex; gap: 10px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid #00b6c9; }
+
+.settings-page .settings-tabs button { background: transparent; border: 1px solid #547282; color: #dceff5; padding: 10px 18px; }
+
+.settings-page .settings-tabs button[aria-pressed=true] { background: #00cbdc; border-color: #00cbdc; color: #001017; font-weight: 700; }
+
+.settings-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+
+.settings-heading h2 { margin: 0; font-size: 25px; color: #f2f9fc; }
+
+.settings-heading p { margin: 4px 0 0; color: #a9c8d7; }
+
+.settings-page .settings-add { background: #00cbdc; border-color: #00cbdc; color: #001017; font-weight: 700; white-space: nowrap; }
+
+.settings-list { border-top: 1px solid #174152; }
+
+.settings-row { display: grid; grid-template-columns: minmax(140px, 1.1fr) minmax(120px, 1fr) 100px minmax(260px, 1.5fr); gap: 14px; align-items: center; min-height: 68px; padding: 10px 8px; border-bottom: 1px solid #174152; }
+
+.settings-row strong, .settings-row small { display: block; overflow-wrap: anywhere; }
+
+.settings-row small, .settings-row > span { color: #a9c8d7; overflow-wrap: anywhere; }
+
+.settings-row-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+.settings-page .settings-row-actions button { background: transparent; padding: 6px 8px; }
+
+.settings-login { padding: 20px; max-width: 560px; }
+
+.settings-login form, .settings-modal form { display: flex; flex-direction: column; gap: 12px; }
+
+.settings-login details { margin-top: 18px; }
+
+.settings-modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+
+.settings-modal .dialog-head { margin-bottom: 20px; }
+
+.settings-page .settings-modal .dialog-head button { padding: 3px; background: transparent; }
+
+.settings-modal input:not([type=checkbox]), .settings-modal textarea { width: 100%; min-width: 0; }
+
+.settings-modal fieldset { border: 1px solid #19516a; border-radius: 6px; display: flex; flex-direction: column; gap: 10px; }
+
+.settings-modal label.access-source { flex-direction: row; align-items: center; }
+
+@media (max-width: 900px) { .settings-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .settings-row-actions { justify-content: flex-start; } }
+
+@media (max-width: 600px) {
+  main:has(.settings-page) .masthead { height: 155px; padding-top: 52px; }
+  main:has(.settings-page) .masthead::before { inset: 0 -12px 0; }
+  main:has(.settings-page) .masthead p { white-space: normal; max-width: 260px; }
+  .settings-heading { flex-wrap: wrap; }
+  .settings-row { grid-template-columns: 1fr; gap: 7px; }
+}
+
+@media (min-width: 1201px) {
+  .settings-users .settings-row, .settings-table-head { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(115px, 1fr) minmax(110px, 1fr) 100px minmax(420px, 1.5fr); gap: 14px; align-items: center; }
+  .settings-table-head { padding: 12px 8px; color: #82aabc; border-bottom: 1px solid #174152; font-size: .85rem; }
+}
+
+@media (max-width: 1200px) { .settings-table-head { display: none; } }
+
+@media (min-width: 901px) and (max-width: 1200px) { .settings-users .settings-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .settings-users .settings-row-actions { justify-content: flex-start; } }
+
+.settings-role, .settings-status { display: inline-block; border-radius: 7px; padding: 4px 9px; font-size: .85em; white-space: nowrap; }
+
+.settings-role { background: #103343; border: 1px solid #205163; color: #d2eaf1; }
+
+.settings-status.is-active { background: #073b2b; color: #a7f3cb; }
+
+.settings-status.is-disabled { background: #1a3442; color: #c1d5de; }
+
+/* Settings follow the selected, less condensed table design. */
+
+main:has(.settings-page) .masthead-title, .settings-page { font-family: Arial, sans-serif; }
+
+.settings-page .settings-tabs button, .settings-page .settings-add { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+
+.settings-page .settings-tabs .icon, .settings-page .settings-add .icon { width: 21px; height: 21px; }
+
+.settings-page .settings-tabs button[aria-pressed=true] .icon, .settings-page .settings-add .icon { filter: none; }
+
+.settings-user { display: flex; align-items: center; gap: 14px; min-width: 0; }
+
+.settings-user .icon { width: 23px; height: 23px; }
+
+.settings-status { display: inline-flex; align-items: center; gap: 6px; }
+
+.settings-status .icon { width: 16px; height: 16px; }
+
+.settings-status.is-active .icon { filter: invert(90%) sepia(28%) saturate(732%) hue-rotate(87deg) brightness(105%); }
+
+.settings-page .settings-row-actions button { border-color: transparent; color: #dceff5; }
+
+.settings-page .settings-row-actions button:hover { color: var(--cyan); }
+
+@media (min-width: 901px) { .settings-table-head { background: #0b2632; border: 1px solid #174152; border-radius: 7px 7px 0 0; color: #d7edf5; } }
+
+@media (min-width: 901px) {
+  main:has(.settings-page) .masthead { height: 196px; padding-top: 90px; }
+  .settings-page { font-size: 16px; }
+  .settings-page .settings-tabs button { padding: 11px 20px; }
+  .settings-users .settings-row { min-height: 72px; }
+}
+
+.settings-page .settings-row-actions button { display: inline-flex; align-items: center; gap: 6px; }
+
+.settings-page .settings-row-actions .icon { width: 17px; height: 17px; }
+
+main:has(.settings-page) { background-color: #001019; }
+
+@media (min-width: 901px) {
+  .settings-page { gap: 20px; }
+  .settings-heading { margin-bottom: 26px; }
+}
+
+@media (min-width: 901px) and (max-width: 1450px) {
+  main:has(.settings-page) .masthead::before { left: -16px; right: -14px; }
+}
+
+@media (min-width: 601px) and (max-width: 900px) {
+  main:has(.settings-page) .masthead::before { left: -12px; right: -12px; }
+}
+
+@media (min-width: 901px) {
+  main:has(.settings-page) .masthead::before {
+    background-position: right 160px top -160px;
+    mask-image: linear-gradient(to bottom, #000 55%, transparent 100%), linear-gradient(to right, #000 70%, transparent 87%);
+    mask-composite: intersect;
+  }
+}
