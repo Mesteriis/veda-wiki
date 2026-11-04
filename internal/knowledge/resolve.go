@@ -3,6 +3,8 @@ package knowledge
 import (
 	"strings"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Name is one extracted name of an entity type in a source.
@@ -17,8 +19,9 @@ type Name struct {
 type Aliases map[string]map[string]string
 
 // Normalize returns the key of name under the rules of its entity type
-// (NormalizeVersion "normalize-v1"). White space is trimmed and collapsed
-// first. A name whose letters mix scripts (for example Latin and Cyrillic) is
+// (NormalizeVersion "normalize-v2"). Keys are in Unicode NFC, so composed
+// and decomposed spellings share a key; NFC never maps one script to
+// another. White space is trimmed and collapsed first. A name whose letters mix scripts (for example Latin and Cyrillic) is
 // never folded: its key is the collapsed name as written and it is not
 // technical, so look-alikes stay distinct. Otherwise:
 //   - host, repository, service: lower case without any white space; a host
@@ -28,7 +31,7 @@ type Aliases map[string]map[string]string
 //   - every other type: lower case with single spaces, never technical; it
 //     merges only inside one source.
 func Normalize(entityType, name string) (key string, technical bool) {
-	collapsed := strings.Join(strings.Fields(name), " ")
+	collapsed := norm.NFC.String(strings.Join(strings.Fields(name), " "))
 	if collapsed == "" || mixedScript(collapsed) {
 		return collapsed, false
 	}

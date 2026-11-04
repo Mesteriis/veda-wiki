@@ -203,7 +203,7 @@ func TestActiveSnapshotsCoverEveryOwnerSnapshot(t *testing.T) {
 	active := knowledge.ActiveSnapshots(db)
 	got := []string{}
 	for _, s := range active {
-		got = append(got, s.Key.SourceID+"/"+s.Key.Path+"@"+strings.TrimPrefix(s.Key.SHA, "sha-")+map[bool]string{true: "+current"}[s.Current]+map[bool]string{true: "+published"}[s.Published])
+		got = append(got, s.Key.SourceID+"/"+s.Key.Path+"@"+strings.TrimPrefix(s.Key.SHA, "sha-")+map[bool]string{true: "+current"}[s.Current]+map[bool]string{true: "+published"}[s.PublicationCopy])
 		if s.Text != strings.TrimPrefix(s.Key.SHA, "sha-") {
 			t.Fatalf("%v carries text %q", s.Key, s.Text)
 		}

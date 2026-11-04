@@ -25,6 +25,9 @@ func TestNormalizeByType(t *testing.T) {
 		{"person", "Ivan Иванов", "Ivan Иванов", false},
 		{"host", "", "", false},
 		{"host", "db 1 (old)", "db1(old)", false},
+		// Keys are NFC: decomposed and precomposed forms are one key.
+		{"service", "Cafe\u0301-api", "caf\u00e9-api", true},
+		{"person", "Андрии\u0306", "андри\u0439", false},
 	}
 	for _, c := range cases {
 		key, technical := Normalize(c.typ, c.name)
@@ -39,6 +42,15 @@ func TestNormalizeKeepsLookAlikeScriptsApart(t *testing.T) {
 	mixed, _ := Normalize("service", "Cepвиc")
 	latin, _ := Normalize("host", "cep")
 	cyr, _ := Normalize("host", "сер")
+	decomposed, technical := Normalize("service", "Cafe\u0301")
+	precomposed, _ := Normalize("service", "Caf\u00e9")
+	if decomposed != precomposed || !technical {
+		t.Fatalf("NFC: %q %q technical=%v", decomposed, precomposed, technical)
+	}
+	cyrE, _ := Normalize("service", "Caf\u0435\u0301") // Cyrillic е with accent
+	if cyrE == precomposed {
+		t.Fatal("Cyrillic look-alike merged after NFC")
+	}
 	if cyrillic == mixed || latin == cyr {
 		t.Fatalf("look-alikes merged: %q %q %q %q", cyrillic, mixed, latin, cyr)
 	}
@@ -104,6 +116,10 @@ func TestMarkers(t *testing.T) {
 		"It used to run on db-0 and will move later.": {"plan:will", "past:used to"},
 		"Некоторые нетерпеливые сервисы работают.":    nil,
 		"Billing runs on db-1.":                       nil,
+		"See example.com for the docs.":               nil,
+		"Nowhere else; nothing here.":                 nil,
+		"Open todo_list.md and notes.":                nil,
+		"Он wasn't there.":                            {"negation:wasn't"},
 	}
 	for sentence, want := range cases {
 		got := Markers(sentence)

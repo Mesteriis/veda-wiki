@@ -64,9 +64,11 @@ restricted by that snapshot, not by knowledge.
 
 `knowledge.Prepare` extracts headings, paragraphs, list items and table cells
 from the Markdown parsed by `domain.Markdown`. Frontmatter, code blocks,
-inline code, HTML, images, autolinks and link destinations are not
-extracted; removed inline content leaves a gap in the source map, so quotes
-around it map exactly. Offsets are half-open Unicode code point ranges.
+inline code, HTML, images and link destinations are not extracted; link
+text and autolink labels (URLs, hosts, e-mail addresses as written) are.
+Removed inline content leaves a gap in the source map, so quotes around it
+map exactly. Offsets are half-open Unicode code point ranges. Markdown over
+the schema's `request_bytes_max` is rejected.
 
 ## Collection ownership
 

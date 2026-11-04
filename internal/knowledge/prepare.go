@@ -20,28 +20,41 @@ import (
 // offsets would be undefined.
 var ErrInvalidText = errors.New("knowledge: text is not valid UTF-8")
 
+// ErrTooLarge rejects Markdown over the schema's RequestBytesMax; callers
+// record the snapshot as too large instead of extracting a truncated text.
+var ErrTooLarge = errors.New("knowledge: text is too large")
+
 // Prepare turns Markdown into the blocks the extractor sees, parsed with
 // domain.Markdown, in document order.
 //
-// Policy (PreprocessVersion "prepare-v1"):
+// Policy (PreprocessVersion "prepare-v2"):
 //   - Blocks are headings, paragraphs, list items (each item's own text;
 //     nested items are separate blocks) and table cells (one block per
 //     non-empty cell). Paragraphs in block quotes are paragraphs.
-//   - Not extracted: YAML (---) and TOML (+++) frontmatter at the start,
-//     fenced and indented code blocks, HTML blocks, inline code spans, inline
-//     raw HTML tags, images (alt text included), autolinks, link
-//     destinations and task checkboxes. Link text is extracted.
+//   - Not extracted: YAML (---) and TOML (+++) frontmatter at the start
+//     (after an optional byte order mark), fenced and indented code blocks,
+//     HTML blocks, inline code spans, inline raw HTML tags, images (alt text
+//     included), link destinations and task checkboxes. Link text is
+//     extracted, and so are autolink labels as written: <https://x.io>,
+//     linkified www.example.com, https://x.io/a and ops@example.com.
 //   - Kept text is verbatim source, including backslash escapes and entity
 //     references. Removed inline content leaves nothing in Text and a gap
 //     between spans in the source, so quotes around it stay exact. Emphasis
 //     markers are removed the same way.
 //   - A soft or hard line break inside a block becomes one "\n" in Text that
-//     no span covers. Leading and trailing white space is trimmed.
-//   - Block IDs are "b<ordinal>-<8 hex of SHA-256 of kind and text>": equal
-//     Markdown gives equal IDs.
+//     no span covers. Leading and trailing white space and byte order marks
+//     are trimmed.
+//   - Block IDs are "b<ordinal>-<8 hex of SHA-256 of kind and text>". They
+//     are stable for identical Markdown only: an edit that adds or removes
+//     a block renumbers every block after it.
+//   - Markdown over SchemaV1().Limits.RequestBytesMax bytes is rejected with
+//     ErrTooLarge.
 func Prepare(markdown string) ([]Block, error) {
 	if !utf8.ValidString(markdown) {
 		return nil, ErrInvalidText
+	}
+	if len(markdown) > schemaV1.Limits.RequestBytesMax {
+		return nil, ErrTooLarge
 	}
 	src := []byte(markdown)
 	// Blank the frontmatter, keeping byte offsets, so it parses as blank lines.
@@ -89,15 +102,20 @@ func Prepare(markdown string) ([]Block, error) {
 // delimiter line when src starts with an opening one, or 0.
 func frontmatterEnd(src []byte) int {
 	var delim string
+	start := 0
+	if bytes.HasPrefix(src, []byte("\uFEFF")) {
+		start = len("\uFEFF")
+	}
+	head := src[start:]
 	switch {
-	case bytes.HasPrefix(src, []byte("---\n")) || bytes.HasPrefix(src, []byte("---\r\n")):
+	case bytes.HasPrefix(head, []byte("---\n")) || bytes.HasPrefix(head, []byte("---\r\n")):
 		delim = "---"
-	case bytes.HasPrefix(src, []byte("+++\n")) || bytes.HasPrefix(src, []byte("+++\r\n")):
+	case bytes.HasPrefix(head, []byte("+++\n")) || bytes.HasPrefix(head, []byte("+++\r\n")):
 		delim = "+++"
 	default:
 		return 0
 	}
-	pos := bytes.IndexByte(src, '\n') + 1
+	pos := start + bytes.IndexByte(head, '\n') + 1
 	for pos < len(src) {
 		end := bytes.IndexByte(src[pos:], '\n')
 		next := len(src)
@@ -168,11 +186,26 @@ func (p *preparer) inline(n ast.Node) {
 			}
 		case *ast.String:
 			// Not produced by the parser options in use; nothing to map.
-		case *ast.CodeSpan, *ast.RawHTML, *ast.Image, *ast.AutoLink, *east.TaskCheckBox:
+		case *ast.AutoLink:
+			p.autolink(c)
+		case *ast.CodeSpan, *ast.RawHTML, *ast.Image, *east.TaskCheckBox:
 		default:
 			p.inline(c)
 		}
 	}
+}
+
+// autolink appends the label of an autolink as written. goldmark does not
+// export the label's segment, but Label returns a slice of the parsed source;
+// its offset is recovered from the shared backing array and checked against
+// the source bytes. A label that is not such a slice is left out.
+func (p *preparer) autolink(n *ast.AutoLink) {
+	label := n.Label(p.src)
+	start := cap(p.src) - cap(label)
+	if len(label) == 0 || start < 0 || start+len(label) > len(p.src) || &p.src[start] != &label[0] {
+		return
+	}
+	p.verbatim(start, start+len(label))
 }
 
 // verbatim appends source bytes [start, stop) as one span, after a pending
@@ -198,10 +231,10 @@ func (p *preparer) verbatim(start, stop int) {
 // trimBlock removes leading and trailing white space and clips the spans.
 func trimBlock(text []rune, spans []Span) ([]rune, []Span) {
 	lo, hi := 0, len(text)
-	for lo < hi && unicode.IsSpace(text[lo]) {
+	for lo < hi && trimmable(text[lo]) {
 		lo++
 	}
-	for hi > lo && unicode.IsSpace(text[hi-1]) {
+	for hi > lo && trimmable(text[hi-1]) {
 		hi--
 	}
 	out := make([]Span, 0, len(spans))
@@ -217,6 +250,8 @@ func trimBlock(text []rune, spans []Span) ([]rune, []Span) {
 	}
 	return text[lo:hi], out
 }
+
+func trimmable(r rune) bool { return unicode.IsSpace(r) || r == '\uFEFF' }
 
 // SourceRange maps the block range [start, end) to the Markdown. exact
 // reports that the source range holds exactly the same code points. When the

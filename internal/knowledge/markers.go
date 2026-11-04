@@ -9,7 +9,7 @@ import (
 
 // MarkersVersion versions the marker lists below. Any change to them must
 // bump it, which changes ResolveVersion and the pipeline fingerprint.
-const MarkersVersion = "markers-v1"
+const MarkersVersion = "markers-v2"
 
 // markerLists are the ru/en words that make a claim uncertain, by category,
 // in output order. Matching is case-insensitive on whole words.
@@ -93,22 +93,39 @@ func Markers(sentence string) []string {
 	return out
 }
 
-// wordBoundary reports that the match is not part of a longer word: the
-// characters around it are not letters or digits.
+// wordBoundary reports that the match is a whole word or phrase, following
+// the Unicode word boundary rules (UAX #29) that matter here: letters,
+// marks, digits and connector punctuation ("_") continue a word, and so do
+// ".", "'", ":" and "·" between two word characters, so "example.com",
+// "nowhere" and "todo_list" are single words.
 func wordBoundary(s string, start, end int) bool {
 	if start > 0 {
-		r, _ := utf8.DecodeLastRuneInString(s[:start])
+		r, size := utf8.DecodeLastRuneInString(s[:start])
 		if isWordRune(r) {
 			return false
 		}
+		if midWord(r) && start-size > 0 {
+			if before, _ := utf8.DecodeLastRuneInString(s[:start-size]); isWordRune(before) {
+				return false
+			}
+		}
 	}
 	if end < len(s) {
-		r, _ := utf8.DecodeRuneInString(s[end:])
+		r, size := utf8.DecodeRuneInString(s[end:])
 		if isWordRune(r) {
 			return false
+		}
+		if midWord(r) && end+size < len(s) {
+			if after, _ := utf8.DecodeRuneInString(s[end+size:]); isWordRune(after) {
+				return false
+			}
 		}
 	}
 	return true
 }
 
-func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r) || unicode.Is(unicode.Pc, r)
+}
+
+func midWord(r rune) bool { return r == '.' || r == '\'' || r == ':' || r == '\u00b7' }

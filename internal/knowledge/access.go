@@ -77,14 +77,16 @@ func Allowed(db domain.Database, public bool, scope Scope, now time.Time) Allowe
 }
 
 // ActiveSnapshot is one text to index, with an immutable copy of the text.
-// Current marks the newest revision; Published marks the revision public
-// readers are shown when the source is publicly readable. One snapshot may
-// be both.
+// Current marks the newest revision. PublicationCopy marks the revision
+// domain.PublicRevision selects: the stored publication copy of a GitHub
+// source, or the newest revision of a local one. It says nothing about
+// whether anyone may read it now; Allowed decides that per request. One
+// snapshot may be both.
 type ActiveSnapshot struct {
-	Key       SnapshotKey
-	Text      string
-	Current   bool
-	Published bool
+	Key             SnapshotKey
+	Text            string
+	Current         bool
+	PublicationCopy bool
 }
 
 // ActiveSnapshots lists every snapshot to index: the current revision and,
@@ -105,9 +107,9 @@ func ActiveSnapshots(db domain.Database) []ActiveSnapshot {
 		}
 		published, hasPublished := domain.PublicRevision(a, db.Sources[a.SourceID])
 		same := hasPublished && published.SHA == current.SHA
-		out = append(out, ActiveSnapshot{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: current.SHA}, Text: current.Text, Current: true, Published: same})
+		out = append(out, ActiveSnapshot{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: current.SHA}, Text: current.Text, Current: true, PublicationCopy: same})
 		if hasPublished && !same && published.SHA != "" {
-			out = append(out, ActiveSnapshot{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: published.SHA}, Text: published.Text, Published: true})
+			out = append(out, ActiveSnapshot{Key: SnapshotKey{SourceID: a.SourceID, Path: a.Path, SHA: published.SHA}, Text: published.Text, PublicationCopy: true})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return keyLess(out[i].Key, out[j].Key) })

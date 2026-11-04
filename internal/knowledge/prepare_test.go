@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -126,12 +127,12 @@ func TestPrepareExcludesCodeHTMLFrontmatterAndLinkTargets(t *testing.T) {
 	md := "---\ntitle: Секрет\nhost: hidden-host\n---\n# Заголовок\n\n```go\nfmt.Println(\"code-host\")\n```\n\n    indented-host\n\n<div>html-host</div>\n\nСм. [docs](https://link-host/x) и <https://auto-host> <span>a</span> ![img-alt](i.png) end\n"
 	blocks := prepare(t, md)
 	joined := strings.Join(texts(blocks), "|")
-	for _, hidden := range []string{"Секрет", "hidden-host", "code-host", "indented-host", "html-host", "link-host", "auto-host", "img-alt", "span"} {
+	for _, hidden := range []string{"Секрет", "hidden-host", "code-host", "indented-host", "html-host", "link-host", "img-alt", "span"} {
 		if strings.Contains(joined, hidden) {
 			t.Fatalf("%q leaked into %q", hidden, joined)
 		}
 	}
-	if !strings.Contains(joined, "heading:Заголовок") || !strings.Contains(joined, "docs") {
+	if !strings.Contains(joined, "heading:Заголовок") || !strings.Contains(joined, "docs") || !strings.Contains(joined, "https://auto-host") {
 		t.Fatalf("visible text missing: %q", joined)
 	}
 	quote(t, md, blocks[0], "Заголовок", 0)
@@ -219,5 +220,43 @@ func TestPrepareRejectsInvalidUTF8(t *testing.T) {
 	}
 	if blocks, err := Prepare(""); err != nil || len(blocks) != 0 {
 		t.Fatal("empty article", blocks, err)
+	}
+}
+
+func TestPrepareKeepsAutolinkLabelsAndLinkText(t *testing.T) {
+	md := "Пишите на ops@example.com, см. www.example.com и https://x.io/a, или <https://y.org/b> и [метка](https://dest-host/x) ![alt-text](i.png) конец\n"
+	blocks := prepare(t, md)
+	if len(blocks) != 1 {
+		t.Fatalf("got %q", texts(blocks))
+	}
+	for _, kept := range []string{"ops@example.com", "www.example.com", "https://x.io/a", "https://y.org/b", "метка", "конец"} {
+		quote(t, md, blocks[0], kept, 0)
+	}
+	for _, dropped := range []string{"dest-host", "alt-text", "i.png", "<"} {
+		if strings.Contains(blocks[0].Text, dropped) {
+			t.Fatalf("%q kept in %q", dropped, blocks[0].Text)
+		}
+	}
+}
+
+func TestPrepareSkipsByteOrderMark(t *testing.T) {
+	md := "\uFEFF---\ntitle: скрыто\n---\nТекст\n"
+	blocks := prepare(t, md)
+	if got := texts(blocks); len(got) != 1 || got[0] != "paragraph:Текст" {
+		t.Fatalf("got %q", got)
+	}
+	quote(t, md, blocks[0], "Текст", 0)
+	if got := texts(prepare(t, "\uFEFFТекст\n")); len(got) != 1 || got[0] != "paragraph:Текст" {
+		t.Fatalf("plain BOM: %q", got)
+	}
+}
+
+func TestPrepareRejectsOversizedInput(t *testing.T) {
+	limit := SchemaV1().Limits.RequestBytesMax
+	if _, err := Prepare(strings.Repeat("a", limit+1)); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("oversized input: %v", err)
+	}
+	if _, err := Prepare(strings.Repeat("a", limit)); err != nil {
+		t.Fatalf("input at the limit: %v", err)
 	}
 }

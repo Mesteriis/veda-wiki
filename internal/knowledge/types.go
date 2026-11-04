@@ -18,8 +18,8 @@ import (
 // in Normalize or in Markers must bump the matching version, which changes
 // the pipeline fingerprint and causes reprocessing.
 const (
-	PreprocessVersion = "prepare-v1"
-	NormalizeVersion  = "normalize-v1"
+	PreprocessVersion = "prepare-v2"
+	NormalizeVersion  = "normalize-v2"
 	ResolveVersion    = NormalizeVersion + "+" + MarkersVersion
 )
 
