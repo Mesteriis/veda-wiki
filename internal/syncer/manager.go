@@ -28,6 +28,7 @@ import (
 const (
 	connectionJobTimeout = 5 * time.Minute
 	mirrorJobTimeout     = 90 * time.Second
+	syncWorkers          = 3
 )
 
 // Manager runs the synchronization of one store. Its operations that do not
@@ -44,12 +45,18 @@ type Manager struct {
 
 	mu   sync.Mutex
 	wake chan struct{}
+
+	// syncConnection runs one synchronization step of a due connection; it
+	// is syncSource. Tests replace it to observe scheduling.
+	syncConnection func(context.Context, domain.GitHubConnection)
 }
 
 // New returns a manager for st that reaches GitHub through gh and applies
 // pulls through imp.
 func New(st *store.Store, gh *github.Client, imp *importer.Service) *Manager {
-	return &Manager{store: st, github: gh, importer: imp, transfer: transfer.Service{Store: st}, wake: make(chan struct{}, 1)}
+	m := &Manager{store: st, github: gh, importer: imp, transfer: transfer.Service{Store: st}, wake: make(chan struct{}, 1)}
+	m.syncConnection = m.syncSource
+	return m
 }
 
 // Wake schedules a synchronization pass without waiting for the interval.
@@ -91,34 +98,17 @@ func (m *Manager) Run(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// Once synchronizes each due connection and then each enabled mirror.
+// Once synchronizes the due connections, then each enabled mirror. A ctx
+// that ends starts no further work; Once still waits for running steps.
 func (m *Manager) Once(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.store.Invalid() {
 		return
 	}
-	for _, initial := range m.Connections() {
-		if ctx.Err() != nil {
-			return
-		}
-		// A previous source may have put this account on rate-limit cooldown.
-		// Reload rather than using the snapshot taken before the loop.
-		var c domain.GitHubConnection
-		var exists bool
-		m.read(func(db *domain.Database) { c, exists = db.Connections[initial.ID] })
-		if !exists {
-			continue
-		}
-		if c.Paused {
-			continue
-		}
-		if due, e := time.Parse(time.RFC3339Nano, c.NextAttempt); e == nil && due.After(time.Now()) {
-			continue
-		}
-		jobCtx, cancel := context.WithTimeout(ctx, connectionJobTimeout)
-		m.syncSource(jobCtx, c)
-		cancel()
+	m.syncConnections(ctx)
+	if ctx.Err() != nil {
+		return
 	}
 	for _, mirror := range m.Mirrors() {
 		if ctx.Err() != nil {
@@ -137,6 +127,76 @@ func (m *Manager) Once(ctx context.Context) {
 			m.Wake()
 		}
 	}
+}
+
+// syncConnections synchronizes the due connections of up to syncWorkers
+// accounts at a time and returns when all of them have finished. Connections
+// of one account run one after another in ID order, because a rate limit puts
+// the whole account on cooldown: each is reloaded just before its step, so it
+// sees a cooldown recorded by the previous one.
+//
+// Concurrent steps share only state that is safe for it: the store and its
+// blob writes take their own locks and every status write rechecks the
+// connection's configuration revision; the GitHub client is stateless; import
+// observations have their own mutex; cached Git objects are written to a
+// fresh temporary file and renamed. Operations that must serialize a remote
+// update with local state (move deletions) hold the store write lock.
+func (m *Manager) syncConnections(ctx context.Context) {
+	var accounts []string
+	byAccount := map[string][]string{}
+	for _, c := range m.Connections() {
+		if _, seen := byAccount[c.AccountID]; !seen {
+			accounts = append(accounts, c.AccountID)
+		}
+		byAccount[c.AccountID] = append(byAccount[c.AccountID], c.ID)
+	}
+	slots := make(chan struct{}, syncWorkers)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	for _, account := range accounts {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			for _, id := range byAccount[account] {
+				if ctx.Err() != nil {
+					return
+				}
+				m.syncDue(ctx, account, id)
+			}
+		})
+	}
+}
+
+// syncDue runs one step of connection id if it is still due and still uses
+// account.
+func (m *Manager) syncDue(ctx context.Context, account, id string) {
+	// A previous connection may have put this account on rate-limit cooldown.
+	// Reload rather than using the snapshot taken before the pass.
+	var c domain.GitHubConnection
+	var exists bool
+	m.read(func(db *domain.Database) { c, exists = db.Connections[id] })
+	if !exists || c.Paused {
+		return
+	}
+	if c.AccountID != account {
+		// Reconfigured to an account whose worker may be running: synchronize
+		// it in the next pass instead of beside that worker.
+		m.Wake()
+		return
+	}
+	if due, e := time.Parse(time.RFC3339Nano, c.NextAttempt); e == nil && due.After(time.Now()) {
+		return
+	}
+	jobCtx, cancel := context.WithTimeout(ctx, connectionJobTimeout)
+	defer cancel()
+	m.syncConnection(jobCtx, c)
 }
 
 // SyncSource runs one synchronization step of connection c at once, as Once
