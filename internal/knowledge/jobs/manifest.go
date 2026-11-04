@@ -297,3 +297,25 @@ func (d *DB) SetExtractorPipeline(ctx context.Context, pipeline json.RawMessage,
 		metaExtractorPipeline, []byte(pipeline), now.UnixMilli())
 	return err
 }
+
+// Reindex implements knowledge.Manifest.
+func (d *DB) Reindex(ctx context.Context, fp knowledge.Fingerprint, sourceID, path string, force bool, now time.Time) (int, error) {
+	const scope = `m.fingerprint=? AND m.state IN ('pending','succeeded','failed') AND (?='' OR m.source_id=?) AND (?='' OR m.path=?)`
+	args := []any{string(fp), sourceID, sourceID, path, path}
+	n := 0
+	err := d.tx(ctx, func(tx *sql.Tx) error {
+		if force {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM results WHERE EXISTS (SELECT 1 FROM manifest m WHERE m.source_id=results.source_id AND m.path=results.path AND m.sha=results.sha AND `+scope+`)`, args...); err != nil {
+				return err
+			}
+		}
+		r, err := tx.ExecContext(ctx, `UPDATE manifest AS m SET state='pending', attempts=0, next_attempt=0, last_error='', updated_at=? WHERE `+scope, append([]any{now.UnixMilli()}, args...)...)
+		if err != nil {
+			return err
+		}
+		c, _ := r.RowsAffected()
+		n = int(c)
+		return nil
+	})
+	return n, err
+}

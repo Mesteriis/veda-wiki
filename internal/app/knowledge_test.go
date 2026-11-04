@@ -70,7 +70,7 @@ func TestKnowledgeFlagValidation(t *testing.T) {
 	}
 	cases := map[string][]string{
 		"remote http":       with("-knowledge-extractor-url", "http://10.1.2.3:8090"),
-		"hostname http":     with("-knowledge-extractor-url", "http://localhost:8090"),
+		"hostname http":     with("-knowledge-extractor-url", "http://extractor:8090"),
 		"relative key":      with("-knowledge-extractor-key-file", "secret"),
 		"symlink key":       with("-knowledge-extractor-key-file", link),
 		"shared key":        with("-knowledge-extractor-key-file", secretFile(t, "k", 0644)),

@@ -41,7 +41,7 @@ type knowledgeFlags struct {
 func addKnowledgeFlags(flags *flag.FlagSet) *knowledgeFlags {
 	k := &knowledgeFlags{}
 	flags.BoolVar(&k.enabled, "knowledge", false, "Enable background knowledge graph indexing")
-	flags.StringVar(&k.extractorURL, "knowledge-extractor-url", "", "Knowledge extractor URL: http://127.0.0.1:PORT or https://HOST")
+	flags.StringVar(&k.extractorURL, "knowledge-extractor-url", "", "Knowledge extractor URL: http://127.0.0.1:PORT, http://[::1]:PORT, http://localhost:PORT or https://HOST")
 	flags.StringVar(&k.extractorKeyFile, "knowledge-extractor-key-file", "", "Absolute path of the private (0600) extractor service key file")
 	flags.StringVar(&k.neo4jURI, "knowledge-neo4j-uri", "", "Neo4j URI: bolt:// or neo4j:// on a numeric loopback address, or bolt+s:// / neo4j+s://")
 	flags.StringVar(&k.neo4jUser, "knowledge-neo4j-user", "", "Neo4j user")

@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -23,7 +24,7 @@ func (s *Service) publish(ctx context.Context, job Job, g Graph) {
 		return nil
 	})
 	if err != nil {
-		s.retry(ctx, job, err)
+		s.retry(ctx, job, fmt.Errorf("%w: %w", errStore, err))
 		return
 	}
 	if p, ok := s.Pipeline(); !active || !ok || snap.Fingerprint != p.Fingerprint {

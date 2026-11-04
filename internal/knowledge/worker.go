@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
@@ -25,7 +26,7 @@ func (s *Service) process(ctx context.Context, job Job) {
 	}
 	text, active, err := s.activeText(snap.Key)
 	if err != nil {
-		s.retry(ctx, job, err)
+		s.retry(ctx, job, fmt.Errorf("%w: %w", errStore, err))
 		return
 	}
 	if !active {
@@ -140,10 +141,7 @@ func (s *Service) retry(ctx context.Context, job Job, err error) {
 		s.outage(ctx, job, "")
 		return
 	}
-	code := CodeInvalidResult
-	if errors.Is(err, ErrUnavailable) {
-		code = CodeExtractorUnavailable
-	}
+	code := failureCode(err)
 	if job.Attempts >= MaxAttempts {
 		s.finish(ctx, job.Snapshot, Finish{State: JobFailed, LastError: code})
 		return
@@ -169,3 +167,21 @@ func (s *Service) finish(ctx context.Context, snap Snapshot, f Finish) {
 		s.degrade(CodeManifestUnavailable, err)
 	}
 }
+
+// failureCode names the class of an error that spends an attempt.
+func failureCode(err error) string {
+	switch {
+	case errors.Is(err, ErrTimeout), errors.Is(err, context.DeadlineExceeded):
+		return CodeTimeout
+	case errors.Is(err, ErrInvalidResponse):
+		return CodeInvalidResult
+	case errors.Is(err, ErrUnavailable):
+		return CodeExtractorUnavailable
+	case errors.Is(err, errStore):
+		return CodeStoreUnavailable
+	}
+	return CodeExtractorError
+}
+
+// errStore marks a failed read of the VEDA store.
+var errStore = errors.New("knowledge: store read failed")

@@ -34,9 +34,16 @@ const (
 // Error codes recorded on jobs and reported in status. They never carry
 // article text, URLs or secrets.
 const (
-	CodeTooLarge             = "too_large"
-	CodeRejected             = "extractor_rejected"
-	CodeInvalidResult        = "invalid_result"
+	CodeTooLarge      = "too_large"
+	CodeRejected      = "extractor_rejected"
+	CodeInvalidResult = "invalid_result"
+	// CodeTimeout: the call or the service ran out of time.
+	CodeTimeout = "timeout"
+	// CodeExtractorError: the service failed (HTTP 5xx) or answered
+	// unexpectedly; invalid_result is only for contract violations.
+	CodeExtractorError = "extractor_error"
+	// CodeStoreUnavailable: the snapshot could not be read from VEDA.
+	CodeStoreUnavailable     = "store_unavailable"
 	CodeModelMismatch        = "model_mismatch"
 	CodeExtractorUnavailable = "extractor_unavailable"
 	CodeIndexUnavailable     = "index_unavailable"
@@ -102,6 +109,12 @@ type Manifest interface {
 	// Requeue makes succeeded or failed rows of snaps pending with no
 	// attempts spent (index lost them, or an owner reindex).
 	Requeue(ctx context.Context, snaps []Snapshot, now time.Time) (int, error)
+	// Reindex makes the pending, succeeded and failed rows under fp of a
+	// scope (every source when sourceID is empty, one article when path is
+	// set) pending with no attempts spent. With force it also deletes the
+	// stored results of those snapshot keys, under every fingerprint, so
+	// they are extracted again. Running and superseded rows are untouched.
+	Reindex(ctx context.Context, fp Fingerprint, sourceID, path string, force bool, now time.Time) (int, error)
 	// ResetRunning makes every running row pending; used once on start.
 	ResetRunning(ctx context.Context, now time.Time) (int, error)
 	// Claim marks up to n due pending rows under fp running, spends an

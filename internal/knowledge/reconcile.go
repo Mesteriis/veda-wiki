@@ -2,7 +2,10 @@ package knowledge
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
 )
@@ -105,29 +108,60 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	return nil
 }
 
-// Reindex requeues the succeeded and failed snapshots of a source, or of one
-// article when path is set, under the active fingerprint. A requeued
-// snapshot is rebuilt from its stored result when one exists. It returns
-// the number of requeued jobs.
-func (s *Service) Reindex(ctx context.Context, sourceID, path string) (int, error) {
-	if sourceID == "" {
-		return 0, errors.New("knowledge: reindex needs a source")
+// ErrReindexBusy: another reindex operation is running.
+var ErrReindexBusy = errors.New("knowledge: a reindex is already running")
+
+// ReindexScope selects what to reindex: everything (empty SourceID), a
+// source, or one article (SourceID and Path). Force re-extracts; otherwise
+// graphs are rebuilt from the stored extraction results.
+type ReindexScope struct {
+	SourceID string `json:"source_id,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Force    bool   `json:"force"`
+}
+
+// ReindexOperation is one reindex request and its outcome.
+type ReindexOperation struct {
+	ID       string       `json:"operation_id"`
+	Scope    ReindexScope `json:"scope"`
+	Requeued int          `json:"requeued"`
+	Started  time.Time    `json:"started"`
+	Finished time.Time    `json:"finished"`
+	Error    string       `json:"error,omitempty"`
+}
+
+// Reindex requeues the active snapshots of scope under the active
+// fingerprint, one operation at a time (ErrReindexBusy otherwise). It only
+// changes manifest rows (and with Force deletes stored results); workers do
+// the processing in the background. Articles are never changed.
+func (s *Service) Reindex(ctx context.Context, scope ReindexScope) (ReindexOperation, error) {
+	if scope.Path != "" && scope.SourceID == "" {
+		return ReindexOperation{}, errors.New("knowledge: reindex of a path needs its source")
 	}
+	if !s.reindexMu.TryLock() {
+		return ReindexOperation{}, ErrReindexBusy
+	}
+	defer s.reindexMu.Unlock()
+	var id [8]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return ReindexOperation{}, err
+	}
+	op := ReindexOperation{ID: "reindex-" + hex.EncodeToString(id[:]), Scope: scope, Started: s.cfg.Now()}
 	p, ok := s.Pipeline()
+	var err error
 	if !ok {
-		return 0, errNoPipeline
+		err = errNoPipeline
+	} else {
+		op.Requeued, err = s.cfg.Manifest.Reindex(ctx, p.Fingerprint, scope.SourceID, scope.Path, scope.Force, s.cfg.Now())
 	}
-	jobs, err := s.cfg.Manifest.Jobs(ctx, nil)
+	op.Finished = s.cfg.Now()
 	if err != nil {
-		return 0, err
+		op.Error = reasonOf(err)
 	}
-	var snaps []Snapshot
-	for _, j := range jobs {
-		if j.Fingerprint == p.Fingerprint && j.Key.SourceID == sourceID && (path == "" || j.Key.Path == path) && (j.State == JobSucceeded || j.State == JobFailed) {
-			snaps = append(snaps, j.Snapshot)
-		}
-	}
-	n, err := s.cfg.Manifest.Requeue(ctx, snaps, s.cfg.Now())
+	s.mu.Lock()
+	last := op
+	s.lastReindex = &last
+	s.mu.Unlock()
 	s.wakeFeeder()
-	return n, err
+	return op, err
 }

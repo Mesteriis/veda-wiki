@@ -123,13 +123,14 @@ func TestStatusCodesMapToKnowledgeErrors(t *testing.T) {
 		{http.StatusServiceUnavailable, []error{knowledge.ErrUnavailable}},
 		{http.StatusUnprocessableEntity, []error{knowledge.ErrRejected}},
 		{http.StatusRequestEntityTooLarge, []error{knowledge.ErrRejected, knowledge.ErrBlockTooLarge}},
-		{http.StatusGatewayTimeout, nil},
-		{http.StatusInternalServerError, nil},
+		{http.StatusBadRequest, []error{knowledge.ErrRejected}},
+		{http.StatusGatewayTimeout, []error{knowledge.ErrTimeout}},
+		{http.StatusInternalServerError, []error{knowledge.ErrExtractorError}},
 	}
 	for _, tc := range cases {
 		c := server(t, func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(tc.status)
-			_, _ = io.WriteString(w, `{"error":{"code":"x","message":"https://secret.example/token"}}`)
+			_, _ = io.WriteString(w, `{"error":{"code":"invalid_request","message":"https://secret.example/token"}}`)
 		})
 		_, err := c.Extract(context.Background(), req)
 		if err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "test-key") {
@@ -140,8 +141,19 @@ func TestStatusCodesMapToKnowledgeErrors(t *testing.T) {
 				t.Errorf("%d: %v is not %v", tc.status, err, w)
 			}
 		}
-		if tc.want == nil && (errors.Is(err, knowledge.ErrUnavailable) || errors.Is(err, knowledge.ErrRejected)) {
+		if tc.status >= 500 && tc.status != http.StatusServiceUnavailable && (errors.Is(err, knowledge.ErrInvalidResponse) || errors.Is(err, knowledge.ErrUnavailable)) {
 			t.Errorf("%d: classified as %v", tc.status, err)
+		}
+	}
+	// A 400 without the service's JSON error (a proxy, a host check) is an
+	// outage, not a rejection of the article.
+	for _, body := range []string{"", "Invalid host header", `{"detail":"x"}`} {
+		c := server(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, body)
+		})
+		if _, err := c.Extract(context.Background(), req); !errors.Is(err, knowledge.ErrUnavailable) || errors.Is(err, knowledge.ErrRejected) {
+			t.Errorf("400 %q: %v", body, err)
 		}
 	}
 	c := server(t, func(w http.ResponseWriter, r *http.Request) {
@@ -195,12 +207,12 @@ func TestReadyReturnsModelAndPipeline(t *testing.T) {
 }
 
 func TestValidateURL(t *testing.T) {
-	for _, ok := range []string{"http://127.0.0.1:8090", "http://[::1]:8090/", "https://extractor.internal", "https://10.0.0.5:8443"} {
+	for _, ok := range []string{"http://127.0.0.1:8090", "http://[::1]:8090/", "http://localhost:8090", "https://extractor.internal", "https://10.0.0.5:8443"} {
 		if _, err := extractorclient.ValidateURL(ok); err != nil {
 			t.Errorf("%s: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"http://localhost:8090", "http://10.0.0.5:8090", "http://127.0.0.1", "ftp://127.0.0.1:1", "https://u:p@host", "https://host/path", "https://host?x=1", "127.0.0.1:8090"} {
+	for _, bad := range []string{"http://127.0.0.2:8090", "http://extractor:8090", "http://10.0.0.5:8090", "http://127.0.0.1", "http://localhost", "ftp://127.0.0.1:1", "https://u:p@host", "https://host/path", "https://host?x=1", "127.0.0.1:8090"} {
 		if _, err := extractorclient.ValidateURL(bad); err == nil {
 			t.Errorf("%s accepted", bad)
 		}

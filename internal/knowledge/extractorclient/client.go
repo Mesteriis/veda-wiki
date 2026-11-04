@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -41,21 +40,25 @@ type Client struct {
 
 var _ knowledge.Extractor = (*Client)(nil)
 
-// ValidateURL accepts http on a numeric loopback address (127.0.0.0/8 or
-// ::1) with an explicit port, or https on any host; no user info, query or
+// ValidateURL accepts http://127.0.0.1:PORT, http://[::1]:PORT or
+// http://localhost:PORT, or https on any host; no user info, path, query or
 // fragment. Plain http to another host would expose the key and article
 // text on the network.
 func ValidateURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return nil, errors.New("extractor URL must be http://127.0.0.1:PORT or https://HOST[:PORT]")
+		return nil, errors.New("extractor URL must be http://127.0.0.1:PORT, http://[::1]:PORT, http://localhost:PORT or https://HOST[:PORT]")
 	}
 	switch u.Scheme {
 	case "https":
 	case "http":
-		ip := net.ParseIP(u.Hostname())
-		if ip == nil || !ip.IsLoopback() || u.Port() == "" {
-			return nil, errors.New("plain http extractor URL must be a numeric loopback address with a port")
+		switch u.Hostname() {
+		case "127.0.0.1", "::1", "localhost":
+		default:
+			return nil, errors.New("plain http extractor URL must be 127.0.0.1, [::1] or localhost")
+		}
+		if u.Port() == "" {
+			return nil, errors.New("plain http extractor URL needs a port")
 		}
 	default:
 		return nil, errors.New("extractor URL must use http or https")
@@ -85,16 +88,21 @@ type errorBody struct {
 }
 
 // Extract implements knowledge.Extractor. Status codes map to the
-// knowledge errors: 401/403/429/502/503 and transport failures are
-// ErrUnavailable; 400/415/422 ErrRejected; 413 ErrRejected and
-// ErrBlockTooLarge; 504 and other failures are plain errors (retried with
-// backoff).
-func (c *Client) Extract(ctx context.Context, req knowledge.ExtractRequest) (knowledge.ExtractResult, error) {
+// knowledge errors:
+//   - 401/403/429/502/503, transport failures, and a 400 without a JSON
+//     error code (a proxy or a host check, not the service) are
+//     ErrUnavailable;
+//   - 400/415/422 with an error code are ErrRejected; 413 is ErrRejected
+//     and ErrBlockTooLarge;
+//   - 504 and running out of RequestTimeout are ErrTimeout;
+//   - other statuses (5xx) are ErrExtractorError;
+//   - a body that breaks the contract is ErrInvalidResponse.
+func (c *Client) Extract(parent context.Context, req knowledge.ExtractRequest) (knowledge.ExtractResult, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return knowledge.ExtractResult{}, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, RequestTimeout)
+	ctx, cancel := context.WithTimeout(parent, RequestTimeout)
 	defer cancel()
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base.String()+"/v1/extract", bytes.NewReader(body))
 	if err != nil {
@@ -104,12 +112,12 @@ func (c *Client) Extract(ctx context.Context, req knowledge.ExtractRequest) (kno
 	r.Header.Set(KeyHeader, c.key)
 	resp, err := c.http.Do(r)
 	if err != nil {
-		return knowledge.ExtractResult{}, transportError(ctx, err)
+		return knowledge.ExtractResult{}, transportError(parent, ctx)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
 	if err != nil {
-		return knowledge.ExtractResult{}, transportError(ctx, err)
+		return knowledge.ExtractResult{}, transportError(parent, ctx)
 	}
 	if len(data) > MaxResponseBytes {
 		return knowledge.ExtractResult{}, fmt.Errorf("%w: response too large", knowledge.ErrInvalidResponse)
@@ -140,7 +148,7 @@ func (c *Client) Ready(ctx context.Context) (knowledge.ModelInfo, error) {
 	}
 	resp, err := c.http.Do(r)
 	if err != nil {
-		return knowledge.ModelInfo{}, transportError(ctx, err)
+		return knowledge.ModelInfo{}, fmt.Errorf("%w: transport failure", knowledge.ErrUnavailable)
 	}
 	defer resp.Body.Close()
 	var ready struct {
@@ -156,15 +164,23 @@ func (c *Client) Ready(ctx context.Context) (knowledge.ModelInfo, error) {
 	return ready.Model, nil
 }
 
-func transportError(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
+// transportError classifies a failed exchange: the caller's cancellation as
+// is, the call's own deadline as ErrTimeout, anything else as unavailable.
+func transportError(parent, call context.Context) error {
+	switch {
+	case parent.Err() != nil:
+		return parent.Err()
+	case call.Err() != nil:
+		return fmt.Errorf("%w: no answer within %s", knowledge.ErrTimeout, RequestTimeout)
 	}
 	return fmt.Errorf("%w: transport failure", knowledge.ErrUnavailable)
 }
 
 func statusError(status int, code string) error {
 	code = safeCode(code)
+	if status == http.StatusBadRequest && code == "" {
+		return fmt.Errorf("%w: status 400 without a service error", knowledge.ErrUnavailable)
+	}
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable:
 		return fmt.Errorf("%w: status %d %s", knowledge.ErrUnavailable, status, code)
@@ -172,8 +188,10 @@ func statusError(status int, code string) error {
 		return fmt.Errorf("%w: %w: status %d %s", knowledge.ErrRejected, knowledge.ErrBlockTooLarge, status, code)
 	case http.StatusBadRequest, http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity:
 		return fmt.Errorf("%w: status %d %s", knowledge.ErrRejected, status, code)
+	case http.StatusGatewayTimeout:
+		return fmt.Errorf("%w: status %d %s", knowledge.ErrTimeout, status, code)
 	}
-	return fmt.Errorf("extractor: status %d %s", status, code)
+	return fmt.Errorf("%w: status %d %s", knowledge.ErrExtractorError, status, code)
 }
 
 // safeCode keeps a short error code of [a-z_] only; anything else is dropped.

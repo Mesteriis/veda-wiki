@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -66,6 +67,10 @@ type Service struct {
 	wake      chan struct{}
 	queue     chan Job
 	publishMu sync.Mutex
+	// refreshMu serializes reloads of the extractor settings.
+	refreshMu sync.Mutex
+	// reindexMu admits one reindex operation at a time.
+	reindexMu sync.Mutex
 	started   atomic.Bool
 
 	mu            sync.Mutex
@@ -74,6 +79,7 @@ type Service struct {
 	outageDelay   time.Duration
 	lastReconcile time.Time
 	dropped       GraphDropped
+	lastReindex   *ReindexOperation
 	// pipeline is nil until the extractor's settings are known (from the
 	// manifest or /ready); nothing is reconciled or processed before.
 	pipeline *Pipeline
@@ -281,6 +287,8 @@ type Status struct {
 	// Dropped sums, since start, the model output left out in published
 	// graphs by the extractor and by Go-side rules.
 	Dropped GraphDropped `json:"dropped"`
+	// LastReindex is the most recent reindex operation, if any.
+	LastReindex *ReindexOperation `json:"last_reindex,omitempty"`
 }
 
 // Status states.
@@ -296,18 +304,26 @@ func (s *Service) Status(ctx context.Context) Status {
 	st := Status{Enabled: true, Jobs: map[JobState]int{}}
 	if p, ok := s.Pipeline(); ok {
 		st.Fingerprint = p.Fingerprint
+		// A failed read is reported in this answer only; it does not
+		// change the service's state.
 		counts, err := s.cfg.Manifest.Counts(ctx, st.Fingerprint)
 		if err != nil {
-			s.degrade(CodeManifestUnavailable, err)
+			st.Reasons = append(st.Reasons, CodeManifestUnavailable)
 		} else {
 			st.Jobs = counts
 		}
 	}
 	s.mu.Lock()
 	for r := range s.reasons {
-		st.Reasons = append(st.Reasons, r)
+		if r != CodeManifestUnavailable || !slices.Contains(st.Reasons, r) {
+			st.Reasons = append(st.Reasons, r)
+		}
 	}
 	st.Dropped = s.dropped
+	if s.lastReindex != nil {
+		op := *s.lastReindex
+		st.LastReindex = &op
+	}
 	if !s.lastReconcile.IsZero() {
 		t := s.lastReconcile
 		st.LastReconcile = &t

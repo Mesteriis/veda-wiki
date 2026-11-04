@@ -215,6 +215,21 @@ func TestRequestsBatchAndRejectHugeBlocks(t *testing.T) {
 	if pipeline(knowledge.SchemaV1(), nil, "", greedy).Fingerprint == testPipeline.Fingerprint {
 		t.Fatal("decoder settings do not enter the fingerprint")
 	}
+	for _, pair := range [][2]string{{`{"a":0.05,"b":1}`, `{"b":1.0,"a":5e-2}`}, {`{"a":[1,2.50]}`, `{"a":[1e0,2.5]}`}, {`{"a":-0.0}`, `{"a":-0}`}} {
+		x, errX := knowledge.ExtractorDigest(json.RawMessage(pair[0]))
+		y, errY := knowledge.ExtractorDigest(json.RawMessage(pair[1]))
+		if errX != nil || errY != nil || x != y {
+			t.Fatalf("%s and %s digest differently", pair[0], pair[1])
+		}
+	}
+	if x, _ := knowledge.ExtractorDigest(json.RawMessage(`{"a":0.05}`)); x == func() string { y, _ := knowledge.ExtractorDigest(json.RawMessage(`{"a":0.5}`)); return y }() {
+		t.Fatal("different numbers share a digest")
+	}
+	for _, bad := range []string{`{"a":1e999}`, `{"a":1} {}`, `null`} {
+		if _, err = knowledge.ExtractorDigest(json.RawMessage(bad)); err == nil {
+			t.Fatalf("%s accepted", bad)
+		}
+	}
 	if _, err = knowledge.NewPipeline(knowledge.SchemaV1(), nil, "", json.RawMessage(`[1]`)); err == nil {
 		t.Fatal("non-object settings accepted")
 	}

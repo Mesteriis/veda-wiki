@@ -31,7 +31,7 @@ func TestReplayCreatesNoDuplicates(t *testing.T) {
 	}
 	calls := h.ex.callCount()
 	for range 3 {
-		if _, err = h.svc.Reindex(context.Background(), "pub", "billing.md"); err != nil {
+		if _, err = h.svc.Reindex(context.Background(), knowledge.ReindexScope{SourceID: "pub", Path: "billing.md"}); err != nil {
 			t.Fatal(err)
 		}
 		h.settle()

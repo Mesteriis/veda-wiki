@@ -31,6 +31,8 @@ type fakeExtractor struct {
 	entered chan string
 	// settings is the pipeline object reported by Ready and responses.
 	settings json.RawMessage
+	// failWith, when set, is returned by Extract.
+	failWith error
 }
 
 func newFake() *fakeExtractor {
@@ -73,7 +75,7 @@ func (f *fakeExtractor) Ready(context.Context) (knowledge.ModelInfo, error) {
 func (f *fakeExtractor) Extract(ctx context.Context, req knowledge.ExtractRequest) (knowledge.ExtractResult, error) {
 	f.mu.Lock()
 	f.calls++
-	down := f.down
+	down, failWith := f.down, f.failWith
 	var wait chan struct{}
 	for marker, ch := range f.gates {
 		for _, b := range req.Blocks {
@@ -85,6 +87,9 @@ func (f *fakeExtractor) Extract(ctx context.Context, req knowledge.ExtractReques
 	f.mu.Unlock()
 	if down {
 		return knowledge.ExtractResult{}, fmt.Errorf("%w: test outage", knowledge.ErrUnavailable)
+	}
+	if failWith != nil {
+		return knowledge.ExtractResult{}, failWith
 	}
 	if wait != nil {
 		f.entered <- req.RequestID

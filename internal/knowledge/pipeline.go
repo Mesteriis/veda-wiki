@@ -50,6 +50,8 @@ func (s *Service) loadPipeline(ctx context.Context) {
 // fingerprint and retires its graphs. It reports whether the extractor is
 // ready with the pinned checkpoint.
 func (s *Service) refreshPipeline(ctx context.Context) bool {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	info, err := s.cfg.Extractor.Ready(ctx)
 	if err == nil && (info.ID != ModelID || info.Revision != ModelRevision) {
 		s.degrade(CodeModelMismatch, errModelMismatch)

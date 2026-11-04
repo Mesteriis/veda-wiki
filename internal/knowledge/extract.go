@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"sort"
 	"strconv"
 	"unicode/utf8"
 )
@@ -39,10 +41,14 @@ const (
 // service is down, busy, not ready or unauthorized): the job is retried
 // without spending an attempt. ErrRejected is permanent for this input.
 // ErrInvalidResponse is a broken response and spends an attempt.
+// ErrTimeout (the call or the service ran out of time) and
+// ErrExtractorError (a 5xx failure of the service) spend an attempt too.
 var (
 	ErrUnavailable     = errors.New("knowledge: extractor unavailable")
 	ErrRejected        = errors.New("knowledge: extractor rejected the request")
 	ErrInvalidResponse = errors.New("knowledge: invalid extractor response")
+	ErrTimeout         = errors.New("knowledge: extraction timed out")
+	ErrExtractorError  = errors.New("knowledge: extractor failed")
 )
 
 // Extractor extracts entities and relations from prepared blocks.
@@ -108,8 +114,9 @@ type ModelInfo struct {
 }
 
 // ExtractorDigest is the digest of a canonical form of the extractor's
-// pipeline object (keys sorted, numbers as written, no white space). Equal
-// settings give equal digests whatever their key order.
+// pipeline object: keys sorted, no white space, every number parsed as a
+// float64 and written with strconv.FormatFloat(f, 'g', -1, 64), so 0.05 and
+// 5e-2, or 1 and 1.0, give the same digest. NaN and infinities are refused.
 func ExtractorDigest(pipeline json.RawMessage) (string, error) {
 	dec := json.NewDecoder(bytes.NewReader(pipeline))
 	dec.UseNumber()
@@ -117,12 +124,63 @@ func ExtractorDigest(pipeline json.RawMessage) (string, error) {
 	if err := dec.Decode(&v); err != nil || v == nil {
 		return "", fmt.Errorf("%w: extractor pipeline is not an object", ErrInvalidResponse)
 	}
-	canonical, err := json.Marshal(v)
-	if err != nil {
+	if _, err := dec.Token(); err != io.EOF {
+		return "", fmt.Errorf("%w: trailing data after extractor pipeline", ErrInvalidResponse)
+	}
+	var b bytes.Buffer
+	if err := canonicalJSON(&b, v); err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(canonical)
+	sum := sha256.Sum256(b.Bytes())
 	return "extractor:" + hex.EncodeToString(sum[:]), nil
+}
+
+func canonicalJSON(b *bytes.Buffer, v any) error {
+	switch x := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		b.WriteByte('{')
+		for i, k := range keys {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			name, _ := json.Marshal(k)
+			b.Write(name)
+			b.WriteByte(':')
+			if err := canonicalJSON(b, x[k]); err != nil {
+				return err
+			}
+		}
+		b.WriteByte('}')
+	case []any:
+		b.WriteByte('[')
+		for i, e := range x {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			if err := canonicalJSON(b, e); err != nil {
+				return err
+			}
+		}
+		b.WriteByte(']')
+	case json.Number:
+		f, err := strconv.ParseFloat(string(x), 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return fmt.Errorf("%w: extractor pipeline has an invalid number", ErrInvalidResponse)
+		}
+		b.WriteString(strconv.FormatFloat(f, 'g', -1, 64))
+	default: // string, bool, nil
+		out, err := json.Marshal(x)
+		if err != nil {
+			return err
+		}
+		b.Write(out)
+	}
+	return nil
 }
 
 // BlockResult is the extraction of one block.

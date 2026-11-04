@@ -202,3 +202,39 @@ func TestReadAliases(t *testing.T) {
 		t.Fatal("world-readable aliases accepted")
 	}
 }
+
+func TestReindexScopesAndForce(t *testing.T) {
+	db, _ := open(t)
+	kc := knowledge.SnapshotKey{SourceID: "other", Path: "a.md", SHA: "c1"}
+	if _, err := db.Reconcile(ctx, fp1, []knowledge.SnapshotKey{ka, kb, kc}, t0); err != nil {
+		t.Fatal(err)
+	}
+	claimed, _ := db.Claim(ctx, fp1, t0, 3)
+	for _, j := range claimed {
+		if j.Key != kb { // b stays running
+			_, _ = db.Finish(ctx, j.Snapshot, knowledge.Finish{State: knowledge.JobSucceeded}, t0)
+		}
+		_ = db.SaveResult(ctx, j.Snapshot, "x", knowledge.ExtractResult{SchemaVersion: 1}, t0)
+	}
+	if n, err := db.Reindex(ctx, fp1, "s", "a.md", false, t0); err != nil || n != 1 {
+		t.Fatal("article scope", n, err)
+	}
+	if _, ok, _ := db.Result(ctx, knowledge.Snapshot{Key: ka, Fingerprint: fp1}, "x"); !ok {
+		t.Fatal("non-forced reindex dropped a result")
+	}
+	if n, _ := db.Reindex(ctx, fp1, "s", "", true, t0); n != 1 { // a only: b is running
+		t.Fatal("source scope", n)
+	}
+	if _, ok, _ := db.Result(ctx, knowledge.Snapshot{Key: ka, Fingerprint: fp1}, "x"); ok {
+		t.Fatal("forced reindex kept the result")
+	}
+	if _, ok, _ := db.Result(ctx, knowledge.Snapshot{Key: kc, Fingerprint: fp1}, "x"); !ok {
+		t.Fatal("forced reindex of one source dropped another source's result")
+	}
+	if n, _ := db.Reindex(ctx, fp1, "", "", false, t0); n != 2 {
+		t.Fatal("all scope", n)
+	}
+	if n, _ := db.Reindex(ctx, fp2, "", "", true, t0); n != 0 {
+		t.Fatal("other fingerprint touched", n)
+	}
+}
