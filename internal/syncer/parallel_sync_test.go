@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,8 +17,8 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/store"
 )
 
-// Three connections of different accounts reach GitHub at the same time: the
-// repository request of each waits until all three have arrived.
+// Connections of different GitHub logins reach GitHub at the same time: the
+// repository request of each waits until syncWorkers of them have arrived.
 func TestOnceSynchronizesConnectionsOfDifferentAccountsConcurrently(t *testing.T) {
 	s := testStore(t)
 	names := []string{"org/first", "org/second", "org/third"}
@@ -28,12 +29,18 @@ func TestOnceSynchronizesConnectionsOfDifferentAccountsConcurrently(t *testing.T
 		fakes[name] = f
 	}
 	var barrier atomic.Bool
-	var arrived, waiting, maxWaiting atomic.Int32
+	var arrived, waiting, maxWaiting, logins atomic.Int32
 	all := make(chan struct{})
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			// Each saved account is a different GitHub login.
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"login":"user%d"}`, logins.Add(1))
+			return
+		}
 		for name, f := range fakes {
 			if r.URL.Path == "/repos/"+name && barrier.Load() {
-				if arrived.Add(1) == int32(len(names)) {
+				if arrived.Add(1) == syncWorkers {
 					close(all)
 				}
 				n := waiting.Add(1)
@@ -65,8 +72,8 @@ func TestOnceSynchronizesConnectionsOfDifferentAccountsConcurrently(t *testing.T
 	}
 	barrier.Store(true)
 	m.Once(context.Background())
-	if got := maxWaiting.Load(); got != int32(len(names)) {
-		t.Fatalf("%d connections overlapped, want %d", got, len(names))
+	if got := maxWaiting.Load(); got != syncWorkers {
+		t.Fatalf("%d connections overlapped, want %d", got, syncWorkers)
 	}
 	for _, c := range s.connections() {
 		if c.LastError != "" {
@@ -76,15 +83,31 @@ func TestOnceSynchronizesConnectionsOfDifferentAccountsConcurrently(t *testing.T
 }
 
 // hookedManager returns a manager whose connection step is replaced by step,
-// over connections with the given IDs and accounts.
+// over connections with the given IDs and accounts. An empty account is
+// anonymous; each account's login is its ID.
 func hookedManager(t *testing.T, accounts map[string]string, step func(context.Context, domain.GitHubConnection)) (*fixtureStore, *Manager) {
+	t.Helper()
+	return hookedManagerWithLogins(t, accounts, nil, step)
+}
+
+// hookedManagerWithLogins is hookedManager with the GitHub login of some
+// accounts given by logins.
+func hookedManagerWithLogins(t *testing.T, accounts, logins map[string]string, step func(context.Context, domain.GitHubConnection)) (*fixtureStore, *Manager) {
 	t.Helper()
 	s := testStore(t)
 	s.mutate(func(db *domain.Database) {
+		next := int64(1)
 		for id, account := range accounts {
-			// The step is replaced, so no credential file is read.
-			db.Accounts[account] = domain.GitHubAccount{ID: account, Kind: "token", Login: account, SecretRef: strings.Repeat("0", 32)}
-			db.Connections[id] = domain.GitHubConnection{ID: id, Repository: "org/" + id, Branch: "main", AccountID: account, RepositoryID: int64(len(id)), ConfigRevision: 1}
+			if account != "" {
+				login := account
+				if l, ok := logins[account]; ok {
+					login = l
+				}
+				// The step is replaced, so no credential file is read.
+				db.Accounts[account] = domain.GitHubAccount{ID: account, Kind: "token", Login: login, SecretRef: strings.Repeat("0", 32)}
+			}
+			db.Connections[id] = domain.GitHubConnection{ID: id, Repository: "org/" + id, Branch: "main", AccountID: account, RepositoryID: next, ConfigRevision: 1}
+			next++
 		}
 	})
 	if db := s.db(); store.Validate(&db) != nil {
@@ -95,8 +118,10 @@ func hookedManager(t *testing.T, accounts map[string]string, step func(context.C
 	return s, m
 }
 
-// tracker counts running connection steps overall and per account.
+// tracker counts running connection steps overall and per group: the
+// connection's entry in groups, else its account.
 type tracker struct {
+	groups    map[string]string
 	mu        sync.Mutex
 	running   int
 	max       int
@@ -113,8 +138,8 @@ func (k *tracker) enter(c domain.GitHubConnection) {
 	}
 	k.running++
 	k.max = max(k.max, k.running)
-	k.byAccount[c.AccountID]++
-	if k.byAccount[c.AccountID] > 1 {
+	k.byAccount[k.group(c)]++
+	if k.byAccount[k.group(c)] > 1 {
 		k.overlap = true
 	}
 	k.ran = append(k.ran, c.ID)
@@ -124,7 +149,14 @@ func (k *tracker) leave(c domain.GitHubConnection) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	k.running--
-	k.byAccount[c.AccountID]--
+	k.byAccount[k.group(c)]--
+}
+
+func (k *tracker) group(c domain.GitHubConnection) string {
+	if g, ok := k.groups[c.ID]; ok {
+		return g
+	}
+	return c.AccountID
 }
 
 func (k *tracker) didRun(id string) bool {
@@ -138,48 +170,62 @@ func (k *tracker) didRun(id string) bool {
 	return false
 }
 
-// Connections of one account run one after another while another account's
-// connection runs beside them; no more than syncWorkers run at once.
-func TestOnceSerializesConnectionsOfSameAccount(t *testing.T) {
-	var k tracker
-	firstStarted := make(chan struct{})
-	otherDone := make(chan struct{})
-	secondStarted := make(chan struct{})
-	_, m := hookedManager(t, map[string]string{"a1": "shared", "a2": "shared", "b1": "other"}, func(ctx context.Context, c domain.GitHubConnection) {
-		k.enter(c)
-		defer k.leave(c)
-		switch c.ID {
-		case "a1":
-			close(firstStarted)
-			// Hold the account until the other account's connection has run
-			// beside it, and give a wrongly started a2 the chance to show.
-			select {
-			case <-otherDone:
-			case <-time.After(3 * time.Second):
+// Connections of one GitHub identity run one after another while another
+// identity's connection runs beside them. An identity is the login of an
+// account, whichever account record holds it, or anonymous access.
+func TestOnceSerializesConnectionsOfSameIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		accounts map[string]string
+		logins   map[string]string
+	}{
+		{"same account", map[string]string{"a1": "shared", "a2": "shared", "b1": "other"}, nil},
+		{"same login", map[string]string{"a1": "first", "a2": "second", "b1": "other"}, map[string]string{"first": "octo", "second": "Octo"}},
+		{"anonymous", map[string]string{"a1": "", "a2": "", "b1": "other"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := tracker{groups: map[string]string{"a1": "a", "a2": "a", "b1": "b"}}
+			firstStarted := make(chan struct{})
+			otherDone := make(chan struct{})
+			secondStarted := make(chan struct{})
+			_, m := hookedManagerWithLogins(t, tc.accounts, tc.logins, func(ctx context.Context, c domain.GitHubConnection) {
+				k.enter(c)
+				defer k.leave(c)
+				switch c.ID {
+				case "a1":
+					close(firstStarted)
+					// Hold the identity until the other identity's connection
+					// has run beside it, and give a wrongly started a2 the
+					// chance to show.
+					select {
+					case <-otherDone:
+					case <-time.After(3 * time.Second):
+					}
+					select {
+					case <-secondStarted:
+					case <-time.After(200 * time.Millisecond):
+					}
+				case "a2":
+					close(secondStarted)
+				case "b1":
+					select {
+					case <-firstStarted:
+					case <-time.After(3 * time.Second):
+					}
+					close(otherDone)
+				}
+			})
+			m.Once(context.Background())
+			if k.overlap {
+				t.Fatal("connections of the same identity overlapped")
 			}
-			select {
-			case <-secondStarted:
-			case <-time.After(200 * time.Millisecond):
+			if k.max < 2 {
+				t.Fatal("connections of different identities did not overlap")
 			}
-		case "a2":
-			close(secondStarted)
-		case "b1":
-			select {
-			case <-firstStarted:
-			case <-time.After(3 * time.Second):
+			if !k.didRun("a2") {
+				t.Fatal("second connection of the identity did not run")
 			}
-			close(otherDone)
-		}
-	})
-	m.Once(context.Background())
-	if k.overlap {
-		t.Fatal("connections of the same account overlapped")
-	}
-	if k.max < 2 {
-		t.Fatal("connections of different accounts did not overlap")
-	}
-	if !k.didRun("a2") {
-		t.Fatal("second connection of the account did not run")
+		})
 	}
 }
 
@@ -203,6 +249,59 @@ func TestOnceRereadsCooldownBeforeNextConnectionOfAccount(t *testing.T) {
 	}
 	if k.didRun("a2") {
 		t.Fatal("connection ran during its account's cooldown")
+	}
+}
+
+// A rate limit of one account record holds back connections of another
+// record with the same login, but not those of a different login.
+func TestRateLimitCooldownSharedBySameLogin(t *testing.T) {
+	var k tracker
+	var s *fixtureStore
+	s, m := hookedManagerWithLogins(t, map[string]string{"a1": "first", "a2": "second", "b1": "other"}, map[string]string{"first": "octo", "second": "OCTO"}, func(ctx context.Context, c domain.GitHubConnection) {
+		k.enter(c)
+		defer k.leave(c)
+		if c.ID == "a1" {
+			if err := s.connectionStatusFor(c, "error", "unknown", "rate_limited", nil, time.Now().Add(20*time.Minute)); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	m.Once(context.Background())
+	if k.didRun("a2") || !k.didRun("b1") {
+		t.Fatal("cooldown did not follow the login", k.ran)
+	}
+	db := s.db()
+	if db.Connections["a2"].LastError != "rate_limited" || db.Connections["a2"].NextAttempt == "" {
+		t.Fatal("same-login connection kept no cooldown")
+	}
+	if db.Connections["b1"].LastError != "" {
+		t.Fatal("cooldown reached a different login")
+	}
+}
+
+// A connection moved to another identity during a pass is left to the next
+// pass, which is scheduled at once.
+func TestOnceDefersConnectionMovedToAnotherAccount(t *testing.T) {
+	var k tracker
+	var s *fixtureStore
+	s, m := hookedManager(t, map[string]string{"a1": "shared", "a2": "shared", "b1": "other"}, func(ctx context.Context, c domain.GitHubConnection) {
+		k.enter(c)
+		defer k.leave(c)
+		if c.ID == "a1" {
+			s.mutate(func(db *domain.Database) {
+				moved := db.Connections["a2"]
+				moved.AccountID = "other"
+				moved.ConfigRevision++
+				db.Connections["a2"] = moved
+			})
+		}
+	})
+	m.Once(context.Background())
+	if k.didRun("a2") {
+		t.Fatal("moved connection ran beside its new identity's worker")
+	}
+	if !m.Woken() {
+		t.Fatal("moved connection was not scheduled for the next pass")
 	}
 }
 

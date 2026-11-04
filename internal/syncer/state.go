@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
@@ -179,9 +180,24 @@ func (m *Manager) recordSkippedRepository(observed domain.GitHubConnection, head
 	})
 }
 
+// identity returns the GitHub identity whose rate limit a connection using
+// accountID consumes: the kind and case-folded login of the account, so two
+// account records of one login share it, or anonymous access, which GitHub
+// limits per address.
+func identity(db *domain.Database, accountID string) string {
+	if accountID == "" {
+		return "anonymous"
+	}
+	a, ok := db.Accounts[accountID]
+	if !ok {
+		return "account\x00" + accountID
+	}
+	return a.Kind + "\x00" + strings.ToLower(a.Login)
+}
+
 // connectionStatusFor records the outcome of a synchronization step of
 // observed, unless the connection was paused or reconfigured meanwhile. A
-// rate limit puts every connection of the same account on cooldown.
+// rate limit puts every connection of the same GitHub identity on cooldown.
 func (m *Manager) connectionStatusFor(observed domain.GitHubConnection, state, verification, code string, info *github.RepositoryInfo, retryAt time.Time) error {
 	return m.store.Update(func(tx *store.Tx) error {
 		db := tx.DB()
@@ -223,8 +239,9 @@ func (m *Manager) connectionStatusFor(observed domain.GitHubConnection, state, v
 		}
 		db.Connections[id] = c
 		if code == "rate_limited" {
+			limited := identity(db, c.AccountID)
 			for otherID, other := range db.Connections {
-				if otherID == id || other.AccountID != c.AccountID {
+				if otherID == id || identity(db, other.AccountID) != limited {
 					continue
 				}
 				previous, _ := time.Parse(time.RFC3339Nano, other.NextAttempt)

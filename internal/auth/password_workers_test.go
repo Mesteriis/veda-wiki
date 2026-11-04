@@ -154,3 +154,27 @@ func TestLoginsAuthenticateOutsideSessionLock(t *testing.T) {
 		t.Fatalf("issued %d sessions, want 2", active)
 	}
 }
+
+// A session's lifetime starts when it is issued, not when the login began:
+// time spent waiting for a password worker does not shorten it.
+func TestIssuedSessionLifetimeStartsAfterAuthentication(t *testing.T) {
+	s := &Sessions{}
+	now := time.Now()
+	const wait = 50 * time.Millisecond
+	if _, err := s.Issue(Login{Now: now, Authenticate: func() (Grant, bool) {
+		time.Sleep(wait)
+		return Grant{}, true
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.active) != 1 {
+		t.Fatal("session not issued")
+	}
+	for _, expiry := range s.active {
+		if expiry.Before(now.Add(sessionLifetime + wait)) {
+			t.Fatal("session lifetime started before authentication finished")
+		}
+	}
+}

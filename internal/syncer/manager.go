@@ -14,6 +14,7 @@ package syncer
 import (
 	"context"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -28,7 +29,9 @@ import (
 const (
 	connectionJobTimeout = 5 * time.Minute
 	mirrorJobTimeout     = 90 * time.Second
-	syncWorkers          = 3
+	// syncWorkers bounds concurrent connection steps, and with them import
+	// batches in memory (up to importer.MaxBytes each).
+	syncWorkers = 2
 )
 
 // Manager runs the synchronization of one store. Its operations that do not
@@ -130,10 +133,10 @@ func (m *Manager) Once(ctx context.Context) {
 }
 
 // syncConnections synchronizes the due connections of up to syncWorkers
-// accounts at a time and returns when all of them have finished. Connections
-// of one account run one after another in ID order, because a rate limit puts
-// the whole account on cooldown: each is reloaded just before its step, so it
-// sees a cooldown recorded by the previous one.
+// GitHub identities at a time and returns when all of them have finished.
+// Connections of one identity run one after another in ID order, because a
+// rate limit puts the whole identity on cooldown: each is reloaded just before
+// its step, so it sees a cooldown recorded by the previous one.
 //
 // Concurrent steps share only state that is safe for it: the store and its
 // blob writes take their own locks and every status write rechecks the
@@ -142,18 +145,26 @@ func (m *Manager) Once(ctx context.Context) {
 // fresh temporary file and renamed. Operations that must serialize a remote
 // update with local state (move deletions) hold the store write lock.
 func (m *Manager) syncConnections(ctx context.Context) {
-	var accounts []string
-	byAccount := map[string][]string{}
-	for _, c := range m.Connections() {
-		if _, seen := byAccount[c.AccountID]; !seen {
-			accounts = append(accounts, c.AccountID)
+	var identities []string
+	byIdentity := map[string][]string{}
+	m.read(func(db *domain.Database) {
+		ids := make([]string, 0, len(db.Connections))
+		for id := range db.Connections {
+			ids = append(ids, id)
 		}
-		byAccount[c.AccountID] = append(byAccount[c.AccountID], c.ID)
-	}
+		sort.Strings(ids)
+		for _, id := range ids {
+			key := identity(db, db.Connections[id].AccountID)
+			if _, seen := byIdentity[key]; !seen {
+				identities = append(identities, key)
+			}
+			byIdentity[key] = append(byIdentity[key], id)
+		}
+	})
 	slots := make(chan struct{}, syncWorkers)
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	for _, account := range accounts {
+	for _, key := range identities {
 		select {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
@@ -164,30 +175,34 @@ func (m *Manager) syncConnections(ctx context.Context) {
 		}
 		wg.Go(func() {
 			defer func() { <-slots }()
-			for _, id := range byAccount[account] {
+			for _, id := range byIdentity[key] {
 				if ctx.Err() != nil {
 					return
 				}
-				m.syncDue(ctx, account, id)
+				m.syncDue(ctx, key, id)
 			}
 		})
 	}
 }
 
 // syncDue runs one step of connection id if it is still due and still uses
-// account.
-func (m *Manager) syncDue(ctx context.Context, account, id string) {
-	// A previous connection may have put this account on rate-limit cooldown.
-	// Reload rather than using the snapshot taken before the pass.
+// the GitHub identity key.
+func (m *Manager) syncDue(ctx context.Context, key, id string) {
+	// A previous connection may have put this identity on rate-limit
+	// cooldown. Reload rather than using the snapshot taken before the pass.
 	var c domain.GitHubConnection
 	var exists bool
-	m.read(func(db *domain.Database) { c, exists = db.Connections[id] })
+	var current string
+	m.read(func(db *domain.Database) {
+		c, exists = db.Connections[id]
+		current = identity(db, c.AccountID)
+	})
 	if !exists || c.Paused {
 		return
 	}
-	if c.AccountID != account {
-		// Reconfigured to an account whose worker may be running: synchronize
-		// it in the next pass instead of beside that worker.
+	if current != key {
+		// Reconfigured to an identity whose worker may be running:
+		// synchronize it in the next pass instead of beside that worker.
 		m.Wake()
 		return
 	}
