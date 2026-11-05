@@ -34,6 +34,7 @@ type Batch struct {
 	Dirty           bool                 `json:"dirty"`
 	Complete        bool                 `json:"complete"`
 	Withheld        int                  `json:"withheld"`
+	WithheldPaths   map[string]bool      `json:"withheld_paths,omitempty"`
 	ExpectedImport  *string              `json:"expected_import"`
 	Create          bool                 `json:"create"`
 	Visibility      string               `json:"visibility,omitempty"`
@@ -42,6 +43,18 @@ type Batch struct {
 // WithheldReasons counts withheld checkout files by reason. Only
 // PrepareCheckout fills it; it is never serialized.
 func (b Batch) WithheldReasons() map[string]int { return b.withheldReasons }
+
+// ObservedTree reports whether the observation saw every path of the tree,
+// so that an imported article absent from Files was deleted upstream: either
+// nothing was withheld, or every withheld file is named in WithheldPaths. A
+// withheld file still leaves the import partial; only Complete without
+// withheld files proves that nothing was left out.
+func (b Batch) ObservedTree() bool {
+	if b.Withheld == 0 {
+		return b.Complete
+	}
+	return len(b.WithheldPaths) == b.Withheld
+}
 
 // Result counts what an import changed.
 type Result struct {

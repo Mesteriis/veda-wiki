@@ -83,10 +83,11 @@ func (h handler) removeImportedSource(rw http.ResponseWriter, r *http.Request) {
 }
 
 // localImport applies an incremental import into the configured local source
-// only; a complete import or another source is refused.
+// only; an import that covers the whole tree, and could therefore delete
+// articles, or another source is refused.
 func (h handler) localImport(rw http.ResponseWriter, r *http.Request) {
 	var batch importer.Batch
-	if importer.Decode(rw, r, &batch) != nil || batch.SourceID != h.LocalImportSource || batch.Complete {
+	if importer.Decode(rw, r, &batch) != nil || batch.SourceID != h.LocalImportSource || batch.Complete || batch.ObservedTree() {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}

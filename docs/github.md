@@ -205,6 +205,15 @@ independently enforces visibility using its own clock.
 If a connected public repository yields an incomplete import (for example an
 invalid or withheld file), public readers cannot access that source until a
 complete snapshot has been imported. Private readers retain the local data.
+A pull that observed the whole tree still applies upstream deletions when some
+files were withheld (credential-like, oversized, invalid text or image), since
+every withheld file is named in the batch: an imported article absent from the
+tree becomes a tombstone, or a deletion conflict when it was changed locally,
+while a withheld article keeps its previous revision and is never tombstoned
+by that pull. The withheld file keeps the source partial until a later pull
+imports it. Queued writes with dependencies and pending move deletions are
+confirmed only by a pull without withheld files, and attaching an existing
+private source requires one as well.
 When a complete public snapshot confirms an upstream deletion, its old imported
 publication is withdrawn even if a conflicting local draft must be retained.
 When GitHub reports a rate limit, VEDA persists the source's next retry time,

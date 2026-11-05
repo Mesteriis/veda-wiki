@@ -109,7 +109,13 @@ Only Git-indexed files are eligible: ignored/untracked local Markdown, nested
 checkouts and unrelated working directories do not become published content.
 Staged new files are eligible and are reported as a dirty observation.
 Credential-like Markdown is withheld, never returned in an error message.
-Incomplete coverage is explicit and disables automatic upstream deletions. A
+Incomplete coverage is explicit. A batch names every withheld file in
+`withheld_paths`, so an observation that saw every tracked path still applies
+upstream deletions: an imported article absent from the batch becomes a
+tombstone or a deletion conflict, while a withheld article keeps its previous
+revision. A batch that cannot account for every withheld file applies no
+deletions. Withheld paths travel only in the import request; the preview and
+the stored source status report counts, never names. A
 public source with incomplete coverage is hidden from public readers until a
 complete import succeeds; authorized readers retain access to its local data.
 Unmerged Markdown and image paths are withheld even if absent from the working
@@ -168,9 +174,10 @@ generation creates no new article revisions or duplicate conflicts.
 
 An upstream change updates a clean article. If the local current text diverges
 from the last imported base, both texts remain durable and the article keeps its
-local current revision until resolution. A complete upstream removal tombstones
-a clean imported article; removal of a locally modified article creates a
-deletion conflict. Local-only articles are not deleted by repository absence.
+local current revision until resolution. An upstream removal observed by an
+import that covered the whole tree tombstones a clean imported article; removal
+of a locally modified article creates a deletion conflict. Local-only articles
+are not deleted by repository absence, and neither is a withheld article.
 
 Owner API: `GET /api/v1/conflicts`, `POST /api/v1/conflicts/resolve`. Resolution
 supplies source ID, path, conflict index, expected local revision and either

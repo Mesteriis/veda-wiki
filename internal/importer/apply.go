@@ -79,6 +79,22 @@ func (s Service) Apply(batch Batch, proof *RemoteProof, localRoot bool) (Result,
 			return result, domain.ErrInvalid
 		}
 	}
+	// A withheld path names a file the observation saw but did not import;
+	// it cannot also be imported, and it cannot outnumber the withheld files.
+	if len(batch.WithheldPaths) > batch.Withheld {
+		return result, domain.ErrInvalid
+	}
+	for p := range batch.WithheldPaths {
+		if !domain.SafeRelative(p) {
+			return result, domain.ErrInvalid
+		}
+		if _, imported := batch.Files[p]; imported {
+			return result, domain.ErrInvalid
+		}
+		if _, imported := batch.Assets[p]; imported {
+			return result, domain.ErrInvalid
+		}
+	}
 	canonical, _ := json.Marshal(struct {
 		Files    map[string]string
 		Assets   map[string]domain.BlobRef
@@ -304,7 +320,7 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 			result.Created++
 		}
 	}
-	if batch.Complete && batch.Withheld == 0 {
+	if batch.ObservedTree() {
 		applyDeletions(db, batch, proof, now, &result)
 	}
 	if exists && wasPrivate && src.Visibility == "private" {
@@ -345,14 +361,16 @@ func (s Service) apply(tx *store.Tx, batch Batch, proof *RemoteProof, localRoot 
 	return result, false, nil
 }
 
-// applyDeletions handles articles a complete observation no longer contains:
-// unchanged ones become tombstones, locally changed ones get a conflict.
+// applyDeletions handles articles an observation of the whole tree no longer
+// contains: unchanged ones become tombstones, locally changed ones get a
+// conflict. A withheld article still exists upstream and keeps its previous
+// revision.
 func applyDeletions(db *domain.Database, batch Batch, proof *RemoteProof, now string, result *Result) {
 	for key, a := range db.Articles {
 		if a.SourceID != batch.SourceID || a.Deleted || a.UpstreamHash == "" {
 			continue
 		}
-		if _, present := batch.Files[a.Path]; present {
+		if _, present := batch.Files[a.Path]; present || batch.WithheldPaths[a.Path] {
 			continue
 		}
 		if proof != nil && proof.Visibility == "public" && !a.PublishedLocal {

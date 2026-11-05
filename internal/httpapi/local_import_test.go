@@ -52,6 +52,11 @@ func TestLocalImportIsRestrictedAndPreservesConflicts(t *testing.T) {
 	if r := call(complete, true, ""); r.Code != 400 {
 		t.Fatal("complete import accepted", r.Code)
 	}
+	covering := next
+	covering.Withheld, covering.WithheldPaths = 1, map[string]bool{"secret.md": true}
+	if r := call(covering, true, ""); r.Code != 400 {
+		t.Fatal("tree-covering import accepted", r.Code)
+	}
 	wrong := next
 	wrong.SourceID = "other"
 	if r := call(wrong, true, ""); r.Code != 400 {

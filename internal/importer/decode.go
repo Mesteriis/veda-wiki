@@ -101,6 +101,8 @@ func Decode(rw http.ResponseWriter, r *http.Request, batch *Batch) error {
 			err = dec.Decode(&batch.Complete)
 		case "withheld":
 			err = dec.Decode(&batch.Withheld)
+		case "withheld_paths":
+			err = dec.Decode(&batch.WithheldPaths)
 		case "expected_import":
 			err = dec.Decode(&batch.ExpectedImport)
 		case "create":
