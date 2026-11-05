@@ -106,6 +106,25 @@ been used successfully for as long as you consider necessary. This describes
 the steps; the switch of the deployed container has not been performed or
 verified by this repository's tests.
 
+## Editor mode: agents that keep the wiki current
+
+When agents are meant to update knowledge through VEDA rather than by editing
+the repository, start `veda mcp` with the owner key and `--editor`:
+
+```sh
+ssh pve 'pct exec 161 -- runuser -u infra-wiki -- /opt/veda-next/veda mcp --editor --url http://127.0.0.1:18080 --key-file /var/lib/veda-next/owner.key'
+```
+
+An editor client lists the fourteen read-only tools plus `veda_write_article`
+and nothing else: no source creation, moves, conflicts, GitHub administration,
+access keys or knowledge-graph reindexing, and calls to those names are refused
+like unknown tools. Writes use optimistic concurrency (`expected_revision` from
+`veda_read` or `veda_prepare_update`); a connected source with write access
+pushes them to its repository through the outbox. The owner key stays on the
+server and is never passed to the agent; `--editor` without `--key-file`, or
+with a reader credential, is rejected. The mode limits the tool set, not the
+credential: anyone who can run that command as that user holds the owner key.
+
 When a key must be sent by the local machine instead of stored on the server,
 run the same remote command with `--reader-key-preamble` under
 `veda mcp-relay --key-file /private/agent.key -- ssh pve '...'`. This `ssh pve`

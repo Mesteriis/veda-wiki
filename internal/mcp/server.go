@@ -39,13 +39,14 @@ func handlerFor(name string) (handler, bool) {
 }
 
 // NewServer builds the MCP server for c. A read-only client gets only the
-// tools marked ReadOnly; calls to any other name are refused.
+// tools marked ReadOnly, an editor client those plus the tools marked Editor;
+// calls to any other name are refused.
 func NewServer(c *client.Client) *sdk.Server {
 	server := sdk.NewServer(&sdk.Implementation{Name: "veda", Version: "0.1.0"},
 		&sdk.ServerOptions{Instructions: Instructions})
 	known := map[string]bool{}
 	for _, spec := range Tools {
-		if c.ReadOnly() && !spec.ReadOnly {
+		if !spec.Allowed(c) {
 			continue
 		}
 		schema, err := compileSchema(spec.Schema)
