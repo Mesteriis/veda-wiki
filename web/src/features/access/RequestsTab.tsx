@@ -44,7 +44,7 @@ export function RequestsTab({ busy, setBusy, onIssued }: RequestsTabProps) {
           <button disabled={busy} onClick={() => { void decide(request, true); }}>Выдать ключ</button>
           <button disabled={busy} onClick={() => { void decide(request, false); }}>Отклонить</button>
         </>}</div>
-      </div>) : <p>Запросов пока нет. Гости отправляют их кнопкой «Запросить доступ к API/MCP».</p>}</div>
+      </div>) : <p>Запросов пока нет. Гости отправляют их кнопкой «Доступ к API и MCP» в боковой панели.</p>}</div>
     <p className="settings-note">Ключ человеку VEDA не отправляет: передайте его сами, например в Telegram.</p>
     {message && <p role="alert">{message}</p>}
   </div>;

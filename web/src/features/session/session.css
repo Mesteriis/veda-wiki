@@ -9,4 +9,19 @@
 .request-dialog label { display: flex; flex-direction: column; gap: 6px; }
 .request-dialog .request-trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .telegram-id { display: flex; flex-direction: column; gap: 8px; }
-.nav-item.request-access { border-color: #104b60; background: #001017a8; cursor: pointer; }
+.nav-item.request-access { border-color: #104b60; background: #001017a8; cursor: pointer; font: inherit; font-size: 17px; text-align: left; }
+.nav-item.request-access > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Shown only inside the open mobile menu (sidebar.css shows its nav items). */
+.sidebar nav .menu-only { display: none; }
+.request-dialog > p { margin: 0 0 12px; color: #b7d3dc; }
+.request-dialog form > p:first-child { margin: 0; color: #b7d3dc; }
+.request-dialog legend { padding: 0 6px; color: #9fc4cf; }
+.request-dialog fieldset p { margin: 4px 0; color: #8fb3bf; }
+.request-dialog input:not([type=checkbox]), .request-dialog textarea { background: #001522; border: 1px solid #15657a; color: #e9f9ff; border-radius: 5px; padding: 10px; font: inherit; }
+.request-dialog textarea { resize: vertical; min-height: 72px; }
+.request-dialog input:focus-visible, .request-dialog textarea:focus-visible { outline: 2px solid #00bcd4; outline-offset: 1px; }
+.request-dialog input[type=checkbox] { accent-color: #00bcd4; }
+.request-dialog .dialog-head button { background: transparent; border: 1px solid #15657a; color: #d1e4eb; border-radius: 5px; width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; }
+.request-dialog form > button, .request-dialog > button { align-self: flex-start; background: #00314a; border: 1px solid #00bcd4; color: #e9f9ff; border-radius: 5px; padding: 8px 16px; font: inherit; cursor: pointer; }
+.request-dialog form > button:disabled { opacity: 0.5; cursor: not-allowed; }
+.request-dialog [role=alert] { margin: 0; color: #ffb4a8; }

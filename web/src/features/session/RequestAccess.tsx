@@ -31,7 +31,7 @@ export function RequestAccess({ groups, className = "" }: { groups: Group[]; cla
     } finally { setBusy(false); }
   }
   return <>
-    <button type="button" className={"nav-item request-access " + className} onClick={open}><I name="key" /><span>Запросить доступ к API/MCP</span></button>
+    <button type="button" className={"nav-item request-access " + className} title="Запросить доступ к API и MCP" onClick={open}><I name="key" /><span>Доступ к API и MCP</span></button>
     <dialog ref={dialog} className="request-dialog" aria-labelledby="request-title">
       <div className="dialog-head"><h2 id="request-title">Доступ к API и MCP</h2><button type="button" aria-label="Закрыть" onClick={() => dialog.current?.close()}><I name="x" /></button></div>
       {sent ? <><p>Запрос отправлен владельцу. Ключ вам передадут в Telegram, если доступ одобрят.</p><button type="button" onClick={() => dialog.current?.close()}>Готово</button></> :

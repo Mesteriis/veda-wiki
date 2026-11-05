@@ -15,7 +15,7 @@ describe("RequestAccess", () => {
     let body: unknown = null;
     serve({ "POST /api/public/access-requests": (init) => { body = JSON.parse(String(init?.body)); return json({ status: true }, 202); } });
     render(<RequestAccess groups={groups} />);
-    fireEvent.click(screen.getByRole("button", { name: "Запросить доступ к API/MCP" }));
+    fireEvent.click(screen.getByRole("button", { name: "Доступ к API и MCP" }));
     fireEvent.click(screen.getByLabelText("Руководства"));
     fireEvent.change(screen.getByLabelText("Ник в Telegram"), { target: { value: "person_1" } });
     fireEvent.change(screen.getByLabelText("Комментарий"), { target: { value: "for my agent" } });
@@ -27,7 +27,7 @@ describe("RequestAccess", () => {
   it("checks the form before sending and explains a rate limit", async () => {
     const calls = serve({ "POST /api/public/access-requests": () => json({ error: "try again later" }, 429) });
     render(<RequestAccess groups={groups} />);
-    fireEvent.click(screen.getByRole("button", { name: "Запросить доступ к API/MCP" }));
+    fireEvent.click(screen.getByRole("button", { name: "Доступ к API и MCP" }));
     fireEvent.change(screen.getByLabelText("Ник в Telegram"), { target: { value: "@person_1" } });
     fireEvent.click(screen.getByRole("button", { name: "Отправить запрос" }));
     expect(await screen.findByText("Выберите хотя бы один раздел.")).not.toBeNull();

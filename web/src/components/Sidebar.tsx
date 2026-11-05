@@ -58,6 +58,8 @@ export function Sidebar({ v }: { v: View }) {
             </F>
           ) : null,
         )}
+        {/* Phones hide the sidebar footer, so the guest request is a menu item there. */}
+        {v.Public && <RequestAccess groups={v.Groups ?? []} className="menu-only" />}
       </nav>
       <button type="button" className="mobile-menu-toggle" aria-label="Меню" aria-controls="main-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
         <I name={menuOpen ? "x" : "dots"} />
