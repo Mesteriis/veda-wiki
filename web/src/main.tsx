@@ -6,6 +6,7 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "./components/shell.css";
 import "./components/sidebar.css";
+import "./components/sidebar-rail.css";
 import "./components/header.css";
 import "./features/reading/reading.css";
 import "./features/catalog/catalog.css";
