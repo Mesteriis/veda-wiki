@@ -99,6 +99,9 @@ func GitHub(args []string) error {
 			if f.Name == "write" {
 				in.Write = write
 			}
+			if f.Name == "repository" {
+				in.Repository = repo
+			}
 		})
 		if e = client.request("PUT", "/api/v1/github/connections", in, &result); e != nil {
 			return e

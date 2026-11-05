@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -41,8 +42,14 @@ type Fake struct {
 	Server       *httptest.Server
 	Force        bool
 	Name         string
-	RepoID       int64
+	// Renamed is the repository's previous name after a rename on GitHub:
+	// requests for it answer with a redirect, as GitHub does.
+	Renamed string
+	RepoID  int64
 }
+
+// RepoID is the numeric identity of the fixture repository.
+const RepoID int64 = 41
 
 // SHA returns the deterministic fake object ID for s.
 func SHA(s string) string { return github.BlobDigest([]byte(s), 40) }
@@ -50,7 +57,7 @@ func SHA(s string) string { return github.BlobDigest([]byte(s), 40) }
 // New starts a fake GitHub server serving files as its first commit.
 func New(t *testing.T, files map[string]string) *Fake {
 	t.Helper()
-	f := &Fake{Name: "org/handbook", RepoID: 41, Blobs: map[string][]byte{}, Trees: map[string]map[string]string{}, Commits: map[string]Commit{}}
+	f := &Fake{Name: "org/handbook", RepoID: RepoID, Blobs: map[string][]byte{}, Trees: map[string]map[string]string{}, Commits: map[string]Commit{}}
 	f.Advance(files)
 	f.Server = httptest.NewServer(http.HandlerFunc(f.Serve))
 	t.Cleanup(f.Server.Close)
@@ -89,7 +96,10 @@ func (f *Fake) Contents() map[string]string {
 
 // Client returns a GitHub client that talks to this fake server.
 func (f *Fake) Client() *github.Client {
-	return github.NewForTest(f.Server.URL, f.Server.Client())
+	// Like the production client, never follow redirects.
+	hc := f.Server.Client()
+	hc.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	return github.NewForTest(f.Server.URL, hc)
 }
 
 // Serve answers the GitHub API requests the client makes.
@@ -137,8 +147,25 @@ func (f *Fake) Serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "denied", 404)
 		return
 	}
+	if f.Renamed != "" && (r.URL.Path == "/repos/"+f.Renamed || strings.HasPrefix(r.URL.Path, "/repos/"+f.Renamed+"/")) {
+		w.Header().Set("Location", "/repositories/"+strconv.FormatInt(f.RepoID, 10))
+		w.WriteHeader(http.StatusMovedPermanently)
+		return
+	}
+	repository := func() map[string]any {
+		return map[string]any{
+			"id":             f.RepoID,
+			"full_name":      f.Name,
+			"private":        f.Private,
+			"visibility":     map[bool]string{false: "public", true: "private"}[f.Private],
+			"default_branch": "main",
+			"permissions":    map[string]bool{"push": true},
+		}
+	}
 	route := strings.TrimPrefix(r.URL.Path, "/repos/"+f.Name)
 	switch {
+	case r.URL.Path == "/repositories/"+strconv.FormatInt(f.RepoID, 10):
+		respond(repository())
 	case r.URL.Path == "/graphql" && r.Method == "POST":
 		var request struct {
 			Query     string `json:"query"`
@@ -184,14 +211,7 @@ func (f *Fake) Serve(w http.ResponseWriter, r *http.Request) {
 		}
 		respond(map[string]any{"data": map[string]any{"updateRefs": map[string]any{"clientMutationId": nil}}})
 	case r.URL.Path == "/repos/"+f.Name:
-		respond(map[string]any{
-			"id":             f.RepoID,
-			"full_name":      f.Name,
-			"private":        f.Private,
-			"visibility":     map[bool]string{false: "public", true: "private"}[f.Private],
-			"default_branch": "main",
-			"permissions":    map[string]bool{"push": true},
-		})
+		respond(repository())
 	case route == "/git/ref/heads/main":
 		respond(map[string]any{"object": map[string]string{"sha": f.Head, "type": "commit"}})
 	case strings.HasPrefix(route, "/git/commits/"):

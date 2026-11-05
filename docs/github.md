@@ -312,3 +312,26 @@ local-only material before any subsequent write. A source configured with `--loc
 retire or reconfigure that importer, because it cannot update a connected source.
 Adoption has a five-minute server deadline; client or network interruption can
 leave the response uncertain, so inspect connection status before retrying.
+
+### Renamed repositories
+
+VEDA never follows HTTP redirects from GitHub. When a connected repository is
+renamed or transferred, requests for its old name answer with a redirect, which
+the client reports as `repository_moved`. The synchronization step then reads
+the repository by its stored numeric identity (`GET /repositories/{id}`) and
+adopts the new name only for a rename within the same owner, when the identity
+matches and a private connection is still private; the connection's
+configuration revision moves on and the step continues under the new name. A
+transfer to another account, a private repository that turned public, or any
+other answer leaves the connection in error with `repository_moved` until the
+owner decides.
+
+The owner sets the name explicitly with `PUT /api/v1/github/connections` and
+`repository` (with `expected_config_revision`), or
+`./veda github configure --id SOURCE --repository OWNER/NEW-NAME --expected-config N`.
+The named repository must have the connected repository's identity; the
+connection is re-verified and synchronized from scratch, as after any
+reconfiguration, and its visibility is taken from the repository as usual.
+GitHub App installation tokens are requested by repository name, so an
+App-backed connection fails earlier, at the token request, with that request's
+error code rather than `repository_moved`; set the name explicitly for it.
