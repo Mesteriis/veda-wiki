@@ -1,6 +1,5 @@
 import type { View } from "../lib/view";
 import { F } from "./FeatureContext";
-import { RequestAccess } from "../features/session/RequestAccess";
 import { I } from "./Icon";
 
 function heading(v: View): [title: string, subtitle: string] {
@@ -43,8 +42,8 @@ export function Header({ v }: { v: View }) {
         <F className="round" name="theme" label="Оформление">
           <I name="sun" />
         </F></>}
-        {/* On wider screens the sign-in and profile button lives at the foot of the sidebar. */}
-        {v.Public && <RequestAccess groups={v.Groups ?? []} className="header-account" />}
+        {/* On wider screens the sign-in and profile button lives at the foot of the sidebar;
+            the guest access request stays there on every width (the mobile menu shows it). */}
         {v.Public ? <F className="login-button header-account" name="profile" label="Войти">Войти</F> : <F className="round profile header-account" name="profile" label="Профиль">V</F>}
       </div>
     </header>
