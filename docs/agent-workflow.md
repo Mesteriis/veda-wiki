@@ -125,6 +125,12 @@ server and is never passed to the agent; `--editor` without `--key-file`, or
 with a reader credential, is rejected. The mode limits the tool set, not the
 credential: anyone who can run that command as that user holds the owner key.
 
+The browser page **API и MCP** (`/?api=1`, administrator session) builds these
+commands for Claude Code, Codex, OpenCode and Hermes, lists the tools of each mode
+from the server, summarizes the main REST routes and shows when each MCP mode last
+connected and which articles were written through MCP. Host, paths and port typed
+there are kept in that browser only; the owner key is never shown.
+
 When a key must be sent by the local machine instead of stored on the server,
 run the same remote command with `--reader-key-preamble` under
 `veda mcp-relay --key-file /private/agent.key -- ssh pve '...'`. This `ssh pve`

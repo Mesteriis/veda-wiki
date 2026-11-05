@@ -178,3 +178,26 @@ func TestBadKeyFileFailsRequest(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+func TestDoLabelsTheMCPMode(t *testing.T) {
+	var got []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("X-Veda-Client"))
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(server.Close)
+	key := writeKey(t, 0o600, testKey)
+	for _, opts := range []Options{{KeyFile: key}, {KeyFile: key, Editor: true}, {ReaderKeyFile: key}} {
+		opts.URL = server.URL
+		c, err := New(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = c.Do(t.Context(), "GET", "/api/v1/sources", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Join(got, ",") != "mcp/owner,mcp/editor,mcp/reader" {
+		t.Fatalf("labels %v", got)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -63,6 +64,9 @@ type View struct {
 	Withheld    int
 	Count       int
 	GitHubCount int
+	// MCPLastSeen is when any MCP client last reached this process, to the
+	// minute so the state's ETag stays stable; private views only.
+	MCPLastSeen string `json:",omitempty"`
 	TOC         template.HTML
 }
 
@@ -106,6 +110,19 @@ func (h handler) state(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	v := View{Public: h.Public, Query: query, Selected: env, Generated: s.Generated, Withheld: s.Withheld, Count: len(s.Pages)}
+	// MCP activity is the owner's: only the owner key or an administrator
+	// session sees it, never a scoped reader.
+	if !h.Public && h.Activity != nil && (h.authorized(r) || h.adminCookieValid(r, h.AdminSessions, auth.AdminCookie)) {
+		var latest time.Time
+		for _, at := range h.Activity.snapshot() {
+			if at.After(latest) {
+				latest = at
+			}
+		}
+		if !latest.IsZero() {
+			v.MCPLastSeen = latest.UTC().Truncate(time.Minute).Format(time.RFC3339)
+		}
+	}
 	if r.URL.Query().Get("graph") == "1" {
 		v.GraphEdges = render.GraphEdges(s.Pages)
 	}

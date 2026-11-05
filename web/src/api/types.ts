@@ -66,6 +66,8 @@ export interface StateView {
   Withheld: number;
   Count: number;
   GitHubCount: number;
+  /** When an MCP client last reached the server, to the minute; private views only. */
+  MCPLastSeen?: string;
   TOC: string;
 }
 

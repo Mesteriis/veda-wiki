@@ -50,6 +50,8 @@ The field is absent for public readers and for articles without a conflict.
 | POST | `/api/v1/github/sync`, `/api/v1/github/pause` | Schedule sync or change pause state (owner only) |
 | POST | `/api/v1/github/publish-job` | Explicitly approve a queued private edit for publication (owner only) |
 | POST | `/api/v1/github/cancel-bundle` | Cancel an unprepared linked-article bundle (owner only) |
+| GET | `/api/v1/mcp/tools` | MCP tools with the modes that list them: `reader`, `editor`, `owner` (owner only; `/api/admin/mcp/tools` in an administrator session) |
+| GET | `/api/v1/mcp/activity` | When each MCP mode last reached this process, and the 20 newest revisions written through MCP (owner only; `/api/admin/mcp/activity` in an administrator session) |
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
 Direct article creation and update reject credential-like text with HTTP 400
@@ -541,3 +543,21 @@ MCP exposes these routes through the REST client with the same bounds:
 `limit_bytes`) for readers and the owner; `veda_knowledge_status` and
 `veda_knowledge_reindex` for the owner only. MCP does not pass `sha256`,
 `sources` or `relations`. A tool answer above 2 MiB is refused.
+
+## Write origin and MCP activity
+
+`veda mcp` labels its requests with `X-Veda-Client: mcp/reader`, `mcp/editor` or
+`mcp/owner`. The label is never authorization: a mode is recorded only when the
+request's own credential matches it (an editor or owner label needs the owner key,
+a reader label a reader credential), and anything else is ignored. A revision the
+owner writes through `POST`/`PUT /api/v1/articles` records `via`: `mcp-editor`,
+`mcp-owner`, or `rest` for any other client; imported revisions and revisions
+written before this field have none. The field is optional in stored revisions: an
+older binary reads the store and drops the field from article headers it rewrites,
+and a newer binary does not compare `via` between a header and its revision row, so
+rolling back and upgrading again keeps the store readable. The last contact of each mode is kept in
+memory only and starts empty after a restart; reader keys and the reader socket
+share one `reader` entry, and the reader label can be sent by any reader, so it is a
+hint, not proof. State views (`/api/state`) carry `MCPLastSeen`, the latest contact
+truncated to the minute, only for the owner key or an administrator session.
+

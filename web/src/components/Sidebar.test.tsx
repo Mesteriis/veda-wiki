@@ -5,8 +5,8 @@ import type { View } from "../lib/view";
 import { FeatureContext } from "./FeatureContext";
 import { Sidebar } from "./Sidebar";
 
-function view(isPublic: boolean): View {
-  return { Public: isPublic, Count: 5, GitHubCount: 0 } as unknown as View;
+function view(isPublic: boolean, extra: Partial<View> = {}): View {
+  return { Public: isPublic, Count: 5, GitHubCount: 0, ...extra } as unknown as View;
 }
 
 function renderSidebar(isPublic: boolean) {
@@ -39,5 +39,17 @@ describe("Sidebar footer", () => {
     expect(profile.closest(".sidebar-footer")).toBe(footer);
     fireEvent.click(profile);
     expect(open).toHaveBeenCalledWith("profile");
+  });
+
+  it("shows when MCP last reached the server instead of an unknown state", () => {
+    const { container } = render(
+      <FeatureContext.Provider value={vi.fn()}>
+        <Sidebar v={view(false, { MCPLastSeen: new Date(Date.now() - 2 * 60000).toISOString() })} />
+      </FeatureContext.Provider>,
+    );
+    expect(container.querySelector(".system")?.textContent).toContain("2 мин назад");
+    cleanup();
+    const idle = render(<Sidebar v={view(false)} />);
+    expect(idle.container.querySelector(".system")?.textContent).toContain("Нет обращений");
   });
 });

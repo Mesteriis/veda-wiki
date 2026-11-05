@@ -110,6 +110,18 @@ func (c *Client) ReadOnly() bool { return c.readOnly }
 // Editor reports whether the owner-key client is limited to article tools.
 func (c *Client) Editor() bool { return c.editor }
 
+// mode is the label sent with every request so the server can show which
+// MCP modes are in use; the server trusts only the credential.
+func (c *Client) mode() string {
+	switch {
+	case c.readOnly:
+		return "mcp/reader"
+	case c.editor:
+		return "mcp/editor"
+	}
+	return "mcp/owner"
+}
+
 // Timeout returns the request deadline: 360 s for a GitHub connection that
 // adopts an existing source, 120 s for source reconciliation and mirror
 // changes, 15 s otherwise.
@@ -176,6 +188,7 @@ func (c *Client) Do(ctx context.Context, method, route string, body any) (json.R
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Veda-Client", c.mode())
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}

@@ -68,12 +68,17 @@ func (s *dataStore) addSource(src domain.Source) error {
 // put writes one article revision. Only that article's records are persisted
 // unless completing a pending move can change others.
 func (s *dataStore) put(sourceID, p, text string, expected int) (domain.Revision, error) {
+	return s.putVia(sourceID, p, text, expected, "")
+}
+
+// putVia is put that records the client that wrote the revision.
+func (s *dataStore) putVia(sourceID, p, text string, expected int, via string) (domain.Revision, error) {
 	if !domain.ValidArticleText(text, expected) {
 		return domain.Revision{}, domain.ErrInvalid
 	}
 	var rev domain.Revision
 	err := s.Update(func(tx *store.Tx) error {
-		written, key, err := domain.PutArticle(tx.DB(), sourceID, p, text, expected, time.Now())
+		written, key, err := domain.PutArticleVia(tx.DB(), sourceID, p, text, expected, via, time.Now())
 		if err != nil {
 			return err
 		}

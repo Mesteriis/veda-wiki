@@ -101,6 +101,7 @@ func Run(ctx context.Context, args []string) (err error) {
 	}
 	// One set of import observations serves every listener and the syncer.
 	observations := &importer.Observations{}
+	activity := &httpapi.ClientActivity{}
 	token, err := loadOrCreateKey(*data, "owner.key")
 	if err != nil {
 		return errors.New("owner key unavailable or invalid")
@@ -162,7 +163,7 @@ func Run(ctx context.Context, args []string) (err error) {
 	}
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
 		cfg := httpapi.Config{OwnerToken: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList}
-		deps := httpapi.Deps{Store: st, Observations: observations, Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Sync: manager}
+		deps := httpapi.Deps{Store: st, Observations: observations, Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Sync: manager, Activity: activity}
 		if kmod != nil {
 			deps.Knowledge = kmod.service
 		}

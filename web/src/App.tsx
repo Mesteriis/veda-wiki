@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { AccessSettings } from "./features/access/AccessSettings";
 import { GitHubConnect } from "./features/github/GitHubConnect";
+import { ApiMcp } from "./features/mcp/ApiMcp";
 import { FeatureContext, type FeatureName } from "./components/FeatureContext";
 import { FeatureDialog } from "./components/FeatureDialog";
 import { Header } from "./components/Header";
@@ -22,6 +23,7 @@ const linkLoginMessage = "Не удалось войти по ссылке. Пр
 function Section({ v, data }: { v: View; data: StatePayload }) {
   if (v.SettingsView) return <AccessSettings />;
   if (v.GitHubView) return <GitHubConnect />;
+  if (v.ApiView) return <ApiMcp />;
   if (v.RecentView) return <Recent v={v} />;
   if (v.GraphView) return <Graph v={v} />;
   if (v.Page) return <Reading data={data} page={v.Page} />;

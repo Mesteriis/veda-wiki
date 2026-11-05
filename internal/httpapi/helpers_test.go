@@ -41,11 +41,12 @@ type Wiki struct {
 	AccessSessions    *auth.Sessions
 	Sync              *syncer.Manager
 	Knowledge         *knowledge.Service
+	Activity          *ClientActivity
 }
 
 func (w Wiki) handler() handler {
 	cfg := Config{Public: w.Public, ReaderLocal: w.ReaderLocal, ReaderKeyRequired: w.ReaderKeyRequired, LocalImportSource: w.LocalImportSource, AllowedHosts: w.AllowedHosts, OwnerToken: w.Token, ReaderToken: w.ReaderToken}
-	deps := Deps{Sessions: w.Sessions, AdminSessions: w.AdminSessions, AccessSessions: w.AccessSessions, Sync: w.Sync, Knowledge: w.Knowledge}
+	deps := Deps{Sessions: w.Sessions, AdminSessions: w.AdminSessions, AccessSessions: w.AccessSessions, Sync: w.Sync, Knowledge: w.Knowledge, Activity: w.Activity}
 	if w.Store != nil {
 		deps.Store, deps.Observations = w.Store.Store, w.Store.observations
 	}

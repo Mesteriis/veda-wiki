@@ -4,6 +4,7 @@ import { I } from "./Icon";
 
 function heading(v: View): [title: string, subtitle: string] {
   if (v.SettingsView) return ["Настройки", "Управление пользователями, командами и ключами доступа"];
+  if (v.ApiView) return ["API и MCP", "Подключение агентов, инструменты MCP, REST API и активность"];
   if (v.GitHubView) return ["Интеграции GitHub", "Подключение репозиториев и синхронизация с базой знаний"];
   if (v.RecentView) return ["Недавние", "Страницы, которые вы недавно открывали"];
   if (v.GraphView) return ["Граф знаний", "Связи между статьями базы знаний по источникам"];

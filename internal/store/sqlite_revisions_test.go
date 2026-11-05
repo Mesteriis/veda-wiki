@@ -426,3 +426,16 @@ func TestSQLiteLegacyFileRejectsCommits(t *testing.T) {
 		})
 	}
 }
+
+func TestSQLiteHeaderWithoutViaFromOlderBinaryStillOpens(t *testing.T) {
+	s := sqliteStore(t)
+	writeNext(t, s, "guide.md")
+	execSQL(t, s.Dir(), `UPDATE revisions SET data=json_set(data,'$.via','mcp-editor') WHERE number=1`)
+	reopened, err := Open(s.Dir())
+	if err != nil {
+		t.Fatal("an article header without via was rejected", err)
+	}
+	if got := reopened.db.Articles["local/guide.md"].Versions[0].Via; got != "mcp-editor" {
+		t.Fatalf("via from the revision row lost: %q", got)
+	}
+}

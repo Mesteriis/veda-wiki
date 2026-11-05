@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { View } from "../lib/view";
 import { F, type FeatureName } from "./FeatureContext";
+import { ago } from "../lib/format";
 import { I } from "./Icon";
 
 type NavItem = [icon: string, label: string, href: string | null, feature?: FeatureName];
@@ -12,18 +13,18 @@ const nav: NavItem[] = [
   ["star", "Избранное", null, "favorites"],
   ["clock", "Недавние", "/?recent=1"],
   ["brand-github", "GitHub", "/?github=1", "github"],
-  ["api", "API и MCP", null, "api"],
+  ["api", "API и MCP", "/?api=1", "api"],
   ["settings", "Настройки", "/?settings=1", "settings"],
 ];
 const ownerFeatures: (FeatureName | undefined)[] = ["github", "api", "settings", "favorites"];
 
 function isSelected(href: string, v: View): boolean {
-  return (href === "/" && !v.Query && !v.Selected && !v.Page && !v.GraphView && !v.RecentView && !v.GitHubView && !v.SettingsView) || (href === "/?env=all" && !!v.Selected && !v.Query && !v.Page) || (href === "/?graph=1" && v.GraphView) || (href === "/?recent=1" && v.RecentView) || (href === "/?github=1" && v.GitHubView) || (href === "/?settings=1" && v.SettingsView);
+  return (href === "/" && !v.Query && !v.Selected && !v.Page && !v.GraphView && !v.RecentView && !v.GitHubView && !v.SettingsView && !v.ApiView) || (href === "/?env=all" && !!v.Selected && !v.Query && !v.Page) || (href === "/?graph=1" && v.GraphView) || (href === "/?recent=1" && v.RecentView) || (href === "/?github=1" && v.GitHubView) || (href === "/?settings=1" && v.SettingsView) || (href === "/?api=1" && v.ApiView);
 }
 
 const systems: [icon: string, name: string, active: (v: View) => boolean][] = [
   ["shield-check", "Wiki", () => true],
-  ["shield-check", "MCP", () => false],
+  ["shield-check", "MCP", (v) => !!v.MCPLastSeen && Date.now() - Date.parse(v.MCPLastSeen) < 15 * 60000],
   ["brand-github", "GitHub", (v) => v.GitHubCount > 0],
 ];
 
@@ -93,7 +94,7 @@ export function Sidebar({ v }: { v: View }) {
                   </dt>
                   <dd className={active ? "" : "muted"}>
                     {active && <i />}
-                    {name === "MCP" ? "Неизвестно" : active ? (name === "GitHub" ? "Настроен" : "Online") : "Не настроен"}
+                    {name === "MCP" ? (v.MCPLastSeen ? ago(v.MCPLastSeen) : "Нет обращений") : active ? (name === "GitHub" ? "Настроен" : "Online") : "Не настроен"}
                   </dd>
                 </div>
               );

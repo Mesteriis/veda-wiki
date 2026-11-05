@@ -40,7 +40,14 @@ type Revision struct {
 	// written, by repository path. Revisions written before images were
 	// bound have none and display the source's current images.
 	Assets map[string]BlobRef `json:"assets,omitempty"`
+	// Via records the client that wrote the revision through the API
+	// (one of RevisionVia); imported revisions and older ones leave it empty.
+	Via string `json:"via,omitempty"`
 }
+
+// RevisionVia lists the recorded write origins: MCP in editor or owner mode,
+// or another REST client.
+var RevisionVia = map[string]bool{"mcp-editor": true, "mcp-owner": true, "rest": true}
 
 // Article is one Markdown file of a source with its revision history,
 // import conflicts and publication state.
