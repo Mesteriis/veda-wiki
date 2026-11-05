@@ -50,6 +50,7 @@ The field is absent for public readers and for articles without a conflict.
 | POST | `/api/v1/github/sync`, `/api/v1/github/pause` | Schedule sync or change pause state (owner only) |
 | POST | `/api/v1/github/publish-job` | Explicitly approve a queued private edit for publication (owner only) |
 | POST | `/api/v1/github/cancel-bundle` | Cancel an unprepared linked-article bundle (owner only) |
+| POST | `/mcp` | Read-only MCP over Streamable HTTP for a source-scoped access key (`Authorization: Bearer`); private listeners only — see [agent workflow](agent-workflow.md#remote-mcp-by-address-and-key) |
 | GET | `/api/v1/mcp/tools` | MCP tools with the modes that list them: `reader`, `editor`, `owner` (owner only; `/api/admin/mcp/tools` in an administrator session) |
 | GET | `/api/v1/mcp/activity` | When each MCP mode last reached this process, and the 20 newest revisions written through MCP (owner only; `/api/admin/mcp/activity` in an administrator session) |
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |

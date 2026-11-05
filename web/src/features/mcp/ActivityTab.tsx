@@ -2,7 +2,7 @@ import type { McpActivity } from "../../api/mcp";
 import type { AccessKey } from "../../api/types";
 import { ago } from "../../lib/format";
 
-const modeNames: Record<string, string> = { reader: "Чтение", editor: "Редактор", owner: "Владелец" };
+const modeNames: Record<string, string> = { remote: "Чтение по адресу сайта", reader: "Чтение через локальный veda", editor: "Редактор", owner: "Владелец" };
 const viaNames: Record<string, string> = { "mcp-editor": "редактор", "mcp-owner": "владелец" };
 
 interface ActivityTabProps { activity: McpActivity; keys: AccessKey[] | null; onKeys: () => void }
@@ -12,7 +12,7 @@ export function ActivityTab({ activity, keys, onKeys }: ActivityTabProps) {
     <section>
       <h3>Клиенты MCP</h3>
       <p className="mcp-note">Время последнего обращения каждого режима к этому серверу. Хранится в памяти и обнуляется при перезапуске VEDA.</p>
-      <div className="settings-list">{["reader", "editor", "owner"].map((mode) => {
+      <div className="settings-list">{["remote", "reader", "editor", "owner"].map((mode) => {
         const seen = activity.clients.find((client) => client.mode === mode);
         return <div className="settings-row mcp-row" key={mode}><div><strong>{modeNames[mode]}</strong></div><span>{seen ? ago(seen.last_seen) : "нет обращений с запуска"}</span></div>;
       })}</div>

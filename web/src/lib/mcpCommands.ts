@@ -1,7 +1,7 @@
 /** MCP clients the connection tab knows how to configure. */
 export type AgentClient = "claude" | "codex" | "opencode" | "hermes";
-/** Reader over HTTPS from any machine, or editor through SSH on the server. */
-export type AccessMode = "reader" | "editor";
+/** Remote reader by address and key, reader through a local veda binary, or editor through SSH on the server. */
+export type AccessMode = "remote" | "reader" | "editor";
 
 export interface ReaderSettings {
   /** The veda binary on the agent's machine. */
@@ -60,5 +60,20 @@ export function registerCommand(client: AgentClient, server: string[]): string {
       const [program = "", ...args] = server;
       return `hermes mcp add veda --command ${shellQuote(program)} --args ${args.map(shellQuote).join(" ")}`;
     }
+  }
+}
+
+/** The command that registers this site's /mcp endpoint in a client; key stays a placeholder. */
+export function remoteCommand(client: AgentClient, origin: string): string[] {
+  const url = `${origin}/mcp`;
+  switch (client) {
+    case "claude":
+      return [`claude mcp add --transport http veda ${url} --header "Authorization: Bearer <ключ>"`];
+    case "codex":
+      return ["export VEDA_KEY='<ключ>'", `codex mcp add veda --url ${url} --bearer-token-env-var VEDA_KEY`];
+    case "opencode":
+      return [`opencode mcp add --global veda --url ${url} --header Authorization="Bearer <ключ>"`];
+    case "hermes":
+      return [`hermes mcp add veda --url ${url} --auth header`];
   }
 }

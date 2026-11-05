@@ -13,7 +13,7 @@ import (
 )
 
 // ClientHeader is the label veda mcp puts on its requests: "mcp/reader",
-// "mcp/editor" or "mcp/owner". It is a label, never authorization: a mode
+// "mcp/editor" or "mcp/owner"; the /mcp endpoint labels its own as "mcp/remote". It is a label, never authorization: a mode
 // is recorded only when the request's own credential matches it.
 const ClientHeader = "X-Veda-Client"
 
@@ -61,6 +61,10 @@ func mcpMode(r *http.Request, owner, reader bool) string {
 	case "mcp/reader":
 		if reader && !owner {
 			return "reader"
+		}
+	case "mcp/remote":
+		if reader && !owner {
+			return "remote"
 		}
 	}
 	return ""

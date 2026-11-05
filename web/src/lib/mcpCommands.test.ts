@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultEditor, defaultReader, registerCommand, serverCommand, shellQuote } from "./mcpCommands";
+import { defaultEditor, defaultReader, registerCommand, remoteCommand, serverCommand, shellQuote } from "./mcpCommands";
 
 describe("MCP connection commands", () => {
   it("reads over HTTPS with a reader key from any machine", () => {
@@ -40,5 +40,14 @@ describe("editor command hygiene", () => {
     expect(serverCommand("editor", "", defaultReader, editor)[3]).toBe(
       "'/opt/my veda/veda' mcp --editor --url http://127.0.0.1:8080 --key-file '/var/lib/veda/owner key'",
     );
+  });
+});
+
+describe("remote MCP commands", () => {
+  it("connects each client to this site's /mcp with a key placeholder", () => {
+    expect(remoteCommand("claude", "https://veda.example")).toEqual([`claude mcp add --transport http veda https://veda.example/mcp --header "Authorization: Bearer <ключ>"`]);
+    expect(remoteCommand("codex", "https://veda.example")).toEqual(["export VEDA_KEY='<ключ>'", "codex mcp add veda --url https://veda.example/mcp --bearer-token-env-var VEDA_KEY"]);
+    expect(remoteCommand("opencode", "https://veda.example")[0]).toContain(`--header Authorization="Bearer <ключ>"`);
+    expect(remoteCommand("hermes", "https://veda.example")[0]).toBe("hermes mcp add veda --url https://veda.example/mcp --auth header");
   });
 });

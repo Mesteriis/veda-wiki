@@ -106,6 +106,26 @@ been used successfully for as long as you consider necessary. This describes
 the steps; the switch of the deployed container has not been performed or
 verified by this repository's tests.
 
+## Remote MCP by address and key
+
+Anyone the owner gives a source-scoped access key can connect an agent without
+installing VEDA or using SSH: the private listeners serve MCP over Streamable HTTP
+at `/mcp` (stateless, JSON responses, request bodies up to 1 MiB, at most eight requests at a time). A reverse proxy may reach the listener on loopback with the public name: `--allowed-hosts` decides which Host names are served.
+
+```sh
+claude mcp add --transport http veda https://wiki.example/mcp --header "Authorization: Bearer <key>"
+```
+
+Only access keys are accepted; the owner key, the reader token, an unknown, expired
+or revoked key get 401 with `WWW-Authenticate: Bearer`, and the public listener
+answers 404. Each request builds the reader tool set — the same fourteen tools as
+`--reader-key-file` — over an in-process client that calls the REST handler of the
+same process with that key, so visibility is exactly the key's sources. Writing over
+the network is not offered: the tool list has no write tool and the key cannot write
+through REST. Writing stays with the owner's local editor (below). The page **API и
+MCP** shows the commands for Claude Code, Codex, OpenCode and Hermes; Hermes asks
+for the header interactively.
+
 ## Editor mode: agents that keep the wiki current
 
 When agents are meant to update knowledge through VEDA rather than by editing

@@ -45,7 +45,9 @@ type Client struct {
 	socket   string
 	readOnly bool
 	editor   bool
-	http     *http.Client
+	// label overrides the mode label, for the in-process remote client.
+	label string
+	http  *http.Client
 }
 
 // New validates the configuration and builds a Client.
@@ -114,6 +116,8 @@ func (c *Client) Editor() bool { return c.editor }
 // MCP modes are in use; the server trusts only the credential.
 func (c *Client) mode() string {
 	switch {
+	case c.label != "":
+		return c.label
 	case c.readOnly:
 		return "mcp/reader"
 	case c.editor:

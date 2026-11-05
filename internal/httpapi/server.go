@@ -105,6 +105,10 @@ func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		h.adminGitHubAPI(rw, r)
 		return
 	}
+	if r.URL.Path == "/mcp" {
+		h.remoteMCP(rw, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/admin/mcp/") {
 		h.adminMCPAPI(rw, r)
 		return
