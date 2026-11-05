@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { View } from "../lib/view";
 import { F, type FeatureName } from "./FeatureContext";
+import { RequestAccess } from "../features/session/RequestAccess";
 import { ago } from "../lib/format";
 import { I } from "./Icon";
 
@@ -102,6 +103,7 @@ export function Sidebar({ v }: { v: View }) {
           </dl>
         </section>
       </div>}
+        {v.Public && <RequestAccess groups={v.Groups ?? []} />}
         <F className={"nav-item account" + (v.Public ? " sign-in" : "")} name="profile" label={v.Public ? "Войти" : "Профиль"}>
           <I name="user" />
           <span>{v.Public ? "Войти" : "Профиль"}</span>

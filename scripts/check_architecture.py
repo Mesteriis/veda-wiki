@@ -27,7 +27,7 @@ AREAS = {'auth', 'importer', 'transfer', 'syncer', 'agentctx'}
 ASSEMBLY = {'httpapi', 'app', 'mcp'}
 # Leaf packages: may not import areas. Subpackages (store/storetest,
 # github/githubtest, app/commands) are classified with their parent.
-LEAVES = {'domain', 'render', 'search', 'github', 'store', 'webui'}
+LEAVES = {'domain', 'render', 'search', 'github', 'store', 'webui', 'notify'}
 
 # Knowledge package (path below internal/) -> internal packages it may
 # import. Adapters depend on the knowledge contracts, never on each other;

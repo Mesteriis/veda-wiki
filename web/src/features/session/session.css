@@ -1,3 +1,12 @@
 .reader-access form, .reader-access label { display: flex; flex-direction: column; gap: 10px; }
 .reader-access input { background: #001522; border: 1px solid #15657a; color: #e9f9ff; border-radius: 5px; padding: 10px; font: inherit; }
 .reader-access button { align-self: flex-start; background: #00314a; border: 1px solid #00bcd4; color: #e9f9ff; border-radius: 5px; padding: 8px 16px; cursor: pointer; }
+.request-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.request-dialog .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.request-dialog form { display: flex; flex-direction: column; gap: 12px; }
+.request-dialog fieldset { display: flex; flex-direction: column; gap: 6px; border: 1px solid #174152; border-radius: 6px; padding: 10px 12px; }
+.request-dialog fieldset label { display: flex; align-items: center; gap: 8px; }
+.request-dialog label { display: flex; flex-direction: column; gap: 6px; }
+.request-dialog .request-trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.telegram-id { display: flex; flex-direction: column; gap: 8px; }
+.nav-item.request-access { border-color: #104b60; background: #001017a8; cursor: pointer; }

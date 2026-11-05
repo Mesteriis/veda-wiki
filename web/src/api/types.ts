@@ -171,4 +171,7 @@ export interface SessionStatus {
 /** The reader profile (GET /api/session/profile). */
 export interface SessionProfile {
   password_change: boolean;
+  /** Present when notifications are available on this server. */
+  telegram?: boolean;
+  telegram_id?: number;
 }
