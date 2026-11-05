@@ -113,7 +113,7 @@ for (const width of [1672, 390, 320]) {
   }
   await evaluate("document.querySelector('button[aria-label=Войти]').click()");
   await until("!!document.querySelector('.reader-access button')");
-  if (!await evaluate("document.querySelector('dialog h2')?.innerText === 'Вход'")) throw Error('login dialog title missing');
+  if (!await evaluate("document.querySelector('dialog[open] h2')?.innerText === 'Вход'")) throw Error('login dialog title missing');
   if (await evaluate("document.querySelector('.reader-access').innerText.includes('Войти по ключу')")) throw Error('key login control still visible');
   await send('Page.navigate', { url: privateUrl + '?key=' + encodeURIComponent(key) + '&example=1' });
   await until("!new URL(location.href).searchParams.has('key') && new URL(location.href).searchParams.get('example') === '1'");
