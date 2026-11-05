@@ -72,6 +72,11 @@ func (g *Client) call(ctx context.Context, method, route, token string, body, ou
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		code := "upstream_rejected"
 		switch resp.StatusCode {
+		case 301, 307, 308:
+			// GitHub redirects a renamed or transferred repository. The
+			// redirect is never followed: the caller resolves the repository
+			// by its numeric identity and verifies it.
+			code = "repository_moved"
 		case 401, 403:
 			code = "permission_denied"
 			if resp.Header.Get("X-RateLimit-Remaining") == "0" || resp.Header.Get("Retry-After") != "" {
@@ -249,7 +254,34 @@ func (g *Client) Repository(ctx context.Context, repo, token string) (Repository
 		return result, e
 	}
 	canonical, e := domain.RepositoryName(result.FullName)
-	if e != nil || !strings.EqualFold(canonical, repo) || result.ID < 1 || result.Private == nil || !domain.ValidBranch(result.DefaultBranch) {
+	if e != nil || !strings.EqualFold(canonical, repo) {
+		return result, &RemoteError{Code: "invalid_upstream_response"}
+	}
+	return checkedRepository(result)
+}
+
+// RepositoryByID reads the repository metadata by its numeric identity, the
+// handle that survives a rename on GitHub. The answer must describe that
+// identity.
+func (g *Client) RepositoryByID(ctx context.Context, id int64, token string) (RepositoryInfo, error) {
+	var result RepositoryInfo
+	if id < 1 {
+		return result, domain.ErrInvalid
+	}
+	e := g.call(ctx, "GET", "/repositories/"+strconv.FormatInt(id, 10), token, nil, &result)
+	if e != nil {
+		return result, e
+	}
+	if _, e = domain.RepositoryName(result.FullName); e != nil || result.ID != id {
+		return result, &RemoteError{Code: "invalid_upstream_response"}
+	}
+	return checkedRepository(result)
+}
+
+// checkedRepository validates the shared fields of a repository answer and
+// settles its privacy from both the flag and the visibility.
+func checkedRepository(result RepositoryInfo) (RepositoryInfo, error) {
+	if result.ID < 1 || result.Private == nil || !domain.ValidBranch(result.DefaultBranch) {
 		return result, &RemoteError{Code: "invalid_upstream_response"}
 	}
 	if result.Visibility != "public" && result.Visibility != "private" && result.Visibility != "internal" {

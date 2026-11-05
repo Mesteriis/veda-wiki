@@ -24,18 +24,21 @@ type ConnectRequest struct {
 	AdoptExisting bool   `json:"adopt_existing,omitempty"`
 }
 
-// ConfigureRequest changes the account or write access of a connection.
+// ConfigureRequest changes the account, write access or repository name of a
+// connection. A new repository name must still denote the connected
+// repository identity, as after a rename on GitHub.
 type ConfigureRequest struct {
-	ID        string  `json:"id"`
-	AccountID *string `json:"account_id"`
-	Write     *bool   `json:"write"`
-	Expected  *int    `json:"expected_config_revision"`
+	ID         string  `json:"id"`
+	AccountID  *string `json:"account_id"`
+	Write      *bool   `json:"write"`
+	Repository *string `json:"repository,omitempty"`
+	Expected   *int    `json:"expected_config_revision"`
 }
 
 // Configure changes a connection at the expected configuration revision,
-// verifying the repository again when the account or write access needs it.
+// verifying the repository again when the account, write access or name needs it.
 func (m *Manager) Configure(ctx context.Context, in ConfigureRequest) (domain.GitHubConnection, error) {
-	if in.Expected == nil || (in.AccountID == nil && in.Write == nil) {
+	if in.Expected == nil || (in.AccountID == nil && in.Write == nil && in.Repository == nil) {
 		return domain.GitHubConnection{}, domain.ErrInvalid
 	}
 	var c domain.GitHubConnection
@@ -54,13 +57,22 @@ func (m *Manager) Configure(ctx context.Context, in ConfigureRequest) (domain.Gi
 	if in.Write != nil {
 		write = *in.Write
 	}
-	if (write || accountID != c.AccountID) && accountID == c.AccountID && c.LastError == "rate_limited" {
+	name := c.Repository
+	if in.Repository != nil {
+		canonical, e := domain.RepositoryName(*in.Repository)
+		if e != nil {
+			return c, domain.ErrInvalid
+		}
+		name = canonical
+	}
+	verify := write || accountID != c.AccountID || name != c.Repository
+	if verify && accountID == c.AccountID && c.LastError == "rate_limited" {
 		if due, err := time.Parse(time.RFC3339Nano, c.NextAttempt); err == nil && due.After(time.Now()) {
 			return c, domain.ErrConflict
 		}
 	}
 	var info *github.RepositoryInfo
-	if write || accountID != c.AccountID {
+	if verify {
 		secret, account, e := m.secret(accountID)
 		if e != nil {
 			return c, e
@@ -68,14 +80,14 @@ func (m *Manager) Configure(ctx context.Context, in ConfigureRequest) (domain.Gi
 		if write && secret == nil {
 			return c, domain.ErrInvalid
 		}
-		if secret != nil && secret.Kind == "app" && !strings.EqualFold(account.Login, strings.Split(c.Repository, "/")[0]) {
+		if secret != nil && secret.Kind == "app" && !strings.EqualFold(account.Login, strings.Split(name, "/")[0]) {
 			return c, domain.ErrInvalid
 		}
-		token, e := m.github.Token(ctx, secret, c.Repository, write)
+		token, e := m.github.Token(ctx, secret, name, write)
 		if e != nil {
 			return c, e
 		}
-		repository, e := m.github.Repository(ctx, c.Repository, token)
+		repository, e := m.github.Repository(ctx, name, token)
 		if e != nil {
 			return c, e
 		}
@@ -98,6 +110,7 @@ func (m *Manager) Configure(ctx context.Context, in ConfigureRequest) (domain.Gi
 		keepCooldown := c.AccountID == accountID && c.LastError == "rate_limited"
 		c.AccountID = accountID
 		c.Write = write
+		c.Repository = name
 		c.ConfigRevision++
 		if c.Paused {
 			c.State = "paused"

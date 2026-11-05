@@ -400,6 +400,15 @@ an existing disconnected private source to a verified private repository. See
 [GitHub integration](github.md#attaching-an-existing-private-source) for the
 preconditions, conflict behavior, and local-only article handling.
 
+`PUT /api/v1/github/connections` (owner only) reconfigures a connection at its
+`expected_config_revision`: `account_id`, `write` and `repository` are each
+optional, and at least one is required. `repository` sets the name after a
+rename on GitHub; it must denote the same repository identity, otherwise the
+request answers 409 (`conflict`). A name GitHub does not know answers 404
+(`repository_unavailable`), and the old name of a renamed repository 502
+(`repository_moved`). A rename within the same owner is normally followed
+automatically; see [GitHub integration](github.md#renamed-repositories).
+
 ## Reconcile two private sources
 
 `POST /api/v1/sources/reconcile` (owner only) accepts `source_id`,

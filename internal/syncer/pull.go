@@ -231,6 +231,9 @@ func (m *Manager) syncSource(ctx context.Context, c domain.GitHubConnection) {
 		return
 	}
 	info, e := m.github.Repository(ctx, c.Repository, token)
+	if github.ErrorCode(e) == "repository_moved" {
+		c, info, e = m.followRename(ctx, c, token)
+	}
 	if e != nil {
 		fail(e)
 		return
