@@ -162,6 +162,13 @@ argument value.
 
 ## Project instructions
 
+Every MCP client receives VEDA's server instructions at connection. They hold the
+safety rules and a guide to knowledge repositories: wiki and program layouts,
+`veda.yaml`, `README.md` and `AGENTS.md` per directory, link and size rules, and how
+to update articles through `veda_context`, `veda_read` and `veda_write_article`.
+The text is `internal/mcp/instructions.md`; a repository's own `AGENTS.md` adds
+its rules on top.
+
 Keep the repository's root `AGENTS.md` as the shared instruction source and
 start the agent in the repository or a relevant subdirectory. Codex uses
 `AGENTS.md` for project guidance. OpenCode reads
