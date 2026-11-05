@@ -72,7 +72,7 @@ func TestCheckoutWithholdsUnmergedDocumentation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if batch.Complete || batch.Withheld != 1 || batch.withheldReasons["unmerged"] != 1 {
+			if batch.Complete || batch.Withheld != 1 || batch.withheldReasons["unmerged"] != 1 || !batch.WithheldPaths["guide.md"] {
 				t.Fatal("conflict not reported as partial", batch.Complete, batch.Withheld)
 			}
 			if _, ok := batch.Files["guide.md"]; ok {
@@ -126,7 +126,7 @@ func TestCheckoutSymlinksSecretsAndSpecialFiles(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if batch.Complete || batch.Withheld != 2 || !batch.Dirty || len(batch.Files) != 1 {
+	if batch.Complete || batch.Withheld != 2 || !batch.Dirty || len(batch.Files) != 1 || !batch.WithheldPaths["credentials.md"] || !batch.WithheldPaths["linked.md"] {
 		t.Fatal("unsafe paths not withheld", batch.Withheld)
 	}
 	writeFixture(t, repo, "pipe.md", "tracked before special-file replacement")

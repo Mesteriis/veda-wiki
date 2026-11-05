@@ -111,7 +111,14 @@ func (m *Manager) readAsset(ref domain.BlobRef) ([]byte, error) {
 
 // remoteBatch builds the import batch of a repository tree at head.
 func (m *Manager) remoteBatch(ctx context.Context, c domain.GitHubConnection, head, token string, tree github.Tree) (importer.Batch, error) {
-	batch := importer.Batch{SourceID: c.ID, Kind: "program", Files: map[string]string{}, Assets: map[string][]byte{}, Commit: head, Complete: true}
+	batch := importer.Batch{SourceID: c.ID, Kind: "program", Files: map[string]string{}, Assets: map[string][]byte{}, Commit: head, Complete: true, WithheldPaths: map[string]bool{}}
+	// Every withheld file is named, so the pull still covers the whole tree
+	// and upstream deletions of other paths can be applied.
+	withhold := func(p string) {
+		batch.Withheld++
+		batch.Complete = false
+		batch.WithheldPaths[p] = true
+	}
 	entries := map[string]github.TreeEntry{}
 	hasDocs := false
 	for _, entry := range tree.Tree {
@@ -166,8 +173,7 @@ func (m *Manager) remoteBatch(ctx context.Context, c domain.GitHubConnection, he
 			continue
 		}
 		if entry.Mode != "100644" && entry.Mode != "100755" || entry.Size > 4<<20 || markdown && entry.Size > domain.MaxArticleBytes {
-			batch.Withheld++
-			batch.Complete = false
+			withhold(p)
 			continue
 		}
 		b, e := m.cachedBlob(ctx, c, entry, token)
@@ -181,15 +187,13 @@ func (m *Manager) remoteBatch(ctx context.Context, c domain.GitHubConnection, he
 		}
 		if markdown {
 			if !utf8.Valid(b) || domain.CredentialLikeBytes(b) {
-				batch.Withheld++
-				batch.Complete = false
+				withhold(p)
 				continue
 			}
 			batch.Files[p] = string(b)
 		} else {
 			if _, e = domain.ImageRef(b); e != nil {
-				batch.Withheld++
-				batch.Complete = false
+				withhold(p)
 				continue
 			}
 			batch.Assets[p] = b

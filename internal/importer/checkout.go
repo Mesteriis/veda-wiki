@@ -21,10 +21,12 @@ import (
 // PrepareCheckout never follows symlinks or evaluates repository hooks. Its
 // result is a bounded working-tree observation, not a claim of a clean commit.
 func PrepareCheckout(directory, sourceID string) (Batch, error) {
-	result := Batch{SourceID: sourceID, Files: map[string]string{}, Assets: map[string][]byte{}, Complete: true, withheldReasons: map[string]int{}}
-	withhold := func(reason string) {
+	result := Batch{SourceID: sourceID, Files: map[string]string{}, Assets: map[string][]byte{}, Complete: true, WithheldPaths: map[string]bool{}, withheldReasons: map[string]int{}}
+	// Every withheld file is named, so the observation still covers the tree.
+	withhold := func(reason, name string) {
 		result.Withheld++
 		result.Complete = false
+		result.WithheldPaths[name] = true
 		result.withheldReasons[reason]++
 	}
 	if !domain.ValidID(sourceID) {
@@ -173,7 +175,7 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 		}
 		switch strings.ToLower(path.Ext(name)) {
 		case ".md", ".markdown", ".png", ".jpg", ".jpeg", ".webp", ".gif":
-			withhold("unmerged")
+			withhold("unmerged", name)
 		}
 	}
 	total := 0
@@ -206,7 +208,7 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			withhold("symlink")
+			withhold("symlink", name)
 			return nil
 		}
 		if !entry.Type().IsRegular() {
@@ -233,17 +235,17 @@ func PrepareCheckout(directory, sourceID string) (Batch, error) {
 		}
 		if markdown {
 			if !utf8.Valid(b) {
-				withhold("invalid_utf8")
+				withhold("invalid_utf8", name)
 				return nil
 			}
 			if domain.CredentialLikeBytes(b) {
-				withhold("sensitive_pattern")
+				withhold("sensitive_pattern", name)
 				return nil
 			}
 			result.Files[name] = string(b)
 		} else {
 			if _, e := domain.ImageRef(b); e != nil {
-				withhold("unsupported_image")
+				withhold("unsupported_image", name)
 				return nil
 			}
 			result.Assets[name] = b
