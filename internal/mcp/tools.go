@@ -3,14 +3,26 @@ package mcp
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/Mesteriis/veda-wiki/internal/mcp/client"
 )
 
-// ToolSpec is one MCP tool: its name, description, input schema and whether
-// a read-only (reader key or socket) client may use it.
+// ToolSpec is one MCP tool: its name, description, input schema, whether a
+// read-only (reader key or socket) client may use it, and whether an editor
+// client (owner key limited to articles) may use it besides the read-only tools.
 type ToolSpec struct {
 	Name, Description string
 	Schema            json.RawMessage
 	ReadOnly          bool
+	Editor            bool
+}
+
+// Allowed reports whether client c may list and call the tool.
+func (t ToolSpec) Allowed(c *client.Client) bool {
+	if c.ReadOnly() {
+		return t.ReadOnly
+	}
+	return !c.Editor() || t.ReadOnly || t.Editor
 }
 
 // Instructions are the server instructions sent at initialization.
@@ -156,6 +168,7 @@ var Tools = append([]ToolSpec{
 			prop("text", articleText),
 			prop("expected_revision", nonNegative)),
 		ReadOnly: false,
+		Editor:   true,
 	},
 	{
 		Name: "veda_copy_article",

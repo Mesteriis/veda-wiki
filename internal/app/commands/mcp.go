@@ -55,6 +55,7 @@ func mcpClient(args []string, stdin io.Reader) (*client.Client, error) {
 	preamble := flags.Bool("reader-key-preamble", false, "Read the reader key from the first 64 bytes of stdin")
 	socket := flags.String("reader-socket", "", "Private reader Unix socket")
 	allowHTTPS := flags.Bool("allow-remote-reader-https", false, "Allow a reader key over TLS-verified HTTPS")
+	editor := flags.Bool("editor", false, "With the owner key: expose only reading and article writing tools")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return nil, errMCPUsage
 	}
@@ -65,11 +66,11 @@ func mcpClient(args []string, stdin io.Reader) (*client.Client, error) {
 		}
 	})
 	if exclusive > 1 || (*keyFile == "" && *readerKeyFile == "" && *socket == "") ||
-		(*keyFile != "" && *socket != "") || (*preamble && *socket == "") {
+		(*keyFile != "" && *socket != "") || (*preamble && *socket == "") || (*editor && *keyFile == "") {
 		return nil, errMCPUsage
 	}
 	opts := client.Options{URL: *url, KeyFile: *keyFile, ReaderKeyFile: *readerKeyFile, SocketPath: *socket,
-		AllowRemoteReaderHTTPS: *allowHTTPS}
+		AllowRemoteReaderHTTPS: *allowHTTPS, Editor: *editor}
 	if *preamble {
 		key, err := readKeyPreamble(stdin)
 		if err != nil {

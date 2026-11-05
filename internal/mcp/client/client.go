@@ -31,6 +31,10 @@ type Options struct {
 	SocketPath             string
 	KeyValue               string
 	AllowRemoteReaderHTTPS bool
+	// Editor restricts an owner-key client to reading, preparing and
+	// writing articles: agents keep knowledge current without the
+	// administrative tools.
+	Editor bool
 }
 
 // Client talks to the VEDA REST service.
@@ -40,6 +44,7 @@ type Client struct {
 	keyValue string
 	socket   string
 	readOnly bool
+	editor   bool
 	http     *http.Client
 }
 
@@ -82,13 +87,16 @@ func New(opts Options) (*Client, error) {
 	if opts.KeyValue != "" && !validKey(opts.KeyValue) {
 		return nil, errors.New("invalid preamble key")
 	}
+	if opts.Editor && (opts.KeyFile == "" || readOnly) {
+		return nil, errors.New("editor mode requires the owner key file")
+	}
 	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, TLSClientConfig: tlsConfig()}
 	if opts.SocketPath != "" {
 		transport.DialContext = dialSocket(opts.SocketPath)
 	}
 	return &Client{
 		base: strings.TrimRight(opts.URL, "/"), keyFile: keyFile, keyValue: opts.KeyValue,
-		socket: opts.SocketPath, readOnly: readOnly,
+		socket: opts.SocketPath, readOnly: readOnly, editor: opts.Editor,
 		http: &http.Client{
 			Transport:     transport,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -98,6 +106,9 @@ func New(opts Options) (*Client, error) {
 
 // ReadOnly reports whether the client holds a reader credential or socket.
 func (c *Client) ReadOnly() bool { return c.readOnly }
+
+// Editor reports whether the owner-key client is limited to article tools.
+func (c *Client) Editor() bool { return c.editor }
 
 // Timeout returns the request deadline: 360 s for a GitHub connection that
 // adopts an existing source, 120 s for source reconciliation and mirror
