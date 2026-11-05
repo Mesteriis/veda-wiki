@@ -7,10 +7,12 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/auth"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/knowledge"
+	"github.com/Mesteriis/veda-wiki/internal/notify"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
 )
@@ -30,6 +32,9 @@ type Config struct {
 	AllowedHosts []string
 	OwnerToken   string
 	ReaderToken  string
+	// TrustedProxies are peer addresses whose X-Real-IP header names the
+	// visitor, for the public request form's per-address limit.
+	TrustedProxies []string
 }
 
 // Deps are the services every listener of one process shares.
@@ -45,6 +50,11 @@ type Deps struct {
 	Sync *syncer.Manager
 	// Knowledge is the knowledge service, or nil when the module is off.
 	Knowledge *knowledge.Service
+	// Activity records MCP clients; every listener of one process must
+	// receive the same one. nil starts an empty one.
+	Activity *ClientActivity
+	// Notify sends owner notifications and keeps access requests, or nil.
+	Notify *notify.Service
 }
 
 // LocalRootKey is the request context key, set only from kernel credentials
@@ -53,7 +63,10 @@ type LocalRootKey struct{}
 
 // New returns the handler for one listener.
 func New(cfg Config, deps Deps) http.Handler {
-	h := handler{Config: cfg, Sessions: deps.Sessions, AdminSessions: deps.AdminSessions, AccessSessions: deps.AccessSessions, Sync: deps.Sync, Knowledge: deps.Knowledge}
+	h := handler{Config: cfg, Sessions: deps.Sessions, AdminSessions: deps.AdminSessions, AccessSessions: deps.AccessSessions, Sync: deps.Sync, Knowledge: deps.Knowledge, Activity: deps.Activity, Notify: deps.Notify}
+	if h.Activity == nil {
+		h.Activity = &ClientActivity{}
+	}
 	if deps.Store != nil {
 		observations := deps.Observations
 		if observations == nil {
@@ -74,6 +87,8 @@ type handler struct {
 	AccessSessions *auth.Sessions
 	Sync           *syncer.Manager
 	Knowledge      *knowledge.Service
+	Activity       *ClientActivity
+	Notify         *notify.Service
 }
 
 func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -97,7 +112,20 @@ func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		h.adminGitHubAPI(rw, r)
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/api/access/keys") || r.URL.Path == "/api/access/sources" || r.URL.Path == "/api/access/users" || r.URL.Path == "/api/access/teams" {
+	if r.URL.Path == "/api/public/access-requests" {
+		h.publicAccessRequest(rw, r)
+		return
+	}
+	if r.URL.Path == "/mcp" {
+		h.remoteMCP(rw, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/admin/mcp/") {
+		h.adminMCPAPI(rw, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/access/requests") || strings.HasPrefix(r.URL.Path, "/api/access/telegram") ||
+		strings.HasPrefix(r.URL.Path, "/api/access/keys") || r.URL.Path == "/api/access/sources" || r.URL.Path == "/api/access/users" || r.URL.Path == "/api/access/teams" {
 		h.browserAccessAPI(rw, r)
 		return
 	}
@@ -107,6 +135,9 @@ func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		owner, reader, ok = h.resolveRole(rw, r)
 		if !ok {
 			return
+		}
+		if mode := mcpMode(r, owner, reader); mode != "" {
+			h.Activity.seen(mode, time.Now())
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
 			h.api(rw, r, owner, reader)

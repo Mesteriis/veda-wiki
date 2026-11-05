@@ -50,6 +50,13 @@ The field is absent for public readers and for articles without a conflict.
 | POST | `/api/v1/github/sync`, `/api/v1/github/pause` | Schedule sync or change pause state (owner only) |
 | POST | `/api/v1/github/publish-job` | Explicitly approve a queued private edit for publication (owner only) |
 | POST | `/api/v1/github/cancel-bundle` | Cancel an unprepared linked-article bundle (owner only) |
+| POST | `/api/public/access-requests` | A visitor's request for API/MCP access to public sources: `sources`, `telegram` (`@nick`), `comment`; same origin, any listener, rate limited (see below) |
+| GET/POST | `/api/access/requests`, `/api/access/requests/approve`, `/api/access/requests/reject` | List requests, issue a read key for one (once, like key creation) or reject it, in the access-administration session |
+| GET/POST | `/api/access/telegram`, `/api/access/telegram/events`, `/api/access/telegram/test` | Bot status and token (never returned), event switches, a test message, in the access-administration session |
+| POST | `/api/session/telegram` | Set the signed-in user's own Telegram ID (`0` removes it); `GET /api/session/profile` returns it |
+| POST | `/mcp` | Read-only MCP over Streamable HTTP for a source-scoped access key (`Authorization: Bearer`); private listeners only — see [agent workflow](agent-workflow.md#remote-mcp-by-address-and-key) |
+| GET | `/api/v1/mcp/tools` | MCP tools with the modes that list them: `reader`, `editor`, `owner` (owner only; `/api/admin/mcp/tools` in an administrator session) |
+| GET | `/api/v1/mcp/activity` | When each MCP mode last reached this process, and the 20 newest revisions written through MCP (owner only; `/api/admin/mcp/activity` in an administrator session) |
 | GET | `/media/{source_id}/{path}` | Visible imported raster image with digest verification |
 
 Direct article creation and update reject credential-like text with HTTP 400
@@ -541,3 +548,42 @@ MCP exposes these routes through the REST client with the same bounds:
 `limit_bytes`) for readers and the owner; `veda_knowledge_status` and
 `veda_knowledge_reindex` for the owner only. MCP does not pass `sha256`,
 `sources` or `relations`. A tool answer above 2 MiB is refused.
+
+## Write origin and MCP activity
+
+`veda mcp` labels its requests with `X-Veda-Client: mcp/reader`, `mcp/editor` or
+`mcp/owner`. The label is never authorization: a mode is recorded only when the
+request's own credential matches it (an editor or owner label needs the owner key,
+a reader label a reader credential), and anything else is ignored. A revision the
+owner writes through `POST`/`PUT /api/v1/articles` records `via`: `mcp-editor`,
+`mcp-owner`, or `rest` for any other client; imported revisions and revisions
+written before this field have none. The field is optional in stored revisions: an
+older binary reads the store and drops the field from article headers it rewrites,
+and a newer binary does not compare `via` between a header and its revision row, so
+rolling back and upgrading again keeps the store readable. The last contact of each mode is kept in
+memory only and starts empty after a restart; reader keys and the reader socket
+share one `reader` entry, and the reader label can be sent by any reader, so it is a
+hint, not proof. State views (`/api/state`) carry `MCPLastSeen`, the latest contact
+truncated to the minute, only for the owner key or an administrator session.
+
+## Access requests and Telegram notifications
+
+Guests ask for an API/MCP key from the public surface. `POST
+/api/public/access-requests` is the only write an anonymous visitor can make: it is
+accepted on every listener, only from the same origin, with a body of at most 4 KB.
+Sources must be public; the nick must be a Telegram username (`@` and 5–32 of
+`A-Z a-z 0-9 _`); the comment is at most 1000 characters without control characters.
+A hidden `website` field filled by bots is answered as accepted and dropped. One
+address may send 3 requests an hour, all visitors 20 a day, and at most 100 may wait;
+otherwise 429. The address is the peer, or `X-Real-IP` when the peer is listed in
+`--trusted-proxy`; it is kept in memory only. Requests, users' Telegram IDs and sent
+notification marks live in `<data>/notify.sqlite` (0600, own migrations), the bot
+token in `<data>/telegram-bot.token` (0600); the main store is unchanged.
+
+The bot only sends (`getMe`, `sendMessage`, plain text without link previews) to
+enabled administrators who set a Telegram ID and started the bot. Events, each
+switchable: a new access request; a GitHub connection entering an error and recovering
+(once each, remembered across restarts); an access key expiring within a day (once per
+key and expiry). Notifications are checked every minute; delivery is retried three
+times and never blocks a request.
+

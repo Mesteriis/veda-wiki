@@ -97,7 +97,7 @@ for (const width of [1672, 390, 320]) {
   if (await evaluate("!!document.querySelector('.activity')")) throw Error('activity visible anonymously');
   if (await evaluate("[...document.querySelectorAll('#main-navigation .nav-item')].some(e=>['GitHub','API и MCP','Настройки','Избранное'].includes(e.textContent.trim())) || !!document.querySelector('.reading-mode, button[aria-label=Уведомления], button[aria-label=Оформление]') || !document.querySelector('button[aria-label=Войти]')")) throw Error('anonymous navigation visibility incorrect');
   if (await evaluate("document.body.innerText.includes('Приватная тестовая страница')")) throw Error('private content visible anonymously');
-  if (!await evaluate("(() => { const b=document.querySelector('button[aria-label=Войти]'), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return getComputedStyle(b).display !== 'none' && r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('profile button is not visible or reachable');
+  if (!await evaluate("(() => { const b=[...document.querySelectorAll('button[aria-label=Войти]')].find(e=>e.getBoundingClientRect().width>0), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return !!b && getComputedStyle(b).display !== 'none' && r.width > 0 && r.height > 0 && (hit === b || b.contains(hit)); })()")) throw Error('profile button is not visible or reachable: ' + await evaluate("(() => { const b=[...document.querySelectorAll('button[aria-label=Войти]')].find(e=>e.getBoundingClientRect().width>0), r=b.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); if (!b) return 'no visible button'; return JSON.stringify({x:r.x,y:r.y,w:r.width,h:r.height,hit:hit && (hit.className||hit.tagName)}); })()"));
   for (const query of ['?settings=1', '?github=1']) {
     await send('Page.navigate', { url: privateUrl + query });
     await until("!!document.querySelector('.home-page-row')");
@@ -113,7 +113,7 @@ for (const width of [1672, 390, 320]) {
   }
   await evaluate("document.querySelector('button[aria-label=Войти]').click()");
   await until("!!document.querySelector('.reader-access button')");
-  if (!await evaluate("document.querySelector('dialog h2')?.innerText === 'Вход'")) throw Error('login dialog title missing');
+  if (!await evaluate("document.querySelector('dialog[open] h2')?.innerText === 'Вход'")) throw Error('login dialog title missing');
   if (await evaluate("document.querySelector('.reader-access').innerText.includes('Войти по ключу')")) throw Error('key login control still visible');
   await send('Page.navigate', { url: privateUrl + '?key=' + encodeURIComponent(key) + '&example=1' });
   await until("!new URL(location.href).searchParams.has('key') && new URL(location.href).searchParams.get('example') === '1'");

@@ -10,18 +10,22 @@ import { LoginForm } from "../session/LoginForm";
 import { AccessModal, type AccessModalState } from "./AccessModal";
 import { IssuedKey } from "./IssuedKey";
 import { KeysTab } from "./KeysTab";
+import { RequestsTab } from "./RequestsTab";
+import { TelegramTab } from "./TelegramTab";
 import { TeamsTab } from "./TeamsTab";
 import { UsersTab } from "./UsersTab";
 
-type Tab = "users" | "teams" | "keys";
+type Tab = "users" | "teams" | "keys" | "requests" | "telegram";
 
-const tabs: [Tab, string, string][] = [["users", "Пользователи", "user"], ["teams", "Команды", "users-group"], ["keys", "Ключи доступа", "key"]];
-const headings: Record<Tab, [title: string, text: string, add: string]> = {
+const tabs: [Tab, string, string][] = [["users", "Пользователи", "user"], ["teams", "Команды", "users-group"], ["keys", "Ключи доступа", "key"], ["requests", "Запросы доступа", "clipboard-check"], ["telegram", "Telegram", "brand-telegram"]];
+const headings: Record<Tab, [title: string, text: string, add: string | null]> = {
   users: ["Пользователи", "Учётные записи и членство в командах", "Добавить пользователя"],
   teams: ["Команды", "Группы пользователей и доступные источники", "Добавить команду"],
   keys: ["Ключи чтения", "Ключи для чтения выбранных источников", "Создать ключ"],
+  requests: ["Запросы доступа", "Запросы гостей на доступ к API/MCP по публичным разделам", null],
+  telegram: ["Telegram", "Уведомления администраторам через бота", null],
 };
-const newItem: Record<Tab, "user" | "team" | "key"> = { users: "user", teams: "team", keys: "key" };
+const newItem: Partial<Record<Tab, "user" | "team" | "key">> = { users: "user", teams: "team", keys: "key" };
 
 // Users, teams and reader keys, managed in an access-administrator session.
 export function AccessSettings() {
@@ -117,9 +121,11 @@ export function AccessSettings() {
     {status === true && <>
       <div className="settings-tabs" aria-label="Разделы настроек">{tabs.map(([id, label, icon]) => <button type="button" aria-pressed={accessTab === id} key={id} onClick={() => setAccessTab(id)}><I name={icon} />{label}</button>)}</div>
       <section className={`settings-section settings-${accessTab}`}>
-        <div className="settings-heading"><div><h2>{title}</h2><p>{text}</p></div><button className="settings-add" onClick={() => openModal({ type: newItem[accessTab] })} disabled={busy || (accessTab === "keys" && (!!issued || !sources.length))}><I name="plus" />{add}</button></div>
+        <div className="settings-heading"><div><h2>{title}</h2><p>{text}</p></div>{add && <button className="settings-add" onClick={() => { const type = newItem[accessTab]; if (type) openModal({ type }); }} disabled={busy || (accessTab === "keys" && (!!issued || !sources.length))}><I name="plus" />{add}</button>}</div>
         {accessTab === "users" && <UsersTab users={users} busy={busy} onTeams={(item) => openModal({ type: "userTeams", item })} onPassword={(item) => openModal({ type: "password", item })} onToggle={(user) => { void updateUser(user, { disabled: !user.disabled }); }} />}
         {accessTab === "teams" && <TeamsTab teams={teams} busy={busy} onSources={(item) => openModal({ type: "teamSources", item })} />}
+        {accessTab === "requests" && <RequestsTab busy={busy} setBusy={setBusy} onIssued={(result) => { setIssued(result); refresh().catch(() => setMessage("Ключ выдан, но список ключей не обновился.")); }} />}
+        {accessTab === "telegram" && <TelegramTab busy={busy} setBusy={setBusy} />}
         {accessTab === "keys" && <KeysTab keys={keys} busy={busy} onSources={(item) => openModal({ type: "keySources", item })} onRevoke={(id) => { void revoke(id); }} />}
       </section>
       {issued && <IssuedKey issued={issued} onHide={() => setIssued(null)} />}

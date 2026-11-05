@@ -141,9 +141,11 @@ func attachRevisions(db *sql.DB, articles map[string]domain.Article) error {
 	return nil
 }
 
-// sameHeader reports whether header is r without its text.
+// sameHeader reports whether header is r without its text. Via is not
+// compared: a binary that predates it rewrites an article header without the
+// field while the row keeps it, and the row is the authority.
 func sameHeader(header, r domain.Revision) bool {
-	r.Text = ""
+	r.Text, r.Via, header.Via = "", "", ""
 	a, errA := json.Marshal(header)
 	b, errB := json.Marshal(r)
 	return errA == nil && errB == nil && bytes.Equal(a, b)

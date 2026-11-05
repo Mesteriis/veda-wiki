@@ -62,7 +62,15 @@ func (h handler) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" && prefix == "/api/session/" && r.URL.Path == prefix+"profile" {
 		user, ok := sessions.UserCookie(r)
-		jsonResponse(rw, 200, map[string]bool{"password_change": ok && h.Store != nil && h.Store.auth().UserSessionValid(user.ID, user.AuthVersion)})
+		valid := ok && h.Store != nil && h.Store.auth().UserSessionValid(user.ID, user.AuthVersion)
+		profile := map[string]any{"password_change": valid}
+		if valid && h.Notify != nil {
+			if chat, err := h.Notify.Store.TelegramID(r.Context(), user.ID); err == nil {
+				profile["telegram"] = true
+				profile["telegram_id"] = chat
+			}
+		}
+		jsonResponse(rw, 200, profile)
 		return
 	}
 	if r.Method != "POST" {
@@ -113,6 +121,26 @@ func (h handler) sessionAPI(rw http.ResponseWriter, r *http.Request) {
 			clear(h.AccessSessions, auth.AccessCookie)
 		}
 		jsonResponse(rw, 200, map[string]bool{"authenticated": false})
+		return
+	}
+	if prefix == "/api/session/" && r.URL.Path == prefix+"telegram" {
+		user, ok := sessions.UserCookie(r)
+		if !ok || h.Store == nil || h.Notify == nil || !h.Store.auth().UserSessionValid(user.ID, user.AuthVersion) {
+			http.NotFound(rw, r)
+			return
+		}
+		var in struct {
+			TelegramID int64 `json:"telegram_id"`
+		}
+		if decodeLimited(rw, r, &in, 256) != nil || in.TelegramID < 0 || in.TelegramID > 1<<52 {
+			apiError(rw, domain.ErrInvalid)
+			return
+		}
+		if err := h.Notify.Store.SetTelegramID(r.Context(), user.ID, in.TelegramID); err != nil {
+			apiError(rw, err)
+			return
+		}
+		jsonResponse(rw, 200, map[string]int64{"telegram_id": in.TelegramID})
 		return
 	}
 	if prefix == "/api/session/" && r.URL.Path == prefix+"password" {

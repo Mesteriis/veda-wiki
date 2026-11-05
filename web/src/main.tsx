@@ -6,6 +6,7 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "./components/shell.css";
 import "./components/sidebar.css";
+import "./components/sidebar-rail.css";
 import "./components/header.css";
 import "./features/reading/reading.css";
 import "./features/catalog/catalog.css";
@@ -16,6 +17,7 @@ import "./features/knowledge/knowledge.css";
 import "./features/recent/recent.css";
 import "./features/github/github.css";
 import "./features/access/access.css";
+import "./features/mcp/mcp.css";
 import { loginFromLink } from "./api/session";
 
 loginFromLink(window.location, window.history, window.fetch.bind(window)).then((linkLoginError) => {

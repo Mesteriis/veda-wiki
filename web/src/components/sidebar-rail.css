@@ -1,0 +1,82 @@
+/* Collapsed sidebar: a rail of icons that opens over the page on hover or
+   keyboard focus. Below 600px the sidebar is a top bar (sidebar.css). */
+@media (min-width: 601px) {
+  :root {
+    --rail-width: 72px;
+  }
+  main {
+    margin-left: var(--rail-width);
+  }
+  .sidebar {
+    width: var(--rail-width);
+    padding-left: 10px;
+    padding-right: 10px;
+    overflow: hidden;
+    transition:
+      width 180ms ease,
+      box-shadow 180ms ease;
+  }
+  .sidebar:hover,
+  .sidebar:focus-within {
+    width: 248px;
+    z-index: 10;
+    background: #000a0f;
+    box-shadow: 6px 0 28px #000000b3;
+  }
+  .brand {
+    gap: 12px;
+  }
+  .brand-mark {
+    flex: none;
+    width: 50px;
+    height: 50px;
+  }
+  .nav-item {
+    gap: 22px;
+    padding: 0 12px;
+  }
+  .nav-item .icon {
+    flex: none;
+  }
+  .brand > span,
+  .nav-item > span,
+  .nav-item > :not(.icon),
+  .sidebar-bottom {
+    opacity: 0;
+    white-space: nowrap;
+    transition: opacity 120ms ease;
+  }
+  /* The footer track follows the rail; the hidden panels keep their open
+     width so they do not reflow while the rail opens. */
+  .sidebar-footer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar-bottom {
+    visibility: hidden;
+    width: 228px;
+  }
+  .sidebar:hover .brand > span,
+  .sidebar:focus-within .brand > span,
+  .sidebar:hover .nav-item > span,
+  .sidebar:focus-within .nav-item > span,
+  .sidebar:hover .nav-item > :not(.icon),
+  .sidebar:focus-within .nav-item > :not(.icon),
+  .sidebar:hover .sidebar-bottom,
+  .sidebar:focus-within .sidebar-bottom {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 60ms;
+  }
+  .sidebar::before {
+    opacity: 0.12;
+  }
+}
+@media (min-width: 601px) and (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .brand > span,
+  .nav-item > span,
+  .nav-item > :not(.icon),
+  .sidebar-bottom {
+    transition: none;
+  }
+}

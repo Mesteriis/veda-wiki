@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -48,6 +49,7 @@ func Run(ctx context.Context, args []string) (err error) {
 	tlsCert := flags.String("tls-cert", "", "TLS certificate for the private listener")
 	tlsKey := flags.String("tls-key", "", "TLS private key for the private listener")
 	interval := flags.Duration("sync-interval", 5*time.Minute, "Background repository check interval (5s to 1h)")
+	trustedProxies := flags.String("trusted-proxy", "", "Comma-separated peer addresses whose X-Real-IP names the visitor")
 	knowledgeOptions := addKnowledgeFlags(flags)
 	_ = flags.Parse(args)
 	if !knowledgeOptions.enabled && knowledgeFlagsSet(flags) {
@@ -101,6 +103,7 @@ func Run(ctx context.Context, args []string) (err error) {
 	}
 	// One set of import observations serves every listener and the syncer.
 	observations := &importer.Observations{}
+	activity := &httpapi.ClientActivity{}
 	token, err := loadOrCreateKey(*data, "owner.key")
 	if err != nil {
 		return errors.New("owner key unavailable or invalid")
@@ -160,9 +163,22 @@ func Run(ctx context.Context, args []string) (err error) {
 		st.OnCommit(kmod.service.Signal)
 		kmod.start(ctx, &workers)
 	}
+	notifier, err := startNotify(ctx, *data, st, &workers)
+	if err != nil {
+		return fmt.Errorf("notification store unavailable: %w", err)
+	}
+	var proxyList []string
+	for _, p := range strings.Split(*trustedProxies, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			if net.ParseIP(p) == nil {
+				return errors.New("invalid trusted proxy address")
+			}
+			proxyList = append(proxyList, p)
+		}
+	}
 	makeServer := func(l net.Listener, publicOnly, readerOnly bool) servedListener {
-		cfg := httpapi.Config{OwnerToken: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList}
-		deps := httpapi.Deps{Store: st, Observations: observations, Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Sync: manager}
+		cfg := httpapi.Config{OwnerToken: string(token), ReaderToken: string(readerToken), Public: publicOnly, AllowedHosts: hostList, TrustedProxies: proxyList}
+		deps := httpapi.Deps{Store: st, Observations: observations, Sessions: sessions, AdminSessions: adminSessions, AccessSessions: accessSessions, Sync: manager, Activity: activity, Notify: notifier}
 		if kmod != nil {
 			deps.Knowledge = kmod.service
 		}

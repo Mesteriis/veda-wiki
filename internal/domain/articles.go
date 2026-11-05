@@ -49,6 +49,15 @@ func ValidArticleText(text string, expected int) bool {
 // state must be persisted: completing a pending move can delete another
 // article. now is the revision's time and decides publication.
 func PutArticle(db *Database, sourceID, p, text string, expected int, now time.Time) (rev Revision, key string, err error) {
+	return PutArticleVia(db, sourceID, p, text, expected, "", now)
+}
+
+// PutArticleVia is PutArticle that records the client that wrote the
+// revision; via is empty or one of RevisionVia.
+func PutArticleVia(db *Database, sourceID, p, text string, expected int, via string, now time.Time) (rev Revision, key string, err error) {
+	if via != "" && !RevisionVia[via] {
+		return Revision{}, "", ErrInvalid
+	}
 	if !ValidArticleText(text, expected) {
 		return Revision{}, "", ErrInvalid
 	}
@@ -87,7 +96,7 @@ func PutArticle(db *Database, sourceID, p, text string, expected int, now time.T
 		}
 	}
 	sum := sha256.Sum256([]byte(text))
-	rev = Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: now.UTC().Format(time.RFC3339Nano), Assets: RevisionAssets(text, p, src)}
+	rev = Revision{Number: expected + 1, Text: text, SHA: hex.EncodeToString(sum[:]), Created: now.UTC().Format(time.RFC3339Nano), Assets: RevisionAssets(text, p, src), Via: via}
 	versions := append([]Revision(nil), article.Versions...)
 	versions = append(versions, rev)
 	article.SourceID, article.Path, article.Versions, article.Deleted = sourceID, p, versions, false

@@ -61,7 +61,7 @@ const stateView: StateView = {
   Groups: [{ Name: "Публичный", ID: "pub", Count: 1, Pages: [page] }, { Name: "GitHub", ID: "gh", Count: 1, Pages: [{ ...page, path: "gh/ops/page.md", environment: "gh", title: "Ops page" }] }],
 };
 
-export const view: View = { ...stateView, SettingsView: false, GitHubView: false, GraphView: true, RecentView: false };
+export const view: View = { ...stateView, SettingsView: false, GitHubView: false, GraphView: true, RecentView: false, ApiView: false };
 
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });

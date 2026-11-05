@@ -15,6 +15,7 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/github"
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/knowledge"
+	"github.com/Mesteriis/veda-wiki/internal/notify"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/store/storetest"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
@@ -41,11 +42,14 @@ type Wiki struct {
 	AccessSessions    *auth.Sessions
 	Sync              *syncer.Manager
 	Knowledge         *knowledge.Service
+	Activity          *ClientActivity
+	Notify            *notify.Service
+	TrustedProxies    []string
 }
 
 func (w Wiki) handler() handler {
-	cfg := Config{Public: w.Public, ReaderLocal: w.ReaderLocal, ReaderKeyRequired: w.ReaderKeyRequired, LocalImportSource: w.LocalImportSource, AllowedHosts: w.AllowedHosts, OwnerToken: w.Token, ReaderToken: w.ReaderToken}
-	deps := Deps{Sessions: w.Sessions, AdminSessions: w.AdminSessions, AccessSessions: w.AccessSessions, Sync: w.Sync, Knowledge: w.Knowledge}
+	cfg := Config{Public: w.Public, ReaderLocal: w.ReaderLocal, ReaderKeyRequired: w.ReaderKeyRequired, LocalImportSource: w.LocalImportSource, AllowedHosts: w.AllowedHosts, OwnerToken: w.Token, ReaderToken: w.ReaderToken, TrustedProxies: w.TrustedProxies}
+	deps := Deps{Sessions: w.Sessions, AdminSessions: w.AdminSessions, AccessSessions: w.AccessSessions, Sync: w.Sync, Knowledge: w.Knowledge, Activity: w.Activity, Notify: w.Notify}
 	if w.Store != nil {
 		deps.Store, deps.Observations = w.Store.Store, w.Store.observations
 	}

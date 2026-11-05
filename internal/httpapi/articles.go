@@ -52,7 +52,7 @@ func (h handler) articles(rw http.ResponseWriter, r *http.Request, owner, reader
 			apiError(rw, domain.ErrInvalid)
 			return
 		}
-		rev, err := h.Store.put(input.SourceID, input.Path, input.Text, *input.Expected)
+		rev, err := h.Store.putVia(input.SourceID, input.Path, input.Text, *input.Expected, writeOrigin(r))
 		if err != nil {
 			apiError(rw, err)
 			return

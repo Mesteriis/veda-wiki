@@ -66,6 +66,8 @@ export interface StateView {
   Withheld: number;
   Count: number;
   GitHubCount: number;
+  /** When an MCP client last reached the server, to the minute; private views only. */
+  MCPLastSeen?: string;
   TOC: string;
 }
 
@@ -169,4 +171,7 @@ export interface SessionStatus {
 /** The reader profile (GET /api/session/profile). */
 export interface SessionProfile {
   password_change: boolean;
+  /** Present when notifications are available on this server. */
+  telegram?: boolean;
+  telegram_id?: number;
 }

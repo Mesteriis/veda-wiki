@@ -6,6 +6,7 @@ export interface View extends StateView {
   GitHubView: boolean;
   GraphView: boolean;
   RecentView: boolean;
+  ApiView: boolean;
 }
 
 // A search or an article always wins over a section parameter; owner sections
@@ -19,6 +20,7 @@ export function readerView(view: StateView, search: string): View {
     GitHubView: !view.Public && params.get("github") === "1" && plain,
     GraphView: params.get("graph") === "1" && plain,
     RecentView: params.get("recent") === "1" && plain,
+    ApiView: !view.Public && params.get("api") === "1" && plain,
   };
 }
 

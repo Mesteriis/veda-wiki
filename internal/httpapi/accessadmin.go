@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Mesteriis/veda-wiki/internal/auth"
@@ -145,6 +146,14 @@ func (h handler) browserAccessAPI(rw http.ResponseWriter, r *http.Request) {
 			choices = append(choices, sourceChoice{source.ID, source.Title, source.Kind, source.Visibility})
 		}
 		jsonResponse(rw, http.StatusOK, choices)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/access/requests") || strings.HasPrefix(r.URL.Path, "/api/access/telegram") {
+		if r.Method == "POST" && !auth.SameOrigin(r) {
+			jsonResponse(rw, http.StatusForbidden, map[string]string{"error": "origin rejected"})
+			return
+		}
+		h.accessRequestsAPI(rw, r)
 		return
 	}
 	if r.URL.Path != "/api/access/keys" && r.URL.Path != "/api/access/keys/revoke" && r.URL.Path != "/api/access/users" && r.URL.Path != "/api/access/teams" {

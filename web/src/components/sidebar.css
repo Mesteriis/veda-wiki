@@ -82,10 +82,29 @@
     inset 0 0 20px #0084ac22;
   color: #f0f9ff;
 }
-.sidebar-bottom {
-  margin-top: 17px;
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 17px;
   display: grid;
   gap: 14px;
+}
+.sidebar-bottom {
+  display: grid;
+  gap: 14px;
+}
+.nav-item.account {
+  border-color: #104b60;
+  background: #001017a8;
+  cursor: pointer;
+}
+.nav-item.account.sign-in {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+@media (min-width: 601px) {
+  .masthead .header-actions .header-account {
+    display: none;
+  }
 }
 .storage {
   padding: 10px 16px;
@@ -341,7 +360,8 @@
   .sidebar nav.mobile-open span {
     display: inline;
   }
-  .sidebar-bottom {
+  .sidebar-bottom,
+  .sidebar-footer {
     display: none;
   }
   .storage {

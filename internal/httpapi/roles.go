@@ -120,6 +120,13 @@ func (h handler) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader
 		}
 		h.people(rw, r)
 		return
+	case strings.HasPrefix(path, "/api/v1/mcp/"):
+		if !owner {
+			http.NotFound(rw, r)
+			return
+		}
+		h.mcpAPI(rw, r)
+		return
 	case strings.HasPrefix(path, "/api/v1/knowledge/"):
 		h.knowledgeAPI(rw, r, owner, reader)
 		return

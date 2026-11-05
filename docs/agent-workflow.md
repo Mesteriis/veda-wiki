@@ -106,6 +106,26 @@ been used successfully for as long as you consider necessary. This describes
 the steps; the switch of the deployed container has not been performed or
 verified by this repository's tests.
 
+## Remote MCP by address and key
+
+Anyone the owner gives a source-scoped access key can connect an agent without
+installing VEDA or using SSH: the private listeners serve MCP over Streamable HTTP
+at `/mcp` (stateless, JSON responses, request bodies up to 1 MiB, at most eight requests at a time). A reverse proxy may reach the listener on loopback with the public name: `--allowed-hosts` decides which Host names are served.
+
+```sh
+claude mcp add --transport http veda https://wiki.example/mcp --header "Authorization: Bearer <key>"
+```
+
+Only access keys are accepted; the owner key, the reader token, an unknown, expired
+or revoked key get 401 with `WWW-Authenticate: Bearer`, and the public listener
+answers 404. Each request builds the reader tool set — the same fourteen tools as
+`--reader-key-file` — over an in-process client that calls the REST handler of the
+same process with that key, so visibility is exactly the key's sources. Writing over
+the network is not offered: the tool list has no write tool and the key cannot write
+through REST. Writing stays with the owner's local editor (below). The page **API и
+MCP** shows the commands for Claude Code, Codex, OpenCode and Hermes; Hermes asks
+for the header interactively.
+
 ## Editor mode: agents that keep the wiki current
 
 When agents are meant to update knowledge through VEDA rather than by editing
@@ -125,6 +145,12 @@ server and is never passed to the agent; `--editor` without `--key-file`, or
 with a reader credential, is rejected. The mode limits the tool set, not the
 credential: anyone who can run that command as that user holds the owner key.
 
+The browser page **API и MCP** (`/?api=1`, administrator session) builds these
+commands for Claude Code, Codex, OpenCode and Hermes, lists the tools of each mode
+from the server, summarizes the main REST routes and shows when each MCP mode last
+connected and which articles were written through MCP. Host, paths and port typed
+there are kept in that browser only; the owner key is never shown.
+
 When a key must be sent by the local machine instead of stored on the server,
 run the same remote command with `--reader-key-preamble` under
 `veda mcp-relay --key-file /private/agent.key -- ssh pve '...'`. This `ssh pve`
@@ -135,6 +161,13 @@ validation error: <reason>`; the reason names only the property, never an
 argument value.
 
 ## Project instructions
+
+Every MCP client receives VEDA's server instructions at connection. They hold the
+safety rules and a guide to knowledge repositories: wiki and program layouts,
+`veda.yaml`, `README.md` and `AGENTS.md` per directory, link and size rules, and how
+to update articles through `veda_context`, `veda_read` and `veda_write_article`.
+The text is `internal/mcp/instructions.md`; a repository's own `AGENTS.md` adds
+its rules on top.
 
 Keep the repository's root `AGENTS.md` as the shared instruction source and
 start the agent in the repository or a relevant subdirectory. Codex uses
