@@ -46,9 +46,14 @@
     white-space: nowrap;
     transition: opacity 120ms ease;
   }
+  /* The footer track follows the rail; the hidden panels keep their open
+     width so they do not reflow while the rail opens. */
+  .sidebar-footer {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .sidebar-bottom {
     visibility: hidden;
-    min-width: 214px;
+    width: 228px;
   }
   .sidebar:hover .brand > span,
   .sidebar:focus-within .brand > span,
