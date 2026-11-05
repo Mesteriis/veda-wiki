@@ -60,6 +60,7 @@ export function Sidebar({ v }: { v: View }) {
       <button type="button" className="mobile-menu-toggle" aria-label="Меню" aria-controls="main-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
         <I name={menuOpen ? "x" : "dots"} />
       </button>
+      <div className="sidebar-footer">
       {!v.Public && <div className="sidebar-bottom">
         <section className="storage panel">
           <div>
@@ -100,6 +101,11 @@ export function Sidebar({ v }: { v: View }) {
           </dl>
         </section>
       </div>}
+        <F className={"nav-item account" + (v.Public ? " sign-in" : "")} name="profile" label={v.Public ? "Войти" : "Профиль"}>
+          <I name="user" />
+          <span>{v.Public ? "Войти" : "Профиль"}</span>
+        </F>
+      </div>
     </aside>
   );
 }

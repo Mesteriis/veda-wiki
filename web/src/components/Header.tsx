@@ -41,7 +41,8 @@ export function Header({ v }: { v: View }) {
         <F className="round" name="theme" label="Оформление">
           <I name="sun" />
         </F></>}
-        {v.Public ? <F className="login-button" name="profile" label="Войти">Войти</F> : <F className="round profile" name="profile" label="Профиль">V</F>}
+        {/* On wider screens the sign-in and profile button lives at the foot of the sidebar. */}
+        {v.Public ? <F className="login-button header-account" name="profile" label="Войти">Войти</F> : <F className="round profile header-account" name="profile" label="Профиль">V</F>}
       </div>
     </header>
   );
