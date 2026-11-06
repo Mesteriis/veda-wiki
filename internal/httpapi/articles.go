@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
+	"github.com/Mesteriis/veda-wiki/internal/render"
 )
 
 // articles lists the visible pages, reads one article or writes a revision.
@@ -64,7 +65,12 @@ func (h handler) articles(rw http.ResponseWriter, r *http.Request, owner, reader
 		if r.Method == "POST" {
 			status = 201
 		}
-		jsonResponse(rw, status, rev)
+		// Warnings tell the author what the reader will not see as written;
+		// the revision is saved either way.
+		jsonResponse(rw, status, struct {
+			domain.Revision
+			Warnings []render.Warning `json:"warnings,omitempty"`
+		}{rev, render.Warnings(domain.Page{Path: input.SourceID + "/" + input.Path, Text: input.Text})})
 	default:
 		rw.WriteHeader(405)
 	}

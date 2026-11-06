@@ -32,6 +32,11 @@ func (t ToolSpec) Allowed(c *client.Client) bool {
 //go:embed instructions.md
 var Instructions string
 
+// FormatGuide is the article formatting reference veda_format_guide returns.
+//
+//go:embed formatting.md
+var FormatGuide string
+
 // Property schemas shared by several tools.
 const (
 	nonEmpty    = `{"type":"string","minLength":1}`
@@ -346,5 +351,13 @@ var Tools = append([]ToolSpec{
 			prop("job_id", nonEmpty),
 			prop("confirm_cancel", confirmed)),
 		ReadOnly: false,
+	},
+	{
+		Name: "veda_format_guide",
+		Description: "Return the full article formatting reference: supported Markdown, alerts, collapsible blocks, code, " +
+			"Mermaid diagrams, links, images, front matter and the warnings veda_write_article returns. Read it before " +
+			"writing a page with anything beyond plain Markdown.",
+		Schema:   closedObject(required()),
+		ReadOnly: true,
 	},
 }, knowledgeTools...)

@@ -31,6 +31,26 @@ var (
 	allowedTag = regexp.MustCompile(`(?i)^<(/?)(details|summary|kbd|sub|sup|br)(\s+open)?\s*/?>$`)
 )
 
+// allowedHTMLTag returns the normalised form of an allowed tag.
+func allowedHTMLTag(raw []byte) (string, bool) {
+	tag := allowedTag.FindSubmatch(raw)
+	if tag == nil {
+		return "", false
+	}
+	name := strings.ToLower(string(tag[2]))
+	switch {
+	case len(tag[3]) > 0 && (name != "details" || len(tag[1]) > 0):
+		return "", false
+	case name == "br":
+		return "<br>", true
+	case len(tag[1]) > 0:
+		return "</" + name + ">", true
+	case len(tag[3]) > 0:
+		return "<details open>", true
+	}
+	return "<" + name + ">", true
+}
+
 // filterHTML keeps allowed tags in a normalised form and escapes the text
 // between them; every other tag and comment is dropped.
 func filterHTML(raw []byte) []byte {
@@ -41,23 +61,8 @@ func filterHTML(raw []byte) []byte {
 	for _, m := range htmlTag.FindAllIndex(raw, -1) {
 		text(raw[last:m[0]])
 		last = m[1]
-		tag := allowedTag.FindSubmatch(raw[m[0]:m[1]])
-		if tag == nil {
-			continue
-		}
-		name := strings.ToLower(string(tag[2]))
-		if len(tag[3]) > 0 && (name != "details" || len(tag[1]) > 0) {
-			continue
-		}
-		switch {
-		case name == "br":
-			out.WriteString("<br>")
-		case len(tag[1]) > 0:
-			out.WriteString("</" + name + ">")
-		case len(tag[3]) > 0:
-			out.WriteString("<details open>")
-		default:
-			out.WriteString("<" + name + ">")
+		if tag, ok := allowedHTMLTag(raw[m[0]:m[1]]); ok {
+			out.WriteString(tag)
 		}
 	}
 	text(raw[last:])

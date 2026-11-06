@@ -32,6 +32,8 @@ Only the owner creates a Git repository and connects it in VEDA settings; editor
 
 Write Markdown that reads the same on GitHub, on a GitHub Pages site and in VEDA.
 
+`veda_format_guide` returns the full reference with examples; read it before using anything below. `veda_write_article` saves the text and returns `warnings` (code, line, message) for what the reader will not see as written: fix them and write again with the new revision.
+
 - GitHub-flavoured Markdown: headings, lists, task lists `- [ ]`, tables, fenced code with a language (```` ```bash ````), strikethrough, autolinks.
 - Always name the language of a code fence (`bash`, `yaml`, `go`, `json`, `nginx`, `ini`, `text`…); VEDA highlights it, GitHub does too.
 - Diagrams are Mermaid fences; GitHub and VEDA both draw them, and a reader without JavaScript sees the source:

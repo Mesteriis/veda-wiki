@@ -20,7 +20,8 @@ from smoke_mcp_knowledge import knowledge_smoke
 ROOT = Path(__file__).resolve().parents[1]
 KNOWLEDGE_READ_TOOLS = {"veda_entities", "veda_entity", "veda_article_links", "veda_graph", "veda_graph_context"}
 READER_TOOLS = {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context",
-                "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan"} | KNOWLEDGE_READ_TOOLS
+                "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan",
+                "veda_format_guide"} | KNOWLEDGE_READ_TOOLS
 OWNER_TOOLS = READER_TOOLS | {
     "veda_create_source", "veda_write_article", "veda_copy_article", "veda_reconcile_sources", "veda_source_mirrors",
     "veda_configure_source_mirror", "veda_moves", "veda_cancel_move", "veda_move_article", "veda_conflicts",
@@ -94,6 +95,11 @@ async def main():
                         await call("veda_write_article", {"source_id": source, "path": "README.md",
                             "text": "# Shared fixture" if source == "open" else "# Private canary",
                             "expected_revision": 0})
+                    guide = await call("veda_format_guide", {})
+                    assert guide["guide"].startswith("# VEDA formatting reference") and "[!WARNING]" in guide["guide"]
+                    warned = await call("veda_write_article", {"source_id": "closed", "path": "format.md",
+                        "text": "# Format\n\n<div>x</div>\n\n```\nplain\n```", "expected_revision": 0})
+                    assert [w["code"] for w in warned["warnings"]] == ["raw_html", "code_without_language"], warned
                     rejected = await session.call_tool("veda_write_article", {"source_id": "open", "path": "unsafe.md",
                         "text": "password=synthetic-fixture-only", "expected_revision": 0})
                     assert rejected.isError
