@@ -20,3 +20,27 @@ func TestTitleMatchesFirstMarkdownH1OrPath(t *testing.T) {
 		}
 	}
 }
+
+func TestTitlePrefersFrontMatter(t *testing.T) {
+	for _, tc := range []struct{ text, want string }{
+		{"---\ntitle: Из шапки\n---\n# Заголовок", "Из шапки"},
+		{"---\r\nlayout: page\r\ntitle: \"В кавычках\"\r\n---\r\n# H", "В кавычках"},
+		{"---\nlayout: page\n---\n# Заголовок", "Заголовок"},
+		{"---\ntitle: Без конца\n# H", "H"},
+		{"text\n---\ntitle: Not front\n---\n# H", "H"},
+	} {
+		if got := Title(tc.text, "a/b.md"); got != tc.want {
+			t.Fatalf("Title(%q) = %q, want %q", tc.text, got, tc.want)
+		}
+	}
+}
+
+func TestSplitFrontMatter(t *testing.T) {
+	front, body := SplitFrontMatter("---\ntitle: X\n...\nBody")
+	if front != "title: X\n" || body != "Body" {
+		t.Fatalf("front=%q body=%q", front, body)
+	}
+	if front, body := SplitFrontMatter("---\nunterminated"); front != "" || body != "---\nunterminated" {
+		t.Fatalf("unterminated split: %q %q", front, body)
+	}
+}

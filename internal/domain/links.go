@@ -9,9 +9,13 @@ import (
 	"github.com/yuin/goldmark/parser"
 )
 
+// MarkdownExtensions are the syntax extensions every article parser uses:
+// GitHub-flavoured Markdown plus footnotes and definition lists.
+var MarkdownExtensions = []goldmark.Extender{extension.GFM, extension.Footnote, extension.DefinitionList}
+
 // Markdown is the GitHub-flavoured Markdown parser shared by rendering,
 // link and dependency resolution.
-var Markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
+var Markdown = goldmark.New(goldmark.WithExtensions(MarkdownExtensions...), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
 // RepositoryTarget resolves a link destination written in articlePath to a
 // repository-relative path; a leading slash is relative to the repository

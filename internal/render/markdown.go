@@ -66,8 +66,10 @@ func SourceTarget(pagePath, destination string) (string, string, bool) {
 // Page renders the article Markdown to sanitized HTML and a table of
 // contents.
 func Page(p domain.Page) (template.HTML, template.HTML, error) {
-	source := []byte(p.Text)
+	_, body := domain.SplitFrontMatter(p.Text)
+	source := []byte(body)
 	doc := domain.Markdown.Parser().Parse(text.NewReader(source), parser.WithContext(parser.NewContext(parser.WithIDs(&unicodeIDs{used: map[string]bool{}}))))
+	markAlerts(doc, source)
 	var toc strings.Builder
 	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -123,6 +125,6 @@ func Page(p domain.Page) (template.HTML, template.HTML, error) {
 		return ast.WalkContinue, nil
 	})
 	var out bytes.Buffer
-	err := domain.Markdown.Renderer().Render(&out, source, doc)
+	err := htmlRenderer.Render(&out, source, doc)
 	return template.HTML(out.String()), template.HTML(toc.String()), err
 }
