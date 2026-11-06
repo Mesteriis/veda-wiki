@@ -212,3 +212,8 @@ footer {
   visibility: hidden;
   pointer-events: none;
 }
+.markdown .mermaid-note {
+  margin: 16px 0 -8px;
+  color: #f85149;
+  font-size: 14px;
+}

@@ -3,6 +3,7 @@ import type { Page, StatePayload } from "../../api/types";
 import { readVisits, recordVisit, saveVisits } from "../../lib/recent";
 import { conflictWarning } from "../../lib/sourceWarnings";
 import { ArticleKnowledge } from "../knowledge/ArticleKnowledge";
+import { loadDiagrams } from "./diagramLoad";
 import { Toc } from "./Toc";
 
 export function Reading({ data, page }: { data: StatePayload; page: Page }) {
@@ -20,10 +21,9 @@ export function Reading({ data, page }: { data: StatePayload; page: Page }) {
     }
     document.getElementById(id)?.scrollIntoView({ block: "start" });
   }, [page.path]);
-  // Mermaid is large, so it loads only for pages that have diagrams.
   useEffect(() => {
     const blocks = [...document.querySelectorAll<HTMLElement>(".reading .markdown pre.mermaid")];
-    if (blocks.length) void import("./diagrams").then(({ drawDiagrams }) => drawDiagrams(blocks)).catch(() => undefined);
+    if (blocks.length) void loadDiagrams(blocks).catch(() => undefined);
   }, [data.html]);
   useEffect(() => {
     try { const storage = window.sessionStorage; saveVisits(storage, recordVisit(readVisits(storage), page.path, Date.now())); } catch { /* The article remains readable without storage. */ }
