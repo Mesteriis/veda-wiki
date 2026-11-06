@@ -192,3 +192,11 @@ footer {
     font-size: 27px;
   }
 }
+.markdown .mermaid-diagram {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto;
+}
+.markdown pre.mermaid { color: var(--muted); white-space: pre-wrap; }
+.markdown pre.mermaid-error { border-color: #f85149; }

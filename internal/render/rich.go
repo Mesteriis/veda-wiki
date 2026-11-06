@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Mesteriis/veda-wiki/internal/domain"
@@ -14,10 +15,11 @@ import (
 )
 
 // htmlRenderer renders parsed articles. It replaces goldmark's raw HTML
-// output with an allow list, so the article HTML stays sanitized.
+// output with an allow list, so the article HTML stays sanitized, and
+// highlights fenced code.
 var htmlRenderer = goldmark.New(
-	goldmark.WithExtensions(domain.MarkdownExtensions...),
-	goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(allowedHTML{}, 100))),
+	goldmark.WithExtensions(slices.Concat(domain.MarkdownExtensions, []goldmark.Extender{codeHighlighting})...),
+	goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(allowedHTML{}, 100), util.Prioritized(mermaidRenderer{}, 100))),
 ).Renderer()
 
 var (

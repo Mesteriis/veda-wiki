@@ -179,7 +179,11 @@ drops dangerous link schemes and all raw HTML except an allow list: `<details>`
 (with optional `open`), `<summary>`, `<kbd>`, `<sub>`, `<sup>` and `<br>`, never
 with other attributes. It also renders GitHub alerts (`> [!NOTE]`), footnotes
 and definition lists, and hides a leading YAML front matter block, whose
-`title:` becomes the article title. There is no CORS write interface.
+`title:` becomes the article title. Fenced code is highlighted on the server
+with CSS classes only; a ```` ```mermaid ```` fence is sent as escaped source in
+`<pre class="mermaid">`, and the browser loads Mermaid only on such pages and
+shows each diagram as an isolated SVG image, so the Content-Security-Policy
+keeps forbidding inline styles. An invalid diagram keeps its source text. There is no CORS write interface.
 
 For retries, reread after an ambiguous response: an accepted write might already
 be durable. The revision precondition prevents duplicate writes or stale updates.

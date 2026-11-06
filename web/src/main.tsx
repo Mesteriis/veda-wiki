@@ -9,6 +9,7 @@ import "./components/sidebar.css";
 import "./components/sidebar-rail.css";
 import "./components/header.css";
 import "./features/reading/reading.css";
+import "./features/reading/code.css";
 import "./features/catalog/catalog.css";
 import "./features/home/home.css";
 import "./features/session/session.css";

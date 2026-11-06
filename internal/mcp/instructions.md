@@ -33,6 +33,15 @@ Only the owner creates a Git repository and connects it in VEDA settings; editor
 Write Markdown that reads the same on GitHub, on a GitHub Pages site and in VEDA.
 
 - GitHub-flavoured Markdown: headings, lists, task lists `- [ ]`, tables, fenced code with a language (```` ```bash ````), strikethrough, autolinks.
+- Always name the language of a code fence (`bash`, `yaml`, `go`, `json`, `nginx`, `ini`, `text`…); VEDA highlights it, GitHub does too.
+- Diagrams are Mermaid fences; GitHub and VEDA both draw them, and a reader without JavaScript sees the source:
+  ````markdown
+  ```mermaid
+  graph LR
+    agent[Agent] -->|MCP| veda[VEDA] --> repo[(Git repository)]
+  ```
+  ````
+  Prefer `graph`/`flowchart` and `sequenceDiagram`; keep labels as plain text (no HTML in labels). An invalid diagram is shown as its source, so check the syntax.
 - Alerts for things a reader must not miss; use them sparingly:
   ```markdown
   > [!WARNING]

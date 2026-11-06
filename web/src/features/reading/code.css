@@ -1,0 +1,73 @@
+/* Code highlighting: chroma "github-dark" classes (internal/render/code.go).
+   Regenerate with chromahtml.New(chromahtml.WithClasses(true)).WriteCSS for the style. */
+.markdown .chroma .err { color: #f85149 }
+.markdown .chroma .line { display: flex; }
+.markdown .chroma .k { color: #ff7b72 }
+.markdown .chroma .kc { color: #79c0ff }
+.markdown .chroma .kd { color: #ff7b72 }
+.markdown .chroma .kn { color: #ff7b72 }
+.markdown .chroma .kp { color: #79c0ff }
+.markdown .chroma .kr { color: #ff7b72 }
+.markdown .chroma .kt { color: #ff7b72 }
+.markdown .chroma .nc { color: #f0883e; font-weight: bold }
+.markdown .chroma .no { color: #79c0ff; font-weight: bold }
+.markdown .chroma .nd { color: #d2a8ff; font-weight: bold }
+.markdown .chroma .ni { color: #ffa657 }
+.markdown .chroma .ne { color: #f0883e; font-weight: bold }
+.markdown .chroma .nl { color: #79c0ff; font-weight: bold }
+.markdown .chroma .nn { color: #ff7b72 }
+.markdown .chroma .py { color: #79c0ff }
+.markdown .chroma .nt { color: #7ee787 }
+.markdown .chroma .nv { color: #79c0ff }
+.markdown .chroma .vc { color: #79c0ff }
+.markdown .chroma .vg { color: #79c0ff }
+.markdown .chroma .vi { color: #79c0ff }
+.markdown .chroma .vm { color: #79c0ff }
+.markdown .chroma .nf { color: #d2a8ff; font-weight: bold }
+.markdown .chroma .fm { color: #d2a8ff; font-weight: bold }
+.markdown .chroma .l { color: #a5d6ff }
+.markdown .chroma .ld { color: #79c0ff }
+.markdown .chroma .s { color: #a5d6ff }
+.markdown .chroma .sa { color: #79c0ff }
+.markdown .chroma .sb { color: #a5d6ff }
+.markdown .chroma .sc { color: #a5d6ff }
+.markdown .chroma .dl { color: #79c0ff }
+.markdown .chroma .sd { color: #a5d6ff }
+.markdown .chroma .s2 { color: #a5d6ff }
+.markdown .chroma .se { color: #79c0ff }
+.markdown .chroma .sh { color: #79c0ff }
+.markdown .chroma .si { color: #a5d6ff }
+.markdown .chroma .sx { color: #a5d6ff }
+.markdown .chroma .sr { color: #79c0ff }
+.markdown .chroma .s1 { color: #a5d6ff }
+.markdown .chroma .ss { color: #a5d6ff }
+.markdown .chroma .m { color: #a5d6ff }
+.markdown .chroma .mb { color: #a5d6ff }
+.markdown .chroma .mf { color: #a5d6ff }
+.markdown .chroma .mh { color: #a5d6ff }
+.markdown .chroma .mi { color: #a5d6ff }
+.markdown .chroma .il { color: #a5d6ff }
+.markdown .chroma .mo { color: #a5d6ff }
+.markdown .chroma .o { color: #ff7b72; font-weight: bold }
+.markdown .chroma .ow { color: #ff7b72; font-weight: bold }
+.markdown .chroma .or { color: #ff7b72; font-weight: bold }
+.markdown .chroma .c { color: #8b949e; font-style: italic }
+.markdown .chroma .ch { color: #8b949e; font-style: italic }
+.markdown .chroma .cm { color: #8b949e; font-style: italic }
+.markdown .chroma .c1 { color: #8b949e; font-style: italic }
+.markdown .chroma .cs { color: #8b949e; font-weight: bold; font-style: italic }
+.markdown .chroma .cp { color: #8b949e; font-weight: bold; font-style: italic }
+.markdown .chroma .cpf { color: #8b949e; font-weight: bold; font-style: italic }
+.markdown .chroma .gd { color: #ffa198; background-color: #490202 }
+.markdown .chroma .ge { font-style: italic }
+.markdown .chroma .gr { color: #ffa198 }
+.markdown .chroma .gh { color: #79c0ff; font-weight: bold }
+.markdown .chroma .gi { color: #56d364; background-color: #0f5323 }
+.markdown .chroma .go { color: #8b949e }
+.markdown .chroma .gp { color: #8b949e }
+.markdown .chroma .gs { font-weight: bold }
+.markdown .chroma .gu { color: #79c0ff }
+.markdown .chroma .gt { color: #ff7b72 }
+.markdown .chroma .gl { text-decoration: underline }
+.markdown .chroma .w { color: #6e7681 }
+.markdown .chroma .line { display: block; }
