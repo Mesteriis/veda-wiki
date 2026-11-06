@@ -106,7 +106,12 @@ func (allowedHTML) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 
 var alertMarker = regexp.MustCompile(`(?i)^\[!(note|tip|important|warning|caution)\][ \t]*$`)
 
-var alertTitles = map[string]string{
+// AlertTitles names the GitHub alert kinds (note, tip, important, warning,
+// caution) in one language.
+type AlertTitles map[string]string
+
+// RussianAlerts are the reading interface's alert titles.
+var RussianAlerts = AlertTitles{
 	"note":      "Примечание",
 	"tip":       "Совет",
 	"important": "Важно",
@@ -114,9 +119,18 @@ var alertTitles = map[string]string{
 	"caution":   "Осторожно",
 }
 
+// EnglishAlerts are GitHub's alert titles.
+var EnglishAlerts = AlertTitles{
+	"note":      "Note",
+	"tip":       "Tip",
+	"important": "Important",
+	"warning":   "Warning",
+	"caution":   "Caution",
+}
+
 // markAlerts turns GitHub alert blockquotes ("> [!NOTE]") into callouts:
 // the marker line becomes a title and the blockquote gets alert classes.
-func markAlerts(doc ast.Node, source []byte) {
+func markAlerts(doc ast.Node, source []byte, titles AlertTitles) {
 	var quotes []*ast.Blockquote
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if q, ok := n.(*ast.Blockquote); ok && entering {
@@ -149,7 +163,7 @@ func markAlerts(doc ast.Node, source []byte) {
 		kind := strings.ToLower(string(m[1]))
 		title := ast.NewParagraph()
 		title.SetAttributeString("class", []byte("markdown-alert-title"))
-		title.AppendChild(title, ast.NewString([]byte(alertTitles[kind])))
+		title.AppendChild(title, ast.NewString([]byte(titles[kind])))
 		q.InsertBefore(q, q.FirstChild(), title)
 		q.SetAttributeString("class", []byte("markdown-alert markdown-alert-"+kind))
 	}

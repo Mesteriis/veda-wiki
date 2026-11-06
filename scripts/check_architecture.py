@@ -22,7 +22,7 @@ MODULE_INTERNAL = '/internal/'
 
 DOMAIN_FORBIDDEN_IMPORTS = {'os', 'net', 'net/http', 'database/sql', 'os/exec'}
 
-AREAS = {'auth', 'importer', 'transfer', 'syncer', 'agentctx'}
+AREAS = {'auth', 'importer', 'transfer', 'syncer', 'agentctx', 'site'}
 # Adapter and assembly packages: may import anything.
 ASSEMBLY = {'httpapi', 'app', 'mcp'}
 # Leaf packages: may not import areas. Subpackages (store/storetest,
@@ -47,10 +47,12 @@ KNOWLEDGE_IMPORTS = {
 #   importer  <- syncer    applies pulled batches
 #   transfer  <- syncer    moves deletion transitions
 #   importer  <- agentctx  reads import observations for source status
+#   importer  <- site      exports a checkout read like an import
 ALLOWED_AREA_IMPORTS = {
     ('syncer', 'importer'): 'applies pulled batches',
     ('syncer', 'transfer'): 'moves deletion transitions',
     ('agentctx', 'importer'): 'reads import observations for source status',
+    ('site', 'importer'): 'exports a checkout read like an import',
 }
 
 # Collection -> owner package. Writers outside the owner, internal/domain

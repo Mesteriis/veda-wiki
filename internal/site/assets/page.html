@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="{{.Text.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="VEDA">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="{{.CSS}}">
+{{if .Diagrams}}<script type="module" src="{{.JS}}"></script>{{end}}
+</head>
+<body>
+<header class="site-header">
+  <a class="site-title" href="{{.Root}}">{{.Site}}</a>
+  <details class="site-menu">
+    <summary>{{.Text.Pages}}</summary>
+    <nav aria-label="{{.Text.Pages}}">{{range .Nav}}
+      <a href="{{.Href}}" class="depth-{{.Depth}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a>{{end}}
+    </nav>
+  </details>
+</header>
+<div class="site-layout">
+  <nav class="site-nav" aria-label="{{.Text.Pages}}">{{range .Nav}}
+    <a href="{{.Href}}" class="depth-{{.Depth}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a>{{end}}
+  </nav>
+  <main class="markdown">
+{{.Body}}
+  </main>
+  {{if .TOC}}<aside class="site-toc" aria-label="{{.Text.OnThisPage}}"><h2>{{.Text.OnThisPage}}</h2>{{.TOC}}</aside>{{end}}
+</div>
+<footer class="site-footer">{{.Text.Built}} <a href="https://github.com/Mesteriis/veda-wiki">VEDA</a></footer>
+</body>
+</html>

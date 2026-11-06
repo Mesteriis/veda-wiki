@@ -9,6 +9,7 @@ import (
 
 	"github.com/Mesteriis/veda-wiki/internal/app"
 	"github.com/Mesteriis/veda-wiki/internal/app/commands"
+	"github.com/Mesteriis/veda-wiki/internal/site"
 )
 
 func main() {
@@ -32,6 +33,8 @@ func main() {
 		err = commands.Import(os.Args[2:])
 	case "mcp":
 		err = commands.MCP(os.Args[2:], os.Stdin, os.Stdout)
+	case "export-site":
+		err = site.Command(os.Args[2:], os.Stdout, os.Stderr)
 	case "mcp-relay":
 		err = commands.MCPRelay(os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 	default:
