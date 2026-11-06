@@ -28,6 +28,30 @@ Only the owner creates a Git repository and connects it in VEDA settings; editor
 - Write in the language and terminology the repository already uses (its glossary, if any).
 - Never write secrets: passwords, tokens, keys, private addresses with credentials. Write where a secret is kept, not its value. Credential-like files are withheld from import.
 
+## Formatting
+
+Write Markdown that reads the same on GitHub, on a GitHub Pages site and in VEDA.
+
+- GitHub-flavoured Markdown: headings, lists, task lists `- [ ]`, tables, fenced code with a language (```` ```bash ````), strikethrough, autolinks.
+- Alerts for things a reader must not miss; use them sparingly:
+  ```markdown
+  > [!WARNING]
+  > Restart the service only after the backup finishes.
+  ```
+  Kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`.
+- Collapsible blocks for long output, optional details and reference tables; leave a blank line after `<summary>` so Markdown inside renders:
+  ```markdown
+  <details>
+  <summary>Full configuration</summary>
+
+  ...Markdown...
+
+  </details>
+  ```
+- Footnotes `text[^1]` with `[^1]: source` for sources and asides; definition lists (`Term` then `: definition`) for glossaries.
+- Raw HTML is limited to `<details>` (optionally `open`), `<summary>`, `<kbd>`, `<sub>`, `<sup>` and `<br>`, without attributes. Any other tag, attribute, comment, script or style is dropped, so never rely on it.
+- Front matter is optional: a leading `---` YAML block (`title:`, `layout:`, `nav_order:` for a GitHub Pages theme) is hidden in VEDA, and its `title:` becomes the article title. Do not put Liquid tags (`{% %}`, `{{ }}`) in articles.
+
 ## Maintaining it
 
 - Before writing: `veda_context` for the path, then `veda_find`/`veda_search` to find the existing page; update it rather than creating a near-duplicate.

@@ -175,7 +175,11 @@ fall back to implicit legacy access.
 Program article paths must start with `docs/`. Absolute paths, traversal, hidden
 components, backslashes and non-Markdown paths are refused. Paths are logical
 keys inside the store, never arbitrary filesystem paths. Rendered Markdown
-disables raw HTML and dangerous link schemes. There is no CORS write interface.
+drops dangerous link schemes and all raw HTML except an allow list: `<details>`
+(with optional `open`), `<summary>`, `<kbd>`, `<sub>`, `<sup>` and `<br>`, never
+with other attributes. It also renders GitHub alerts (`> [!NOTE]`), footnotes
+and definition lists, and hides a leading YAML front matter block, whose
+`title:` becomes the article title. There is no CORS write interface.
 
 For retries, reread after an ambiguous response: an accepted write might already
 be durable. The revision precondition prevents duplicate writes or stale updates.
