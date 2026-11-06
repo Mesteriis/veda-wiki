@@ -7,8 +7,10 @@ ignore ./web/node_modules
 require github.com/yuin/goldmark v1.7.16
 
 require (
+	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/neo4j/neo4j-go-driver/v6 v6.4.0
+	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/crypto v0.58.0
 	golang.org/x/term v0.47.0
@@ -17,6 +19,7 @@ require (
 )
 
 require (
+	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
