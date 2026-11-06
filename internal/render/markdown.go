@@ -83,10 +83,43 @@ func sourceLink(pagePath, destination string) (string, string, bool) {
 // Page renders the article Markdown to sanitized HTML and a table of
 // contents.
 func Page(p domain.Page) (template.HTML, template.HTML, error) {
+	return PageWith(p, AppLinks, RussianAlerts)
+}
+
+// Links turns resolved in-source targets into URLs. Article receives the
+// target path ("" for the source root) and the fragment; Image receives the
+// image path and the digest bound to the revision ("" when unbound).
+type Links struct {
+	Article func(sourceID, target, fragment string) string
+	Image   func(sourceID, target, sha string) string
+}
+
+// AppLinks are the reading interface's URLs.
+var AppLinks = Links{
+	Article: func(sourceID, target, fragment string) string {
+		dest := "/?page=" + url.QueryEscape(sourceID+"/"+target)
+		if fragment != "" {
+			dest += "#" + url.PathEscape(fragment)
+		}
+		return dest
+	},
+	// An image bound to the displayed revision names its digest, so an
+	// older version shows the image it was written with.
+	Image: func(sourceID, target, sha string) string {
+		dest := "/media/" + sourceID + "/" + url.PathEscape(target)
+		if sha != "" {
+			dest += "?v=" + sha
+		}
+		return dest
+	},
+}
+
+// PageWith renders like Page with the given link mapping and alert titles.
+func PageWith(p domain.Page, links Links, alerts AlertTitles) (template.HTML, template.HTML, error) {
 	_, body := domain.SplitFrontMatter(p.Text)
 	source := []byte(body)
 	doc := domain.Markdown.Parser().Parse(text.NewReader(source), parser.WithContext(parser.NewContext(parser.WithIDs(&unicodeIDs{used: map[string]bool{}}))))
-	markAlerts(doc, source)
+	markAlerts(doc, source, alerts)
 	markMermaid(doc, source)
 	var toc strings.Builder
 	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -100,10 +133,7 @@ func Page(p domain.Page) (template.HTML, template.HTML, error) {
 				if !valid {
 					link.Destination = nil
 				} else {
-					link.Destination = []byte("/?page=" + url.QueryEscape(sourceID+"/"+target))
-					if u.Fragment != "" {
-						link.Destination = append(link.Destination, []byte("#"+url.PathEscape(u.Fragment))...)
-					}
+					link.Destination = []byte(links.Article(sourceID, target, u.Fragment))
 				}
 			}
 		}
@@ -112,12 +142,7 @@ func Page(p domain.Page) (template.HTML, template.HTML, error) {
 			if e == nil && u.Scheme == "" && u.Host == "" {
 				sourceID, target, valid := SourceTarget(p.Path, u.Path)
 				if valid {
-					// An image bound to the displayed revision names its digest,
-					// so an older version shows the image it was written with.
-					image.Destination = []byte("/media/" + sourceID + "/" + url.PathEscape(target))
-					if ref, bound := p.Assets[target]; bound {
-						image.Destination = append(image.Destination, "?v="+ref.SHA...)
-					}
+					image.Destination = []byte(links.Image(sourceID, target, p.Assets[target].SHA))
 				} else {
 					image.Destination = []byte("")
 				}

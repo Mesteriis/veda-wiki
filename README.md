@@ -222,6 +222,10 @@ metadata; program sources import `docs/` only. Import uses the authenticated RES
 service, preserves local changes as conflicts, and tracks Git/content provenance.
 See [GitHub synchronization](docs/github.md).
 
+To publish a wiki or `docs/` as a static site (GitHub Pages) with the same
+rendering, see [static site export](docs/static-site.md) and the
+[wiki template](examples/wiki-template/).
+
 ## Direction
 
 See [content and source model](docs/content-model.md) and [roadmap](docs/roadmap.md).

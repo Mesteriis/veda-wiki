@@ -18,6 +18,7 @@ Only the owner creates a Git repository and connects it in VEDA settings; editor
   Optional: `image` (a repository-relative PNG/JPEG/WebP/GIF) and `url` (HTTPS). Unknown fields, duplicate keys, anchors, aliases, custom tags and several YAML documents are refused.
 - Program (code with documentation): no `veda.yaml`; only Markdown under `docs/` is imported, and `docs/` must be a real directory.
 - Start a wiki with a root `README.md` (what the repository covers and how it is organised) and a root `AGENTS.md` (rules for agents: language, structure, where new knowledge goes, what never to write).
+- To publish a wiki as a GitHub Pages site with the same rendering, the owner adds the workflow from VEDA's `examples/wiki-template` (`veda-site --strict`); a Pages site is public, so suggest it only for content anyone may read.
 
 ## Layout and format
 
