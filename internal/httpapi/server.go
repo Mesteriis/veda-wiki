@@ -151,8 +151,7 @@ func (h handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		h.media(rw, r, owner)
 		return
 	}
-	rw.Header().Set("Content-Security-Policy", "default-src 'none'; connect-src 'self'; style-src 'self'; font-src 'self'; script-src 'self'; "+
-		"img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	rw.Header().Set("Content-Security-Policy", pagePolicy)
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
 	rw.Header().Set("Cache-Control", "no-store")
 	if r.Method != "GET" {

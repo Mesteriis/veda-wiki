@@ -201,3 +201,14 @@ footer {
 }
 .markdown pre.mermaid { color: var(--muted); white-space: pre-wrap; }
 .markdown pre.mermaid-error { border-color: #f85149; }
+/* The hidden page that draws Mermaid diagrams; see diagrams.ts. */
+.diagram-frame {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 1200px;
+  height: 800px;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+}

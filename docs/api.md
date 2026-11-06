@@ -181,9 +181,13 @@ with other attributes. It also renders GitHub alerts (`> [!NOTE]`), footnotes
 and definition lists, and hides a leading YAML front matter block, whose
 `title:` becomes the article title. Fenced code is highlighted on the server
 with CSS classes only; a ```` ```mermaid ```` fence is sent as escaped source in
-`<pre class="mermaid">`, and the browser loads Mermaid only on such pages and
-shows each diagram as an isolated SVG image, so the Content-Security-Policy
-keeps forbidding inline styles. An invalid diagram keeps its source text.
+`<pre class="mermaid">`. On such pages the browser opens a hidden
+`/diagram-frame.html`, which loads Mermaid and draws each diagram; the page
+shows the result as an isolated SVG image. Mermaid needs inline styles while
+it lays a diagram out, so only that frame's Content-Security-Policy allows
+them: it still runs only the interface's own scripts, reaches no network and
+can be framed only by the interface. Every other page keeps forbidding inline
+styles. An invalid diagram keeps its source text.
 
 A successful `POST` or `PUT` of an article also returns `warnings` when the
 text uses Markdown that the reader will not see as written; the revision is
