@@ -63,6 +63,23 @@ func SourceTarget(pagePath, destination string) (string, string, bool) {
 	return parts[0], target, valid
 }
 
+// sourceLink resolves a relative link path written in pagePath within its
+// source; a link to the source root resolves to an empty target.
+func sourceLink(pagePath, destination string) (string, string, bool) {
+	if sourceID, target, valid := SourceTarget(pagePath, destination); valid {
+		return sourceID, target, true
+	}
+	parts := strings.SplitN(pagePath, "/", 2)
+	if len(parts) != 2 || !domain.ValidID(parts[0]) {
+		return "", "", false
+	}
+	resolved := path.Clean(path.Join(path.Dir(parts[1]), destination))
+	if strings.HasPrefix(destination, "/") {
+		resolved = path.Clean(strings.TrimPrefix(destination, "/"))
+	}
+	return parts[0], "", resolved == "."
+}
+
 // Page renders the article Markdown to sanitized HTML and a table of
 // contents.
 func Page(p domain.Page) (template.HTML, template.HTML, error) {
@@ -79,19 +96,7 @@ func Page(p domain.Page) (template.HTML, template.HTML, error) {
 		if link, ok := n.(*ast.Link); ok {
 			u, e := url.Parse(string(link.Destination))
 			if e == nil && u.Scheme == "" && u.Host == "" && u.Path != "" {
-				sourceID, target, valid := SourceTarget(p.Path, u.Path)
-				if !valid {
-					parts := strings.SplitN(p.Path, "/", 2)
-					if len(parts) == 2 && domain.ValidID(parts[0]) {
-						resolved := path.Clean(path.Join(path.Dir(parts[1]), u.Path))
-						if strings.HasPrefix(u.Path, "/") {
-							resolved = path.Clean(strings.TrimPrefix(u.Path, "/"))
-						}
-						if resolved == "." {
-							sourceID, target, valid = parts[0], "", true
-						}
-					}
-				}
+				sourceID, target, valid := sourceLink(p.Path, u.Path)
 				if !valid {
 					link.Destination = nil
 				} else {

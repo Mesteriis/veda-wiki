@@ -23,6 +23,12 @@ var readHandlers = map[string]handler{
 	"veda_moves":          withQuery(arguments.query, "/api/v1/moves"),
 	"veda_conflicts":      withQuery(arguments.query, "/api/v1/conflicts"),
 	"veda_github_status":  githubStatus,
+	"veda_format_guide":   formatGuide,
+}
+
+// formatGuide returns the embedded formatting reference; it reads no data.
+func formatGuide(context.Context, *client.Client, arguments) (any, error) {
+	return map[string]string{"guide": FormatGuide}, nil
 }
 
 // wrapped returns {key: <GET route response>}.

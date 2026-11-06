@@ -9,8 +9,10 @@ and compare /tmp/go.json with tools.json after sorting its tools by name; the
 Go server lists tools sorted, the old adapter in definition order (the
 golden file's order, checked by TestToolTableOrderMatchesPythonAdapter).
 
-The seven knowledge tools (five reader reads, two owner tools) came later and
-are appended after the adapter's tools in both lists, in tool-table order.
+`veda_format_guide` (a reader read returning the embedded formatting
+reference) and the seven knowledge tools (five reader reads, two owner tools)
+came later and are appended after the adapter's tools in both lists, in
+tool-table order.
 They were taken from a `--veda` dump; every earlier entry is unchanged
 (TestToolSchemasAreByteIdentical compares each schema byte for byte).
 

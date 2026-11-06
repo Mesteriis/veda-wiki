@@ -183,7 +183,16 @@ and definition lists, and hides a leading YAML front matter block, whose
 with CSS classes only; a ```` ```mermaid ```` fence is sent as escaped source in
 `<pre class="mermaid">`, and the browser loads Mermaid only on such pages and
 shows each diagram as an isolated SVG image, so the Content-Security-Policy
-keeps forbidding inline styles. An invalid diagram keeps its source text. There is no CORS write interface.
+keeps forbidding inline styles. An invalid diagram keeps its source text.
+
+A successful `POST` or `PUT` of an article also returns `warnings` when the
+text uses Markdown that the reader will not see as written; the revision is
+saved either way. Each warning has `code`, the 1-based `line` (front matter
+included) and `message`: `raw_html` (a tag outside the allow list or with
+attributes), `liquid` (`{% %}` or `{{ }}` outside code), `link_outside_source`,
+`image_outside_source`, `image_remote` (blocked by the page policy) and
+`code_without_language`. At most 50 are returned. The MCP tool
+`veda_format_guide` returns the full formatting reference. There is no CORS write interface.
 
 For retries, reread after an ambiguous response: an accepted write might already
 be durable. The revision precondition prevents duplicate writes or stale updates.
