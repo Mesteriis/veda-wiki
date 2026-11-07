@@ -114,11 +114,13 @@ var Tools = append([]ToolSpec{
 		ReadOnly: true,
 	},
 	{
-		Name:        "veda_read",
-		Description: "Read the current article and its revision.",
+		Name: "veda_read",
+		Description: "Read the current article and its revision. Pass the sha256 of an earlier read as if_sha256 to get only " +
+			"revision, sha256 and unchanged: true while the article has not changed.",
 		Schema: closedObject(required("source_id", "path"),
 			prop("source_id", nonEmpty),
-			prop("path", nonEmpty)),
+			prop("path", nonEmpty),
+			prop("if_sha256", sha256Hex)),
 		ReadOnly: true,
 	},
 	{
@@ -131,6 +133,17 @@ var Tools = append([]ToolSpec{
 			prop("offset", nonNegative),
 			prop("limit", `{"type":"integer","minimum":1,"maximum":16000}`),
 			prop("expected_sha256", sha256Hex)),
+		ReadOnly: true,
+	},
+	{
+		Name: "veda_outline",
+		Description: "List the headings of the current article: level, title, line, code-point offset and characters (up to " +
+			"the next heading of the same or a higher level, subsections included), with revision, sha256 and " +
+			"total_characters. To read one section, call veda_read_excerpt with its offset, characters as limit (at most " +
+			"16000; continue with next_offset) and sha256 as expected_sha256.",
+		Schema: closedObject(required("source_id", "path"),
+			prop("source_id", nonEmpty),
+			prop("path", nonEmpty)),
 		ReadOnly: true,
 	},
 	{

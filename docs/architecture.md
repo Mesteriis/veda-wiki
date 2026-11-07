@@ -14,7 +14,7 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/app` | Assembly: server flags, listeners, the reader socket, workers, bounded shutdown and the writer lock. |
 | `internal/app/commands` | The non-server subcommands: `createsuperuser`, `access-key`, `migrate-sqlite`, `migrate-revisions`, `import`, `github`, `mcp`, `mcp-relay`; `export-site` calls `internal/site` directly. |
 | `internal/httpapi` | REST handlers, browser sessions, role checks and the embedded reading interface. Adapter only: it parses input, checks the role, calls an area and serializes the result. |
-| `internal/mcp` | MCP server behind `veda mcp`: the tool table (15 read-only tools for reader keys and the socket, five of them knowledge-graph reads; 34 for the owner), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
+| `internal/mcp` | MCP server behind `veda mcp`: the tool table (16 read-only tools for reader keys and the socket, five of them knowledge-graph reads; 35 for the owner), strict argument validation against each tool's schema before any request, and handlers that call the REST service. Adapter only. |
 | `internal/mcp/client` | REST client of the MCP adapter. Adapter only: loopback HTTP or explicitly allowed reader-only HTTPS, private key and socket files, no proxy or redirects, 24 MiB response limit, sanitized refusal messages. |
 | `internal/auth` | Access keys, named users and teams, password hashing and the login limiter, browser sessions. |
 | `internal/importer` | `veda.yaml` metadata, bounded local checkout observations, batch decoding, asset storage, import conflicts and the process-local observations. |
@@ -26,7 +26,7 @@ repository root). `cmd/veda` is the dispatcher; everything else lives under
 | `internal/github` | GitHub API client. It contains no synchronization logic. |
 | `internal/render` | Markdown rendering with configurable link URLs and alert titles, table of contents, formatting warnings and the link graph. |
 | `internal/site` | Static site export (`veda-site`, `veda export-site`): reads a checkout through `importer` and renders every page with `render`. |
-| `internal/search` | Lexical search. |
+| `internal/search` | Lexical search, the best matching line of a result and the cache of lowercased revision bodies. |
 | `internal/webui` | The built reading interface, embedded with `embed`. |
 | `internal/knowledge` | Contracts of the derived knowledge graph: text preparation with source maps, the per-request access rule over `domain` read rules, the extraction schema (`schema/v1.json`), pipeline fingerprints, entity normalization and uncertainty markers. Also the background indexing service (reconciliation, bounded queue, workers, publication) over narrow `Snapshots`, `Manifest`, `Extractor` and `Index` interfaces, and the `Index` read contract. Imports only `domain`; all I/O goes through those interfaces. |
 | `internal/knowledge/jobs` | `<data>/knowledge.sqlite` (0600, own migrations): the snapshot manifest (one row per snapshot and fingerprint, which is also the job), immutable extraction results and the last extractor settings; reads the optional `knowledge-aliases.json`. |

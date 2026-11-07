@@ -17,6 +17,7 @@ var readHandlers = map[string]handler{
 	"veda_find":           withQuery(findQuery, "/api/v1/search"),
 	"veda_read":           read,
 	"veda_read_excerpt":   withQuery(arguments.query, "/api/v1/articles/excerpt"),
+	"veda_outline":        withQuery(arguments.query, "/api/v1/articles/outline"),
 	"veda_context":        withQuery(arguments.query, "/api/v1/context"),
 	"veda_transfer_plan":  post("/api/v1/articles/transfer-plan"),
 	"veda_source_mirrors": wrapped("mirrors", "/api/v1/sources/mirrors"),
@@ -69,8 +70,26 @@ func findQuery(args arguments) string {
 	return params.query()
 }
 
+// read returns the current revision, or only its number and digest when it
+// still has the sha256 the caller passed as if_sha256.
 func read(ctx context.Context, c *client.Client, args arguments) (any, error) {
-	return readLatest(ctx, c, args.str("source_id"), args.str("path"))
+	article, err := readLatest(ctx, c, args.str("source_id"), args.str("path"))
+	if err != nil || args.str("if_sha256") == "" {
+		return article, err
+	}
+	sha, err := article.get("sha256")
+	if err != nil {
+		return nil, err
+	}
+	if current, ok := pyValue(sha).(string); !ok || current != args.str("if_sha256") {
+		return article, nil
+	}
+	revision, err := article.get("revision")
+	if err != nil {
+		return nil, err
+	}
+	return object{{"source_id", args.str("source_id")}, {"path", args.str("path")}, {"revision", revision},
+		{"sha256", sha}, {"unchanged", true}}, nil
 }
 
 // readLatest returns {source_id, path, **latest version} of an article.

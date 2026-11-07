@@ -135,7 +135,7 @@ the repository, start `veda mcp` with the owner key and `--editor`:
 ssh pve 'pct exec 161 -- runuser -u infra-wiki -- /opt/veda-next/veda mcp --editor --url http://127.0.0.1:18080 --key-file /var/lib/veda-next/owner.key'
 ```
 
-An editor client lists the fifteen read-only tools plus `veda_write_article`
+An editor client lists the sixteen read-only tools plus `veda_write_article`
 and `veda_edit_article` and nothing else: no source creation, moves, conflicts, GitHub administration,
 access keys or knowledge-graph reindexing, and calls to those names are refused
 like unknown tools. Writes use optimistic concurrency (`expected_revision` from

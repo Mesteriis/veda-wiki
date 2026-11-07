@@ -15,6 +15,7 @@ The field is absent for public readers and for articles without a conflict.
 | GET | `/api/state?q=&env=&page=` | React reading/search/tree response; `page` is source ID plus article path. Authenticated readers receive warnings for incomplete or dirty imports, unresolved conflicts and unverified, paused or failed GitHub synchronization in their visible sources. A conflicted article includes `conflict_resolution_blocked_by_write` when a prepared write or linked bundle prevents resolution; public responses omit it |
 | GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/articles/excerpt?source_id=&path=&offset=&limit=&expected_sha256=` | Read up to 16,000 Unicode code points of the current visible revision; continuation requires the first response's SHA |
+| GET | `/api/v1/articles/outline?source_id=&path=` | Headings of the current visible revision outside front matter and fenced code: level, title, line, code-point `offset` and `characters` up to the next heading of the same or a higher level, with revision, SHA and total characters; read a section as an excerpt |
 | GET | `/api/v1/articles/proposal-base?source_id=&path=` | Authenticated source-scoped revision, SHA, unresolved import-conflict flag and source status in one snapshot |
 | GET | `/api/v1/articles/new-proposal-base?source_id=&path=` | Authenticated source-scoped visible-path check and source status in one snapshot; does not reserve the path |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
@@ -88,6 +89,8 @@ terms; only the returned page is scanned for lines. `total` and `offset` are
 calculated after visibility filtering. Limits are
 1–100 (default 20). An inaccessible source filter returns an empty result.
 Pagination is not a snapshot: repeat a search if sources change between pages.
+Lowercased bodies are cached by revision SHA (up to 64 MiB, then the cache
+starts over), so a revision is lowercased once instead of on every query.
 Each individual search ranks titles and bodies from one in-memory snapshot;
 public results use only revisions visible to the public at that snapshot.
 

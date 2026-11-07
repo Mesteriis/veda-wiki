@@ -157,6 +157,8 @@ func (h handler) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader
 		h.proposalBase(rw, r, false)
 	case "/api/v1/articles/excerpt":
 		h.excerpt(rw, r, public)
+	case "/api/v1/articles/outline":
+		h.outline(rw, r, public)
 	case "/api/v1/context":
 		h.context(rw, r, public)
 	case "/api/v1/search":

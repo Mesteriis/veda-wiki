@@ -105,7 +105,7 @@ func TestToolTableOrderMatchesPythonAdapter(t *testing.T) {
 	}
 	sort.Strings(readerNames)
 	sort.Strings(wantReader)
-	if !reflect.DeepEqual(names, want) || !reflect.DeepEqual(readerNames, wantReader) || len(readerNames) != 15 {
+	if !reflect.DeepEqual(names, want) || !reflect.DeepEqual(readerNames, wantReader) || len(readerNames) != 16 {
 		t.Fatalf("names %v\nreader %v", names, readerNames)
 	}
 }

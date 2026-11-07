@@ -20,6 +20,7 @@ import (
 type dataStore struct {
 	*store.Store
 	observations *importer.Observations
+	bodies       *search.Cache // lowercased revision bodies for search, shared by scoped copies
 }
 
 // scoped wraps a reader snapshot with a frozen copy of the import
@@ -33,7 +34,7 @@ func (s *dataStore) scoped(view *store.Store) *dataStore {
 		}
 		return nil
 	})
-	return &dataStore{Store: view, observations: s.observations.Scoped(granted)}
+	return &dataStore{Store: view, observations: s.observations.Scoped(granted), bodies: s.bodies}
 }
 
 func (s *dataStore) auth() auth.Service { return auth.Service{Store: s.Store} }
@@ -171,7 +172,7 @@ func (s *dataStore) findArticles(query, sourceID string, public bool) []search.H
 		candidates = search.Candidates(*db, sourceID, public, time.Now())
 		return nil
 	})
-	return search.Rank(candidates, query)
+	return search.Rank(candidates, query, s.bodies)
 }
 
 // findPage is findArticles for one page of results, each with its best
@@ -182,5 +183,5 @@ func (s *dataStore) findPage(query, sourceID string, public bool, offset, limit 
 		candidates = search.Candidates(*db, sourceID, public, time.Now())
 		return nil
 	})
-	return search.Page(candidates, query, offset, limit)
+	return search.Page(candidates, query, offset, limit, s.bodies)
 }

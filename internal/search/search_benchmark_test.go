@@ -47,3 +47,20 @@ func BenchmarkFindArticlesLargeRussianDocumentsNoExactPhrase(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkRankLargeRussianDocumentsCached(b *testing.B) {
+	text := "# Инфраструктура\n" + strings.Repeat("Контейнер VPS настройка сервиса\n", 2500)
+	var candidates []Candidate
+	for i := 0; i < 200; i++ {
+		candidates = append(candidates, Candidate{hit: Hit{SourceID: "infra", Path: fmt.Sprintf("%03d.md", i)}, text: text, sha: fmt.Sprintf("sha%03d", i)})
+	}
+	cache := NewCache()
+	Rank(candidates, "контейнер proxmox", cache)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if len(Rank(candidates, "контейнер proxmox", cache)) != 0 {
+			b.Fatal("unexpected search result")
+		}
+	}
+}

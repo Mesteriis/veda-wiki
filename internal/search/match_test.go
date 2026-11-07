@@ -45,14 +45,14 @@ func TestPageMatchesOnlyThePage(t *testing.T) {
 	for _, p := range []string{"a.md", "b.md", "c.md"} {
 		candidates = append(candidates, Candidate{hit: Hit{SourceID: "s", Path: p, Title: p}, text: "# " + p + "\n\nvps here", sha: "sha-" + p})
 	}
-	hits, total := Page(candidates, "vps", 1, 1)
+	hits, total := Page(candidates, "vps", 1, 1, NewCache())
 	if total != 3 || len(hits) != 1 || hits[0].Path != "b.md" || hits[0].Match == nil || hits[0].Match.Line != 3 || hits[0].Match.SHA != "sha-b.md" {
 		t.Fatalf("%d %+v", total, hits)
 	}
-	if hits, total := Page(candidates, "vps", 5, 10); total != 3 || len(hits) != 0 {
+	if hits, total := Page(candidates, "vps", 5, 10, nil); total != 3 || len(hits) != 0 {
 		t.Fatal("offset past the end", total, hits)
 	}
-	for _, hit := range Rank(candidates, "vps") {
+	for _, hit := range Rank(candidates, "vps", nil) {
 		if hit.Match != nil {
 			t.Fatal("Rank must not scan lines")
 		}
