@@ -16,6 +16,9 @@ the reader will not see as written: fix them and write again.
   nav_order: 2
   ---
   ```
+- `verified: 2026-11-07` in front matter records the day the article was last
+  checked against live state; `veda_stale` lists articles whose date is old or
+  missing. Set it only after an actual check.
 - File names are lowercase and hyphenated; links and history depend on them.
 
 ## Text and structure
@@ -122,5 +125,9 @@ sequenceDiagram
 | `image_outside_source` | The image path leaves the source and is not shown. |
 | `image_remote` | A remote image is blocked by the page policy. |
 | `code_without_language` | Name the fence language so it is highlighted. |
+| `verified_invalid` | `verified:` is not a date like `2026-11-07`. |
+
+`veda_check_source` also reports `link_missing` (no such page in the source;
+a directory counts when it has `README.md` or `index.md`) and `image_missing`.
 
 Each warning has the line in the article text, front matter included.

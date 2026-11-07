@@ -47,3 +47,13 @@ func TestRemoteImageWarning(t *testing.T) {
 		t.Fatalf("warnings = %+v", got)
 	}
 }
+
+func TestWarningsFlagAnInvalidVerifiedDate(t *testing.T) {
+	got := Warnings(domain.Page{Path: "s/a.md", Text: "---\ntitle: A\nverified: yesterday\n---\n# A"})
+	if len(got) != 1 || got[0].Code != "verified_invalid" || got[0].Line != 3 {
+		t.Fatalf("%+v", got)
+	}
+	if got := Warnings(domain.Page{Path: "s/a.md", Text: "---\nverified: 2026-11-07\n---\n# A"}); len(got) != 0 {
+		t.Fatalf("%+v", got)
+	}
+}

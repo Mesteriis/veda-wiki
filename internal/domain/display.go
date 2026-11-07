@@ -34,8 +34,15 @@ func SplitFrontMatter(text string) (front, body string) {
 
 // frontMatterTitle returns the top-level plain or quoted "title:" value.
 func frontMatterTitle(front string) string {
-	for _, line := range strings.Split(front, "\n") {
-		value, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "title:")
+	value, _ := FrontMatterValue(front, "title")
+	return value
+}
+
+// FrontMatterValue returns the first top-level plain or quoted "key:" value
+// of a front matter block and its 0-based line within the block.
+func FrontMatterValue(front, key string) (string, int) {
+	for n, line := range strings.Split(front, "\n") {
+		value, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), key+":")
 		if !ok {
 			continue
 		}
@@ -43,9 +50,9 @@ func frontMatterTitle(front string) string {
 		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
 			value = value[1 : len(value)-1]
 		}
-		return value
+		return value, n
 	}
-	return ""
+	return "", -1
 }
 
 // Title returns the front matter title, else the text of the first "# "

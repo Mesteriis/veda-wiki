@@ -40,11 +40,14 @@ func TestOnceSynchronizesConnectionsOfDifferentAccountsConcurrently(t *testing.T
 		}
 		for name, f := range fakes {
 			if r.URL.Path == "/repos/"+name && barrier.Load() {
-				if arrived.Add(1) == syncWorkers {
-					close(all)
-				}
+				// Count this request as waiting before it may release the
+				// others; otherwise an earlier request can leave before the
+				// last one is counted and the overlap looks smaller.
 				n := waiting.Add(1)
 				for old := maxWaiting.Load(); n > old && !maxWaiting.CompareAndSwap(old, n); old = maxWaiting.Load() {
+				}
+				if arrived.Add(1) == syncWorkers {
+					close(all)
 				}
 				select {
 				case <-all:

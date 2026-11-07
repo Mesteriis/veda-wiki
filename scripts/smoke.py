@@ -19,7 +19,7 @@ from smoke_mcp_knowledge import knowledge_smoke
 
 ROOT = Path(__file__).resolve().parents[1]
 KNOWLEDGE_READ_TOOLS = {"veda_entities", "veda_entity", "veda_article_links", "veda_graph", "veda_graph_context"}
-READER_TOOLS = {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_outline", "veda_context",
+READER_TOOLS = {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_outline", "veda_changes", "veda_stale", "veda_check_source", "veda_context",
                 "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan",
                 "veda_format_guide"} | KNOWLEDGE_READ_TOOLS
 OWNER_TOOLS = READER_TOOLS | {
@@ -128,6 +128,12 @@ async def main():
                     section = await call("veda_read_excerpt", {"source_id": "closed", "path": "edit.md", "offset": part["offset"],
                         "limit": part["characters"], "expected_sha256": outline["sha256"]})
                     assert section["text"] == "## Part\ngamma beta twice twice\n" and section["next_offset"] is None, section
+                    recent = await call("veda_changes", {"since": "2000-01-01T00:00:00Z", "source_id": "closed"})
+                    assert recent["results"][0]["path"] == "edit.md" and recent["total"] >= 2, recent
+                    stale = await call("veda_stale", {"source_id": "closed", "days": 30})
+                    assert stale["unverified"] == stale["total"] >= 2, stale
+                    checked = await call("veda_check_source", {"source_id": "closed"})
+                    assert checked["articles"] >= 2 and {"raw_html", "code_without_language"} <= {i["code"] for i in checked["results"]}, checked
                     rejected = await session.call_tool("veda_write_article", {"source_id": "open", "path": "unsafe.md",
                         "text": "password=synthetic-fixture-only", "expected_revision": 0})
                     assert rejected.isError

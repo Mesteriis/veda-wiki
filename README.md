@@ -84,7 +84,7 @@ key cannot write or use administrative endpoints and is ignored by the public
 listener. It grants access to all private sources and is not user-scoped. An existing private infrastructure
 MCP configuration must not be replaced automatically by this development server.
 
-Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excerpt`, `veda_outline`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_create_source`,
+Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excerpt`, `veda_outline`, `veda_changes`, `veda_stale`, `veda_check_source`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_create_source`,
 `veda_write_article`, `veda_edit_article`, `veda_copy_article`, `veda_transfer_plan`, `veda_moves`, `veda_move_article`,
 `veda_cancel_move`,
 `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
@@ -93,12 +93,16 @@ Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excer
 `veda_publish_job`, `veda_cancel_bundle`, and, for the optional knowledge graph,
 `veda_entities`, `veda_entity`, `veda_article_links`, `veda_graph`,
 `veda_graph_context`, `veda_knowledge_status` and `veda_knowledge_reindex`.
-Reader keys and the reader socket list 16 read-only tools: the eleven reading and
-proposal tools and the five knowledge reads; the owner lists all 35.
+Reader keys and the reader socket list 19 read-only tools: the fourteen reading and
+proposal tools and the five knowledge reads; the owner lists all 38.
 `veda_read_excerpt` reads bounded Unicode slices and uses the first slice's SHA
 to reject continuations after a revision changes. `veda_outline` lists an
 article's sections with offsets and sizes for such excerpts, and `veda_read`
 with `if_sha256` answers `unchanged` instead of resending an unchanged article.
+`veda_changes` lists articles changed since a time, `veda_stale` those whose
+front matter `verified:` date is old or missing, and `veda_check_source`
+reports formatting warnings and links or images whose targets are missing
+across a whole source.
 `veda_search` returns at most 20 ranked hits with source ID, path, title and
 the best matching line (`match`, with the offset for `veda_read_excerpt`);
 `veda_find` pages further. `veda_edit_article` replaces one unique fragment

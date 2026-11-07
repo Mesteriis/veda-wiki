@@ -16,11 +16,13 @@ tool-table order.
 They were taken from a `--veda` dump; every earlier entry is unchanged
 (TestToolSchemasAreByteIdentical compares each schema byte for byte).
 
-Two later tools sit next to their relatives instead, in tool-table order:
-`veda_outline` (reader) after `veda_read_excerpt` and `veda_edit_article`
+Later tools sit next to their relatives instead, in tool-table order:
+`veda_outline`, `veda_changes`, `veda_stale` and `veda_check_source` (reader) after
+`veda_read_excerpt`, and `veda_edit_article`
 (owner and editor) after `veda_write_article`. These entries changed on
 purpose: `veda_read` gained `if_sha256`, `veda_search` and `veda_find`
-describe the `match` field, and the server instructions describe both.
+describe the `match` field, descriptions were shortened, and the server
+instructions describe the new tools.
 
 To regenerate the original from history: `git show 4c595a2:mcp/<module>.py >
 /tmp/server.py` (see `git ls-tree 4c595a2 mcp/`), then `dump_mcp_tools.py --adapter /tmp/server.py` (needs the
