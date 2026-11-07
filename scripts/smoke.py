@@ -19,7 +19,7 @@ from smoke_mcp_knowledge import knowledge_smoke
 
 ROOT = Path(__file__).resolve().parents[1]
 KNOWLEDGE_READ_TOOLS = {"veda_entities", "veda_entity", "veda_article_links", "veda_graph", "veda_graph_context"}
-READER_TOOLS = {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_context",
+READER_TOOLS = {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_read_excerpt", "veda_outline", "veda_context",
                 "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan",
                 "veda_format_guide"} | KNOWLEDGE_READ_TOOLS
 OWNER_TOOLS = READER_TOOLS | {
@@ -118,7 +118,16 @@ async def main():
                     stale = await session.call_tool("veda_edit_article", {"source_id": "closed", "path": "edit.md",
                         "expected_revision": 1, "old_text": "gamma", "new_text": "x"})
                     assert stale.isError and "HTTP 409" in stale.content[0].text, stale
-                    assert (await call("veda_read", {"source_id": "closed", "path": "edit.md"}))["text"] == "# Edit\n\n## Part\ngamma beta twice twice\n"
+                    full = await call("veda_read", {"source_id": "closed", "path": "edit.md"})
+                    assert full["text"] == "# Edit\n\n## Part\ngamma beta twice twice\n"
+                    same = await call("veda_read", {"source_id": "closed", "path": "edit.md", "if_sha256": full["sha256"]})
+                    assert same == {"source_id": "closed", "path": "edit.md", "revision": 2, "sha256": full["sha256"], "unchanged": True}, same
+                    outline = await call("veda_outline", {"source_id": "closed", "path": "edit.md"})
+                    part = outline["sections"][1]
+                    assert outline["sha256"] == full["sha256"] and part["title"] == "Part" and part["level"] == 2, outline
+                    section = await call("veda_read_excerpt", {"source_id": "closed", "path": "edit.md", "offset": part["offset"],
+                        "limit": part["characters"], "expected_sha256": outline["sha256"]})
+                    assert section["text"] == "## Part\ngamma beta twice twice\n" and section["next_offset"] is None, section
                     rejected = await session.call_tool("veda_write_article", {"source_id": "open", "path": "unsafe.md",
                         "text": "password=synthetic-fixture-only", "expected_revision": 0})
                     assert rejected.isError

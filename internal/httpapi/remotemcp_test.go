@@ -64,7 +64,7 @@ func TestRemoteMCPServesReaderToolsForTheKeysSourcesOnly(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names[tool.Name] = true
 	}
-	if len(tools.Tools) != 15 || names["veda_write_article"] || !names["veda_read"] {
+	if len(tools.Tools) != 16 || names["veda_write_article"] || !names["veda_read"] {
 		t.Fatalf("remote tools: %v", names)
 	}
 	result, err := session.CallTool(t.Context(), &sdk.CallToolParams{Name: "veda_sources", Arguments: map[string]any{}})

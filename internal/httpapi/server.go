@@ -13,6 +13,7 @@ import (
 	"github.com/Mesteriis/veda-wiki/internal/importer"
 	"github.com/Mesteriis/veda-wiki/internal/knowledge"
 	"github.com/Mesteriis/veda-wiki/internal/notify"
+	"github.com/Mesteriis/veda-wiki/internal/search"
 	"github.com/Mesteriis/veda-wiki/internal/store"
 	"github.com/Mesteriis/veda-wiki/internal/syncer"
 )
@@ -72,7 +73,7 @@ func New(cfg Config, deps Deps) http.Handler {
 		if observations == nil {
 			observations = &importer.Observations{}
 		}
-		h.Store = &dataStore{Store: deps.Store, observations: observations}
+		h.Store = &dataStore{Store: deps.Store, observations: observations, bodies: search.NewCache()}
 	}
 	return h
 }

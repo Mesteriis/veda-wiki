@@ -301,3 +301,25 @@ func TestReaderCannotListOrCallEditArticle(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestReadIfSHAReturnsOnlyTheRevisionWhenUnchanged(t *testing.T) {
+	article := `{"source_id":"a","path":"b.md","versions":[{"revision":2,"text":"long text","sha256":"` + strings.Repeat("a", 64) + `"}]}`
+	_, base := startREST(t, map[string]string{"GET /api/v1/articles": article})
+	session := connect(t, base, true)
+	got := success(t, call(t, session, "veda_read", `{"source_id":"a","path":"b.md","if_sha256":"`+strings.Repeat("a", 64)+`"}`))
+	if got["unchanged"] != true || got["revision"] != float64(2) || got["text"] != nil {
+		t.Fatalf("%v", got)
+	}
+	changed := success(t, call(t, session, "veda_read", `{"source_id":"a","path":"b.md","if_sha256":"`+strings.Repeat("b", 64)+`"}`))
+	if changed["text"] != "long text" || changed["unchanged"] != nil {
+		t.Fatalf("%v", changed)
+	}
+}
+
+func TestOutlineForwardsToTheOutlineRoute(t *testing.T) {
+	fake, base := startREST(t, map[string]string{"GET /api/v1/articles/outline": `{"sections":[]}`})
+	success(t, call(t, connect(t, base, true), "veda_outline", `{"source_id":"a","path":"b.md"}`))
+	if requests := fake.all(); len(requests) != 1 || requests[0].URI != "/api/v1/articles/outline?path=b.md&source_id=a" {
+		t.Fatalf("%+v", requests)
+	}
+}

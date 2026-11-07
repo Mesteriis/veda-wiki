@@ -70,8 +70,8 @@ func Candidates(db domain.Database, sourceID string, public bool, now time.Time)
 
 // Rank scores the candidates and returns the matches, best first, with ties in
 // source/path order.
-func Rank(candidates []Candidate, query string) []Hit {
-	matches := rank(candidates, query)
+func Rank(candidates []Candidate, query string, cache *Cache) []Hit {
+	matches := rankCached(candidates, query, cache)
 	out := make([]Hit, 0, len(matches))
 	for _, c := range matches {
 		out = append(out, c.hit)
@@ -82,8 +82,8 @@ func Rank(candidates []Candidate, query string) []Hit {
 // Page ranks the candidates and returns one page of matches with the best
 // matching line of each, and the total number of matches. Only the page's
 // articles are scanned for lines.
-func Page(candidates []Candidate, query string, offset, limit int) ([]Hit, int) {
-	matches := rank(candidates, query)
+func Page(candidates []Candidate, query string, offset, limit int, cache *Cache) ([]Hit, int) {
+	matches := rankCached(candidates, query, cache)
 	start := min(offset, len(matches))
 	end := start + min(limit, len(matches)-start)
 	terms := Terms(query)
@@ -98,7 +98,9 @@ func Page(candidates []Candidate, query string, offset, limit int) ([]Hit, int) 
 	return out, len(matches)
 }
 
-func rank(candidates []Candidate, query string) []Candidate {
+// rankCached scores the candidates, taking lowercased bodies from cache; a
+// nil cache lowercases every body for this query only.
+func rankCached(candidates []Candidate, query string, cache *Cache) []Candidate {
 	type ranked struct {
 		candidate Candidate
 		score     int
@@ -110,7 +112,14 @@ func rank(candidates []Candidate, query string) []Candidate {
 	terms := Terms(query)
 	var scratch []byte
 	for _, c := range candidates {
-		score := articleWithScratch(query, c.hit.SourceID+"/"+c.hit.Path, c.sourceTitle, c.text, terms, &scratch)
+		var score int
+		if cache != nil {
+			articlePath := c.hit.SourceID + "/" + c.hit.Path
+			metadata := domain.Title(c.text, articlePath) + " " + articlePath + " " + c.sourceTitle
+			score = scoreCached(query, metadata, cache.lowered(c.sha, c.text), terms)
+		} else {
+			score = articleWithScratch(query, c.hit.SourceID+"/"+c.hit.Path, c.sourceTitle, c.text, terms, &scratch)
+		}
 		if score == 0 {
 			continue
 		}
@@ -126,7 +135,7 @@ func rank(candidates []Candidate, query string) []Candidate {
 
 // Find ranks the articles of a database snapshot visible to the caller.
 func Find(db domain.Database, query, sourceID string, public bool, now time.Time) []Hit {
-	return Rank(Candidates(db, sourceID, public, now), query)
+	return Rank(Candidates(db, sourceID, public, now), query, nil)
 }
 
 // Article scores the visible text of one article.
@@ -234,9 +243,21 @@ func scoreWithScratch(query, metadata, body string, terms [][]string, scratch *[
 		}
 		*scratch = lowered
 	}
-	containsBody := func(word string) bool {
+	return scoreLowered(query, metadata, func(word string) bool {
 		return bytes.Contains(lowered, []byte(word))
-	}
+	}, terms)
+}
+
+// scoreCached is scoreWithScratch over a body already lowercased by Cache.
+func scoreCached(query, metadata, lowered string, terms [][]string) int {
+	return scoreLowered(strings.ToLower(query), strings.ToLower(metadata), func(word string) bool {
+		return strings.Contains(lowered, word)
+	}, terms)
+}
+
+// scoreLowered scores a lowercased query and metadata against a body whose
+// lowercased form containsBody searches.
+func scoreLowered(query, metadata string, containsBody func(string) bool, terms [][]string) int {
 	if strings.Contains(metadata, query) || containsBody(query) {
 		return 1000
 	}
