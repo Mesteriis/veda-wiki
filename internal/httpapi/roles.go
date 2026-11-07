@@ -139,7 +139,7 @@ func (h handler) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader
 		return
 	}
 	switch path {
-	case "/api/v1/articles/new-proposal-base", "/api/v1/articles/proposal-base":
+	case "/api/v1/articles/new-proposal-base", "/api/v1/articles/proposal-base", "/api/v1/sources/check":
 		if public {
 			http.NotFound(rw, r)
 			return
@@ -159,6 +159,12 @@ func (h handler) routeAPI(rw http.ResponseWriter, r *http.Request, owner, reader
 		h.excerpt(rw, r, public)
 	case "/api/v1/articles/outline":
 		h.outline(rw, r, public)
+	case "/api/v1/changes":
+		h.changes(rw, r, public)
+	case "/api/v1/stale":
+		h.stale(rw, r, public)
+	case "/api/v1/sources/check":
+		h.checkSource(rw, r)
 	case "/api/v1/context":
 		h.context(rw, r, public)
 	case "/api/v1/search":

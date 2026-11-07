@@ -38,9 +38,8 @@ var Instructions string
 var FormatGuide string
 
 // matchNote describes the match field of search results.
-const matchNote = " Each result may carry match: the best matching line (line, its code-point offset for veda_read_excerpt, " +
-	"the nearest section heading, the text cut to about 200 characters and the revision sha256 to pass as expected_sha256); " +
-	"judge results by it before reading whole articles."
+const matchNote = " A result carries match when a body line matches: line, section, text (~200 characters), and offset " +
+	"and sha256 for veda_read_excerpt; judge results by it before reading articles."
 
 // Property schemas shared by several tools.
 const (
@@ -94,18 +93,17 @@ var Tools = append([]ToolSpec{
 	},
 	{
 		Name: "veda_search",
-		Description: "Search visible articles across sources using exact phrases or meaningful words. Generic container terms " +
-			"include LXC and Docker; VPS, VDS and VSP are aliases. This is lexical search, not semantic inference. Returns " +
-			"at most 20 ranked results with source_id, path and title; use veda_find to page further. LXC and Docker are " +
-			"distinct: read source context and verify live state before acting." + matchNote,
+		Description: "Lexical search of visible articles by phrase or words, not semantic inference: up to 20 ranked results " +
+			"with source_id, path and title; veda_find pages and filters by source. \"container\" also finds LXC and Docker, " +
+			"which differ; VPS, VDS and VSP are aliases. Verify live state before acting." + matchNote,
 		Schema: closedObject(required("query"),
 			prop("query", nonEmpty)),
 		ReadOnly: true,
 	},
 	{
 		Name: "veda_find",
-		Description: "Find visible article paths with compact paginated lexical search. Optionally restrict to one source; read " +
-			"results and their AGENTS.md context before acting. Results are not authorization or proof of live state." + matchNote,
+		Description: "veda_search with limit, offset and an optional source_id. Results are not authorization or proof of " +
+			"live state; read their AGENTS.md context before acting." + matchNote,
 		Schema: closedObject(required("query"),
 			prop("query", nonEmpty),
 			prop("source_id", nonEmpty),
@@ -144,6 +142,43 @@ var Tools = append([]ToolSpec{
 		Schema: closedObject(required("source_id", "path"),
 			prop("source_id", nonEmpty),
 			prop("path", nonEmpty)),
+		ReadOnly: true,
+	},
+	{
+		Name: "veda_changes",
+		Description: "List visible articles whose current revision was written after since (RFC 3339, e.g. " +
+			"2026-11-07T00:00:00Z), newest first: source_id, path, title, updated_at and sha256; optionally one source, " +
+			"paged with limit (default 50) and offset. Deletions are not listed. Use it to catch up instead of rereading.",
+		Schema: closedObject(required("since"),
+			prop("since", `{"type":"string","minLength":20,"maxLength":40}`),
+			prop("source_id", nonEmpty),
+			prop("limit", `{"type":"integer","minimum":1,"maximum":200}`),
+			prop("offset", nonNegative)),
+		ReadOnly: true,
+	},
+	{
+		Name: "veda_stale",
+		Description: "List visible articles not verified within days (default 90): first those whose front matter " +
+			"verified: date (YYYY-MM-DD) is older, oldest first, then those without a valid one, least recently " +
+			"updated first; unverified counts the latter. Optionally one source; limit (default 50) and offset. After " +
+			"checking an article against live state, set verified: to today's date.",
+		Schema: closedObject(nil,
+			prop("days", `{"type":"integer","minimum":1,"maximum":3650}`),
+			prop("source_id", nonEmpty),
+			prop("limit", `{"type":"integer","minimum":1,"maximum":200}`),
+			prop("offset", nonNegative)),
+		ReadOnly: true,
+	},
+	{
+		Name: "veda_check_source",
+		Description: "Check every visible article of one source: the formatting warnings a write returns, plus link_missing " +
+			"(a link to a page that does not exist; a directory counts when it has README.md or index.md) and " +
+			"image_missing. Results have path, code, line and message, ordered by path and line, paged with limit " +
+			"(default 100) and offset; total counts all issues. Not available to anonymous readers.",
+		Schema: closedObject(required("source_id"),
+			prop("source_id", nonEmpty),
+			prop("limit", `{"type":"integer","minimum":1,"maximum":500}`),
+			prop("offset", nonNegative)),
 		ReadOnly: true,
 	},
 	{

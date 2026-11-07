@@ -27,7 +27,7 @@ const (
 // It reports whether it answered the request.
 func serveAssets(rw http.ResponseWriter, r *http.Request) bool {
 	if strings.HasPrefix(r.URL.Path, "/assets/") {
-		http.FileServer(http.FS(webui.Assets())).ServeHTTP(rw, r)
+		serveStatic(rw, r)
 		return true
 	}
 	if r.URL.Path == diagramFrame {

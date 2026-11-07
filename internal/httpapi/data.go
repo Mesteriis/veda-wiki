@@ -144,6 +144,25 @@ func (s *dataStore) snapshot(public bool) domain.Snapshot {
 	return snap
 }
 
+// sourcePages returns the non-public snapshot pages, so links into other
+// visible sources resolve too, and the stored images of one source; false
+// when the source is not visible.
+func (s *dataStore) sourcePages(sourceID string) ([]domain.Page, map[string]domain.BlobRef, bool) {
+	var pages []domain.Page
+	var assets map[string]domain.BlobRef
+	found := false
+	_ = s.View(func(db *domain.Database) error {
+		src, ok := db.Sources[sourceID]
+		if !ok {
+			return nil
+		}
+		found, assets = true, src.Assets
+		pages = domain.ReadSnapshot(*db, false, time.Now()).Pages
+		return nil
+	})
+	return pages, assets, found
+}
+
 func (s *dataStore) page(key string, public bool) (domain.Page, error) {
 	var page domain.Page
 	err := s.View(func(db *domain.Database) error {

@@ -16,6 +16,9 @@ The field is absent for public readers and for articles without a conflict.
 | GET | `/api/v1/search?q=&source_id=&limit=&offset=` | Compact, paginated search across visible articles |
 | GET | `/api/v1/articles/excerpt?source_id=&path=&offset=&limit=&expected_sha256=` | Read up to 16,000 Unicode code points of the current visible revision; continuation requires the first response's SHA |
 | GET | `/api/v1/articles/outline?source_id=&path=` | Headings of the current visible revision outside front matter and fenced code: level, title, line, code-point `offset` and `characters` up to the next heading of the same or a higher level, with revision, SHA and total characters; read a section as an excerpt |
+| GET | `/api/v1/changes?since=&source_id=&limit=&offset=` | Visible articles whose displayed revision is newer than `since` (RFC 3339), newest first: source ID, path, title, `updated_at`, SHA; limit 1–200 (default 50); deletions are not listed |
+| GET | `/api/v1/stale?days=&source_id=&limit=&offset=` | Visible articles whose front matter `verified:` date (YYYY-MM-DD) is older than `days` (1–3650, default 90), oldest first, then those without a valid one, least recently updated first; `unverified` counts the latter |
+| GET | `/api/v1/sources/check?source_id=&limit=&offset=` | Authenticated check of one source's visible articles: write warnings plus `link_missing` and `image_missing`, each with path, code, line and message, ordered by path and line; `total` counts all issues (at most 2000 are kept, `truncated` says so); limit 1–500 (default 100) |
 | GET | `/api/v1/articles/proposal-base?source_id=&path=` | Authenticated source-scoped revision, SHA, unresolved import-conflict flag and source status in one snapshot |
 | GET | `/api/v1/articles/new-proposal-base?source_id=&path=` | Authenticated source-scoped visible-path check and source status in one snapshot; does not reserve the path |
 | GET | `/api/v1/sources` | Public sources, or all sources for owner |
@@ -89,6 +92,11 @@ terms; only the returned page is scanned for lines. `total` and `offset` are
 calculated after visibility filtering. Limits are
 1–100 (default 20). An inaccessible source filter returns an empty result.
 Pagination is not a snapshot: repeat a search if sources change between pages.
+Files under `/assets/` whose names carry the build's content hash are sent
+with `Cache-Control: public, max-age=31536000, immutable`; text files (JS,
+CSS, SVG, JSON, HTML) go out gzip-compressed when the client accepts gzip.
+Other responses keep `no-store`.
+
 Lowercased bodies are cached by revision SHA (up to 64 MiB, then the cache
 starts over), so a revision is lowercased once instead of on every query.
 Each individual search ranks titles and bodies from one in-memory snapshot;

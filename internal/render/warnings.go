@@ -29,17 +29,18 @@ var tagName = regexp.MustCompile(`^<([A-Za-z][A-Za-z0-9-]*)`)
 // the allow list, Liquid tags, links and images that leave the source, remote
 // images (the page policy blocks them) and code fences without a language.
 func Warnings(p domain.Page) []Warning {
-	front, body := domain.SplitFrontMatter(p.Text)
-	offset := 0
-	if front != "" || len(body) != len(p.Text) {
-		offset = strings.Count(p.Text[:len(p.Text)-len(body)], "\n")
-	}
-	source := []byte(body)
-	line := func(pos int) int { return offset + 1 + bytes.Count(source[:min(pos, len(source))], []byte("\n")) }
+	source, line := markdownBody(p.Text)
 	var out []Warning
 	add := func(code string, pos int, format string, args ...any) {
 		if len(out) < maxWarnings {
 			out = append(out, Warning{Code: code, Line: line(pos), Message: fmt.Sprintf(format, args...)})
+		}
+	}
+	if _, ok, present := domain.Verified(p.Text); present && !ok {
+		front, _ := domain.SplitFrontMatter(p.Text)
+		_, n := domain.FrontMatterValue(front, "verified")
+		if len(out) < maxWarnings {
+			out = append(out, Warning{Code: "verified_invalid", Line: n + 2, Message: "verified must be a date like 2026-11-07"})
 		}
 	}
 	liquidLines := map[int]bool{}
@@ -151,4 +152,13 @@ func inlineStart(n ast.Node) int {
 		}
 	}
 	return max(start, 0)
+}
+
+// markdownBody returns the Markdown after any front matter and the 1-based
+// line in the whole text of a byte position in that body.
+func markdownBody(text string) ([]byte, func(int) int) {
+	_, body := domain.SplitFrontMatter(text)
+	offset := strings.Count(text[:len(text)-len(body)], "\n")
+	source := []byte(body)
+	return source, func(pos int) int { return offset + 1 + bytes.Count(source[:min(pos, len(source))], []byte("\n")) }
 }
