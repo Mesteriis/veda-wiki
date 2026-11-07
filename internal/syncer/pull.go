@@ -270,7 +270,8 @@ func (m *Manager) syncSource(ctx context.Context, c domain.GitHubConnection) {
 		m.connectionStatusFor(c, "skipped", "verified", "", &info, time.Time{})
 		return
 	}
-	if matchingVisibility && !visibilityChanged && head == c.LastPull && domain.ValidCommitID(c.TreeSHA) {
+	unchanged := head == c.LastPull && domain.ValidCommitID(c.TreeSHA)
+	if matchingVisibility && !visibilityChanged && unchanged && !(source.ImportPartial && m.retryPartial(c.ID)) {
 		if err := m.observeGitHubHead(c, head, c.TreeSHA); err == nil {
 			m.syncWrites(ctx, c, head, c.TreeSHA, token, info)
 			return

@@ -49,6 +49,10 @@ type Manager struct {
 	mu   sync.Mutex
 	wake chan struct{}
 
+	// partialRetried holds the connections whose partial import this process
+	// has already reread at an unchanged head (see retryPartial).
+	partialRetried sync.Map
+
 	// syncConnection runs one synchronization step of a due connection; it
 	// is syncSource. Tests replace it to observe scheduling.
 	syncConnection func(context.Context, domain.GitHubConnection)
@@ -224,4 +228,13 @@ func (m *Manager) SyncSource(ctx context.Context, c domain.GitHubConnection) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.syncSource(ctx, c)
+}
+
+// retryPartial reports whether a partial import of connection id should be
+// reread although the branch head has not changed: once per process, so
+// rules that changed with a new VEDA version (what is withheld) apply to
+// existing sources without waiting for a new commit.
+func (m *Manager) retryPartial(id string) bool {
+	_, done := m.partialRetried.LoadOrStore(id, true)
+	return !done
 }
