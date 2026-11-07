@@ -17,8 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Pin a VEDA commit or tag; main follows the latest rules.
-  VEDA_VERSION: main
+  # A VEDA commit or tag; the export's rules and look follow it. Update it
+  # deliberately, after checking the new version on a copy of the site.
+  VEDA_VERSION: a1fb1f11bf3b54214e87813668d4852cdfa55a82
 
 jobs:
   build:
