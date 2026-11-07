@@ -4,29 +4,44 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="VEDA">
+<meta name="color-scheme" content="dark">
 <title>{{.Title}}</title>
 <link rel="stylesheet" href="{{.CSS}}">
 {{if .Diagrams}}<script type="module" src="{{.JS}}"></script>{{end}}
 </head>
 <body>
-<header class="site-header">
-  <a class="site-title" href="{{.Root}}">{{.Site}}</a>
-  <details class="site-menu">
-    <summary>{{.Text.Pages}}</summary>
-    <nav aria-label="{{.Text.Pages}}">{{range .Nav}}
-      <a href="{{.Href}}" class="depth-{{.Depth}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a>{{end}}
-    </nav>
-  </details>
-</header>
-<div class="site-layout">
+<aside class="sidebar">
+  <a class="brand" href="{{.Root}}">
+    <img class="brand-mark" src="{{.Static}}veda-logo.webp" alt="" width="68" height="68">
+    <span><strong>VEDA</strong><small>{{.Text.Brand}}</small></span>
+  </a>
   <nav class="site-nav" aria-label="{{.Text.Pages}}">{{range .Nav}}
-    <a href="{{.Href}}" class="depth-{{.Depth}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a>{{end}}
+    <a href="{{.Href}}" class="nav-item depth-{{.Depth}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a>{{end}}
   </nav>
-  <main class="markdown">
+  <p class="sidebar-footer">{{.Text.Built}} <a href="https://github.com/Mesteriis/veda-wiki">VEDA</a></p>
+</aside>
+<main class="site-main">
+  <header class="masthead">
+    <div class="masthead-title">
+      <p class="masthead-name"><a href="{{.Root}}">{{.Site}}</a></p>
+      {{if .Description}}<p class="masthead-description">{{.Description}}</p>{{end}}
+    </div>
+    <details class="site-menu">
+      <summary>{{.Text.Pages}}</summary>
+      <nav aria-label="{{.Text.Pages}}">{{range .Nav}}
+        <a href="{{.Href}}" class="nav-item depth-{{.Depth}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a>{{end}}
+      </nav>
+    </details>
+  </header>
+  <div class="reading-layout">
+    <article class="panel reading">
+      <p class="source-path">{{.Source}}</p>
+      <div class="markdown">
 {{.Body}}
-  </main>
-  {{if .TOC}}<aside class="site-toc" aria-label="{{.Text.OnThisPage}}"><h2>{{.Text.OnThisPage}}</h2>{{.TOC}}</aside>{{end}}
-</div>
-<footer class="site-footer">{{.Text.Built}} <a href="https://github.com/Mesteriis/veda-wiki">VEDA</a></footer>
+      </div>
+    </article>
+    {{if .TOC}}<aside class="panel toc" aria-label="{{.Text.OnThisPage}}"><h2>{{.Text.OnThisPage}}</h2>{{.TOC}}</aside>{{end}}
+  </div>
+</main>
 </body>
 </html>

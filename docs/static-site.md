@@ -6,6 +6,19 @@ collapsible blocks, GitHub alerts, footnotes, definition lists, highlighted
 code, Mermaid diagrams and hidden front matter. It is meant for GitHub Pages
 and any other static host.
 
+The site looks like the reading interface: the same dark palette, Roboto
+Condensed, the forest header, the article and "On this page" panels and the
+same code colours. A sidebar lists the pages; on a phone it becomes a
+"Pages" menu in the header, and the outline is hidden below 1100 px.
+
+A live example built from [`examples/wiki-template`](../examples/wiki-template/):
+<https://mesteriis.github.io/veda-wiki-demo/> (repository
+[Mesteriis/veda-wiki-demo](https://github.com/Mesteriis/veda-wiki-demo)).
+
+![Static site on a desktop](images/static-site-desktop.webp)
+
+<img src="images/static-site-mobile.webp" alt="Static site on a phone" width="300">
+
 ```bash
 go install github.com/Mesteriis/veda-wiki/cmd/veda-site@main
 veda-site --strict --lang en ./handbook ./_site
@@ -27,7 +40,10 @@ veda-site --strict --lang en ./handbook ./_site
 - `--lang en|ru` picks the alert titles and interface strings (default `en`);
   `--title` overrides the `veda.yaml` title.
 - The output directory must be absent or empty; the export never overwrites
-  files. It writes `.nojekyll`, `site.css` and `site.js`.
+  files. It writes `.nojekyll`, `site.css`, `site.js` and `_veda/` with the
+  fonts (SIL Open Font License, `_veda/fonts/LICENSE`), the header image and
+  the logo, about 100 KB in all. `veda.yaml`'s `description` is the header's
+  second line.
 - Pages with diagrams load Mermaid 12.2.0 from jsDelivr in the reader's
   browser; without it the diagram source stays readable. The VEDA reading
   interface serves its own copy instead.
@@ -41,8 +57,8 @@ without a frontend step.
 repository: `veda.yaml`, `README.md`, `AGENTS.md`, a guide that shows every
 supported construct and `.github/workflows/pages.yml`. To publish a wiki:
 
-1. Copy `.github/workflows/pages.yml` into the repository and set
-   `VEDA_VERSION` to a VEDA commit or tag.
+1. Copy `.github/workflows/pages.yml` into the repository. Its
+   `VEDA_VERSION` is pinned to a VEDA commit; move it forward deliberately.
 2. In the repository settings, set Pages → Source to GitHub Actions.
 3. Push to `main`; the workflow installs `veda-site`, exports the checkout with
    `--strict` and deploys the result.
