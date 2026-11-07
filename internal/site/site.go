@@ -6,10 +6,11 @@ package site
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"net/url"
 	"os"
 	"path"
@@ -34,7 +35,14 @@ var (
 	//go:embed assets/page.html
 	pageHTML string
 	page     = template.Must(template.New("page").Parse(pageHTML))
+	// static holds the fonts and images every page shares; they are written
+	// under staticDir.
+	//go:embed assets/fonts assets/veda-header.webp assets/veda-logo.webp
+	static embed.FS
 )
+
+// staticDir is the output directory of the shared fonts and images.
+const staticDir = "_veda/"
 
 // Options configures one export.
 type Options struct {
@@ -47,13 +55,13 @@ type Options struct {
 
 // labels are the site's interface strings in one language.
 type labels struct {
-	Lang, Pages, OnThisPage, Built string
-	alerts                         render.AlertTitles
+	Lang, Pages, OnThisPage, Built, Brand string
+	alerts                                render.AlertTitles
 }
 
 var languages = map[string]labels{
-	"en": {Lang: "en", Pages: "Pages", OnThisPage: "On this page", Built: "Built with", alerts: render.EnglishAlerts},
-	"ru": {Lang: "ru", Pages: "Страницы", OnThisPage: "На этой странице", Built: "Собрано", alerts: render.RussianAlerts},
+	"en": {Lang: "en", Pages: "Pages", OnThisPage: "On this page", Built: "Built with", Brand: "KNOWLEDGE BASE", alerts: render.EnglishAlerts},
+	"ru": {Lang: "ru", Pages: "Страницы", OnThisPage: "На этой странице", Built: "Собрано", Brand: "БАЗА ЗНАНИЙ", alerts: render.RussianAlerts},
 }
 
 // Report summarises an export.
@@ -91,6 +99,10 @@ func Export(opts Options) (Report, error) {
 		abs, _ := filepath.Abs(opts.Dir)
 		title = filepath.Base(abs)
 	}
+	description := ""
+	if batch.Metadata != nil {
+		description = batch.Metadata.Description
+	}
 	outputs := map[string]string{} // Markdown path -> HTML path
 	for name := range batch.Files {
 		if target, ok := htmlPath(name, batch.Files); ok {
@@ -118,8 +130,9 @@ func Export(opts Options) (Report, error) {
 		}
 		var out bytes.Buffer
 		err = page.Execute(&out, map[string]any{
-			"Title": full, "Site": title, "Root": relative(target, "index.html"),
+			"Title": full, "Site": title, "Description": description, "Source": name, "Root": relative(target, "index.html"),
 			"CSS": relative(target, "site.css"), "JS": relative(target, "site.js"),
+			"Static":   strings.TrimSuffix(relative(target, staticDir+"x"), "x"),
 			"Diagrams": strings.Contains(string(body), `<pre class="mermaid">`),
 			"Body":     body, "TOC": toc, "Nav": nav.forPage(target), "Text": text,
 		})
@@ -151,6 +164,9 @@ func Export(opts Options) (Report, error) {
 		if err := writeFile(opts.Out, name, data); err != nil {
 			return report, err
 		}
+	}
+	if err := writeStatic(opts.Out); err != nil {
+		return report, err
 	}
 	if opts.Strict && len(report.Warnings) > 0 {
 		return report, fmt.Errorf("%d pages have formatting warnings", len(report.Warnings))
@@ -257,4 +273,18 @@ func writeFile(root, name string, data []byte) error {
 		return err
 	}
 	return os.WriteFile(full, data, 0o644)
+}
+
+// writeStatic copies the shared fonts and images under staticDir.
+func writeStatic(root string) error {
+	return fs.WalkDir(static, "assets", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := static.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		return writeFile(root, staticDir+strings.TrimPrefix(name, "assets/"), data)
+	})
 }

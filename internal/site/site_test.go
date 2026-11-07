@@ -58,13 +58,15 @@ func TestExportWikiSite(t *testing.T) {
 		t.Fatalf("report %+v", report)
 	}
 	home := read(t, out, "index.html")
-	for _, want := range []string{"<title>Handbook</title>", `href="network/index.html"`, `href="network/vlans.html#trunks"`, `<pre class="mermaid">`, `src="site.js"`, `href="site.css"`} {
+	for _, want := range []string{"<title>Handbook</title>", `href="network/index.html"`, `href="network/vlans.html#trunks"`, `<pre class="mermaid">`, `src="site.js"`, `href="site.css"`,
+		`src="_veda/veda-logo.webp"`, `<p class="masthead-description">Test</p>`, `<p class="source-path">README.md</p>`} {
 		if !strings.Contains(home, want) {
 			t.Fatalf("index.html missing %q:\n%s", want, home)
 		}
 	}
 	network := read(t, out, "network/index.html")
-	for _, want := range []string{`src="images/rack.png"`, `href="../index.html"`, `href="../site.css"`, `href="vlans.html"`} {
+	for _, want := range []string{`src="images/rack.png"`, `href="../index.html"`, `href="../site.css"`, `href="vlans.html"`,
+		`src="../_veda/veda-logo.webp"`, `<p class="source-path">network/README.md</p>`, `aria-current="page">Network</a>`} {
 		if !strings.Contains(network, want) {
 			t.Fatalf("network/index.html missing %q:\n%s", want, network)
 		}
@@ -79,8 +81,14 @@ func TestExportWikiSite(t *testing.T) {
 	if read(t, out, "network/images/rack.png") != png {
 		t.Fatal("image not copied")
 	}
-	for _, name := range []string{".nojekyll", "site.css", "site.js"} {
+	for _, name := range []string{".nojekyll", "site.css", "site.js", "_veda/veda-header.webp", "_veda/veda-logo.webp",
+		"_veda/fonts/LICENSE", "_veda/fonts/roboto-condensed-latin-400-normal.woff2", "_veda/fonts/roboto-condensed-cyrillic-700-normal.woff2"} {
 		read(t, out, name)
+	}
+	// Every url() in the stylesheet resolves to a written file.
+	for _, part := range strings.Split(read(t, out, "site.css"), `url("`)[1:] {
+		ref, _, _ := strings.Cut(part, `")`)
+		read(t, out, ref)
 	}
 	if got := report.Warnings["network/vlans.md"]; len(got) != 1 || got[0].Code != "raw_html" {
 		t.Fatalf("warnings %+v", report.Warnings)

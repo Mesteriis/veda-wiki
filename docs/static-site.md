@@ -6,6 +6,15 @@ collapsible blocks, GitHub alerts, footnotes, definition lists, highlighted
 code, Mermaid diagrams and hidden front matter. It is meant for GitHub Pages
 and any other static host.
 
+The site looks like the reading interface: the same dark palette, Roboto
+Condensed, the forest header, the article and "On this page" panels and the
+same code colours. A sidebar lists the pages; on a phone it becomes a
+"Pages" menu in the header, and the outline is hidden below 1100 px.
+
+![Static site on a desktop](images/static-site-desktop.webp)
+
+<img src="images/static-site-mobile.webp" alt="Static site on a phone" width="300">
+
 ```bash
 go install github.com/Mesteriis/veda-wiki/cmd/veda-site@main
 veda-site --strict --lang en ./handbook ./_site
@@ -27,7 +36,10 @@ veda-site --strict --lang en ./handbook ./_site
 - `--lang en|ru` picks the alert titles and interface strings (default `en`);
   `--title` overrides the `veda.yaml` title.
 - The output directory must be absent or empty; the export never overwrites
-  files. It writes `.nojekyll`, `site.css` and `site.js`.
+  files. It writes `.nojekyll`, `site.css`, `site.js` and `_veda/` with the
+  fonts (SIL Open Font License, `_veda/fonts/LICENSE`), the header image and
+  the logo, about 100 KB in all. `veda.yaml`'s `description` is the header's
+  second line.
 - Pages with diagrams load Mermaid 12.2.0 from jsDelivr in the reader's
   browser; without it the diagram source stays readable. The VEDA reading
   interface serves its own copy instead.
