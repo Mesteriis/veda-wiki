@@ -82,7 +82,7 @@ func PutArticleVia(db *Database, sourceID, p, text string, expected int, via str
 		}
 	}
 	publicNow := SourcePublic(*db, src, now)
-	if publicNow && credentialPattern.MatchString(text) {
+	if publicNow && CredentialLike(text) {
 		return Revision{}, "", ErrInvalid
 	}
 	// Reconciliation can delete another article when a pending move

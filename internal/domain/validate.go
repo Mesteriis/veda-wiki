@@ -17,7 +17,7 @@ var commitIDPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // credentialPattern matches text that looks like credential material.
 var credentialPattern = regexp.MustCompile(`(?i)-----BEGIN .*PRIVATE KEY-----` +
-	`|\b(?:password|passwd|api[_-]?key|access[_-]?token|client_secret)\s*[=:]\s*["']?[^\s"']{6,}` +
+	`|\b(?:password|passwd|api[_-]?key|access[_-]?token|client_secret)\s*[=:]\s*["']?([^\s"']{6,})` +
 	`|\b(?:ghp_|github_pat_|sk-proj-)[A-Za-z0-9_\-]{12,}` +
 	`|https?://[^\s/]+:[^\s/]+@`)
 
@@ -27,11 +27,43 @@ func ValidID(s string) bool { return idPattern.MatchString(s) }
 // ValidCommitID reports whether s is a full Git object name.
 func ValidCommitID(s string) bool { return commitIDPattern.MatchString(s) }
 
-// CredentialLike reports whether s contains credential-like content.
-func CredentialLike(s string) bool { return credentialPattern.MatchString(s) }
+// CredentialLike reports whether s contains credential-like content. A
+// "key: value" match counts unless its value only refers to a secret kept
+// elsewhere or is a placeholder (see secretReference).
+func CredentialLike(s string) bool {
+	for _, m := range credentialPattern.FindAllStringSubmatchIndex(s, -1) {
+		if m[2] < 0 || !secretReference(s[m[2]:m[3]]) {
+			return true
+		}
+	}
+	return false
+}
 
-// CredentialLikeBytes is CredentialLike for b without copying it to a string.
-func CredentialLikeBytes(b []byte) bool { return credentialPattern.Match(b) }
+// CredentialLikeBytes is CredentialLike for b.
+func CredentialLikeBytes(b []byte) bool {
+	if !credentialPattern.Match(b) {
+		return false
+	}
+	return CredentialLike(string(b))
+}
+
+// secretReference reports an assignment value that names where a secret is
+// kept instead of holding one: a Home Assistant "!secret" or "!env_var" tag,
+// an environment or template reference ("${NAME}", "{{ name }}",
+// "%(name)s", "$NAME") or a placeholder in angle brackets ("<token>"). The
+// value is what the pattern captured, possibly after extra separators.
+func secretReference(value string) bool {
+	value = strings.TrimLeft(value, ":=")
+	for _, prefix := range []string{"!secret", "!env_var", "${", "{{", "%(", "<"} {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	if name, ok := strings.CutPrefix(value, "$"); ok && name != "" {
+		return strings.TrimLeft(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == ""
+	}
+	return false
+}
 
 // SafeArticlePath reports whether p is a clean relative Markdown path.
 func SafeArticlePath(p string) bool {

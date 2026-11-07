@@ -109,6 +109,14 @@ Only Git-indexed files are eligible: ignored/untracked local Markdown, nested
 checkouts and unrelated working directories do not become published content.
 Staged new files are eligible and are reported as a dirty observation.
 Credential-like Markdown is withheld, never returned in an error message.
+Credential-like means a private key block, a GitHub or OpenAI token prefix, a
+URL with a password, or `password`/`api_key`/`access_token`/`client_secret`
+(and spellings) assigned a value of six or more characters. An assigned value
+that only refers to a secret kept elsewhere does not count: a Home Assistant
+`!secret` or `!env_var` tag, `${NAME}`, `{{ name }}`, `%(name)s`, an
+upper-case `$NAME`, or a placeholder in angle brackets such as `<your-key>`.
+Every other match in the same text still counts. The same rule guards public
+writes, copies and pushes.
 Incomplete coverage is explicit. A batch names every withheld file in
 `withheld_paths`, so an observation that saw every tracked path still applies
 upstream deletions: an imported article absent from the batch becomes a
