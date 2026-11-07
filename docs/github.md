@@ -9,7 +9,9 @@ repository identity, visibility and branch before connecting. A wiki has root
 For a skipped repository with no local source, VEDA remembers the checked Git
 head. An unchanged head avoids downloading the tree again, but repository
 visibility and the branch head are still checked on each sync. A new commit or
-a visibility change triggers a fresh tree inspection.
+a visibility change triggers a fresh tree inspection. A source whose last
+import was partial (a file withheld) is also reread once after each VEDA
+start, so withholding rules changed by an upgrade apply without a new commit.
 
 An opt-in anonymous acceptance check imports the public VEDA program repository
 into a disposable local store, verifies `docs/`, checks one article against the
