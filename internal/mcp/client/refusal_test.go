@@ -49,7 +49,7 @@ func TestRefusalReasonTable(t *testing.T) {
 			t.Errorf("%d: %q", status, got)
 		}
 	}
-	if len(refusalReasons) != 8 {
+	if len(refusalReasons) != 9 {
 		t.Fatalf("reason table changed: %d entries", len(refusalReasons))
 	}
 }

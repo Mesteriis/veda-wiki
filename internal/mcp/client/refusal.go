@@ -15,6 +15,7 @@ var refusalReasons = map[int]string{
 	404: "not found or not visible to this client",
 	409: "revision or state conflict; reread before retrying",
 	413: "request too large",
+	422: "edit refused",
 	429: "rate limited; retry later",
 	503: "VEDA or upstream temporarily unavailable; retry later",
 }
@@ -26,6 +27,8 @@ var codeReasons = map[string]string{
 	"knowledge_unavailable": "the knowledge index is temporarily unavailable; retry later",
 	"reindex_busy":          "a knowledge reindex is already running; retry later",
 	"timeout":               "VEDA did not answer in time; retry with smaller limits",
+	"fragment_not_found":    "old_text does not occur in that revision; reread the article and copy the fragment exactly",
+	"fragment_ambiguous":    "old_text occurs more than once; include surrounding text so it is unique",
 }
 
 // safeErrorCode matches the fixed identifiers the REST service uses as error

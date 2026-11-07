@@ -71,9 +71,43 @@ func (h handler) articles(rw http.ResponseWriter, r *http.Request, owner, reader
 			domain.Revision
 			Warnings []render.Warning `json:"warnings,omitempty"`
 		}{rev, render.Warnings(domain.Page{Path: input.SourceID + "/" + input.Path, Text: input.Text})})
+	case "PATCH":
+		h.editArticle(rw, r)
 	default:
 		rw.WriteHeader(405)
 	}
+}
+
+// editArticle replaces one unique fragment of the current revision. The
+// response omits the text: the caller already has both fragments.
+func (h handler) editArticle(rw http.ResponseWriter, r *http.Request) {
+	var input struct {
+		SourceID string `json:"source_id"`
+		Path     string `json:"path"`
+		Old      string `json:"old_text"`
+		New      string `json:"new_text"`
+		Expected int    `json:"expected_revision"`
+	}
+	if err := decodeLimited(rw, r, &input, 7<<20); err != nil || input.Old == "" || input.Expected < 1 ||
+		len(input.Old) > domain.MaxArticleBytes || len(input.New) > domain.MaxArticleBytes {
+		apiError(rw, domain.ErrInvalid)
+		return
+	}
+	rev, err := h.Store.editVia(input.SourceID, input.Path, input.Old, input.New, input.Expected, writeOrigin(r))
+	if err != nil {
+		apiError(rw, err)
+		return
+	}
+	if h.Sync != nil {
+		h.Sync.Wake()
+	}
+	jsonResponse(rw, 200, struct {
+		Number   int              `json:"revision"`
+		SHA      string           `json:"sha256"`
+		Created  string           `json:"created_at"`
+		Via      string           `json:"via,omitempty"`
+		Warnings []render.Warning `json:"warnings,omitempty"`
+	}{rev.Number, rev.SHA, rev.Created, rev.Via, render.Warnings(domain.Page{Path: input.SourceID + "/" + input.Path, Text: rev.Text})})
 }
 
 func (h handler) search(rw http.ResponseWriter, r *http.Request, public bool) {
@@ -92,8 +126,6 @@ func (h handler) search(rw http.ResponseWriter, r *http.Request, public bool) {
 		apiError(rw, domain.ErrInvalid)
 		return
 	}
-	all := h.Store.findArticles(query, sourceID, public)
-	start := min(offset, len(all))
-	end := start + min(limit, len(all)-start)
-	jsonResponse(rw, 200, map[string]any{"results": all[start:end], "total": len(all), "offset": offset})
+	results, total := h.Store.findPage(query, sourceID, public, offset, limit)
+	jsonResponse(rw, 200, map[string]any{"results": results, "total": total, "offset": offset})
 }

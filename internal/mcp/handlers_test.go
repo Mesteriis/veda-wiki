@@ -3,6 +3,8 @@ package mcp
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -56,7 +58,7 @@ func TestPrepareUpdateBuildsUnsavedProposal(t *testing.T) {
 	result := call(t, session, "veda_prepare_update", `{"source_id":"a","path":"b.md","expected_revision":3,"text":"# Ново"}`)
 	sum := sha256.Sum256([]byte("# Ново"))
 	want := `{"source_id": "a", "path": "b.md", "expected_revision": 3, "base_sha256": "base", ` +
-		`"proposed_sha256": "` + hex.EncodeToString(sum[:]) + `", "text": "# Ново", "saved": false, ` +
+		`"proposed_sha256": "` + hex.EncodeToString(sum[:]) + `", "saved": false, ` +
 		`"unresolved_conflict": false, "conflict_resolution_blocked_by_write": false, "write_blocked_by_move": false, ` +
 		`"write_blocked_by_bundle": false, "source_status": {"sync_state": "local"}, ` +
 		`"note": "Proposal only; review and an authorized write are still required. Conflict status may change before writing."}`
@@ -236,5 +238,66 @@ func TestNonObjectResultIsRefused(t *testing.T) {
 	}
 	if fake.count() != 1 {
 		t.Fatalf("requests=%d", fake.count())
+	}
+}
+
+func TestWriteArticleDoesNotEchoTheText(t *testing.T) {
+	_, base := startREST(t, map[string]string{"PUT /api/v1/articles": `{"revision":2,"text":"# Long article","sha256":"s","warnings":[{"code":"raw_html"}]}`})
+	got := success(t, call(t, connect(t, base, false), "veda_write_article", `{"source_id":"a","path":"b","text":"# Long article","expected_revision":1}`))
+	if _, echoed := got["text"]; echoed || got["revision"] != float64(2) || got["sha256"] != "s" || got["warnings"] == nil {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestEditArticleSendsOneFragment(t *testing.T) {
+	fake, base := startREST(t, map[string]string{"PATCH /api/v1/articles": `{"revision":3,"sha256":"s"}`})
+	session := connect(t, base, false)
+	got := success(t, call(t, session, "veda_edit_article",
+		`{"source_id":"a","path":"b.md","expected_revision":2,"old_text":"old","new_text":""}`))
+	requests := fake.all()
+	if got["revision"] != float64(3) || len(requests) != 1 || requests[0].Method != "PATCH" ||
+		requests[0].Body != `{"expected_revision":2,"new_text":"","old_text":"old","path":"b.md","source_id":"a"}` {
+		t.Fatalf("%v %+v", got, requests)
+	}
+	if reason := refusal(t, call(t, session, "veda_edit_article",
+		`{"source_id":"a","path":"b.md","expected_revision":2,"old_text":"","new_text":"x"}`)); !strings.Contains(reason, "'old_text' is too short") {
+		t.Fatal(reason)
+	}
+	if fake.count() != 1 {
+		t.Fatal("invalid edit reached REST")
+	}
+}
+
+func TestEditArticleRefusalExplainsTheFragment(t *testing.T) {
+	for code, want := range map[string]string{"fragment_not_found": "does not occur", "fragment_ambiguous": "more than once"} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(422)
+			_, _ = w.Write([]byte(`{"error":"` + code + `"}`))
+		}))
+		t.Cleanup(server.Close)
+		reason := refusal(t, call(t, connect(t, server.URL, false), "veda_edit_article",
+			`{"source_id":"a","path":"b.md","expected_revision":2,"old_text":"x","new_text":"y"}`))
+		if !strings.Contains(reason, want) || !strings.Contains(reason, "HTTP 422") {
+			t.Fatal(code, reason)
+		}
+	}
+}
+
+func TestReaderCannotListOrCallEditArticle(t *testing.T) {
+	fake, base := startREST(t, nil)
+	session := connect(t, base, true)
+	listed, err := session.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range listed.Tools {
+		if tool.Name == "veda_edit_article" {
+			t.Fatal("edit tool listed for a reader")
+		}
+	}
+	if got := refusal(t, call(t, session, "veda_edit_article",
+		`{"source_id":"a","path":"b.md","expected_revision":2,"old_text":"x","new_text":"y"}`)); got != genericRefusal || fake.count() != 0 {
+		t.Fatal(got)
 	}
 }

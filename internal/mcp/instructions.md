@@ -67,8 +67,8 @@ Write Markdown that reads the same on GitHub, on a GitHub Pages site and in VEDA
 ## Maintaining it
 
 - Before writing: `veda_context` for the path, then `veda_find`/`veda_search` to find the existing page; update it rather than creating a near-duplicate.
-- Update: `veda_read` the article, write the complete new text with `veda_write_article` and the `expected_revision` you read; for a new article use `expected_revision: 0`. On a conflict, reread, merge the other change and retry; never overwrite it.
+- Update: `veda_read` the article (or the excerpt a search `match` points to). For a local change use `veda_edit_article`: `old_text` copied exactly from the revision you read, `new_text`, and that `expected_revision`; it sends and returns no whole text. Rewrite the complete text with `veda_write_article` only for broad changes; for a new article use `expected_revision: 0`. On a conflict, reread, merge the other change and retry; never overwrite it.
 - Keep pages current: replace outdated facts instead of appending contradicting ones, and say when something was last verified if it can drift.
 - Link every new page from its directory `README.md`, and fix links when a page moves.
 - Record durable knowledge (how things are and how to operate them), not step-by-step logs or long command output. If the repository keeps a change history or reports, follow its `AGENTS.md` for where they go.
-- `veda_prepare_update` and `veda_prepare_new_article` only draft; nothing is saved until `veda_write_article`.
+- `veda_prepare_update` and `veda_prepare_new_article` only draft; nothing is saved until `veda_write_article` or `veda_edit_article`. Write responses omit the text you sent; the `sha256` identifies it.
