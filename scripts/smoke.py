@@ -23,7 +23,7 @@ READER_TOOLS = {"veda_sources", "veda_search", "veda_find", "veda_read", "veda_r
                 "veda_prepare_update", "veda_prepare_new_article", "veda_transfer_plan",
                 "veda_format_guide"} | KNOWLEDGE_READ_TOOLS
 OWNER_TOOLS = READER_TOOLS | {
-    "veda_create_source", "veda_write_article", "veda_copy_article", "veda_reconcile_sources", "veda_source_mirrors",
+    "veda_create_source", "veda_write_article", "veda_edit_article", "veda_copy_article", "veda_reconcile_sources", "veda_source_mirrors",
     "veda_configure_source_mirror", "veda_moves", "veda_cancel_move", "veda_move_article", "veda_conflicts",
     "veda_resolve_conflict", "veda_github_status", "veda_github_connect", "veda_sync", "veda_publish_job",
     "veda_cancel_bundle", "veda_knowledge_status", "veda_knowledge_reindex"}
@@ -100,6 +100,25 @@ async def main():
                     warned = await call("veda_write_article", {"source_id": "closed", "path": "format.md",
                         "text": "# Format\n\n<div>x</div>\n\n```\nplain\n```", "expected_revision": 0})
                     assert [w["code"] for w in warned["warnings"]] == ["raw_html", "code_without_language"], warned
+                    assert "text" not in warned and warned["revision"] == 1, warned
+                    await call("veda_write_article", {"source_id": "closed", "path": "edit.md",
+                        "text": "# Edit\n\n## Part\nalpha beta twice twice\n", "expected_revision": 0})
+                    found = await call("veda_find", {"query": "alpha beta", "source_id": "closed"})
+                    match = found["results"][0]["match"]
+                    assert found["results"][0]["path"] == "edit.md" and match["line"] == 4 and match["section"] == "Part", found
+                    excerpt = await call("veda_read_excerpt", {"source_id": "closed", "path": "edit.md", "offset": match["offset"], "limit": 10, "expected_sha256": match["sha256"]})
+                    assert excerpt["text"].startswith("alpha beta"), excerpt
+                    edited = await call("veda_edit_article", {"source_id": "closed", "path": "edit.md",
+                        "expected_revision": 1, "old_text": "alpha", "new_text": "gamma"})
+                    assert edited["revision"] == 2 and "text" not in edited, edited
+                    for old_text, code in [("alpha", "fragment_not_found"), ("twice", "fragment_ambiguous")]:
+                        refused = await session.call_tool("veda_edit_article", {"source_id": "closed", "path": "edit.md",
+                            "expected_revision": 2, "old_text": old_text, "new_text": "x"})
+                        assert refused.isError and code in refused.content[0].text, refused
+                    stale = await session.call_tool("veda_edit_article", {"source_id": "closed", "path": "edit.md",
+                        "expected_revision": 1, "old_text": "gamma", "new_text": "x"})
+                    assert stale.isError and "HTTP 409" in stale.content[0].text, stale
+                    assert (await call("veda_read", {"source_id": "closed", "path": "edit.md"}))["text"] == "# Edit\n\n## Part\ngamma beta twice twice\n"
                     rejected = await session.call_tool("veda_write_article", {"source_id": "open", "path": "unsafe.md",
                         "text": "password=synthetic-fixture-only", "expected_revision": 0})
                     assert rejected.isError
@@ -203,12 +222,13 @@ async def main():
                         "text": "# Imported local edit", "expected_revision": 1})
                     proposed = await call("veda_prepare_update", {"source_id": "imported", "path": "README.md", "expected_revision": 2, "text": "# Proposed"})
                     assert proposed["unresolved_conflict"] is False and proposed["source_status"]["unresolved_conflicts"] == 0
+                    assert "text" not in proposed and len(proposed["proposed_sha256"]) == 64, proposed
                     (checkout / "README.md").write_text("# Imported upstream edit")
                     imported = subprocess.run(command, check=True, capture_output=True, text=True)
                     assert json.loads(imported.stdout)["conflicts"] == 1
                     conflicted = await call("veda_prepare_update", {"source_id": "imported", "path": "README.md", "expected_revision": 2, "text": "# Proposed"})
                     assert conflicted["unresolved_conflict"] is True and conflicted["saved"] is False and conflicted["source_status"]["unresolved_conflicts"] == 1
-                    rejected = await session.call_tool("veda_write_article", {"source_id": "imported", "path": "README.md", "text": proposed["text"], "expected_revision": proposed["expected_revision"]})
+                    rejected = await session.call_tool("veda_write_article", {"source_id": "imported", "path": "README.md", "text": "# Proposed", "expected_revision": proposed["expected_revision"]})
                     assert rejected.isError
                     pending = await call("veda_conflicts", {})
                     assert len(pending["conflicts"]) == 1

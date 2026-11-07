@@ -37,6 +37,11 @@ var Instructions string
 //go:embed formatting.md
 var FormatGuide string
 
+// matchNote describes the match field of search results.
+const matchNote = " Each result may carry match: the best matching line (line, its code-point offset for veda_read_excerpt, " +
+	"the nearest section heading, the text cut to about 200 characters and the revision sha256 to pass as expected_sha256); " +
+	"judge results by it before reading whole articles."
+
 // Property schemas shared by several tools.
 const (
 	nonEmpty    = `{"type":"string","minLength":1}`
@@ -92,7 +97,7 @@ var Tools = append([]ToolSpec{
 		Description: "Search visible articles across sources using exact phrases or meaningful words. Generic container terms " +
 			"include LXC and Docker; VPS, VDS and VSP are aliases. This is lexical search, not semantic inference. Returns " +
 			"at most 20 ranked results with source_id, path and title; use veda_find to page further. LXC and Docker are " +
-			"distinct: read source context and verify live state before acting.",
+			"distinct: read source context and verify live state before acting." + matchNote,
 		Schema: closedObject(required("query"),
 			prop("query", nonEmpty)),
 		ReadOnly: true,
@@ -100,7 +105,7 @@ var Tools = append([]ToolSpec{
 	{
 		Name: "veda_find",
 		Description: "Find visible article paths with compact paginated lexical search. Optionally restrict to one source; read " +
-			"results and their AGENTS.md context before acting. Results are not authorization or proof of live state.",
+			"results and their AGENTS.md context before acting. Results are not authorization or proof of live state." + matchNote,
 		Schema: closedObject(required("query"),
 			prop("query", nonEmpty),
 			prop("source_id", nonEmpty),
@@ -172,6 +177,21 @@ var Tools = append([]ToolSpec{
 			prop("path", nonEmpty),
 			prop("text", articleText),
 			prop("expected_revision", nonNegative)),
+		ReadOnly: false,
+		Editor:   true,
+	},
+	{
+		Name: "veda_edit_article",
+		Description: "Replace one fragment of an existing article without sending the whole text. old_text must occur " +
+			"exactly once in the revision named by expected_revision (whitespace and line breaks count); include enough " +
+			"surrounding text to make it unique. An empty new_text deletes the fragment. Refusals: fragment_not_found, " +
+			"fragment_ambiguous, or a revision conflict (reread). Returns the new revision, its sha256 and warnings, not the text.",
+		Schema: closedObject(required("source_id", "path", "expected_revision", "old_text", "new_text"),
+			prop("source_id", nonEmpty),
+			prop("path", nonEmpty),
+			prop("expected_revision", positive),
+			prop("old_text", `{"type":"string","minLength":1,"maxLength":1048576}`),
+			prop("new_text", articleText)),
 		ReadOnly: false,
 		Editor:   true,
 	},

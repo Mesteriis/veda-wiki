@@ -76,7 +76,7 @@ func TestMCPEditorServesReadingAndArticleWritesOnly(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names[tool.Name] = true
 	}
-	if len(tools.Tools) != 16 || !names["veda_write_article"] || !names["veda_prepare_update"] || !names["veda_read"] {
+	if len(tools.Tools) != 17 || !names["veda_write_article"] || !names["veda_edit_article"] || !names["veda_prepare_update"] || !names["veda_read"] {
 		t.Fatalf("editor tools: %v", names)
 	}
 	for _, admin := range []string{"veda_github_connect", "veda_create_source", "veda_move_article", "veda_knowledge_reindex", "veda_resolve_conflict"} {

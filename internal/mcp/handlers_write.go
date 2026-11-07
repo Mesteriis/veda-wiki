@@ -12,6 +12,7 @@ import (
 var writeHandlers = map[string]handler{
 	"veda_create_source":           post("/api/v1/sources"),
 	"veda_write_article":           writeArticle,
+	"veda_edit_article":            editArticle,
 	"veda_copy_article":            post("/api/v1/articles/copy"),
 	"veda_reconcile_sources":       post("/api/v1/sources/reconcile"),
 	"veda_configure_source_mirror": post("/api/v1/sources/mirrors"),
@@ -37,5 +38,30 @@ func writeArticle(ctx context.Context, c *client.Client, args arguments) (any, e
 	if args.integer("expected_revision") == 0 {
 		method = http.MethodPost
 	}
-	return c.Do(ctx, method, "/api/v1/articles", map[string]any(args))
+	raw, err := c.Do(ctx, method, "/api/v1/articles", map[string]any(args))
+	if err != nil {
+		return nil, err
+	}
+	return withoutText(raw)
+}
+
+// editArticle replaces one unique fragment of the current revision.
+func editArticle(ctx context.Context, c *client.Client, args arguments) (any, error) {
+	return c.Do(ctx, http.MethodPatch, "/api/v1/articles", map[string]any(args))
+}
+
+// withoutText drops the article text from a write response: the agent sent
+// it and the SHA identifies it, so echoing it only spends tokens.
+func withoutText(raw []byte) (object, error) {
+	response, err := decodeObject(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make(object, 0, len(response))
+	for _, m := range response {
+		if m.key != "text" {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }

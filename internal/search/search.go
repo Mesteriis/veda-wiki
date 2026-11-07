@@ -31,6 +31,7 @@ type Hit struct {
 	SourceID string `json:"source_id"`
 	Path     string `json:"path"`
 	Title    string `json:"title"`
+	Match    *Match `json:"match,omitempty"` // set by Page only
 }
 
 // Candidate is the visible revision text of one article, captured before
@@ -40,6 +41,7 @@ type Candidate struct {
 	hit         Hit
 	sourceTitle string
 	text        string
+	sha         string
 }
 
 // Candidates captures the visible revisions of db. Callers that share db with
@@ -61,7 +63,7 @@ func Candidates(db domain.Database, sourceID string, public bool, now time.Time)
 			}
 			rev = *a.Published
 		}
-		candidates = append(candidates, Candidate{hit: Hit{SourceID: a.SourceID, Path: a.Path, Title: domain.Title(rev.Text, a.Path)}, sourceTitle: src.Title, text: rev.Text})
+		candidates = append(candidates, Candidate{hit: Hit{SourceID: a.SourceID, Path: a.Path, Title: domain.Title(rev.Text, a.Path)}, sourceTitle: src.Title, text: rev.Text, sha: rev.SHA})
 	}
 	return candidates
 }
@@ -69,9 +71,37 @@ func Candidates(db domain.Database, sourceID string, public bool, now time.Time)
 // Rank scores the candidates and returns the matches, best first, with ties in
 // source/path order.
 func Rank(candidates []Candidate, query string) []Hit {
+	matches := rank(candidates, query)
+	out := make([]Hit, 0, len(matches))
+	for _, c := range matches {
+		out = append(out, c.hit)
+	}
+	return out
+}
+
+// Page ranks the candidates and returns one page of matches with the best
+// matching line of each, and the total number of matches. Only the page's
+// articles are scanned for lines.
+func Page(candidates []Candidate, query string, offset, limit int) ([]Hit, int) {
+	matches := rank(candidates, query)
+	start := min(offset, len(matches))
+	end := start + min(limit, len(matches)-start)
+	terms := Terms(query)
+	out := make([]Hit, 0, end-start)
+	for _, c := range matches[start:end] {
+		hit := c.hit
+		if hit.Match = FindMatch(c.text, query, terms); hit.Match != nil {
+			hit.Match.SHA = c.sha
+		}
+		out = append(out, hit)
+	}
+	return out, len(matches)
+}
+
+func rank(candidates []Candidate, query string) []Candidate {
 	type ranked struct {
-		hit   Hit
-		score int
+		candidate Candidate
+		score     int
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].hit.SourceID+"/"+candidates[i].hit.Path < candidates[j].hit.SourceID+"/"+candidates[j].hit.Path
@@ -84,12 +114,12 @@ func Rank(candidates []Candidate, query string) []Hit {
 		if score == 0 {
 			continue
 		}
-		matches = append(matches, ranked{c.hit, score})
+		matches = append(matches, ranked{c, score})
 	}
 	sort.SliceStable(matches, func(i, j int) bool { return matches[i].score > matches[j].score })
-	out := make([]Hit, 0, len(matches))
+	out := make([]Candidate, 0, len(matches))
 	for _, item := range matches {
-		out = append(out, item.hit)
+		out = append(out, item.candidate)
 	}
 	return out
 }

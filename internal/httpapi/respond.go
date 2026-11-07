@@ -67,6 +67,14 @@ func apiError(rw http.ResponseWriter, err error) {
 		jsonResponse(rw, code, map[string]string{"error": upstream.Code})
 		return
 	}
+	if errors.Is(err, domain.ErrFragmentNotFound) {
+		jsonResponse(rw, http.StatusUnprocessableEntity, map[string]string{"error": "fragment_not_found"})
+		return
+	}
+	if errors.Is(err, domain.ErrFragmentAmbiguous) {
+		jsonResponse(rw, http.StatusUnprocessableEntity, map[string]string{"error": "fragment_ambiguous"})
+		return
+	}
 	code := 500
 	message := "storage operation failed"
 	if errors.Is(err, domain.ErrInvalid) {

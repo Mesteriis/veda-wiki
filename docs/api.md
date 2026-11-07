@@ -25,6 +25,7 @@ The field is absent for public readers and for articles without a conflict.
 | GET | `/api/v1/articles?source_id=…&path=…&history=1` | Stored revisions: the newest three plus protected ones, so numbers can start above 1 and have gaps (owner only; public callers still receive only the current revision) |
 | POST | `/api/v1/articles` | Create an article with expected revision 0 |
 | PUT | `/api/v1/articles` | Update with the current expected revision |
+| PATCH | `/api/v1/articles` | Replace one fragment of the current revision: `old_text` must occur exactly once, `new_text` may be empty; answers revision, SHA and warnings without the text, or 422 `fragment_not_found` / `fragment_ambiguous` |
 | POST | `/api/v1/moves/cancel` | Cancel a waiting move without removing either copy (owner only) |
 | GET/POST | `/api/v1/moves` | List or start a revision-bound move from a standalone local or writable GitHub source (owner only) |
 | GET/POST | `/api/v1/access-keys` | List, create or update a source-scoped read-only key (owner only) |
@@ -76,8 +77,15 @@ Generic container queries include both technologies; explicit LXC and Docker
 queries remain distinct. This is lexical search, not
 semantic retrieval, general typo correction or authorization to act. The
 query is limited to 300 bytes and up to 16 meaningful terms are considered.
-`/api/v1/search` and `veda_find` return only source ID, relative path and title,
-with `total` and `offset` calculated after visibility filtering. Limits are
+`/api/v1/search` and `veda_find` return source ID, relative path, title and,
+when a body line matches, `match`: its 1-based `line`, the code-point `offset`
+of the line start (for `/api/v1/articles/excerpt`), the nearest `section`
+heading outside fenced code, the line `text` cut to about 200 characters and
+the revision `sha256`, which an excerpt starting at `offset` needs as
+`expected_sha256`.
+The whole query wins over single terms, then the earliest line with the most
+terms; only the returned page is scanned for lines. `total` and `offset` are
+calculated after visibility filtering. Limits are
 1–100 (default 20). An inaccessible source filter returns an empty result.
 Pagination is not a snapshot: repeat a search if sources change between pages.
 Each individual search ranks titles and bodies from one in-memory snapshot;

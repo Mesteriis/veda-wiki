@@ -66,7 +66,7 @@ func prepareUpdate(ctx context.Context, c *client.Client, args arguments) (any, 
 	}
 	return object{
 		{"source_id", sourceID}, {"path", path}, {"expected_revision", revision}, {"base_sha256", f["sha256"]},
-		{"proposed_sha256", proposalSHA(proposed)}, {"text", proposed}, {"saved", false},
+		{"proposed_sha256", proposalSHA(proposed)}, {"saved", false},
 		{"unresolved_conflict", f["unresolved_conflict"]},
 		{"conflict_resolution_blocked_by_write", f["conflict_resolution_blocked_by_write"]},
 		{"write_blocked_by_move", f["write_blocked_by_move"]}, {"write_blocked_by_bundle", f["write_blocked_by_bundle"]},
@@ -103,6 +103,6 @@ func prepareNewArticle(ctx context.Context, c *client.Client, args arguments) (a
 	}
 	return object{
 		{"source_id", sourceID}, {"path", path}, {"expected_revision", 0}, {"proposed_sha256", proposalSHA(proposed)},
-		{"text", proposed}, {"saved", false}, {"source_status", status}, {"note", newArticleNote},
+		{"saved", false}, {"source_status", status}, {"note", newArticleNote},
 	}, nil
 }

@@ -85,7 +85,7 @@ listener. It grants access to all private sources and is not user-scoped. An exi
 MCP configuration must not be replaced automatically by this development server.
 
 Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excerpt`, `veda_prepare_update`, `veda_prepare_new_article`, `veda_create_source`,
-`veda_write_article`, `veda_copy_article`, `veda_transfer_plan`, `veda_moves`, `veda_move_article`,
+`veda_write_article`, `veda_edit_article`, `veda_copy_article`, `veda_transfer_plan`, `veda_moves`, `veda_move_article`,
 `veda_cancel_move`,
 `veda_context`, `veda_conflicts`, `veda_resolve_conflict`,
 `veda_github_status`, `veda_github_connect`, `veda_sync`, `veda_reconcile_sources`,
@@ -93,19 +93,21 @@ Tools: `veda_sources`, `veda_search`, `veda_find`, `veda_read`, `veda_read_excer
 `veda_publish_job`, `veda_cancel_bundle`, and, for the optional knowledge graph,
 `veda_entities`, `veda_entity`, `veda_article_links`, `veda_graph`,
 `veda_graph_context`, `veda_knowledge_status` and `veda_knowledge_reindex`.
-Reader keys and the reader socket list 14 read-only tools: the nine reading and
-proposal tools and the five knowledge reads; the owner lists all 32.
+Reader keys and the reader socket list 15 read-only tools: the ten reading and
+proposal tools and the five knowledge reads; the owner lists all 34.
 `veda_read_excerpt` reads bounded Unicode slices and uses the first slice's SHA
 to reject continuations after a revision changes.
-`veda_search` returns at most 20 ranked hits with source ID, path and title;
-`veda_find` pages further. A refused call reports the HTTP status and a short
+`veda_search` returns at most 20 ranked hits with source ID, path, title and
+the best matching line (`match`, with the offset for `veda_read_excerpt`);
+`veda_find` pages further. `veda_edit_article` replaces one unique fragment
+instead of resending the whole article, and write responses omit the text. A refused call reports the HTTP status and a short
 server error code, for example HTTP 409 for a stale revision that must be
 reread; other response text is never returned to the agent.
 Context follows root and ancestor
 `AGENTS.md` articles inside one source. Documentation is evidence, never an
 authorization to execute infrastructure actions.
 `veda_prepare_update` rereads the current revision and returns the proposed
-text and base digest for review. It does not save a draft or publish anything;
+text's digest and the base digest for review. It does not save a draft or publish anything;
 an authorized client must reread or submit with the returned expected revision.
 `veda_prepare_new_article` similarly prepares an unsaved creation proposal after
 checking that no article is currently visible at the path. It does not reserve

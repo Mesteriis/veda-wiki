@@ -94,6 +94,24 @@ func (s *dataStore) putVia(sourceID, p, text string, expected int, via string) (
 	return rev, nil
 }
 
+// editVia writes a revision that replaces one unique fragment of the
+// current revision, under the same lock as the read of that revision.
+func (s *dataStore) editVia(sourceID, p, old, replacement string, expected int, via string) (domain.Revision, error) {
+	var rev domain.Revision
+	err := s.Update(func(tx *store.Tx) error {
+		written, key, err := domain.EditArticleVia(tx.DB(), sourceID, p, old, replacement, expected, via, time.Now())
+		if err != nil {
+			return err
+		}
+		if key != "" {
+			tx.OnlyArticle(key)
+		}
+		rev = written
+		return nil
+	})
+	return rev, err
+}
+
 // sources adds the import observations to the readable sources; only
 // non-public readers receive them.
 func (s *dataStore) sources(public bool) []domain.SourceView {
@@ -154,4 +172,15 @@ func (s *dataStore) findArticles(query, sourceID string, public bool) []search.H
 		return nil
 	})
 	return search.Rank(candidates, query)
+}
+
+// findPage is findArticles for one page of results, each with its best
+// matching line, and the total number of matches.
+func (s *dataStore) findPage(query, sourceID string, public bool, offset, limit int) ([]search.Hit, int) {
+	var candidates []search.Candidate
+	_ = s.View(func(db *domain.Database) error {
+		candidates = search.Candidates(*db, sourceID, public, time.Now())
+		return nil
+	})
+	return search.Page(candidates, query, offset, limit)
 }

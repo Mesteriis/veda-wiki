@@ -21,6 +21,7 @@ func TestMutatingRoutesRefuseNonOwners(t *testing.T) {
 	routes := []struct{ method, path, body string }{
 		{"POST", "/api/v1/articles", article},
 		{"PUT", "/api/v1/articles", article},
+		{"PATCH", "/api/v1/articles", `{"source_id":"alpha","path":"new.md","old_text":"New","new_text":"Old","expected_revision":1}`},
 		{"POST", "/api/v1/sources", `{"id":"beta","title":"Beta","kind":"wiki","visibility":"public"}`},
 		{"POST", "/api/v1/articles/copy", `{}`},
 		{"POST", "/api/v1/sources/reconcile", `{}`},

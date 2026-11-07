@@ -196,7 +196,7 @@ func TestToolSchemasAreByteIdentical(t *testing.T) {
 		}
 		golden[tool.Name] = compact.Bytes()
 	}
-	if len(golden) != len(Tools) || len(Tools) != 33 {
+	if len(golden) != len(Tools) || len(Tools) != 34 {
 		t.Fatalf("golden %d tools, table %d", len(golden), len(Tools))
 	}
 	for _, spec := range Tools {
